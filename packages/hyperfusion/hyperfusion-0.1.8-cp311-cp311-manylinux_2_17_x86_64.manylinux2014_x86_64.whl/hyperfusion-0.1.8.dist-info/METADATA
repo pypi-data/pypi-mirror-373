@@ -1,0 +1,345 @@
+Metadata-Version: 2.4
+Name: hyperfusion
+Version: 0.1.8
+Summary: High-performance SQL execution engine with UDTF support
+License: MIT
+Project-URL: Homepage, https://github.com/hyperdance/hyperfusion
+Project-URL: Repository, https://github.com/hyperdance/hyperfusion
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: grpcio>=1.50.0
+Requires-Dist: grpcio-tools>=1.50.0
+Requires-Dist: pyarrow>=10.0.0
+Requires-Dist: click>=8.0.0
+Requires-Dist: asyncio
+Requires-Dist: pandas>=2.0.0
+Requires-Dist: polars>=0.20.0
+Requires-Dist: numpy>=1.20.0
+Requires-Dist: aiohttp>=3.8.0
+Dynamic: license-file
+
+# hyperfusion
+
+[![PyPI version](https://badge.fury.io/py/hyperfusion.svg)](https://badge.fury.io/py/hyperfusion)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**hyperfusion** is a high-performance SQL execution engine with User-Defined Table Function (UDTF) support, built with Rust and Python. It combines the speed of Rust-based DataFusion with the flexibility of Python for custom data processing functions.
+
+## 🚀 Quick Start
+
+### Installation
+
+```bash
+pip install hyperfusion
+```
+
+### Running hyperfusion
+
+```bash
+# Start the complete system (SQL engine + Python kernel)
+hyperfusion run
+
+# Start with custom configuration
+hyperfusion run --api-addr 0.0.0.0:8080 --python-kernel-port 50051
+
+# Start only the Python kernel (for development)
+hyperfusion run python-kernel --port 50051
+
+# Get help
+hyperfusion --help
+```
+
+### Using as a Library
+
+```python
+from hyperfusion import udtf
+
+@udtf
+async def my_data_processor(x: int, y: str) -> list[dict]:
+    """Process data and return results."""
+    return [{"result": x * 2, "input": y, "processed": True}]
+
+# The function is automatically registered and available to the SQL engine
+```
+
+## 🎯 Features
+
+### Core Capabilities
+- **High-Performance SQL Engine**: Built on Apache DataFusion for analytical query processing
+- **Python UDTF Support**: Write custom data processing functions in Python
+- **PostgreSQL Compatibility**: Wire protocol support for standard database tools
+- **Web Interface**: Built-in dashboard for data visualization and query execution
+- **Apache Arrow Integration**: Efficient columnar data processing and serialization
+
+### Advanced Features
+- **Dependency Management**: Automatic dependency resolution and execution ordering
+- **CRON Scheduling**: Automated pipeline execution with flexible timing
+- **Multi-Platform**: Support for Linux, macOS, and Windows
+- **gRPC Communication**: High-performance inter-process communication
+- **Event Recording**: Comprehensive logging and monitoring
+
+## 📚 Documentation
+
+### CLI Usage
+
+#### Main Commands
+
+```bash
+# Start hyperfusion with default settings
+hyperfusion run
+
+# Start with custom ports and settings
+hyperfusion run \
+  --python-kernel-port 50051 \
+  --api-addr 0.0.0.0:8080 \
+  --ui-addr 0.0.0.0:3000 \
+  --sql-dir ./sql
+
+# Run only SQL engine (no Python UDTF support)
+hyperfusion run --no-python-kernel
+
+# Run only Python kernel for development
+hyperfusion run python-kernel --port 50051
+
+# Show version information
+hyperfusion version
+```
+
+#### Configuration Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--python-kernel-port` | 50051 | Port for Python kernel gRPC service |
+| `--no-python-kernel` | False | Disable Python UDTF support |
+| `--sql-dir` | ./sql | Directory containing SQL files |
+| `--api-addr` | 0.0.0.0:8080 | API server bind address |
+| `--ui-addr` | 0.0.0.0:3000 | Web UI server bind address |
+| `--serve-ui/--no-serve-ui` | True | Enable/disable web interface |
+| `--log-level` | INFO | Python kernel log level |
+
+### Library Usage
+
+#### Creating UDTFs
+
+```python
+from hyperfusion import udtf
+import pandas as pd
+import pyarrow as pa
+
+@udtf
+async def load_csv_data(file_path: str) -> list[dict]:
+    """Load data from CSV file."""
+    df = pd.read_csv(file_path)
+    return df.to_dict('records')
+
+@udtf  
+async def calculate_metrics(values: list[float]) -> dict:
+    """Calculate statistical metrics."""
+    import statistics
+    return {
+        'mean': statistics.mean(values),
+        'median': statistics.median(values),
+        'stdev': statistics.stdev(values) if len(values) > 1 else 0
+    }
+
+@udtf
+async def transform_data(
+    input_batch: pa.RecordBatch
+) -> pa.RecordBatch:
+    """Process Arrow RecordBatch directly."""
+    # Convert to pandas for processing
+    df = input_batch.to_pandas()
+    
+    # Perform transformations
+    df['processed_at'] = pd.Timestamp.now()
+    df['doubled_value'] = df['value'] * 2
+    
+    # Convert back to Arrow
+    return pa.RecordBatch.from_pandas(df)
+```
+
+#### UDTF Processing Modes
+
+hyperfusion automatically detects the optimal processing mode based on your function signature:
+
+1. **Record-to-Record**: Process individual records
+   ```python
+   @udtf
+   async def process_record(x: int, y: str) -> dict:
+       return {"result": x + len(y)}
+   ```
+
+2. **Record-to-Batch**: Process records and return multiple results  
+   ```python
+   @udtf
+   async def expand_record(x: int) -> list[dict]:
+       return [{"value": i} for i in range(x)]
+   ```
+
+3. **Batch-to-Batch**: Process entire Arrow RecordBatches
+   ```python
+   @udtf
+   async def process_batch(batch: pa.RecordBatch) -> pa.RecordBatch:
+       # High-performance batch processing
+       return transform_batch(batch)
+   ```
+
+### SQL Integration
+
+Once UDTFs are defined, they're automatically available in SQL:
+
+```sql
+-- Use a UDTF to load external data
+INSERT INTO raw_data 
+SELECT * FROM load_csv_data('/path/to/data.csv');
+
+-- Process data with custom functions
+INSERT INTO processed_data
+SELECT 
+    id,
+    calculate_metrics(ARRAY[value1, value2, value3]) as metrics
+FROM raw_data;
+
+-- Batch processing with Arrow
+INSERT INTO transformed_data
+SELECT * FROM transform_data(
+    SELECT * FROM raw_data WHERE created_at > NOW() - INTERVAL '1 day'
+);
+```
+
+## 🏗️ Architecture
+
+hyperfusion consists of three main components:
+
+1. **SQL Engine (Rust)**: DataFusion-based query processing with PostgreSQL wire protocol
+2. **Python Kernel**: gRPC service for UDTF execution with Apache Arrow serialization  
+3. **Web Interface (TypeScript)**: React-based dashboard for visualization and query execution
+
+```
+┌─────────────────┐    gRPC/Arrow    ┌─────────────────┐
+│   SQL Engine    │◄─────────────────┤ Python Kernel   │
+│   (Rust)        │                  │   (Python)      │
+├─────────────────┤                  ├─────────────────┤
+│ • DataFusion    │                  │ • UDTF Registry │
+│ • PostgreSQL    │                  │ • Arrow IPC     │ 
+│ • HTTP API      │                  │ • AsyncIO       │
+│ • Dependency    │                  │ • Error Handling│
+│   Management    │                  └─────────────────┘
+└─────────────────┘
+        │
+        │ HTTP API
+        ▼
+┌─────────────────┐
+│  Web Interface  │
+│  (TypeScript)   │
+├─────────────────┤
+│ • React/D3.js   │
+│ • SQL Editor    │
+│ • Visualizations│
+│ • Dashboards    │
+└─────────────────┘
+```
+
+## 🛠️ Development
+
+### Building from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/hyperdance/hyperfusion.git
+cd hyperfusion
+
+# Build and install in development mode
+source make/make.sh
+install-package-dev
+
+# Test the installation
+test-package
+```
+
+### Running Tests
+
+```bash
+# Run Python tests
+cd hyperfusion-py
+pytest
+
+# Run Rust tests  
+cd hyperfusion-rs
+cargo test
+
+# Integration tests
+source make/make.sh
+run-python-test
+test-rust
+```
+
+## 📦 Distribution
+
+### Package Structure
+
+```
+hyperfusion-py/
+├── pyproject.toml          # Modern Python packaging
+├── README.md              # This file
+├── LICENSE                # MIT license
+├── src/
+│   └── hyperfusion/          # Main package
+│       ├── __init__.py    # Public API
+│       ├── cli/           # Command-line interface
+│       ├── udtf/          # UDTF system (from arrow_udtf)
+│       ├── service/       # gRPC service components
+│       └── binaries/      # Platform-specific Rust binaries
+├── scripts/               # Build utilities
+└── tests/                 # Package tests
+```
+
+### Platform Support
+
+hyperfusion provides pre-built wheels for:
+
+- **Linux**: x86_64, ARM64
+- **macOS**: x86_64 (Intel), ARM64 (Apple Silicon)  
+- **Windows**: x86_64
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### Development Setup
+
+```bash
+# Install development dependencies
+pip install -e .[dev]
+
+# Install pre-commit hooks
+pre-commit install
+
+# Run tests
+pytest
+
+# Build documentation
+mkdocs serve
+```
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙋‍♀️ Support
+
+- **Documentation**: [Full documentation](https://github.com/hyperdance/hyperfusion/docs)
+- **Issues**: [GitHub Issues](https://github.com/hyperdance/hyperfusion/issues)  
+- **Discussions**: [GitHub Discussions](https://github.com/hyperdance/hyperfusion/discussions)
+
+## 🎉 Acknowledgments
+
+- Built with [Apache DataFusion](https://datafusion.apache.org/) for high-performance SQL processing
+- Uses [Apache Arrow](https://arrow.apache.org/) for efficient columnar data operations
+- Powered by [gRPC](https://grpc.io/) for inter-process communication
+- Web interface built with [React](https://react.dev/) and [D3.js](https://d3js.org/)
+
+---
+
+**hyperfusion** - Where SQL meets Python for high-performance data processing! 🚀
