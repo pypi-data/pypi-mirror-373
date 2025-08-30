@@ -1,0 +1,190 @@
+# semantic-copycat-oslili
+
+A high-performance tool for identifying licenses and copyright information in local source code, producing detailed evidence of where licenses are detected with support for all 700+ SPDX license identifiers.
+
+## What It Does
+
+`semantic-copycat-oslili` analyzes local source code to produce evidence of:
+- **License detection** - Shows which files contain which licenses with confidence scores
+- **SPDX identifiers** - Detects SPDX-License-Identifier tags in ALL readable files
+- **Package metadata** - Extracts licenses from package.json, pyproject.toml, METADATA files
+- **Copyright statements** - Extracts copyright holders and years with intelligent filtering
+
+The tool outputs standardized JSON evidence showing exactly where each license was detected, the detection method used, and confidence scores.
+
+## Key Features
+
+- **Evidence-based output**: Shows exact file paths, confidence scores, and detection methods
+- **Parallel processing**: Multi-threaded scanning with configurable thread count
+- **Three-tier detection**: 
+  - Dice-Sørensen similarity matching (97% threshold)
+  - TLSH fuzzy hashing (optional)
+  - Regex pattern matching
+- **Smart normalization**: Handles license variations and common aliases
+- **No file limits**: Processes files of any size with intelligent sampling
+- **Enhanced metadata support**: Detects licenses in package.json, METADATA, pyproject.toml
+- **False positive filtering**: Advanced filtering for code patterns and invalid matches
+
+## Installation
+
+```bash
+pip install semantic-copycat-oslili
+```
+
+### Required Dependencies
+
+The package includes all necessary dependencies including `python-tlsh` for fuzzy hash matching, which is essential for accurate license detection and false positive prevention.
+
+## Usage
+
+### CLI Usage
+
+```bash
+# Scan a directory and see evidence
+oslili /path/to/project
+
+# Scan with parallel processing (4 threads)
+oslili ./my-project --threads 4
+
+# Scan a specific file
+oslili /path/to/LICENSE
+
+# Save results to file
+oslili ./my-project -o license-evidence.json
+
+# With custom configuration and verbose output
+oslili ./src --config config.yaml --verbose
+
+# Debug mode for detailed logging
+oslili ./project --debug
+```
+
+### Example Output
+
+```json
+{
+  "scan_results": [{
+    "path": "./project",
+    "license_evidence": [
+      {
+        "file": "/path/to/project/LICENSE",
+        "detected_license": "Apache-2.0",
+        "confidence": 0.988,
+        "detection_method": "dice-sorensen",
+        "match_type": "text_similarity",
+        "description": "Text matches Apache-2.0 license (98.8% similarity)"
+      },
+      {
+        "file": "/path/to/project/package.json",
+        "detected_license": "Apache-2.0",
+        "confidence": 1.0,
+        "detection_method": "tag",
+        "match_type": "spdx_identifier",
+        "description": "SPDX-License-Identifier: Apache-2.0 found"
+      }
+    ],
+    "copyright_evidence": [
+      {
+        "file": "/path/to/project/src/main.py",
+        "holder": "Example Corp",
+        "years": [2023, 2024],
+        "statement": "Copyright 2023-2024 Example Corp"
+      }
+    ]
+  }],
+  "summary": {
+    "total_files_scanned": 42,
+    "licenses_found": {
+      "Apache-2.0": 2
+    },
+    "copyrights_found": 1
+  }
+}
+```
+
+## How It Works
+
+### Three-Tier License Detection System
+
+The tool uses a sophisticated multi-tier approach for maximum accuracy:
+
+1. **Tier 1: Dice-Sørensen Similarity with TLSH Confirmation**
+   - Compares license text using Dice-Sørensen coefficient (97% threshold)
+   - Confirms matches using TLSH fuzzy hashing to prevent false positives
+   - Achieves 97-100% accuracy on standard SPDX licenses
+
+2. **Tier 2: TLSH Fuzzy Hash Matching**
+   - Uses Trend Micro Locality Sensitive Hashing for variant detection
+   - Catches license variants like MIT-0, BSD-2-Clause vs BSD-3-Clause
+   - Pre-computed hashes for all 700+ SPDX licenses
+
+3. **Tier 3: Pattern Recognition**
+   - Regex-based detection for license references and identifiers
+   - Extracts from comments, headers, and documentation
+
+### Additional Detection Methods
+
+- **Package Metadata Scanning**: Detects licenses from package.json, composer.json, pyproject.toml, etc.
+- **Copyright Extraction**: Advanced pattern matching with validation and deduplication
+- **SPDX Identifier Detection**: Finds SPDX-License-Identifier tags in source files
+
+### Library Usage
+
+```python
+from semantic_copycat_oslili import LegalAttributionGenerator
+
+# Initialize generator
+generator = LegalAttributionGenerator()
+
+# Process a local directory
+result = generator.process_local_path("/path/to/source")
+
+# Process a single file  
+result = generator.process_local_path("/path/to/LICENSE")
+
+# Generate evidence output
+evidence = generator.generate_evidence([result])
+print(evidence)
+
+# Access results
+for license in result.licenses:
+    print(f"License: {license.spdx_id} ({license.confidence:.0%} confidence)")
+for copyright in result.copyrights:
+    print(f"Copyright: © {copyright.holder}")
+```
+
+## License Detection
+
+The package uses a three-tier license detection system:
+
+1. **Tier 1**: Dice-Sørensen similarity (97% threshold)
+2. **Tier 2**: TLSH fuzzy hashing (97% threshold)
+3. **Tier 3**: Machine learning or regex pattern matching
+
+## Output Format
+
+The tool outputs JSON evidence showing:
+- **File path**: Where the license was found
+- **Detected license**: The SPDX identifier of the license
+- **Confidence**: How confident the detection is (0.0 to 1.0)
+- **Match type**: How the license was detected (license_text, spdx_identifier, license_reference, text_similarity)
+- **Description**: Human-readable description of what was found
+
+## Configuration
+
+Create a `config.yaml` file:
+
+```yaml
+similarity_threshold: 0.97
+max_extraction_depth: 10
+thread_count: 4
+custom_aliases:
+  "Apache 2": "Apache-2.0"
+  "MIT License": "MIT"
+```
+
+## Documentation
+
+- [Full Usage Guide](docs/USAGE.md) - Comprehensive usage examples and configuration
+- [API Reference](docs/API.md) - Python API documentation and examples
+- [Changelog](CHANGELOG.md) - Version history and changes
