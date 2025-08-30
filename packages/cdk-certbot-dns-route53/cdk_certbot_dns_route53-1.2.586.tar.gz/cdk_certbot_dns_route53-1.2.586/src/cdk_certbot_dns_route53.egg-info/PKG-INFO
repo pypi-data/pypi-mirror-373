@@ -1,0 +1,118 @@
+Metadata-Version: 2.1
+Name: cdk-certbot-dns-route53
+Version: 1.2.586
+Summary: Create Cron Job Via Lambda, to update certificate and put it to S3 Bucket.
+Home-page: https://github.com/neilkuan/cdk-certbot-dns-route53.git
+Author: Neil Kuan<guan840912@gmail.com>
+License: Apache-2.0
+Project-URL: Source, https://github.com/neilkuan/cdk-certbot-dns-route53.git
+Classifier: Intended Audience :: Developers
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: JavaScript
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Typing :: Typed
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: License :: OSI Approved
+Requires-Python: ~=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: aws-cdk.aws-events-targets<2.0.0,>=1.76.0
+Requires-Dist: aws-cdk.aws-events<2.0.0,>=1.76.0
+Requires-Dist: aws-cdk.aws-iam<2.0.0,>=1.76.0
+Requires-Dist: aws-cdk.aws-lambda<2.0.0,>=1.76.0
+Requires-Dist: aws-cdk.aws-logs<2.0.0,>=1.76.0
+Requires-Dist: aws-cdk.aws-route53<2.0.0,>=1.76.0
+Requires-Dist: aws-cdk.aws-s3<2.0.0,>=1.76.0
+Requires-Dist: aws-cdk.core<2.0.0,>=1.204.0
+Requires-Dist: constructs<4.0.0,>=3.2.27
+Requires-Dist: jsii<2.0.0,>=1.113.0
+Requires-Dist: publication>=0.0.3
+Requires-Dist: typeguard<4.3.0,>=2.13.3
+
+[![NPM version](https://badge.fury.io/js/cdk-certbot-dns-route53.svg)](https://badge.fury.io/js/cdk-certbot-dns-route53)
+[![PyPI version](https://badge.fury.io/py/cdk-certbot-dns-route53.svg)](https://badge.fury.io/py/cdk-certbot-dns-route53)
+[![Release](https://github.com/neilkuan/cdk-certbot-dns-route53/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/neilkuan/cdk-certbot-dns-route53/actions/workflows/release.yml)
+
+# cdk-certbot-dns-route53
+
+**cdk-certbot-dns-route53** is a CDK construct library that allows you to create [Certbot](https://github.com/certbot/certbot) Lambda Function on AWS with CDK, and setting schedule cron job to renew certificate to store on S3 Bucket.
+
+## Install
+
+```bash
+Use the npm dist tag to opt in CDKv1 or CDKv2:
+
+// for CDKv2
+npm install cdk-certbot-dns-route53
+or
+npm install cdk-certbot-dns-route53@latest
+
+// for CDKv1
+npm install cdk-certbot-dns-route53@cdkv1
+```
+
+```python
+import * as r53 from '@aws-cdk/aws-route53';
+import * as s3 from '@aws-cdk/aws-s3';
+import * as cdk from '@aws-cdk/core';
+import { CertbotDnsRoute53Job } from 'cdk-certbot-dns-route53';
+
+const devEnv = {
+  account: process.env.CDK_DEFAULT_ACCOUNT,
+  region: process.env.CDK_DEFAULT_REGION,
+};
+
+const app = new cdk.App();
+
+const stack = new cdk.Stack(app, 'lambda-certbot-dev', { env: devEnv });
+
+new CertbotDnsRoute53Job(stack, 'Demo', {
+  certbotOptions: {
+    domainName: '*.example.com',
+    email: 'user@example.com',
+  },
+  zone: r53.HostedZone.fromHostedZoneAttributes(stack, 'myZone', {
+    zoneName: 'example.com',
+    hostedZoneId:  'mockId',
+  }),
+  destinationBucket: s3.Bucket.fromBucketName(stack, 'myBucket', 'mybucket'),
+});
+```
+
+### You can define Lambda Image Architecture now. 2022/04/19
+
+```python
+import * as r53 from '@aws-cdk/aws-route53';
+import * as s3 from '@aws-cdk/aws-s3';
+import * as cdk from '@aws-cdk/core';
+import * as lambda from '@aws-cdk/aws-lambda';
+import { CertbotDnsRoute53Job } from 'cdk-certbot-dns-route53';
+const mockApp = new cdk.App();
+const stack = new cdk.Stack(mockApp, 'teststack', { env: devEnv });
+const bucket = new s3.Bucket(stack, 'testingBucket');
+const zone = r53.HostedZone.fromHostedZoneAttributes(stack, 'zone', {
+  zoneName: mock.zoneName, hostedZoneId: mock.zoneId,
+});
+new CertbotDnsRoute53Job(stack, 'Testtask', {
+  certbotOptions: {
+    domainName: 'example.com',
+    email: 'user@example.com',
+    customPrefixDirectory: '/',
+  },
+  zone,
+  destinationBucket: bucket,
+  schedule: events.Schedule.cron({ month: '2' }),
+  architecture: lambda.Architecture.ARM_64, // <- like this way.
+});
+```
+
+### Example: Invoke Lambda Function log.
+
+![](./images/lambda-logs.png)
+
+### Example: Renew certificate to store on S3 Bucket
+
+![](./images/s3-bucket.png)
