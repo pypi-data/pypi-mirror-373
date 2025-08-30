@@ -1,0 +1,79 @@
+#!/bin/bash
+#
+# usage:
+#
+# % crds_repair_cache [--all | --up-to-context <ctx>] [--readonly-cache] [--check-sha1sum] [--purge-references (with great care, see below)]
+#
+# --------------------------------------------------------------------------
+#
+# This script is one approach for refreshing a CRDS cache (most likely TEST
+# pipeline CRDS cache) to make it consistent with the CRDS server cache and
+# CRDS server database.  It may be useful in a variety of situations but is
+# designed first-and-foremost for the following situation in the TEST pipeline:
+#
+# 1. TEST pipeline and TEST CRDS server are refreshed from the OPS server
+#    (possibly including use of this script) to baseline the TEST system for
+#    testing.
+#
+# 2. TEST file deliveries are performed creating files unique to the TEST
+#    pipeline and CRDS server.  The CRDS server rules and default context will
+#    almost certainly diverge from OPS, some references may be deliveried early
+#    to TEST with names identical to OPS.  The TEST pipeline CRDS cache will
+#    likewise diverge from the OPS pipeline CRDS cache.
+#
+# 3. At a later time, the CRDS TEST server is refreshed / mirrored from OPS to
+#    support more current file regressions.  The TEST pipeline's CRDS cache is
+#    then out of sync with the CRDS TEST server, possibly with like named rules
+#    files with different contents and behavior.
+#
+# 4. This script is run to resynchronize the TEST pipeline's CRDS cache to match
+#    the current contents of the CRDS TEST server (and OPS server).
+#
+# NOTE:  this script relies on cron_sync.  cron_sync in turn relies on UNIX umask
+#    to create appropriate default group permissions.  Users should nominally
+#    specify "umask 2" in their interactive shell to cause synced files to be
+#    created with user and group rwx permissions.
+#
+# Without experimentation, the files/contexts should probably be selected using
+# --all which will guarantee considering all cached files.  Another untested
+# possibility would be to use --up-to-context <context> where <context> is
+# chosen as the last official context mirrored into the TEST string; this
+# should work well with --purge-mappings and --purge-references where the
+# selected contexts are used to define the files to *keep*, not purge.
+# --purge-references should be used with extreme care since it will wipe out
+# the references of every context which is *not* specified.
+#
+# --------------------------------------------------------------------------
+#
+# First check, download, and/or purge any rules files differences, verifying
+# sha1sums since it is common for rules differences to produce files of the
+# same length but different contents.
+
+cron_sync --check-sha1sum --repair-files --purge-mappings $*
+
+# Second,  check, download, and/or purge any reference files differences,
+# omitting --check-sha1sum because it is very time consuming. (Expect
+# 8 hours+ for the full HST cache.)  If desired anyway,  --check-sha1sum can
+# be added on the command line as an optional parameter.  This will remove
+# references not known to the specified set of CRDS rules,  and it will
+# correct like named references (between TEST and OPS) which have different
+# lengths.  It cannot detect differences in same-length files without
+# --check-sha1sum so it is possible that residual files from the last
+# TEST cycle will go uncorrected.
+
+# --purge-references is a potential command line option below, but considered
+# to be risky for large pipeline caches.  if specified, the actual repair
+# should be preceded by a dry run using --dry-run or --readonly-cache to get
+# some estimation of what CRDS is going to do before doing it.   Note that
+# if crds_repair_cache is run without an explicit context or file selection,
+# the context will default to the current operational context and when purging,
+# all archived references would be deleted.
+
+cron_sync --repair-files --fetch-references $*
+
+#
+# Other notes:  An alternate approach for hacking caches is to manually remove
+# suspect files,  perhaps all mappings and config,  and then to resynchronize
+# using cron_sync.   The downside of this approach is that it maskes assumptions
+# about cache design and behavior
+#
