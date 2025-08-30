@@ -1,0 +1,89 @@
+AC_PREREQ([2.68])
+AC_INIT([io], [package], [https://github.com/gap-packages/io/issues], [io], [https://gap-packages.github.io/io/])
+AC_CONFIG_SRCDIR([src/io.c])
+AC_CONFIG_HEADERS([gen/pkgconfig.h:src/pkgconfig.h.in])
+AC_CONFIG_MACRO_DIR([m4])
+m4_include([m4/find_gap.m4])
+
+AC_PROG_CC
+
+FIND_GAP
+
+# Checks for header files.
+AC_CHECK_HEADERS_ONCE([
+    dirent.h
+    fcntl.h
+    netdb.h
+    netinet/in.h
+    netinet/tcp.h
+    signal.h
+    sys/param.h
+    sys/socket.h
+    sys/stat.h
+    sys/time.h
+    sys/types.h
+    sys/wait.h
+    time.h
+    unistd.h
+])
+
+# Checks for library functions.
+AC_FUNC_FORK
+AC_CHECK_FUNCS_ONCE([
+    accept
+    bind
+    chmod
+    chown
+    closedir
+    connect
+    dup
+    dup2
+    fchmod
+    fchown
+    fstat
+    gethostbyname
+    gethostname
+    getpid
+    getppid
+    getprotobyname
+    getsockname
+    getsockopt
+    gettimeofday
+    gmtime
+    kill
+    lchown
+    link
+    listen
+    localtime
+    lstat
+    lstat
+    memset
+    mkdir
+    mkdtemp
+    mkfifo
+    mknod
+    mkstemp
+    opendir
+    readdir
+    readlink
+    recv
+    recvfrom
+    rename
+    rewinddir
+    rmdir
+    seekdir
+    select
+    send
+    sendto
+    setsockopt
+    sigaction
+    signal
+    socket
+    stat
+    symlink
+    telldir
+    unlink
+])
+
+AC_CONFIG_FILES([Makefile])
+AC_OUTPUT
