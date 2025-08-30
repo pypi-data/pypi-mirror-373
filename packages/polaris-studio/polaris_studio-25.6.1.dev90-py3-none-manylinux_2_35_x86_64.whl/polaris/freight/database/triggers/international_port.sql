@@ -1,0 +1,35 @@
+-- Copyright (c) 2025, UChicago Argonne, LLC
+-- BSD OPEN SOURCE LICENSE. Full license can be found in LICENSE.md
+--##
+create trigger if not exists polaris_international_port_populates_fields_new_record after insert on International_Port
+begin
+    update International_Port
+    set "x" = round(COALESCE(ST_X(new.geo), 0), 8),
+        "y" = round(COALESCE(ST_Y(new.geo), 0), 8)
+    where International_Port.rowid = new.rowid;
+end;
+
+--##
+create trigger if not exists polaris_international_port_on_x_change after update of "x" on International_Port
+begin
+    update International_Port
+    set "x" = round(COALESCE(ST_X(new.geo), new.x), 8)
+    where International_Port.rowid = new.rowid;
+end;
+
+--##
+create trigger if not exists polaris_international_port_on_y_change after update of "y" on International_Port
+begin
+    update International_Port
+    set "y" = round(COALESCE(ST_Y(new.geo), new.y), 8)
+    where International_Port.rowid = new.rowid;
+end;
+
+--##
+create trigger if not exists polaris_international_port_on_geo_change after update of geo on International_Port
+begin
+        update International_Port
+    set "x" = round(COALESCE(ST_X(new.geo), old.x), 8),
+        "y" = round(COALESCE(ST_Y(new.geo), old.y), 8)
+    where International_Port.rowid = new.rowid;
+end;
