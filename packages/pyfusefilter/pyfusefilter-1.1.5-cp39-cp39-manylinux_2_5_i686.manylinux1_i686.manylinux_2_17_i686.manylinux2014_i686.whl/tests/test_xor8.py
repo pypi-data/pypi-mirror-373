@@ -1,0 +1,61 @@
+from pyfusefilter import Xor8
+from random import sample
+import tempfile, os
+
+def test_readme():
+    test_str = ["あ","अ", 51, 0.0, 12.3]
+    filter = Xor8(test_str)
+    assert filter.contains("अ") == True
+    assert filter[51]  #You can use __getitem__ instead of contains
+    assert filter["か"] == False
+
+def test_xor8_int():
+    xor_filter = Xor8(50)
+    xor_filter.populate([_ for _ in range(50)])
+    for i in range(50):
+        assert xor_filter.contains(i) == True
+
+def test_xor8_int_iterable():
+    xor_filter = Xor8(50)
+    xor_filter.populate(range(50))
+    for i in range(50):
+        assert xor_filter.contains(i) == True
+
+def test_xor8_strings():
+    xor_filter = Xor8(10)
+    test_str = ["あ", "/dev/null; touch /tmp/blns.fail ; echo", "अ", "Normal", "122"]
+    xor_filter.populate(test_str.copy())
+    for i in test_str:
+        assert xor_filter.contains(i) == True
+
+
+def test_xor8_floats():
+    xor_filter = Xor8(10)
+    test_floats = [1.23, 9999.88, 323.43, 0.0]
+    xor_filter.populate(test_floats.copy())
+    for i in test_floats:
+        assert xor_filter.contains(i) == True
+
+
+def test_xor8_all():
+    xor_filter = Xor8(5)
+    test_str = ["string", 51, 0.0, 12.3]
+    xor_filter.populate(test_str.copy())
+    for i in test_str:
+        assert xor_filter.contains(i) == True
+
+def test_xor8_serialize():
+    xor_filter = Xor8(5)
+    test_str = ["string", 51, 0.0, 12.3]
+    xor_filter.populate(test_str.copy())
+    serialized_filter = tempfile.NamedTemporaryFile(delete=False).name
+    with open(serialized_filter, 'wb') as f:
+        f.write(xor_filter.serialize())
+
+    with open(serialized_filter, 'rb') as f:
+        recover_xor_filter = Xor8.deserialize(f.read())
+
+    for i in test_str:
+        assert recover_xor_filter.contains(i) == True
+
+    os.remove(serialized_filter)
