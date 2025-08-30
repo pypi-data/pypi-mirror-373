@@ -1,0 +1,202 @@
+[project]
+name = "starhtml"
+version = "0.1.13"
+description = "Modern HTML generation in Python, inspired by FastHTML"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "starlette",
+    "uvicorn[standard]",
+    "httpx",
+    "beautifulsoup4",
+    "python-dateutil",
+    "fastcore",
+    "fastlite",
+    "oauthlib",
+    "itsdangerous",
+    "starlette-compress>=1.0.0",    
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov>=6.1.1",
+    "pytest-timeout",
+    "pytest-xdist",
+    "pytest-watch",
+    "pytest-asyncio",
+    "python-multipart>=0.0.20",
+    "requests>=2.32.4",
+]
+dev = [    
+    "ipykernel",
+    "pip-tools",
+    "ruff",
+    "psutil",
+    "brotli>=1.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.hooks.custom]
+path = "scripts/hatch_build_hook.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/starhtml"]
+# Include only built JavaScript and static assets in the package (exclude TypeScript sources)
+include = [
+    "src/starhtml/static/**/*.js",
+    "src/starhtml/static/**/*.json", 
+    "src/starhtml/static/**/*.css",
+    "src/starhtml/**/*.py",
+    "src/starhtml/**/*.pyi",
+    "src/starhtml/py.typed",
+]
+# Build artifacts (JavaScript handlers) will be added dynamically by the build hook
+artifacts = []
+# Exclude development files from the package  
+exclude = [
+    "typescript/",
+    "package.json",
+    "package-lock.json", 
+    "bun.lockb",
+    "tsconfig.json",
+    "node_modules/",
+]
+
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = [
+    "--verbose",
+    "--strict-markers",
+    "--strict-config",
+]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "asyncio: marks tests as asyncio tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["src/starhtml"]
+omit = ["*/tests/*", "*/test_*.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "pass",
+    "except ImportError:",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["src", "tests", "demo"]
+exclude = ["components"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C90", # mccabe complexity
+    "PL",  # pylint
+]
+ignore = [
+    "E501",     # Line length
+    "E701",     # Multiple statements on one line - StarHTML uses concise style
+    "W293",     # Blank line contains whitespace
+    "PLR0913",  # Too many arguments
+    "F403",     # Star imports - allowed for StarHTML demos
+    "F405",     # May be undefined from star imports
+    "N802",     # Function names should be lowercase - HTML components need capitals
+    "C901",     # Complex structure - acceptable for web framework core functions
+    "PLR0912",  # Too many branches - acceptable for framework parameter resolution
+    "N807",     # Dunder function names - valid magic methods being flagged incorrectly
+    "PLW2901",  # Redefined loop name - intentional data transformation in framework code
+]
+
+[tool.ruff.lint.per-file-ignores]
+"demo/*.py" = ["F403", "F405", "PLR2004", "N802", "PLW0603", "N803", "B007"]  # Allow star imports, magic values, capitalized function names, global statements, argument naming, and unused loop vars in demos
+"tests/*.py" = ["F403", "F405", "PLR2004", "N806"]  # Allow star imports, magic values, and constant naming in tests
+"src/starhtml/components.py" = ["N802", "N807", "C901", "PLR0912", "UP007", "PLW2901", "PLE0605"]  # Allow capitalized function names for HTML components and complexity
+"src/starhtml/svg.py" = ["N802", "N803", "N806"]  # Allow capitalized function names for SVG elements
+"src/starhtml/js.py" = ["N802"]  # Allow capitalized function names for JS components
+"src/starhtml/datastar.py" = ["B904", "PLR2004", "PLR0911"]  # Allow datastar patterns and multiple returns
+"src/starhtml/live_reload.py" = ["N802"]  # Allow capitalized function names
+"src/starhtml/oauth.py" = ["C901"]  # Allow complexity in OAuth
+"src/starhtml/__init__.py" = ["F401"]  # Allow unused imports in __init__
+"src/starhtml/tags.py" = ["N803", "N806", "E743", "PLE0604"]  # Allow SVG naming conventions, ambiguous function names, and __all__ patterns
+"src/starhtml/tags.pyi" = ["E743", "N803"]  # Allow ambiguous I function and camelCase SVG attrs like viewBox
+"src/starhtml/types.py" = []  # Type definitions file
+"src/starhtml/realtime.py" = ["PLR0911", "PLR2004"]  # Allow complexity and magic values in realtime processing
+"src/starhtml/server.py" = ["PLR0911", "N801", "PLW1508"]  # Allow complexity, internal class naming, and env var patterns
+"src/starhtml/utils.py" = ["N813", "E721"]  # Allow CamelCase imports and type comparisons for compatibility
+"src/starhtml/xtend.py" = ["N802", "UP031", "F811"]  # Allow capitalized function names, % formatting, and Path redefinition
+"src/starhtml/core.py" = ["N813", "E721", "B904", "C901", "PLR0911", "PLR0912", "N802", "E402", "PLR2004", "N801", "F811"]  # Allow various patterns needed for StarHTML
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pyright]
+include = ["src", "tests", "demo"]
+exclude = ["**/node_modules", "**/__pycache__", "**/.venv", "**/build", "**/dist"]
+pythonVersion = "3.12"
+pythonPlatform = "All"
+typeCheckingMode = "standard"
+reportMissingImports = false
+reportMissingTypeStubs = false
+reportPrivateImportUsage = false
+reportUnusedImport = false
+reportUnusedClass = true
+reportUnusedFunction = false
+reportUnusedVariable = false
+reportDuplicateImport = true
+reportWildcardImportFromLibrary = false
+reportOptionalMemberAccess = false
+reportOptionalCall = false
+reportOptionalIterable = true
+reportOptionalContextManager = true
+reportOptionalOperand = true
+reportTypedDictNotRequiredAccess = true
+reportUnnecessaryCast = true
+reportUnnecessaryComparison = false
+reportUnnecessaryContains = false
+reportAssertAlwaysTrue = true
+reportUnnecessaryTypeIgnoreComment = false
+reportImplicitOverride = false
+reportShadowedImports = true
+reportUndefinedVariable = false
+reportCallIssue = false
+reportArgumentType = false
+
+[dependency-groups]
+dev = [
+    "brotli>=1.1.0",
+    "psutil>=7.0.0",
+    "pyright>=1.1.403",
+    "pytest-asyncio>=1.1.0",
+    "ruff>=0.11.13",
+]
+test = [
+    "python-multipart>=0.0.20",
+]
