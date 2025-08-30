@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ClickUp HTTP Log Viewer</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 0; }
+    header { padding: 12px 16px; background: #0f172a; color: #e2e8f0; }
+    main { padding: 12px 16px; }
+    .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+    input[type=text] { padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 4px; }
+    button { padding: 6px 10px; border: 1px solid #334155; background: #0ea5e9; color: white; border-radius: 4px; cursor: pointer; }
+    button.secondary { background: #334155; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td {
+      border-bottom: 1px solid #e2e8f0;
+      border-right: 1px solid #e2e8f0; /* vertical division lines */
+      padding: 6px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th:last-child, td:last-child { border-right: none; }
+    th { position: sticky; top: 0; background: #f1f5f9; z-index: 1; }
+    .row-req { background: #f0f9ff; }
+    .row-res { background: #f8fafc; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+    .status-ok { color: #16a34a; font-weight: 600; }
+    .status-warn { color: #f59e0b; font-weight: 600; }
+    .status-err { color: #ef4444; font-weight: 600; }
+    .hidden { display: none !important; }
+    .nowrap { white-space: nowrap; }
+    .resizable { overflow: auto; min-width: 140px; max-width: 60vw; }
+    .clip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .th-resizable { position: relative; }
+    .th-resizable .grip { position: absolute; right: 0; top: 0; width: 6px; height: 100%; cursor: col-resize; user-select: none; }
+
+    /* JSON tree rendering */
+    .json { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; line-height: 1.4; }
+    .json .key { color: #0ea5e9; }
+    .json .string { color: #16a34a; }
+    .json .number { color: #f59e0b; }
+    .json .boolean { color: #ef4444; }
+    .json .null { color: #94a3b8; }
+    .json details { padding-left: 10px; }
+    .json summary { cursor: pointer; }
+    .caret { cursor: pointer; display: inline-block; width: 12px; }
+    .row-collapsed { opacity: 0.9; }
+    .details-row td { background: #fbfcfe; padding: 8px; }
+    .details-container { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .details-panel { border: 1px solid #e2e8f0; border-radius: 6px; overflow: auto; resize: horizontal; min-width: 160px; }
+    .details-title { font-weight: 600; background: #f8fafc; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; }
+    .details-body { padding: 6px 8px; max-height: 40vh; }
+  </style>
+  <!--
+    Note: This is a static diagnostic page intended for local development.
+    Open it in a browser and point to the JSONL file path via the input.
+  -->
+
+</head>
+<body>
+  <header>
+    <h1>ClickUp HTTP Log Viewer</h1>
+  </header>
+  <main>
+    <div class="controls">
+      <label>Log file URL (relative): <input id="logUrl" type="text" value="http.jsonl" /></label>
+      <button id="startBtn">Start</button>
+      <button id="stopBtn" class="secondary">Stop</button>
+      <label>Filter URL contains: <input id="filterUrl" type="text" placeholder="/api/" /></label>
+      <label>Method: <input id="filterMethod" type="text" placeholder="GET" /></label>
+      <label class="nowrap"><input id="toggleHeaders" type="checkbox" checked /> Show headers</label>
+      <label class="nowrap"><input id="toggleBody" type="checkbox" checked /> Show body</label>
+      <label class="nowrap"><input id="toggleParams" type="checkbox" checked /> Show params</label>
+      <label class="nowrap"><input id="toggleUrl" type="checkbox" checked /> Show URL</label>
+      <label class="nowrap"><input id="collapseJson" type="checkbox" /> Collapse JSON by default</label>
+      <label class="nowrap"><input id="newestFirst" type="checkbox" checked /> Newest first</label>
+      <button id="clearBtn" class="secondary">Clear</button>
+    </div>
+
+    <div class="table-wrap">
+    <table id="logTable">
+      <colgroup id="colgroup">
+        <col style="width: 170px;" />
+        <col style="width: 90px;" />
+        <col style="width: 90px;" />
+        <col style="width: 80px;" />
+        <col style="width: 100px;" />
+        <col style="width: 320px;" />
+        <col style="width: 360px;" />
+        <col style="width: 300px;" />
+        <col style="width: 420px;" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="col-time">Time</th>
+          <th class="col-type">Type</th>
+          <th class="col-method">Method</th>
+          <th>Status</th>
+          <th>Elapsed (ms)</th>
+          <th class="headers col-headers th-resizable">Headers</th>
+          <th class="col-body th-resizable">Body</th>
+          <th class="col-params th-resizable">Params</th>
+          <th class="col-url th-resizable">URL</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    </div>
+  </main>
+
+  <script>
+    const rowsEl = document.getElementById('rows');
+    const tableEl = document.getElementById('logTable');
+    const colgroupEl = document.getElementById('colgroup');
+    const logUrlEl = document.getElementById('logUrl');
+    const filterUrlEl = document.getElementById('filterUrl');
+    const filterMethodEl = document.getElementById('filterMethod');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const toggleHeaders = document.getElementById('toggleHeaders');
+    const toggleBody = document.getElementById('toggleBody');
+    const toggleParams = document.getElementById('toggleParams');
+    const toggleUrl = document.getElementById('toggleUrl');
+    const newestFirst = document.getElementById('newestFirst');
+    const collapseJson = document.getElementById('collapseJson');
+
+    let timer = null;
+    let offset = 0; // byte offset for Range requests
+    let lastTextLength = 0; // fallback tracking when Range is not supported
+
+    function fmtTs(ts) {
+      try {
+        const d = new Date(ts * 1000);
+        return d.toLocaleString();
+      } catch { return String(ts); }
+    }
+
+    function statusClass(code) {
+      if (code == null) return '';
+      if (code >= 500) return 'status-err';
+      if (code >= 400) return 'status-warn';
+      return 'status-ok';
+    }
+
+    function matchesFilters(rec) {
+      const u = (filterUrlEl.value || '').trim();
+      const m = (filterMethodEl.value || '').trim().toUpperCase();
+      if (u && !(rec.url || '').includes(u)) return false;
+      if (m && (rec.method || '').toUpperCase() !== m) return false;
+      return true;
+    }
+
+    function isPrimitive(v) {
+      return v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean';
+    }
+
+    function span(className, text) {
+      const s = document.createElement('span');
+      s.className = className;
+      s.textContent = text;
+      return s;
+    }
+
+    function renderJsonNode(value, collapsed) {
+      const container = document.createElement('div');
+      container.className = 'json';
+
+      if (isPrimitive(value)) {
+        if (value === null) { container.appendChild(span('null', 'null')); }
+        else if (typeof value === 'string') { container.appendChild(span('string', JSON.stringify(value))); }
+        else if (typeof value === 'number') { container.appendChild(span('number', String(value))); }
+        else if (typeof value === 'boolean') { container.appendChild(span('boolean', String(value))); }
+        return container;
+      }
+
+      const isArray = Array.isArray(value);
+      const size = isArray ? value.length : Object.keys(value).length;
+      const details = document.createElement('details');
+      if (!collapsed) details.open = true;
+      const summary = document.createElement('summary');
+      summary.appendChild(document.createTextNode(isArray ? `[${size}]` : `{${size}}`));
+      details.appendChild(summary);
+
+      const list = document.createElement('div');
+      const entries = isArray ? value.entries() : Object.entries(value);
+      for (const [k, v] of entries) {
+        const line = document.createElement('div');
+        if (!isArray) {
+          line.appendChild(span('key', typeof k === 'string' ? JSON.stringify(k) : String(k)));
+          line.appendChild(document.createTextNode(': '));
+        }
+        line.appendChild(renderJsonNode(v, true));
+        list.appendChild(line);
+      }
+      details.appendChild(list);
+      container.appendChild(details);
+      return container;
+    }
+
+    function toJsonTree(text, collapsed) {
+      if (typeof text !== 'string') return document.createTextNode('');
+      const trimmed = text.trim();
+      if (!trimmed) return document.createTextNode('');
+      try {
+        const obj = JSON.parse(trimmed);
+        return renderJsonNode(obj, collapsed);
+      } catch {
+        const pre = document.createElement('pre');
+        pre.className = 'mono';
+        pre.textContent = text;
+        return pre;
+      }
+    }
+
+    function prettyJson(text) {
+      if (typeof text !== 'string') return '';
+      const trimmed = text.trim();
+      if (!trimmed) return '';
+      try {
+        const obj = JSON.parse(trimmed);
+        return JSON.stringify(obj, null, 2);
+      } catch { return text; }
+    }
+
+    function parseParams(urlStr) {
+      try {
+        const u = new URL(urlStr, window.location.origin);
+        const params = {};
+        for (const [k, v] of u.searchParams.entries()) {
+          if (params[k] === undefined) params[k] = v; else if (Array.isArray(params[k])) params[k].push(v); else params[k] = [params[k], v];
+        }
+        return Object.keys(params).length ? JSON.stringify(params, null, 2) : '';
+      } catch { return ''; }
+    }
+
+    function addRow(rec) {
+      if (!matchesFilters(rec)) return;
+      const tr = document.createElement('tr');
+      tr.className = rec.type === 'request' ? 'row-req' : 'row-res';
+      const tdTs = document.createElement('td');
+      const caret = document.createElement('span');
+      caret.className = 'caret';
+      caret.textContent = '▸';
+      tdTs.appendChild(caret);
+      tdTs.appendChild(document.createTextNode(' ' + fmtTs(rec.ts)));
+      const tdType = document.createElement('td');
+      tdType.textContent = rec.type;
+      const tdMethod = document.createElement('td');
+      tdMethod.textContent = rec.method || '';
+      const tdStatus = document.createElement('td');
+      tdStatus.textContent = rec.status ?? '';
+      tdStatus.className = statusClass(rec.status);
+      const tdElapsed = document.createElement('td');
+      tdElapsed.textContent = rec.elapsed_ms ?? '';
+      const tdHeaders = document.createElement('td');
+      tdHeaders.className = 'headers resizable col-headers-cell';
+      tdHeaders.appendChild(rec.headers ? renderJsonNode(rec.headers, !collapseJson.checked) : document.createTextNode(''));
+      const tdBody = document.createElement('td');
+      tdBody.className = 'resizable col-body-cell';
+      tdBody.appendChild(toJsonTree(rec.body_preview || '', collapseJson.checked));
+      const tdParams = document.createElement('td');
+      tdParams.className = 'resizable col-params-cell';
+      tdParams.appendChild(toJsonTree(parseParams(rec.url || ''), collapseJson.checked));
+      const tdUrl = document.createElement('td');
+      tdUrl.className = 'clip resizable col-url-cell';
+      tdUrl.title = rec.url || '';
+      tdUrl.textContent = rec.url || '';
+      tr.append(tdTs, tdType, tdMethod, tdStatus, tdElapsed, tdHeaders, tdBody, tdParams, tdUrl);
+
+      // Handle header column visibility
+      if (!toggleHeaders.checked) {
+        tdHeaders.classList.add('hidden');
+      }
+      if (!toggleBody.checked) { tdBody.classList.add('hidden'); }
+      if (!toggleParams.checked) { tdParams.classList.add('hidden'); }
+      if (!toggleUrl.checked) { tdUrl.classList.add('hidden'); }
+
+      // Build details row for accordion
+      const detailsTr = document.createElement('tr');
+      detailsTr.className = 'details-row hidden';
+      const detailsTd = document.createElement('td');
+      detailsTd.colSpan = 9;
+      const container = document.createElement('div');
+      container.className = 'details-container';
+      const panelHeaders = document.createElement('div');
+      panelHeaders.className = 'details-panel';
+      const phTitle = document.createElement('div'); phTitle.className = 'details-title'; phTitle.textContent = 'Headers';
+      const phBody = document.createElement('div'); phBody.className = 'details-body';
+      phBody.appendChild(rec.headers ? renderJsonNode(rec.headers, !collapseJson.checked) : document.createTextNode(''));
+      panelHeaders.append(phTitle, phBody);
+      const panelBody = document.createElement('div');
+      panelBody.className = 'details-panel';
+      const pbTitle = document.createElement('div'); pbTitle.className = 'details-title'; pbTitle.textContent = 'Body';
+      const pbBody = document.createElement('div'); pbBody.className = 'details-body';
+      pbBody.appendChild(toJsonTree(rec.body_preview || '', collapseJson.checked));
+      panelBody.append(pbTitle, pbBody);
+      const panelParams = document.createElement('div');
+      panelParams.className = 'details-panel';
+      const ppTitle = document.createElement('div'); ppTitle.className = 'details-title'; ppTitle.textContent = 'Params';
+      const ppBody = document.createElement('div'); ppBody.className = 'details-body';
+      ppBody.appendChild(toJsonTree(parseParams(rec.url || ''), collapseJson.checked));
+      panelParams.append(ppTitle, ppBody);
+      container.append(panelHeaders, panelBody, panelParams);
+      detailsTd.appendChild(container);
+      detailsTr.appendChild(detailsTd);
+
+      const insert = () => { rowsEl.insertBefore(detailsTr, tr.nextSibling); };
+      if (newestFirst.checked) { rowsEl.prepend(tr); insert(); } else { rowsEl.appendChild(tr); insert(); }
+
+      const toggleDetails = () => {
+        const isHidden = detailsTr.classList.contains('hidden');
+        detailsTr.classList.toggle('hidden', !isHidden);
+        caret.textContent = isHidden ? '▾' : '▸';
+        tr.classList.toggle('row-collapsed', !isHidden);
+      };
+      tdTs.addEventListener('click', (e) => { e.stopPropagation(); toggleDetails(); });
+      tr.addEventListener('click', (e) => {
+        if (e.target.closest('a, button, input, .grip')) return; // ignore interactive elements
+        toggleDetails();
+      });
+    }
+
+    async function poll() {
+      const url = logUrlEl.value.trim() || 'http.jsonl';
+      try {
+        const headers = offset > 0 ? { 'Range': `bytes=${offset}-`, 'Cache-Control': 'no-cache' } : { 'Cache-Control': 'no-cache' };
+        const resp = await fetch(url, { headers });
+        if (!resp.ok && resp.status !== 206) {
+          // file might not exist yet
+          return;
+        }
+        const buf = await resp.arrayBuffer();
+        const text = new TextDecoder().decode(buf);
+        // Update offset from Content-Range or by adding bytes read
+        const cr = resp.headers.get('Content-Range');
+        if (cr) {
+          // e.g., bytes 123-456/789
+          const m = cr.match(/bytes\s+(\d+)-(\d+)\/(\d+)/);
+          if (m) {
+            offset = parseInt(m[2], 10) + 1;
+          }
+          // When server supports range, the response body should only be new bytes.
+          // Process all lines in this chunk as-is.
+          for (const line of text.split(/\n/)) {
+            const s = line.trim();
+            if (!s) continue;
+            try { addRow(JSON.parse(s)); } catch {}
+          }
+          return;
+        } else {
+          // No range support; the server returns the whole file each time.
+          // Only process newly appended part based on last decoded text length.
+          if (text.length <= lastTextLength) {
+            return;
+          }
+          const newText = text.slice(lastTextLength);
+          lastTextLength = text.length;
+          for (const line of newText.split(/\n/)) {
+            const s = line.trim();
+            if (!s) continue;
+            try { addRow(JSON.parse(s)); } catch {}
+          }
+          return;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    function start() {
+      if (timer) return;
+      timer = setInterval(poll, 1000);
+    }
+    function stop() { if (timer) { clearInterval(timer); timer = null; } }
+    function clearRows() { rowsEl.innerHTML = ''; }
+
+    startBtn.addEventListener('click', start);
+    stopBtn.addEventListener('click', stop);
+    clearBtn.addEventListener('click', clearRows);
+    toggleHeaders.addEventListener('change', () => {
+      const hide = !toggleHeaders.checked;
+      // Toggle visibility for all current header cells and header th
+      document.querySelectorAll('td.headers, th.headers').forEach((el) => {
+        if (hide) el.classList.add('hidden'); else el.classList.remove('hidden');
+      });
+    });
+    toggleBody.addEventListener('change', () => {
+      const hide = !toggleBody.checked;
+      document.querySelectorAll('.col-body, .col-body-cell').forEach((el) => {
+        if (hide) el.classList.add('hidden'); else el.classList.remove('hidden');
+      });
+    });
+    toggleParams.addEventListener('change', () => {
+      const hide = !toggleParams.checked;
+      document.querySelectorAll('.col-params, .col-params-cell').forEach((el) => {
+        if (hide) el.classList.add('hidden'); else el.classList.remove('hidden');
+      });
+    });
+    toggleUrl.addEventListener('change', () => {
+      const hide = !toggleUrl.checked;
+      document.querySelectorAll('.col-url, .col-url-cell').forEach((el) => {
+        if (hide) el.classList.add('hidden'); else el.classList.remove('hidden');
+      });
+    });
+
+    // Column resizing via header grips updating <colgroup> widths
+    function addResizers() {
+      document.querySelectorAll('thead th.th-resizable').forEach((th) => {
+        const grip = document.createElement('div');
+        grip.className = 'grip';
+        th.appendChild(grip);
+        let startX = 0;
+        let startWidth = 0;
+        const idx = th.cellIndex; // column index
+        const col = colgroupEl.children[idx];
+
+        const onMouseMove = (e) => {
+          const dx = e.pageX - startX;
+          const newWidth = Math.max(140, startWidth + dx);
+          col.style.width = newWidth + 'px';
+        };
+        const onMouseUp = () => {
+          window.removeEventListener('mousemove', onMouseMove);
+          window.removeEventListener('mouseup', onMouseUp);
+        };
+        grip.addEventListener('mousedown', (e) => {
+          startX = e.pageX;
+          // Ensure we have a starting width
+          const current = th.getBoundingClientRect().width;
+          startWidth = col.getBoundingClientRect().width || current;
+          if (!col.style.width) {
+            col.style.width = startWidth + 'px';
+          }
+          window.addEventListener('mousemove', onMouseMove);
+          window.addEventListener('mouseup', onMouseUp);
+        });
+      });
+    }
+    addResizers();
+    logUrlEl.addEventListener('change', () => {
+      // Reset offsets and clear rows when switching files/paths
+      offset = 0;
+      lastTextLength = 0;
+      clearRows();
+    });
+  </script>
+</body>
+</html>
