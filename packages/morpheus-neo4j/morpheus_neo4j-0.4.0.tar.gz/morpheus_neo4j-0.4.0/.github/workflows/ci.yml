@@ -1,0 +1,173 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
+
+    - name: Set up Python
+      run: uv python install 3.12
+
+    - name: Install dependencies
+      run: uv sync --all-extras
+
+    - name: Run ruff linting
+      run: uv run ruff check morpheus tests
+
+    - name: Run ruff formatting check
+      run: uv run ruff format --check morpheus tests
+
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
+
+    - name: Set up Python
+      run: uv python install 3.12
+
+    - name: Install dependencies
+      run: uv sync --all-extras
+
+    - name: Run type checking
+      run: uv run ty check
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
+
+    - name: Set up Python
+      run: uv python install ${{ matrix.python-version }}
+
+    - name: Install dependencies (including testcontainers)
+      run: uv sync --all-extras --group dev
+
+    - name: Run tests (unit + integration with testcontainers)
+      run: uv run pytest tests/ -v
+
+  install-test:
+    name: Source Installation Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
+
+    - name: Set up Python
+      run: uv python install ${{ matrix.python-version }}
+
+    - name: Test direct installation from source
+      run: |
+        uv venv install-test
+        source install-test/bin/activate
+        pip install .
+        morpheus --help
+
+    - name: Test editable installation
+      run: |
+        uv venv editable-test
+        source editable-test/bin/activate
+        pip install -e .
+        morpheus --help
+
+    - name: Test installation with dev extras
+      run: |
+        uv venv extras-test
+        source extras-test/bin/activate
+        pip install ".[dev]"
+        morpheus --help
+
+  build:
+    name: Build & Package Test
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test]
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
+
+    - name: Set up Python
+      run: uv python install ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: uv sync
+
+    - name: Build package
+      run: uv build
+
+    - name: Check package contents
+      run: |
+        ls -la dist/
+        uv run python -m tarfile -l dist/*.tar.gz
+        uv run python -m zipfile -l dist/*.whl
+
+    - name: Test installation from wheel
+      run: |
+        uv venv test-env
+        source test-env/bin/activate
+        pip install dist/*.whl
+        morpheus --help
+
+    - name: Test installation from source distribution
+      run: |
+        uv venv test-src-env
+        source test-src-env/bin/activate
+        pip install dist/*.tar.gz
+        morpheus --help
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist-${{ matrix.python-version }}
+        path: dist/
+        retention-days: 7
