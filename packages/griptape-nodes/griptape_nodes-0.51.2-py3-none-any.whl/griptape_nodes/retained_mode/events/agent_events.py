@@ -1,0 +1,165 @@
+from dataclasses import dataclass, field
+
+from griptape.memory.structure import Run
+
+from griptape_nodes.retained_mode.events.base_events import (
+    ExecutionPayload,
+    RequestPayload,
+    ResultPayloadFailure,
+    ResultPayloadSuccess,
+    WorkflowNotAlteredMixin,
+)
+from griptape_nodes.retained_mode.events.payload_registry import PayloadRegistry
+
+
+@dataclass
+class RunAgentRequestArtifact(dict):
+    type: str
+    value: str
+
+
+@dataclass
+@PayloadRegistry.register
+class RunAgentRequest(RequestPayload):
+    """Run an agent with input and optional artifacts.
+
+    Use when: Executing conversational AI interactions, processing user queries,
+    running autonomous agents, handling multi-modal inputs with URLs.
+
+    Args:
+        input: Text input to send to the agent
+        url_artifacts: List of URL artifacts to include with the request
+
+    Results: RunAgentResultStarted -> RunAgentResultSuccess (with output) | RunAgentResultFailure (execution error)
+    """
+
+    input: str
+    url_artifacts: list[RunAgentRequestArtifact]
+
+
+@dataclass
+@PayloadRegistry.register
+class RunAgentResultStarted(WorkflowNotAlteredMixin, ResultPayloadSuccess):
+    """Agent execution started successfully. Execution will continue asynchronously."""
+
+
+@dataclass
+@PayloadRegistry.register
+class RunAgentResultSuccess(WorkflowNotAlteredMixin, ResultPayloadSuccess):
+    """Agent execution completed successfully.
+
+    Args:
+        output: Dictionary containing agent response and execution results
+    """
+
+    output: dict
+
+
+@dataclass
+@PayloadRegistry.register
+class RunAgentResultFailure(WorkflowNotAlteredMixin, ResultPayloadFailure):
+    """Agent execution failed.
+
+    Args:
+        error: Dictionary containing error details and failure information
+    """
+
+    error: dict
+
+
+@dataclass
+@PayloadRegistry.register
+class GetConversationMemoryRequest(RequestPayload):
+    """Get the agent's conversation memory.
+
+    Use when: Reviewing conversation history, implementing memory inspection,
+    debugging agent behavior, displaying conversation context.
+
+    Results: GetConversationMemoryResultSuccess (with runs) | GetConversationMemoryResultFailure (memory error)
+    """
+
+
+@dataclass
+@PayloadRegistry.register
+class GetConversationMemoryResultSuccess(WorkflowNotAlteredMixin, ResultPayloadSuccess):
+    """Conversation memory retrieved successfully.
+
+    Args:
+        runs: List of conversation runs (exchanges between user and agent)
+    """
+
+    runs: list[Run]
+
+
+@dataclass
+@PayloadRegistry.register
+class GetConversationMemoryResultFailure(WorkflowNotAlteredMixin, ResultPayloadFailure):
+    """Conversation memory retrieval failed. Common causes: memory not initialized, access error."""
+
+
+@dataclass
+@PayloadRegistry.register
+class ConfigureAgentRequest(RequestPayload):
+    """Configure agent settings and behavior.
+
+    Use when: Setting up agent parameters, changing model configurations,
+    customizing agent behavior, updating agent settings.
+
+    Args:
+        prompt_driver: Dictionary of prompt driver configuration options
+
+    Results: ConfigureAgentResultSuccess | ConfigureAgentResultFailure (configuration error)
+    """
+
+    prompt_driver: dict = field(default_factory=dict)
+
+
+@dataclass
+@PayloadRegistry.register
+class ConfigureAgentResultSuccess(WorkflowNotAlteredMixin, ResultPayloadSuccess):
+    """Agent configured successfully. New settings are now active."""
+
+
+@dataclass
+@PayloadRegistry.register
+class ConfigureAgentResultFailure(WorkflowNotAlteredMixin, ResultPayloadFailure):
+    """Agent configuration failed. Common causes: invalid parameters, configuration error."""
+
+
+@dataclass
+@PayloadRegistry.register
+class ResetAgentConversationMemoryRequest(RequestPayload):
+    """Reset the agent's conversation memory.
+
+    Use when: Starting fresh conversations, clearing conversation history,
+    resolving memory issues, implementing conversation reset features.
+
+    Results: ResetAgentConversationMemoryResultSuccess | ResetAgentConversationMemoryResultFailure (reset error)
+    """
+
+
+@dataclass
+@PayloadRegistry.register
+class ResetAgentConversationMemoryResultSuccess(WorkflowNotAlteredMixin, ResultPayloadSuccess):
+    """Agent conversation memory reset successfully. All previous conversation history cleared."""
+
+
+@dataclass
+@PayloadRegistry.register
+class ResetAgentConversationMemoryResultFailure(WorkflowNotAlteredMixin, ResultPayloadFailure):
+    """Agent conversation memory reset failed. Common causes: memory access error, system constraints."""
+
+
+@dataclass
+@PayloadRegistry.register
+class AgentStreamEvent(ExecutionPayload):
+    """Streaming token event during agent execution.
+
+    Use when: Implementing real-time agent output, displaying progressive responses,
+    building streaming UIs, monitoring agent token generation.
+
+    Args:
+        token: Individual token generated by the agent during execution
+    """
+
+    token: str
