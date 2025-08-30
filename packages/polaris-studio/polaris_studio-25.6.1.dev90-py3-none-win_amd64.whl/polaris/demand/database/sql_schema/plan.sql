@@ -1,0 +1,27 @@
+-- Copyright (c) 2025, UChicago Argonne, LLC
+-- BSD OPEN SOURCE LICENSE. Full license can be found in LICENSE.md
+--@ THERE IS CURRENTLY NO DOCUMENTATION FOR THIS TABLE
+--@
+--@
+
+CREATE TABLE "Plan" (
+  "plan" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  "depart" REAL NULL DEFAULT 0,
+  "arrive" REAL NULL DEFAULT 0,
+  "activity" REAL NULL DEFAULT 0,
+  "walk" REAL NULL DEFAULT 0,
+  "drive" REAL NULL DEFAULT 0,
+  "transit" REAL NULL DEFAULT 0,
+  "wait" REAL NULL DEFAULT 0,
+  "other" REAL NULL DEFAULT 0,
+  "length" REAL NULL DEFAULT 0,
+  "cost" REAL NULL DEFAULT 0,
+  "impedance" INTEGER NOT NULL DEFAULT 0,
+  "leg_mode" INTEGER NOT NULL DEFAULT 0,
+  "leg_type" INTEGER NOT NULL DEFAULT 0,
+  "leg_id" INTEGER NOT NULL DEFAULT 0,
+  "leg_time" REAL NULL DEFAULT 0,
+  "leg_length" REAL NULL DEFAULT 0,
+  "leg_cost" REAL NULL DEFAULT 0,
+  "leg_imp" INTEGER NOT NULL DEFAULT 0
+)
