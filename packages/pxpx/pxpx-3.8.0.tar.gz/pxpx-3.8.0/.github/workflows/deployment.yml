@@ -1,0 +1,74 @@
+name: Continuous Delivery
+
+env:
+  # NOTE: This version must match between all .yml files in the
+  # .github/workflows directory
+  TOX_VERSION: 4.24.2
+
+on:
+  release:
+    types: [released]
+
+jobs:
+  homebrew:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Bump Homebrew formula
+        uses: dawidd6/action-homebrew-bump-formula@v3
+        with:
+          token: ${{secrets.JOHAN_GITHUB_API_TOKEN}}
+          formula: px
+
+  pypi:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pxpx
+    permissions:
+      # IMPORTANT: this permission is mandatory for trusted publishing
+      id-token: write
+    steps:
+      #
+      # First, we need to create a wheel. We do this by running tox, just like
+      # in linux-ci.yml.
+      #
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          # For getting tags from the repo
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Force git describe to show the right tag
+        # Workaround for: https://github.com/actions/checkout/issues/882
+        run: |
+          git describe --dirty
+          git fetch --tags --force
+          git describe --dirty
+      - name: Cache .tox directory
+        uses: actions/cache@v4
+        with:
+          path: .tox
+          key: ${{ runner.os }}-${{ hashFiles('tox.ini') }}
+      - name: Create a virtualenv
+        run: |
+          python3 -m venv env
+      - name: Install tox in our virtualenv
+        run: |
+          . ./env/bin/activate
+          pip install tox==${{ env.TOX_VERSION }}
+      - name: Run tox to create the dist wheel
+        run: |
+          . ./env/bin/activate
+          tox
+      - name: Prevent 0.0.0 releases
+        run: |
+          cat px/version.py
+          ! grep '0.0.0' px/version.py
+          ls dist/
+          ! ls dist/ | grep '0.0.0'
+
+      #
+      # Wheel created, publish it!
+      #
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
