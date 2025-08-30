@@ -1,0 +1,117 @@
+name: Upload Python Package
+
+on:
+  release:
+    types: [ published ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to publish to'
+        required: true
+        default: 'testpypi'
+        type: choice
+        options:
+        - testpypi
+        - pypi
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/test.yaml
+
+  performance:
+    uses: ./.github/workflows/performance.yaml
+
+  release-build:
+    needs: [ test, performance ]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run core and integration tests
+        run: |
+          uv run pytest tests/test_core.py tests/test_integration.py -v
+
+      - name: Check code quality
+        run: |
+          uv run ruff format --check .
+          uv run ruff check .
+
+      - name: Build release distributions
+        run: uv build
+
+      - name: Check package with twine
+        run: |
+          uv add --group dev twine
+          uv run twine check dist/*
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+
+  testpypi-publish:
+    runs-on: ubuntu-latest
+    needs:
+      - release-build
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'testpypi'
+    permissions:
+      id-token: write
+
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/beque
+
+    steps:
+      - name: Retrieve release distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+
+      - name: Publish release distributions to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist/
+
+  pypi-publish:
+    runs-on: ubuntu-latest
+    needs:
+      - release-build
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'pypi')
+    permissions:
+      id-token: write
+
+    environment:
+      name: pypi
+      url: https://pypi.org/p/beque
+
+    steps:
+      - name: Retrieve release distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+
+      - name: Publish release distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/

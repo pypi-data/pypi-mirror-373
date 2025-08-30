@@ -1,0 +1,87 @@
+name: Run Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  lint:
+    uses: ./.github/workflows/lint.yaml
+
+  test:
+    needs: [ lint ]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [ "3.8", "3.9", "3.10", "3.11", "3.12", "3.13" ]
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run core tests
+        run: |
+          uv run pytest tests/test_core.py -v \
+            --junitxml=junit-core-${{ matrix.python-version }}.xml
+        env:
+          FORCE_COLOR: 1
+
+      - name: Run integration tests
+        run: |
+          uv run pytest tests/test_integration.py -v \
+            --junitxml=junit-integration-${{ matrix.python-version }}.xml
+        env:
+          FORCE_COLOR: 1
+
+      - name: Run performance tests (Python 3.12+ only)
+        if: matrix.python-version == '3.12' || matrix.python-version == '3.13'
+        run: |
+          uv run pytest tests/test_performance.py::TestBequePerformance::test_large_scale_fifo_ordering_10k -v \
+            --junitxml=junit-performance-${{ matrix.python-version }}.xml
+        env:
+          FORCE_COLOR: 1
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Test Results (Python ${{ matrix.python-version }})
+          path: junit-*.xml
+
+  publish-test-results:
+    name: "Publish Test Results"
+    needs: test
+    runs-on: ubuntu-latest
+    if: always()
+    permissions:
+      checks: write
+      pull-requests: write
+    
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: "artifacts/**/junit-*.xml"
+          check_name: "Test Results"
+          comment_mode: always
+          compare_to_earlier_commit: true
