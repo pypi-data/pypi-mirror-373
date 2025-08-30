@@ -1,0 +1,292 @@
+# SPDX-FileCopyrightText: 2024 PairInteraction Developers
+# SPDX-License-Identifier: LGPL-3.0-or-later
+
+[build-system]
+requires = [  # keep this in sync with .build_requirements.txt
+  "scikit-build-core >=0.9.0",
+  "nanobind >=1.9.0",
+  "typing_extensions >= 4.7", # required by nanobind/stubgen.py
+  "numpy >= 1.24", # required by the cpp backend
+  "tbb-devel == 2022.0.0; sys_platform != 'darwin'", # required by the cpp backend
+  "mkl-devel == 2025.0.1; sys_platform != 'darwin'", # required by the cpp backend
+]
+build-backend = "scikit_build_core.build"
+
+
+[project]
+name = "pairinteraction"
+dynamic = ["version"]
+description = "A Rydberg Interaction Calculator"
+readme = "README.md"
+keywords = ["rydberg", "atom interactions", "pair potentials", "mqdt", "quantum physics"]
+authors = [
+    { name = "PairInteraction Developers" },
+]
+maintainers = [
+    { name = "Sebastian Weber", email = "seweber@posteo.de" },
+    { name = "Johannes Mögerle", email = "johannes.moegerle@itp3.uni-stuttgart.de" },
+]
+license = "LGPL-3.0-or-later"
+license-files = ["LICENSE.txt", "LICENSES/*", "LICENSES-THIRD-PARTY/*"]
+classifiers = [
+  "Intended Audience :: Science/Research",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: C++",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Physics",
+  "Typing :: Typed",
+]
+requires-python = ">=3.9"
+dependencies = [
+  "typing_extensions >= 4.7",
+  "numpy >= 1.24",
+  "scipy >= 1.10",
+  "pint >= 0.21.1",
+  "colorama >= 0.3.4",
+  "pyside6 >= 6.8.2",
+  "matplotlib >= 3.8",
+  "mplcursors >= 0.6",
+  "attrs >= 24.0",
+  "nbconvert >= 7.8",
+  "nbformat >= 5.10",
+  "scipy-stubs >= 1.15; python_version >= '3.10'",
+  "mkl == 2025.0.1; sys_platform != 'darwin'",
+]
+
+[project.optional-dependencies]
+docs = [
+  "sphinx > 7",
+  "sphinx-rtd-theme >= 2.0",
+  "sphinx-tabs >= 3.4.7",
+  "nbsphinx >= 0.9",
+  "jupyter >= 1.1",
+  "sphinx_autodoc_typehints >= 1.24",
+  "sphinx-autobuild >= 2021.3",
+  "myst-parser >= 3.0",
+  "sphinx-polyversion >= 1.1",
+]
+tests = [
+  "pytest >= 8.0",
+  "pytest-env >= 1.1.5",
+  "pytest-qt >= 4.3",
+  "nbmake >= 1.3",
+  "coverage[toml] >= 7.2",
+  "duckdb == 1.1.3",  # keep the version used here in sync with CMakeLists.txt
+  "sympy >= 1.13.3",
+]
+mypy = [
+  "mypy >= 1.14",
+  "types-colorama >= 0.4.15.12",
+  "pyside6-stubs >= 6.7.3.0",
+]
+
+[dependency-groups]
+dev = ["pairinteraction[docs,tests,mypy]"]
+
+[project.urls]
+Homepage = "https://www.pairinteraction.org"
+Repository = "https://github.com/pairinteraction/pairinteraction"
+
+[project.scripts]
+pairinteraction = "pairinteraction.cli:main"
+
+
+[tool.scikit-build]
+cmake.build-type = "RelWithDebInfo"
+wheel.py-api = "cp312"  # Build stable ABI wheels for CPython 3.12+
+wheel.packages = [
+  "src/pairinteraction",
+  "src/pairinteraction_gui",
+]
+sdist.include = [
+  "/src/pairinteraction/_backend.pyi",  # HACK: Include _backend.pyi stub file (needed for macos cross compilation)
+  "/src/pairinteraction/_wrapped/database/database.sql",
+]
+sdist.exclude = [
+  "/tools/",
+  "/tests/",
+  "/docs/",
+  "/data/",
+  ".git*",
+  ".clang*",
+  ".pre-commit-config.yaml",
+  ".cmake-format.json",
+  ".build_requirements.txt",
+  ".sonarcloud.properties",
+]
+
+[tool.scikit-build.metadata.version]
+provider = "scikit_build_core.metadata.regex"
+input = "src/cpp/include/pairinteraction/version.hpp"
+regex = '''(?sx)
+VERSION_MAJOR \s* =? \s* (?P<major>\d+) .*?
+VERSION_MINOR \s* =? \s* (?P<minor>\d+) .*?
+VERSION_PATCH \s* =? \s* (?P<patch>\d+)
+'''
+result = "{major}.{minor}.{patch}"
+
+
+[tool.cibuildwheel]
+build = [  # for python >= 3.12 only one stable abi wheel is built, which is then tested against all specified python versions
+  "cp3{9,10,11,12,13}-manylinux_x86_64",
+  "cp3{9,10,11,12,13}-win_amd64",
+  "cp3{9,10,11,12,13}-macosx_x86_64",
+  "cp3{9,10,11,12,13}-macosx_arm64",
+]
+build-frontend = "build[uv]"
+build-verbosity = 1
+test-extras = ["tests"]
+test-requires = ["check-wheel-contents>=0.6"]
+test-command = [
+  "cd {project}",
+  "pytest",
+  "check-wheel-contents {wheel}",
+]
+
+[[tool.cibuildwheel.overrides]]  # linux overrides
+select = "*-????linux_*"
+manylinux-x86_64-image = "ghcr.io/pairinteraction/pairinteraction-manylinux:docker"
+config-settings."cmake.define.FETCHCONTENT_SOURCE_DIR_DUCKDB" = "/opt/duckdb"
+inherit.environment = "append"
+environment.CXXFLAGS = "-march=x86-64-v3"
+repair-wheel-command = "auditwheel repair --exclude libmkl_core.so.2 --exclude libmkl_intel_lp64.so.2 --exclude libmkl_tbb_thread.so.2 -w {dest_dir} {wheel}"
+
+[[tool.cibuildwheel.overrides]]  # macosx overrides
+select = "*-macosx_*"
+inherit.environment = "append"
+environment.MACOSX_DEPLOYMENT_TARGET = "13.0"
+
+[[tool.cibuildwheel.overrides]]  # windows overrides
+select = "*-win_*"
+before-all = "pip install delvewheel" # build-system.requires is unavailable in the build venv
+inherit.environment = "append"
+inherit.test-command = "prepend"
+environment.CXXFLAGS = "/Ox /arch:AVX2"
+test-command = [
+  "cd /d {project}",  # /d is required for windows to change the drive, the second cd then does effectively nothing
+]
+repair-wheel-command = "delvewheel repair --exclude mkl_core.2.dll --exclude mkl_tbb_thread.2.dll --ignore-in-wheel -w {dest_dir} {wheel}"
+
+
+[tool.check-wheel-contents]
+ignore = [
+  "W004",  # check-wheel-contents does not like some .so files inside pairinteraction.libs
+  "W201",  # for macos there is no pairinteraction.libs folder
+  "W010",  # for windows the pairinteraction.libs folder might not contain a python module
+]
+toplevel = ["pairinteraction", "pairinteraction_gui", "pairinteraction.libs"]
+
+
+[tool.pytest.ini_options]
+testpaths = [
+  "tests",
+  "docs/tutorials/examples_python",
+  "src/pairinteraction/",
+]
+addopts = [
+    "--import-mode=importlib",
+    # "--nbmake",  # only run nbmake locally and in one dedicated CI job
+    "--doctest-modules",
+    "--ignore=src/pairinteraction/pireal.py", # throws an import error to signal previous users of the old PairInteraction version breaking changes
+    "--ignore=src/pairinteraction/picomplex.py", # throws an import error to signal previous users of the old PairInteraction version breaking changes
+]
+env = [
+    "QT_QPA_PLATFORM=offscreen",
+    "PAIRINTERACTION_TEST_MODE=1",
+]
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "[%(asctime)s.%(msecs)03d] [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s"
+log_cli_date_format = "%H:%M:%S"
+
+
+[tool.sonar]
+projectKey = "pairinteraction_pairinteraction"
+organization = "pairinteraction"
+python.version = 3
+sources = ["src"]
+
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+extend-include = ["*.ipynb"]
+extend-exclude = ["src/pairinteraction_gui/export_templates/"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+extend-ignore = [
+  # FIXME: we want to fix these in the future
+  "EM",  # Exceptions ...
+  "TRY003",  # Avoid specifying long messages outside the exception class
+  "FA",  # from __future__ ...
+  "FBT",  # Boolean arguments ...
+  "BLE",  # Blind Except
+  "PLC0105",  # covariant variable names
+  "SLF001",  # Private member accessed
+  "PLR0913",  # Too many arguments in function definition (... > 5)
+  "PLR2004",  # FIXME: Magic value used in comparison
+  "T2",  # FIXME: print statements
+  "DTZ",  # FIXME: Datetime
+  "ANN401",  # FIXME: Dynamically typed expressions (typing.Any) are disallowed in {name}
+  "D1",  # FIXME: remove once more docstrings are added
+  "S101",  # FIXME: Use of assert detected
+  # We don't use the following rules
+  "COM812",  # (missing-trailing-comma) incompatible with ruff format
+  "D203",  # (incorrect-blank-line-before-class) incompatible with D211: no-blank-line-before-class
+  "D213",  # (multi-line-summary-second-line) incompatible with D212: multi-line-summary-first-line
+  "SIM114",  # Combine if branches using logical or operator; this breaks mypy, so we disable it for now
+  "FIX",  # Disallow TODOs, FIXMEs, etc.; enforcing this is a bit too strict
+  "TD",  # Linting TODOs; we dont need this
+  "E741",  # Ambiguous variable name, does not like quantum number 'l'
+]
+flake8-tidy-imports.ban-relative-imports = "all"
+mccabe.max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+"src/pairinteraction_gui/**" = ["ERA", "PLW", "TRY", "PGH", "ARG", "N802", "PERF102", "D1"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-wrap-aliases = true
+
+
+[tool.mypy]
+exclude = [
+    "build.*/",
+]
+strict = true
+disallow_untyped_decorators = false
+disallow_untyped_calls = false
+warn_unused_ignores = false  # fails for pre-commit, eneabled in the ci
+disallow_subclassing_any = false  # fails for pre-commit, eneabled in the ci
+warn_return_any = false  # fails for pre-commit, eneabled in the ci
+
+[[tool.mypy.overrides]]
+module = "mplcursors"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pytestqt.qtbot"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "sympy.physics.wigner"
+ignore_missing_imports = true
+
+
+[tool.coverage.report]
+exclude_also = [
+    'if TYPE_CHECKING:',
+]
