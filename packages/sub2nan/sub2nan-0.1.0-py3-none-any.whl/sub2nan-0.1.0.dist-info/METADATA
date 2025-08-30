@@ -1,0 +1,280 @@
+Metadata-Version: 2.4
+Name: sub2nan
+Version: 0.1.0
+Summary: A lightweight Python library for handling subtitle files
+Author-email: 2nan <dame2623@gmail.com>
+License: MIT
+Project-URL: Homepage, https://github.com/2nan/sub2nan
+Project-URL: Repository, https://github.com/2nan/sub2nan.git
+Project-URL: Issues, https://github.com/2nan/sub2nan/issues
+Keywords: subtitle,srt,captions,video
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Multimedia :: Video
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: srt>=3.5.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: black>=22.0.0; extra == "dev"
+Requires-Dist: flake8>=5.0.0; extra == "dev"
+Requires-Dist: mypy>=1.0.0; extra == "dev"
+Dynamic: license-file
+
+# Python Package 개발 가이드: subtitle-utils
+
+## 1. 프로젝트 초기화
+
+### 1.1 디렉토리 구조 설계
+
+현대적인 Python 패키지는 다음과 같은 구조를 권장합니다:
+
+```
+subtitle_lib_v0.1/
+├── src/                     # 소스 코드 분리 (src layout)
+│   └── subtitle_utils/      # 실제 패키지
+│       ├── __init__.py      # 패키지 초기화
+│       ├── srt_handler.py   # 핵심 기능 모듈
+│       └── exceptions.py    # 커스텀 예외
+├── tests/                   # 테스트 코드
+│   ├── test_srt_handler.py  # 단위 테스트
+│   └── test_data/           # 테스트 데이터
+├── pyproject.toml           # 현대적 패키징 설정
+├── requirements.txt         # 의존성 관리
+├── README.md               # 프로젝트 문서
+└── LICENSE                 # 라이선스
+```
+
+**설계 원칙:**
+- **src layout**: 패키지와 테스트 코드 분리로 import 오류 방지
+- **단일 책임**: 각 모듈은 하나의 명확한 역할
+- **확장성**: 향후 webvtt, smi 지원을 위한 구조
+
+### 1.2 pyproject.toml 설정
+
+```toml
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+```
+
+**핵심 포인트:**
+- PEP 518 표준 준수
+- setuptools 기반 빌드 시스템
+- wheel 형식 지원
+
+## 2. 의존성 관리
+
+### 2.1 런타임 의존성
+
+```toml
+dependencies = [
+    "srt>=3.5.0",
+]
+```
+
+**선택 이유:**
+- `srt` vs `pysrt`: 더 현대적이고 가벼운 라이브러리
+- 시간 처리에 표준 `datetime.timedelta` 사용
+- 파싱/생성 성능 우수
+
+### 2.2 개발 의존성
+
+```toml
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",      # 테스트 프레임워크
+    "pytest-cov>=4.0.0",  # 커버리지 측정
+    "black>=22.0.0",       # 코드 포매터
+    "flake8>=5.0.0",       # 린터
+    "mypy>=1.0.0",         # 타입 체커
+]
+```
+
+## 3. 핵심 모듈 설계
+
+### 3.1 예외 처리 계층구조
+
+```python
+SubtitleError (기본)
+├── SubtitleParseError (파싱 오류)
+└── SubtitleFileError (파일 I/O 오류)
+```
+
+**설계 원칙:**
+- 명확한 오류 분류
+- 계층적 예외 처리
+- 사용자 친화적 메시지
+
+### 3.2 SRTHandler 클래스 설계
+
+**주요 기능:**
+- 파일 로드/저장
+- 자막 항목 조작
+- 시간 형식 변환
+- Python 매직 메서드 지원
+
+**API 설계 원칙:**
+- 직관적인 메서드명
+- 일관된 에러 처리
+- 타입 힌트 완전 지원
+
+## 4. 테스트 전략
+
+### 4.1 테스트 구조
+
+```python
+class TestSRTHandler:
+    @pytest.fixture
+    def sample_srt_content(self): ...
+    
+    def test_init_empty(self): ...
+    def test_load_valid_file(self): ...
+    def test_error_handling(self): ...
+```
+
+**테스트 원칙:**
+- AAA 패턴 (Arrange, Act, Assert)
+- 각 기능별 독립적 테스트
+- Edge case 포함
+
+### 4.2 픽스처 활용
+
+```python
+@pytest.fixture
+def temp_srt_file(self, sample_srt_content):
+    with tempfile.NamedTemporaryFile(...) as f:
+        yield temp_path
+```
+
+**장점:**
+- 테스트 데이터 격리
+- 자동 정리
+- 재사용 가능
+
+## 5. 빌드 및 배포
+
+### 5.1 빌드 프로세스
+
+```bash
+python -m build
+```
+
+**생성 파일:**
+- `dist/subtitle-utils-0.1.0.tar.gz` (소스 배포)
+- `dist/subtitle_utils-0.1.0-py3-none-any.whl` (휠 배포)
+
+### 5.2 품질 보증
+
+```bash
+# 코드 포매팅
+black src/ tests/
+
+# 린팅
+flake8 src/ tests/
+
+# 타입 체킹
+mypy src/
+
+# 테스트 + 커버리지
+pytest --cov=subtitle_utils --cov-report=html
+```
+
+## 6. 개발 워크플로우
+
+### 6.1 일반적인 개발 사이클
+
+1. **기능 개발**: 새 기능 구현
+2. **테스트 작성**: 단위 테스트 추가
+3. **품질 검사**: 린팅, 포매팅, 타입 체킹
+4. **통합 테스트**: 전체 테스트 스위트 실행
+5. **빌드**: 배포 가능한 패키지 생성
+
+### 6.2 버전 관리
+
+```toml
+version = "0.1.0"  # MAJOR.MINOR.PATCH
+```
+
+**Semantic Versioning:**
+- MAJOR: 호환성을 깨는 변경
+- MINOR: 하위 호환 기능 추가
+- PATCH: 하위 호환 버그 수정
+
+## 7. 성능 고려사항
+
+### 7.1 메모리 효율성
+
+- 대용량 파일 처리시 스트리밍 고려
+- 불필요한 객체 생성 최소화
+
+### 7.2 처리 속도
+
+- `srt` 라이브러리의 C 확장 활용
+- 적절한 데이터 구조 선택
+
+## 8. 확장성 설계
+
+### 8.1 미래 기능 지원
+
+현재 구조로 쉽게 추가 가능:
+- `WebVTTHandler` 클래스
+- `SMIHandler` 클래스
+- 형식 간 변환 유틸리티
+
+### 8.2 플러그인 아키텍처
+
+```python
+from abc import ABC, abstractmethod
+
+class SubtitleHandler(ABC):
+    @abstractmethod
+    def load(self, file_path): ...
+    @abstractmethod
+    def save(self, file_path): ...
+```
+
+## 9. 배포 전략
+
+### 9.1 TestPyPI 활용
+
+```bash
+twine upload --repository testpypi dist/*
+```
+
+**장점:**
+- 실제 환경 테스트
+- 배포 프로세스 검증
+- 위험 최소화
+
+### 9.2 CI/CD 파이프라인
+
+GitHub Actions 예시:
+- PR시 자동 테스트
+- 태그시 자동 배포
+- 다중 Python 버전 테스트
+
+## 10. 문서화 전략
+
+### 10.1 README.md 구성
+
+- 간단한 설치/사용법
+- API 레퍼런스
+- 예제 코드
+- 기여 가이드
+
+### 10.2 코드 문서화
+
+- docstring 완전 작성
+- 타입 힌트 활용
+- 예제 포함
