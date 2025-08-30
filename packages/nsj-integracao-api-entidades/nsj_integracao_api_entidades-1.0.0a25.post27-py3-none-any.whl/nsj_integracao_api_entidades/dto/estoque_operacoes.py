@@ -1,0 +1,196 @@
+
+import datetime
+import uuid
+
+from nsj_rest_lib.decorator.dto import DTO
+from nsj_rest_lib.descriptor.dto_field import DTOField
+from nsj_rest_lib.descriptor.dto_field_validators import DTOFieldValidators
+from nsj_rest_lib.dto.dto_base import DTOBase
+
+
+
+# Configuracoes execucao
+from nsj_integracao_api_entidades.config import (tenant_is_partition_data)
+
+@DTO()
+class OperacoDTO(DTOBase):
+    # Atributos da entidade
+    id: uuid.UUID = DTOField(
+      pk=True,
+      entity_field='operacao',
+      resume=True,
+      not_null=True,
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    tenant: int = DTOField(
+      partition_data=tenant_is_partition_data,
+      resume=True,
+      not_null=True,)
+    codigo: str = DTOField(
+      candidate_key=True,
+      strip=False,
+      resume=True,
+      not_null=True,)
+    descricao: str = DTOField()
+    sinal: int = DTOField(
+      not_null=True,)
+    afetacustodosprodutos: bool = DTOField()
+    grupodeoperacao: uuid.UUID = DTOField(
+      not_null=True,
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    usatabeladepreco: bool = DTOField()
+    associardocumento: bool = DTOField()
+    id_documento: uuid.UUID = DTOField(
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    associarproduto: bool = DTOField()
+    finalidade: int = DTOField(
+      not_null=True,)
+    ativa: bool = DTOField()
+    tipooperacao: int = DTOField()
+    requisicao: bool = DTOField(
+      not_null=True,)
+    simularimpostos: bool = DTOField(
+      not_null=True,)
+    simularfrete: bool = DTOField(
+      not_null=True,)
+    objetivodaoperacao: int = DTOField()
+    emitirnfe: bool = DTOField()
+    nropedidoexterno: bool = DTOField()
+    gerafinanceiro: bool = DTOField()
+    formagerafinanceiro: int = DTOField()
+    cfoppadrao_estadual: uuid.UUID = DTOField(
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    cfoppadrao_interestadual: uuid.UUID = DTOField(
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    cfoppadrao_exterior: uuid.UUID = DTOField(
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    modalidadefrete: int = DTOField()
+    id_markup: uuid.UUID = DTOField(
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    gerar_ra: bool = DTOField()
+    usamodulocompras: bool = DTOField(
+      not_null=True,)
+    processarautomaticamente: bool = DTOField()
+    layoutdanfe: int = DTOField()
+    layoutvisualizacao: int = DTOField()
+    semfatura_semtitulo: bool = DTOField()
+    exibeqtdassociadarestante: bool = DTOField(
+      not_null=True,)
+    modoexibicaoproduto: int = DTOField()
+    exibenumseriedescproddanfe: bool = DTOField()
+    aprovaitens: bool = DTOField()
+    parcelabaseadaemissaodoc: bool = DTOField(
+      not_null=True,)
+    comportamentooperacao: int = DTOField()
+    idoperacaopadraofaturamento: uuid.UUID = DTOField(
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    idoperacaopadraoremessa: uuid.UUID = DTOField(
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    cfoppadrao_interestadualst: uuid.UUID = DTOField(
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    cfoppadrao_estadualst: uuid.UUID = DTOField(
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    associacaoobrigatoriadocumentos: bool = DTOField()
+    diretoriocopiaxmlemitido: str = DTOField()
+    lastupdate: datetime.datetime = DTOField()
+    usatabeladeprecoporitem: bool = DTOField()
+    codigonumericochaveacesso: str = DTOField()
+    id_grupo_empresarial: uuid.UUID = DTOField(
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    id_empresa: uuid.UUID = DTOField(
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    gerar_ordem_producao: bool = DTOField()
+    usaultimoprecopraticado: bool = DTOField()
+    calcular_ibpt: bool = DTOField()
+    exigirchavereferencia: bool = DTOField()
+    validarchavereferencia: bool = DTOField()
+    textoobsnumeroexterno: str = DTOField()
+    naturezabehavior: float = DTOField(
+      not_null=True,)
+    natureza: str = DTOField()
+    permitireditarnatureza: bool = DTOField(
+      not_null=True,)
+    interno: bool = DTOField(
+      not_null=True,)
+    situacaonumerosdeseries: int = DTOField(
+      not_null=True,)
+    gerarnumeroautomaticamentepedido: bool = DTOField()
+    diversos_participantes: bool = DTOField()
+    controla_triangulacao: bool = DTOField(
+      not_null=True,)
+    faturarapenasimpostos: bool = DTOField()
+    geraprojetopcp: bool = DTOField(
+      not_null=True,)
+    habilitarrateioentrega: bool = DTOField(
+      not_null=True,)
+    faturartotaldocumento: bool = DTOField()
+    permitir_grupo_inventario_mercadoria: bool = DTOField()
+    permitir_grupo_inventario_materia_prima: bool = DTOField()
+    permitir_grupo_inventario_produto_intermediario: bool = DTOField()
+    permitir_grupo_inventario_material_embalagem: bool = DTOField()
+    permitir_grupo_inventario_prod_acabado_manufaturado: bool = DTOField()
+    permitir_grupo_inventario_prod_fase_fabricacao: bool = DTOField()
+    permitir_grupo_inventario_bens_terceiros: bool = DTOField()
+    permitir_grupo_inventario_ativo_permanente: bool = DTOField()
+    permitir_grupo_inventario_uso_e_consumo: bool = DTOField()
+    permitir_grupo_inventario_outros_sem_inv: bool = DTOField()
+    cfoppadrao_estadual_producao: uuid.UUID = DTOField(
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    cfoppadrao_estadualst_producao: uuid.UUID = DTOField(
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    cfoppadrao_interestadual_producao: uuid.UUID = DTOField(
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    cfoppadrao_interestadualst_producao: uuid.UUID = DTOField(
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    validarfaixascomissao: bool = DTOField()
+
