@@ -1,0 +1,112 @@
+name: PyPI Tests
+
+# We don't want pushes (or PRs) to gh-pages to kick anything off
+on:
+  push:
+    branches:
+      - main
+      - '[0-9]+.[0-9]+.x'
+  pull_request:
+    branches:
+      - main
+      - '[0-9]+.[0-9]+.x'
+
+concurrency:
+  group: ${{ github.workflow}}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  #
+  # Run all tests on Linux using standard PyPI packages, including minimum requirements
+  #
+  PyPITests:
+    name: ${{ matrix.python-version }} ${{ matrix.dep-versions }} ${{ matrix.no-extras }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', 3.11, 3.12, 3.13]
+        dep-versions: [Latest]
+        no-extras: ['']
+        include:
+          - python-version: '3.10'
+            dep-versions: Minimum
+          - python-version: '3.10'
+            dep-versions: Minimum
+            no-extras: 'No Extras'
+          - python-version: 3.13
+            dep-versions: Latest
+            no-extras: 'No Extras'
+
+    steps:
+    - name: Checkout source
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 150
+        fetch-tags: true
+        persist-credentials: false
+
+    - name: Generate minimum dependencies
+      if: ${{ matrix.dep-versions == 'Minimum' }}
+      run: |
+        pip install tomli
+        python << EOF
+        import tomli as tomllib
+        from pathlib import Path
+
+        # Read our pyproject.toml
+        config = tomllib.load(open('pyproject.toml', 'rb'))['project']
+        opt_deps = config['optional-dependencies']
+
+        # Generate a Minimum dependency file
+        for src, fname in [(config['dependencies'], 'requirements.txt'),
+                           (opt_deps['test'], 'test_requirements.txt'), (opt_deps['extras'], 'extra_requirements.txt')]:
+          with (Path('ci') / fname).open('wt') as out:
+            for dep in src:
+              dep = dep.split(';')[0]
+              out.write(dep.replace('>=', '==') + '\n')
+            # Only needed while we support numpy 1.20
+            if fname == 'requirements.txt':
+              out.write('pillow!=10.4.0\n')
+            # Needed until minium vcrpy is >=7.0.0 for urllib3>=2.3
+            elif fname == 'requirements.txt':
+              out.write('urllib3==2.2.3\n')
+        EOF
+
+    - name: Install from PyPI
+      uses: ./.github/actions/install-pypi
+      with:
+        need-extras: ${{ matrix.no-extras != 'No Extras' }}
+        type: 'test'
+        python-version: ${{ matrix.python-version }}
+        old-build: ${{ matrix.no-extras != 'No Extras' && matrix.dep-versions == 'Minimum' }}
+        need-cartopy: ${{ matrix.no-extras != 'No Extras' }}
+
+    - name: Run tests
+      uses: ./.github/actions/run-tests
+      with:
+        run-doctests: ${{ matrix.dep-versions == 'Latest' && matrix.no-extras != 'No Extras' }}
+        key: pypi-${{ matrix.python-version }}-${{ matrix.dep-versions }}-${{ matrix.no-extras }}-${{ runner.os }}
+
+  codecov:
+    needs: PyPITests
+    name: CodeCov Upload
+    runs-on: ubuntu-latest
+    environment:
+      name: CodeCov
+    timeout-minutes: 2
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download coverage artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          name: PyPI
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}

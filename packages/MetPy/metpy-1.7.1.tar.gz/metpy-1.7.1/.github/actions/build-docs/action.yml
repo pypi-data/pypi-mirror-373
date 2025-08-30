@@ -1,0 +1,68 @@
+name: 'Build Docs'
+description: 'Build docs, optionally running linkchecker, and upload builds as artifacts.'
+inputs:
+  run-linkchecker:
+    description: 'Whether the linkchecker should be run'
+    required: false
+    default: 'false'
+  key:
+    description: 'Key to use for artifacts'
+    required: false
+    default: ''
+  make-targets:
+    description: 'Extra Makefile targets to build'
+    required: false
+    default: 'overridecheck'
+outputs:
+  doc-version:
+    description: 'What version the docs correspond to'
+    value: ${{ steps.docversion.outputs.doc_version }}
+runs:
+  using: composite
+  steps:
+    - name: Set test data directory
+      shell: bash
+      run: echo "TEST_DATA_DIR=$GITHUB_WORKSPACE/staticdata" >> $GITHUB_ENV
+
+    - name: Set doc version
+      id: docversion
+      shell: bash -l {0}
+      run: echo "doc_version=$(python -c 'import importlib.metadata,os,re; print(re.search(r"(\d+\.\d+)", importlib.metadata.version(os.environ["GITHUB_REPOSITORY"].split("/")[-1].lower()))[0])')" >> $GITHUB_OUTPUT
+
+    - name: Show doc version
+      shell: bash -l {0}
+      run: echo Building docs for version ${{ steps.docversion.outputs.doc_version }}
+
+    - name: Build docs
+      shell: bash -l {0}
+      id: builddocs
+      env:
+        DOC_VERSION: ${{ steps.docversion.outputs.doc_version }}
+      # set -e makes sure bash fails on the first failing command, which isn't the case due to
+      # starting with -l
+      run: |
+        set -e -o pipefail
+        pushd docs
+        make ${{ inputs.make-targets }} html O=-W 2>&1 | tee ../build.log && popd || (popd && false)
+
+    - name: Run link checker
+      # Running linkchecker separately so that we avoid problems with vendored LICENSE
+      # files in the build directory
+      if: ${{ inputs.run-linkchecker == 'true'}}
+      shell: bash -l {0}
+      run: |
+        set -e -o pipefail
+        pushd docs
+        make linkcheck || true
+        popd
+        ci/filter_links.py docs/build/linkcheck/output.json ${{ github.event_name == 'pull_request' }} 2>&1 | tee linkchecker.log
+
+    - name: Upload docs as artifact
+      if: ${{ always() && inputs.key != '' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.key }}-docs
+        path: |
+          docs/build/html
+          !docs/_static/*.pdf
+        retention-days: 5
