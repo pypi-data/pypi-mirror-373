@@ -1,0 +1,7 @@
+NEBULA_TEST_TYPE = "WGS-30x"
+DATASET_SYSTEM = "http://lifeomic.com/fhir/dataset"
+NEBULA_KIT_ID_SYSTEM = "http://lifeomic.com/fhir/nebula-kit-id"
+BODY_SITE_SYSTEM = "http://lifeomic.com/fhir/sequence-body-site"
+NEBULA_BODY_SITE = "Buccal Swab"
+INDICATION_SYSTEM = "http://lifeomic.com/fhir/sequence-indication"
+NEBULA_INDICATION = "Genetic Health Screening"
