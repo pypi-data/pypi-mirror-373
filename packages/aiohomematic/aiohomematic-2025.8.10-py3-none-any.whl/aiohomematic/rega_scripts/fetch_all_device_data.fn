@@ -1,0 +1,92 @@
+!# fetch_all_device_data.fn v2.2
+!# This script fetches all device data required to initialize the entities without affecting the duty cycle.
+!#
+!# Original script: https://github.com/ioBroker/ioBroker.hm-rega/blob/master/regascripts/datapoints.fn
+!# datapoints.fn 1.9
+!# 3'2013-9'2014 hobbyquaker https://github.com/hobbyquaker
+!#
+!# Dieses Homematic-Script gibt eine Liste aller Datenpunkte, die zur Laufzeit einen validen Zeitstempel haben, als JSON String aus.
+!#
+!# modified by: SukramJ https://github.com/SukramJ && Baxxy13 https://github.com/Baxxy13
+!# v2.2 - 09/2023
+!#
+!# Das Interface wird durch die Integration an 'sUse_Interface' übergeben.
+!# Nutzbare Interfaces: BidCos-RF, BidCos-Wired, HmIP-RF, VirtualDevices
+!# Zum Testen direkt auf der Homematic-Zentrale muss das Interface wie folgt eingetragen werden: sUse_Interface = "HmIP-RF";
+
+string sUse_Interface = "##interface##";
+string sDevId;
+string sChnId;
+string sDPId;
+var vDPValue;
+boolean bDPFirst = true;
+object oInterface = interfaces.Get(sUse_Interface);
+
+Write('{');
+if (oInterface) {
+    integer iInterface_ID = interfaces.Get(sUse_Interface).ID();
+    string sAllDevices = dom.GetObject(ID_DEVICES).EnumUsedIDs();
+    foreach (sDevId, sAllDevices) {
+        object oDevice = dom.GetObject(sDevId);
+        if ((oDevice) && (oDevice.ReadyConfig()) && (oDevice.Interface() == iInterface_ID)) {
+            foreach (sChnId, oDevice.Channels()) {
+                object oChannel = dom.GetObject(sChnId);
+                if (oChannel) {
+                    var oDPs = oChannel.DPs();
+                    if (oDPs) {
+                        foreach(sDPId, oDPs.EnumUsedIDs()) {
+                            object oDP = dom.GetObject(sDPId);
+                            if (oDP && oDP.Timestamp()) {
+                                if (oDP.TypeName() != "VARDP") {
+                                    integer sValueType = oDP.ValueType();
+                                    boolean bHasValue = false;
+                                    string sValue;
+                                    string sID = oDP.Name().UriEncode();
+                                    if (sValueType == 20) {
+                                        sValue = oDP.Value().UriEncode();
+                                        bHasValue = true;
+                                    } else {
+                                        vDPValue = oDP.Value();
+                                        if (sValueType == 2) {
+                                            if (vDPValue) {
+                                                sValue = "true";
+                                            } else {
+                                                sValue = "false";
+                                            }
+                                            bHasValue = true;
+                                        } else {
+                                            if (vDPValue == "") {
+                                                sValue = "0";
+                                            } else {
+                                                sValue = vDPValue;
+                                            }
+                                            bHasValue = true;
+                                        }
+                                    }
+                                    if (bHasValue) {
+                                        if (bDPFirst) {
+                                            bDPFirst = false;
+                                        } else {
+                                            WriteLine(',');
+                                        }
+                                        Write('"');
+                                        Write(sID);
+                                        Write('":');
+                                        if (sValueType == 20) {
+                                            Write('"');
+                                            Write(sValue);
+                                            Write('"');
+                                        } else {
+                                            Write(sValue);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+Write('}');
