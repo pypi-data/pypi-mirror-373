@@ -1,0 +1,23 @@
+Data
+====
+
+.. automodule:: sf_quant.data
+   :no-members:
+   :no-undoc-members:
+   :no-imported-members:
+
+.. currentmodule:: sf_quant.data
+
+.. autosummary::
+   :toctree: data
+   :nosignatures:
+
+   load_assets
+   load_assets_by_date
+   load_crsp_daily
+   load_crsp_monthly
+   load_benchmark
+   get_assets_columns
+   get_crsp_daily_columns
+   get_crsp_monthly_columns
+   construct_covariance_matrix
