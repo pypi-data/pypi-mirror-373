@@ -1,0 +1,56 @@
+{% if enum_classes %}
+# Enum Choices for {{ model_name }}
+{% for enum_class in enum_classes %}
+class {{ enum_class.name }}(models.TextChoices):
+    {% for choice in enum_class.choices %}
+    {{ choice.name }} = "{{ choice.value | escape_py_str }}", "{{ choice.label | escape_py_str }}"
+    {% endfor %}
+
+
+{% endfor %}
+{% endif %}
+
+class {{ model_name }}({{ base_model_name }}):
+    """
+    Django model for {{ pydantic_model_name }}.
+    {% if context_fields %}
+
+    Context Fields:
+        The following fields require context when converting back to Pydantic:
+        {% for field_name, field_type in context_fields %}
+        - {{ field_name }}: {{ field_type }}
+        {% endfor %}
+    {% endif %}
+    """
+
+    {# Iterate through the field definitions dictionary #}
+    {% for field_name, field_def_str in field_definitions.items() %}
+    {{ field_name }} = {{ field_def_str }}
+    {% else %}
+    # No fields defined for this model.
+    pass
+    {% endfor %}
+
+    {% if validation_needed %}
+    # TODO: Add validation to ensure only one of the following fields is set:
+    # {{ multi_fk_field_names | join(', ') }}
+    {% endif %}
+
+    class Meta:
+        app_label = '{{ app_label }}'
+        abstract = False
+        {% if meta_indexes %}
+        indexes = [
+        {% for idx in meta_indexes %}
+            {{ idx }}{% if not loop.last %},{% endif %}
+        {% endfor %}
+        ]
+        {% endif %}
+
+    {% if context_fields %}
+    def to_pydantic(self, context: Optional["{{ context_class_name }}"]) -> {{ pydantic_model_name }}:
+        """
+        Convert this Django model to The corresponding {{ pydantic_model_name }} object.
+        """
+        return cast({{ pydantic_model_name }}, super().to_pydantic(context=context))
+    {% endif %}
