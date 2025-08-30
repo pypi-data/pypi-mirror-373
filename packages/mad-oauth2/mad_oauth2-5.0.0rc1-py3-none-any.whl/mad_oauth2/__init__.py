@@ -1,0 +1,1 @@
+default_app_config = 'mad_oauth2.apps.Oauth2Config'
