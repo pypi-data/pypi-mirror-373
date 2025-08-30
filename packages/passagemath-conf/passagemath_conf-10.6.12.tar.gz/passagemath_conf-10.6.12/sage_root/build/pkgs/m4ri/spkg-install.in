@@ -1,0 +1,30 @@
+CFLAGS="$CFLAGS -I$SAGE_LOCAL/include -g"
+CFLAGS="$CFLAGS -fPIC -Wall -pedantic"
+
+if [ "x$SAGE_DEBUG" = "xyes" ]; then
+   ENABLE_DEBUG="--enable-debug"
+else
+   ENABLE_DEBUG=""
+fi
+
+export CFLAGS
+
+# m4ri's cpuid detection breaks on Windows because it tries to determine if we're running on Windows
+# using `sizeof(long) == 8`, but Windows sets sizeof(long) to 4 even for 64-bit
+# 
+# Work around that by disabling SSE2 (which causes the cpuid detection to get skipped) when building
+# in MSYS
+if [ "x$SAGE_FAT_BINARY" = "xyes" ] || [ -n "$MSYSTEM" ]; then
+    DISABLE_SSE2="--disable-sse2"
+else
+    DISABLE_SSE2=""
+fi
+
+cd src
+
+cp "$SAGE_ROOT"/config/config.* .
+
+# Configure and build M4RI
+sdh_configure --enable-shared --disable-static $ENABLE_DEBUG $DISABLE_SSE2
+sdh_make
+sdh_make_install
