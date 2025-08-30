@@ -1,0 +1,401 @@
+"""
+에러 패턴 파서 테스트 모듈
+
+실제 수집된 에러 데이터를 사용하여 패턴 기반 파싱 시스템의
+정확성과 성능을 검증합니다.
+"""
+
+import json
+from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock
+
+import pytest
+
+from selvage.src.models.error_pattern_parser import ErrorPatternParser
+from selvage.src.models.error_response import ErrorResponse
+from selvage.src.models.model_provider import ModelProvider
+
+
+class TestErrorPatternParser:
+    """에러 패턴 파서 테스트 클래스"""
+
+    @pytest.fixture
+    def parser(self) -> ErrorPatternParser:
+        """기본 패턴 파서 인스턴스"""
+        return ErrorPatternParser()
+
+    @pytest.fixture
+    def collected_error_data(self) -> dict[str, Any]:
+        """실제 수집된 에러 데이터를 로드합니다."""
+        results_file = (
+            Path(__file__).parent
+            / "results"
+            / "context_limit_errors_20250807_020818.json"
+        )
+
+        if not results_file.exists():
+            pytest.skip("수집된 에러 데이터 파일이 없습니다.")
+
+        with open(results_file, encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_parser_initialization(self, parser: ErrorPatternParser):
+        """패턴 파서 초기화 테스트"""
+        assert parser is not None
+        supported_providers = parser.get_supported_providers()
+        expected_providers = [
+            ModelProvider.OPENAI.value,
+            ModelProvider.ANTHROPIC.value,
+            ModelProvider.GOOGLE.value,
+            ModelProvider.OPENROUTER.value,
+        ]
+
+        for provider in expected_providers:
+            assert provider in supported_providers
+
+    def test_openai_context_limit_error_parsing(self, parser: ErrorPatternParser):
+        """OpenAI context limit 에러 파싱 테스트"""
+        # 실제 수집된 에러 메시지 시뮬레이션
+        mock_error = MagicMock()
+        error_message = (
+            "Error code: 400 - {'error': {'message': \"This model's maximum context length is 128000 tokens. "
+            'However, your messages resulted in 273619 tokens. Please reduce the length of the messages.", '
+            "'type': 'invalid_request_error', 'param': 'messages', 'code': 'context_length_exceeded'}}"
+        )
+        mock_error.__str__ = MagicMock(return_value=error_message)
+
+        # OpenAI 에러는 status_code를 직접 가지지 않음 - 명시적으로 제거
+        del mock_error.status_code
+
+        # HTTP response 속성 시뮬레이션
+        mock_response = MagicMock(status_code=400)
+        mock_response.json.return_value = {
+            "error": {
+                "message": "This model's maximum context length is 128000 tokens. However, your messages resulted in 273619 tokens.",
+                "type": "invalid_request_error",
+                "param": "messages",
+                "code": "context_length_exceeded",
+            }
+        }
+        # OpenAI는 response.text를 사용하지 않으므로 명시적으로 제거
+        del mock_response.text
+        mock_error.response = mock_response
+
+        result = parser.parse_error(ModelProvider.OPENAI, mock_error)
+
+        assert result.error_type == "context_limit_exceeded"
+        assert result.error_code == "context_length_exceeded"
+        assert result.http_status_code == 400
+        assert result.matched_pattern == "context_limit_exceeded"
+
+        # 토큰 정보 확인
+        assert result.token_info is not None
+        assert result.token_info.max_tokens == 128000
+        assert result.token_info.actual_tokens == 273619
+
+    def test_anthropic_context_limit_error_parsing(self, parser: ErrorPatternParser):
+        """Anthropic context limit 에러 파싱 테스트"""
+        mock_error = MagicMock()
+        error_message = (
+            "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', "
+            "'message': 'prompt is too long: 209924 tokens > 200000 maximum'}}"
+        )
+        mock_error.__str__ = MagicMock(return_value=error_message)
+
+        # Anthropic 에러 속성 시뮬레이션
+        mock_error.status_code = 400
+        mock_error.type = "invalid_request_error"
+        mock_error.body = {
+            "type": "error",
+            "error": {
+                "type": "invalid_request_error",
+                "message": "prompt is too long: 209924 tokens > 200000 maximum",
+            },
+        }
+        # response 속성이 없도록 명시적으로 제거
+        if hasattr(mock_error, "response"):
+            del mock_error.response
+
+        result = parser.parse_error(ModelProvider.ANTHROPIC, mock_error)
+
+        assert result.error_type == "context_limit_exceeded"
+        assert result.error_code == "invalid_request_error"
+        assert result.http_status_code == 400
+        assert result.matched_pattern == "context_limit_exceeded"
+
+        # 토큰 정보 확인
+        assert result.token_info is not None
+        assert result.token_info.actual_tokens == 209924
+        assert result.token_info.max_tokens == 200000
+
+    def test_openrouter_context_limit_error_parsing(self, parser: ErrorPatternParser):
+        """OpenRouter context limit 에러 파싱 테스트"""
+        mock_error = MagicMock()
+        # OpenRouter context limit 에러 메시지 시뮬레이션
+        error_message = (
+            "This endpoint's maximum context length is 1000000 tokens. "
+            "However, you requested about 2315418 tokens (2315418 of text input)."
+        )
+        mock_error.__str__ = MagicMock(return_value=error_message)
+
+        # OpenRouter JSON 응답 구조 시뮬레이션
+        mock_response = MagicMock()
+        mock_response.text = json.dumps({"error": {"message": error_message}})
+        mock_error.response = mock_response
+
+        result = parser.parse_error(ModelProvider.OPENROUTER, mock_error)
+
+        assert result.error_type == "context_limit_exceeded"
+        assert result.matched_pattern == "context_limit_exceeded"
+
+        # 토큰 정보 확인
+        assert result.token_info is not None
+        assert result.token_info.max_tokens == 1000000
+        assert result.token_info.actual_tokens == 2315418
+
+    def test_google_quota_error_parsing(self, parser: ErrorPatternParser):
+        """Google quota 에러 파싱 테스트"""
+        mock_error = MagicMock()
+        error_message = (
+            "429 RESOURCE_EXHAUSTED. You exceeded your current quota, "
+            "please check your plan and billing details."
+        )
+        mock_error.__str__ = MagicMock(return_value=error_message)
+        # response 속성이 없도록 명시적으로 제거
+        if hasattr(mock_error, "response"):
+            del mock_error.response
+
+        result = parser.parse_error(ModelProvider.GOOGLE, mock_error)
+
+        assert result.error_type == "quota_exceeded"
+        assert result.matched_pattern == "quota_exceeded"
+
+    def test_no_matching_pattern_error(self, parser: ErrorPatternParser):
+        """매칭되는 패턴이 없는 경우 테스트"""
+        mock_error = MagicMock()
+        mock_error.__str__ = MagicMock(return_value="Completely unknown error message")
+        # response 속성이 없도록 명시적으로 제거
+        if hasattr(mock_error, "response"):
+            del mock_error.response
+
+        result = parser.parse_error(ModelProvider.OPENAI, mock_error)
+
+        assert result.error_type == "api_error"
+        assert result.matched_pattern == "api_error"  # catch-all 패턴
+
+    def test_openrouter_byok_pattern_matching(self, parser: ErrorPatternParser):
+        """OpenRouter BYOK 에러 패턴 매칭 테스트"""
+        # httpx.HTTPStatusError 시뮬레이션
+        import httpx
+
+        byok_response = {
+            "error": {
+                "message": (
+                    "OpenAI is requiring a key to access this model, "
+                    "which you can add in https://openrouter.ai/settings/integrations "
+                    "- you can also switch to gpt-5-chat or gpt-5-mini."
+                )
+            }
+        }
+
+        # httpx.Response 모킹
+        mock_response = MagicMock()
+        mock_response.status_code = 403
+        mock_response.text = json.dumps(byok_response)
+
+        # httpx.HTTPStatusError 생성
+        mock_error = httpx.HTTPStatusError(
+            "403 Forbidden", request=MagicMock(), response=mock_response
+        )
+
+        result = parser.parse_error(ModelProvider.OPENROUTER, mock_error)
+
+        assert result.error_type == "byok_required"
+        assert result.matched_pattern == "byok_required"
+        assert result.http_status_code == 403
+
+    def test_openrouter_byok_pattern_without_alternatives(
+        self, parser: ErrorPatternParser
+    ):
+        """대안 모델이 없는 OpenRouter BYOK 에러 패턴 테스트"""
+        # httpx.HTTPStatusError 시뮬레이션 (대안 모델 없음)
+        import httpx
+
+        byok_response = {
+            "error": {
+                "message": (
+                    "OpenAI is requiring a key to access this model, "
+                    "which you can add in https://openrouter.ai/settings/integrations"
+                )
+            }
+        }
+
+        # httpx.Response 모킹
+        mock_response = MagicMock()
+        mock_response.status_code = 403
+        mock_response.text = json.dumps(byok_response)
+
+        # httpx.HTTPStatusError 생성
+        mock_error = httpx.HTTPStatusError(
+            "403 Forbidden", request=MagicMock(), response=mock_response
+        )
+
+        result = parser.parse_error(ModelProvider.OPENROUTER, mock_error)
+
+        assert result.error_type == "byok_required"
+        assert result.matched_pattern == "byok_required"
+        assert result.http_status_code == 403
+        # 대안 모델 정보가 없어야 함
+        assert not result.additional_token_info
+
+    def test_error_response_integration(self, parser: ErrorPatternParser):
+        """ErrorResponse 클래스와의 통합 테스트"""
+        # OpenAI 에러 시뮬레이션 - 실제 Exception 사용
+        error_message = (
+            "This model's maximum context length is 128000 tokens. "
+            "However, your messages resulted in 150000 tokens."
+        )
+
+        # 실제 Exception 객체 생성
+        class MockOpenAIError(Exception):
+            def __init__(self, message):
+                super().__init__(message)
+                mock_response = MagicMock()
+                mock_response.status_code = 400
+                mock_response.json.return_value = {
+                    "error": {"code": "context_length_exceeded"}
+                }
+                # OpenAI는 response.text를 사용하지 않으므로 명시적으로 제거
+                del mock_response.text
+                self.response = mock_response
+
+        mock_error = MockOpenAIError(error_message)
+
+        # ErrorResponse.from_exception 메서드 테스트
+        error_response = ErrorResponse.from_exception(mock_error, ModelProvider.OPENAI)
+
+        assert error_response.error_type == "context_limit_exceeded"
+        assert error_response.error_code == "context_length_exceeded"
+        assert error_response.provider == ModelProvider.OPENAI
+        assert error_response.is_context_limit_error() is True
+
+        # 토큰 정보가 raw_error에 포함되는지 확인
+        assert "actual_tokens" in error_response.raw_error
+        assert "max_tokens" in error_response.raw_error
+        assert error_response.raw_error["actual_tokens"] == 150000
+        assert error_response.raw_error["max_tokens"] == 128000
+
+    def test_anthropic_new_context_limit_error_pattern(
+        self, parser: ErrorPatternParser
+    ):
+        """Anthropic의 새로운 context limit 에러 패턴 테스트 - input length and max_tokens exceed context limit"""
+        # 실제 발생한 에러 메시지 형태
+        error_message = (
+            "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', "
+            "'message': 'input length and `max_tokens` exceed context limit: 155345 + 64000 > 200000, "
+            "decrease input length or `max_tokens` and try again'}}"
+        )
+
+        # Mock exception with proper attributes for Anthropic error
+        mock_error = Exception(error_message)
+        mock_error.status_code = 400
+        mock_error.body = {
+            "type": "error",
+            "error": {
+                "type": "invalid_request_error",
+                "message": "input length and `max_tokens` exceed context limit: 155345 + 64000 > 200000, decrease input length or `max_tokens` and try again",
+            },
+        }
+
+        # 에러 응답 생성
+        error_response = ErrorResponse.from_exception(
+            mock_error, ModelProvider.ANTHROPIC
+        )
+
+        # 검증: context_limit_exceeded로 분류되어야 함
+        assert error_response.error_type == "context_limit_exceeded"
+        assert error_response.error_code == "invalid_request_error"
+        assert error_response.provider == ModelProvider.ANTHROPIC
+        assert error_response.is_context_limit_error() is True
+
+        # 토큰 정보가 추출되어야 함
+        assert "actual_tokens" in error_response.raw_error
+        assert "max_tokens_param" in error_response.raw_error
+        assert "total_limit" in error_response.raw_error
+        assert error_response.raw_error["actual_tokens"] == 155345
+        assert error_response.raw_error["max_tokens_param"] == 64000
+        assert error_response.raw_error["total_limit"] == 200000
+
+    @pytest.mark.parametrize(
+        "provider,pattern_name",
+        [
+            (ModelProvider.OPENAI, "context_limit_exceeded"),
+            (ModelProvider.ANTHROPIC, "context_limit_exceeded"),
+            (ModelProvider.GOOGLE, "quota_exceeded"),
+            (ModelProvider.OPENROUTER, "context_limit_exceeded"),
+        ],
+    )
+    def test_pattern_info_retrieval(
+        self, parser: ErrorPatternParser, provider: ModelProvider, pattern_name: str
+    ):
+        """패턴 정보 조회 테스트"""
+        pattern_info = parser.get_pattern_info(provider, pattern_name)
+
+        assert pattern_info is not None
+        assert "keywords" in pattern_info
+        assert "error_type" in pattern_info
+
+    def test_collected_error_data_validation(
+        self, parser: ErrorPatternParser, collected_error_data: dict[str, Any]
+    ):
+        """실제 수집된 에러 데이터를 사용한 검증 테스트"""
+        results = collected_error_data.get("results", [])
+
+        for result_data in results:
+            provider = result_data["provider"]
+            error_message = result_data["error_message"]
+
+            # 에러 메시지만으로 Mock 에러 생성
+            mock_error = MagicMock()
+            mock_error.__str__ = MagicMock(return_value=error_message)
+
+            # HTTP 상태 코드와 에러 코드 설정
+            if "http_status_code" in result_data:
+                mock_error.response = MagicMock()
+                mock_error.response.status_code = result_data["http_status_code"]
+
+                # OpenRouter의 경우 JSON 응답 구조 추가
+                if provider == ModelProvider.OPENROUTER.value:
+                    mock_error.response.text = json.dumps(
+                        {"error": {"message": error_message}}
+                    )
+                else:
+                    # OpenRouter가 아닌 경우 response.text 제거
+                    del mock_error.response.text
+            else:
+                # response 속성이 없도록 명시적으로 제거
+                if hasattr(mock_error, "response"):
+                    del mock_error.response
+
+            parsing_result = parser.parse_error(
+                ModelProvider.from_string(provider), mock_error
+            )
+
+            # 기본적인 파싱 성공 확인
+            assert parsing_result.error_type is not None
+            assert (
+                parsing_result.error_type != "parse_error"
+            )  # 파싱 자체가 실패하면 안 됨
+
+            # 실제 데이터에서 context limit 관련 에러는 올바르게 분류되어야 함
+            if "context" in error_message.lower() and "token" in error_message.lower():
+                assert parsing_result.error_type in ["context_limit_exceeded"]
+
+            print(
+                f"✅ {provider}: {parsing_result.error_type} (pattern: {parsing_result.matched_pattern})"
+            )
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
