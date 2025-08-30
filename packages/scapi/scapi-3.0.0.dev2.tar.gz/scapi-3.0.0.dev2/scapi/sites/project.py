@@ -1,0 +1,602 @@
+import datetime
+import json
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Final, Literal
+from ..utils import client, common, error, file
+from ..utils.types import (
+    ProjectPayload,
+    ProjectLovePayload,
+    ProjectFavoritePayload,
+    ProjectVisibilityPayload,
+    UserFeaturedPayload,
+    OldProjectPayload,
+    OldProjectEditPayload
+)
+from . import user,studio,session,base,comment
+
+class Project(base._BaseSiteAPI[int]):
+    """
+    プロジェクトを表す
+
+    Attributes:
+        id (int): プロジェクトのID
+        title (MAYBE_UNKNOWN[str]): プロジェクトのタイトル
+        author (MAYBE_UNKNOWN[user.User]): プロジェクトの作者
+        instructions (MAYBE_UNKNOWN[str]): プロジェクトの使い方欄
+        description (MAYBE_UNKNOWN[str]): プロジェクトのメモとクレジット欄
+        public (MAYBE_UNKNOWN[bool]): プロジェクトが公開されているか
+        comments_allowed (MAYBE_UNKNOWN[bool]): コメント欄が開いているか
+        deleted (MAYBE_UNKNOWN[bool]): プロジェクトがゴミ箱またはゴミ箱からも削除されているか。
+
+        view_count (MAYBE_UNKNOWN[int]): プロジェクトの閲覧数
+        love_count (MAYBE_UNKNOWN[int]): プロジェクトの「好き」の数
+        favorite_count (MAYBE_UNKNOWN[int]): プロジェクトの「お気に入り」の数
+        remix_count (MAYBE_UNKNOWN[int]): プロジェクトの「リミックス」の数
+
+    .. warning::
+        remix_count の値は 3.0APIのリスト形式での取得など(傾向等)では常に0になります。正確な値を確認したい場合は .update() を実行してください。
+    
+    Attributes:
+        remix_parent_id (MAYBE_UNKNOWN[int|None]): プロジェクトの親プロジェクトID
+        remix_root_id (MAYBE_UNKNOWN[int|None]): プロジェクトの元プロジェクトID
+
+        comment_count (MAYBE_UNKNOWN[int|None]): コメントの数。Session.get_mystuff_projects()からでのみ取得できます。
+    """
+    def __repr__(self) -> str:
+        return f"<Project id:{self.id} author:{self.author} session:{self.session}>"
+
+    def __init__(self,id:int,client_or_session:"client.HTTPClient|session.Session|None"=None):
+        super().__init__(client_or_session)
+        self.id:Final[int] = id
+        self.title:common.MAYBE_UNKNOWN[str] = common.UNKNOWN
+
+        self.author:"common.MAYBE_UNKNOWN[user.User]" = common.UNKNOWN
+        self.instructions:common.MAYBE_UNKNOWN[str] = common.UNKNOWN
+        self.description:common.MAYBE_UNKNOWN[str] = common.UNKNOWN
+        self.public:common.MAYBE_UNKNOWN[bool] = common.UNKNOWN
+        self.comments_allowed:common.MAYBE_UNKNOWN[bool] = common.UNKNOWN
+        self.deleted:common.MAYBE_UNKNOWN[bool] = common.UNKNOWN
+        
+        self._created_at:common.MAYBE_UNKNOWN[str] = common.UNKNOWN
+        self._modified_at:common.MAYBE_UNKNOWN[str|None] = common.UNKNOWN
+        self._shared_at:common.MAYBE_UNKNOWN[str|None] = common.UNKNOWN
+
+        self.view_count:common.MAYBE_UNKNOWN[int] = common.UNKNOWN
+        self.love_count:common.MAYBE_UNKNOWN[int] = common.UNKNOWN
+        self.favorite_count:common.MAYBE_UNKNOWN[int] = common.UNKNOWN
+        self.remix_count:common.MAYBE_UNKNOWN[int] = common.UNKNOWN
+
+        self.remix_parent_id:common.MAYBE_UNKNOWN[int|None] = common.UNKNOWN
+        self.remix_root_id:common.MAYBE_UNKNOWN[int|None] = common.UNKNOWN
+
+        self.comment_count:common.MAYBE_UNKNOWN[int|None] = common.UNKNOWN
+    
+    async def update(self):
+        response = await self.client.get(f"https://api.scratch.mit.edu/projects/{self.id}")
+        self._update_from_data(response.json())
+
+    def _update_from_data(self, data:ProjectPayload):
+        self._update_to_attributes(
+            title=data.get("title"),
+            instructions=data.get("instructions"),
+            description=data.get("description"),
+            public=data.get("public"),
+            comments_allowed=data.get("comments_allowed"),
+            deleted=(data.get("visibility") == "notvisible")
+        )
+        
+        _author = data.get("author")
+        if _author:
+            if self.author is common.UNKNOWN:
+                self.author = user.User(_author.get("username"),self.client_or_session)
+            self.author._update_from_data(_author)
+            
+
+        _history = data.get("history")
+        if _history:
+            self._update_to_attributes(
+                _created_at=_history.get("created"),
+                _modified_at=_history.get("modified"),
+                _shared_at=_history.get("shared")
+            )
+
+        _stats = data.get("stats")
+        if _stats:
+            self._update_to_attributes(
+                view_count=_stats.get("views"),
+                love_count=_stats.get("loves"),
+                favorite_count=_stats.get("favorites"),
+                remix_count=_stats.get("remixes")
+            )
+
+        _remix = data.get("remix")
+        if _remix:
+            self._update_to_attributes(
+                remix_parent_id=_remix.get("parent"),
+                remix_root_id=_remix.get("root")
+            )
+
+    def _update_from_old_data(self, data:OldProjectPayload):
+        _author = data.get("creator")
+
+        if _author:
+            if self.author is common.UNKNOWN:
+                self.author = user.User(_author.get("username"),self.client_or_session)
+            self.author._update_from_old_data(_author)
+
+        self._update_to_attributes(
+            title=data.get("title"),
+            public=data.get("isPublished"),
+            deleted=(data.get("visibility") == "trshbyusr"),
+
+            _created_at=data.get("datetime_created"),
+            _modified_at=data.get("datetime_modified"),
+            _shared_at=data.get("datetime_shared"),
+
+            view_count=data.get("view_count"),
+            favorite_count=data.get("favorite_count"),
+            remix_count=data.get("remixers_count"),
+            love_count=data.get("love_count")
+        )
+
+    @property
+    def _author_username(self) -> str:
+        if not (self.author and self.author.username):
+            raise error.NoDataError(self)
+        return self.author.username
+    
+    @property
+    def created_at(self) -> datetime.datetime|common.UNKNOWN_TYPE:
+        """
+        プロジェクトが作成された時間を返す
+
+        Returns:
+            datetime.datetime|UNKNOWN_TYPE: データがある場合、その時間。
+        """
+        return common.dt_from_isoformat(self._created_at)
+    
+    @property
+    def modified_at(self) -> datetime.datetime|common.UNKNOWN_TYPE|None:
+        """
+        プロジェクトが最後に編集された時間を返す
+
+        Returns:
+            datetime.datetime|UNKNOWN_TYPE|None: データがある場合、その時間。
+        """
+        return common.dt_from_isoformat(self._modified_at)
+    
+    @property
+    def shared_at(self) -> datetime.datetime|common.UNKNOWN_TYPE|None:
+        """
+        プロジェクトが共有された時間を返す
+
+        Returns:
+            datetime.datetime|UNKNOWN_TYPE|None: データがある場合、その時間。
+        """
+        return common.dt_from_isoformat(self._shared_at)
+    
+    async def get_remixes(self,limit:int|None=None,offset:int|None=None) -> AsyncGenerator["Project", None]:
+        """
+        リミックスされたプロジェクトを取得する。
+
+        Args:
+            limit (int|None, optional): 取得するプロジェクトの数。初期値は40です。
+            offset (int|None, optional): 取得するプロジェクトの開始位置。初期値は0です。
+
+        Yields:
+            Project: リミックスされたプロジェクト
+        """
+        async for _p in common.api_iterative(
+            self.client,f"https://api.scratch.mit.edu/projects/{self.id}/remixes",
+            limit=limit,offset=offset
+        ):
+            yield Project._create_from_data(_p["id"],_p,self.client_or_session)
+
+    async def get_studios(self,limit:int|None=None,offset:int|None=None) -> AsyncGenerator["studio.Studio", None]:
+        """
+        プロジェクトが追加されたスタジオを取得する。
+
+        Args:
+            limit (int|None, optional): 取得するスタジオの数。初期値は40です。
+            offset (int|None, optional): 取得するスタジオの開始位置。初期値は0です。
+
+        Yields:
+            Studio: 追加されたスタジオ。
+        """
+        async for _s in common.api_iterative(
+            self.client,f"https://api.scratch.mit.edu/users/{self._author_username}/projects/{self.id}/studios",
+            limit=limit,offset=offset
+        ):
+            yield studio.Studio._create_from_data(_s["id"],_s,self.client_or_session)
+
+    async def get_parent_project(self) -> "Project|None|common.UNKNOWN_TYPE":
+        """
+        プロジェクトの親プロジェクトを取得する。
+
+        Raises:
+            error.NotFound: プロジェクトが見つからない
+
+        Returns:
+            Project|None|UNKNOWN_TYPE: データが存在する場合、そのプロジェクト。
+        """
+        if isinstance(self.remix_parent_id,int):
+            return await self._create_from_api(self.remix_parent_id,self.client_or_session)
+        return self.remix_parent_id
+        
+    async def get_root_project(self) -> "Project|None|common.UNKNOWN_TYPE":
+        """
+        プロジェクトの元プロジェクトを取得する。
+
+        Raises:
+            error.NotFound: プロジェクトが見つからない
+
+        Returns:
+            Project|None|UNKNOWN_TYPE: データが存在する場合、そのプロジェクト。
+        """
+        if isinstance(self.remix_root_id,int):
+            return await self._create_from_api(self.remix_root_id,self.client_or_session)
+        return self.remix_root_id
+        
+    async def get_comments(self,limit:int|None=None,offset:int|None=None) -> AsyncGenerator["comment.Comment", None]:
+        """
+        プロジェクトに投稿されたコメントを取得する。
+
+        Args:
+            limit (int|None, optional): 取得するコメントの数。初期値は40です。
+            offset (int|None, optional): 取得するコメントの開始位置。初期値は0です。
+
+        Yields:
+            Comment: プロジェクトに投稿されたコメント
+        """
+        async for _c in common.api_iterative(
+            self.client,f"https://api.scratch.mit.edu/users/{self._author_username}/projects/{self.id}/comments",
+            limit=limit,offset=offset
+        ):
+            yield comment.Comment._create_from_data(_c["id"],_c,place=self)
+
+    async def get_comment_by_id(self,comment_id:int) -> "comment.Comment":
+        """
+        コメントIDからコメントを取得する。
+
+        Args:
+            comment_id (int): 取得したいコメントのID
+
+        Raises:
+            error.NotFound: コメントが見つからない
+        
+        Returns:
+            Comment: 見つかったコメント
+        """
+        return await comment.Comment._create_from_api(comment_id,place=self)
+    
+    def get_comments_from_old(self,start_page:int|None=None,end_page:int|None=None) -> AsyncGenerator["comment.Comment", None]:
+        """
+        プロジェクトに投稿されたコメントを古いAPIから取得する。
+
+        Args:
+            start_page (int|None, optional): 取得するコメントの開始ページ位置。初期値は1です。
+            end_page (int|None, optional): 取得するコメントの終了ページ位置。初期値はstart_pageの値です。
+
+        Returns:
+            Comment: プロジェクトに投稿されたコメント
+        """
+        return comment.get_comment_from_old(self,start_page,end_page)
+        
+
+
+    async def edit_project(
+            self,project_data:file.File|dict|str|bytes,is_json:bool|None=None
+        ):
+        """
+        プロジェクト本体を更新します。
+
+        Args:
+            project_data (File | dict | str | bytes): プロジェクトのデータ本体。
+            is_json (bool | None, optional): プロジェクトのデータの形式。zip形式を使用したい場合はFalseを指定してください。Noneにすると簡易的に判定されます。
+        """
+
+        if isinstance(project_data,dict):
+            project_data = json.dumps(project_data)
+        if isinstance(project_data,(bytes, bytearray, memoryview)):
+            is_json = False
+        elif isinstance(project_data,str):
+            is_json = True
+
+        async with file._file(project_data) as f:
+            self.require_session()
+            content_type = "application/json" if is_json else "application/zip"
+            headers = self.client.scratch_headers | {"Content-Type": content_type}
+            await self.client.put(
+                f"https://projects.scratch.mit.edu/{self.id}",
+                data=f.fp,headers=headers
+            )
+
+    async def edit(
+            self,*,
+            comment_allowed:bool|None=None,
+            title:str|None=None,
+            instructions:str|None=None,
+            description:str|None=None,
+        ):
+        """
+        プロジェクトのステータスを編集します。
+
+        Args:
+            comment_allowed (bool | None, optional): コメントを許可するか
+            title (str | None, optional): プロジェクトのタイトル
+            instructions (str | None, optional): プロジェクトの「使い方」欄
+            description (str | None, optional): プロジェクトの「メモとクレジット」欄
+        """
+        self.require_session()
+        data = {}
+        if comment_allowed is not None: data["comment_allowed"] = comment_allowed
+        if title is not None: data["title"] = title
+        if instructions is not None: data["instructions"] = instructions
+        if description is not None: data["description"] = description
+
+        r = await self.client.put(f"https://api.scratch.mit.edu/projects/{self.id}",json=data)
+        self._update_from_data(r.json())
+    
+    async def old_edit(
+            self,*,
+            title:str|None=None,
+            share:bool|None=None,
+            trash:bool|None=None,
+        ):
+        """
+        プロジェクトのステータスを古いAPIで編集します。
+
+        Args:
+            title (str | None, optional): プロジェクトのタイトル
+            share (bool | None, optional): プロジェクトの共有状態
+            trash (bool | None, optional): ゴミ箱に入れるか
+        """
+        self.require_session()
+        data = {}
+        if share is not None: data["isPublished"] = share
+        if title is not None: data["title"] = title
+        if trash is not None: data["visibility"] = "trshbyusr" if trash else "visible"
+        r = await self.client.put(f"https://scratch.mit.edu/site-api/projects/all/{self.id}/",json=data)
+        _data:OldProjectEditPayload = r.json()
+        self._update_to_attributes(
+            title=_data.get("title"),
+            _modified_at=_data.get("datetime_modified")
+        )
+
+    async def set_thumbnail(self,thumbnail:file.File|bytes):
+        """
+        プロジェクトのサムネイルを変更します。
+
+        Args:
+            thumbnail (File | bytes): サムネイルデータ
+        """
+        self.require_session()
+        async with file._file(thumbnail) as f:
+            await self.client.post(
+                f"https://scratch.mit.edu/internalapi/project/thumbnail/{self.id}/set/",
+                data=f.fp
+            )
+
+    async def share(self):
+        """
+        プロジェクトを共有する
+        """
+        self.require_session()
+        await self.client.put(f"https://api.scratch.mit.edu/proxy/projects/{self.id}/share")
+        self.public = True
+
+    async def unshare(self):
+        """
+        プロジェクトを非共有にする
+        """
+        self.require_session()
+        await self.client.put(f"https://api.scratch.mit.edu/proxy/projects/{self.id}/unshare")
+        self.public = False
+
+    async def get_visibility(self) -> "ProjectVisibility":
+        """
+        プロジェクトのステータスを取得します。
+
+        Returns:
+            ProjectVisibility: プロジェクトの共有ステータス
+        """
+        self.require_session()
+        response = await self.client.get(f"https://api.scratch.mit.edu/users/{self._session.username}/projects/{self.id}/visibility")
+        return ProjectVisibility(response.json(),self)
+
+
+    async def create_remix(self,title:str|None=None) -> "Project":
+        """
+        プロジェクトのリミックスを作成します。
+        プロジェクトの中身は複製されません。
+
+        Args:
+            title (str | None, optional): プロジェクトのタイトル。
+
+        Returns:
+            Project: 作成されたプロジェクト
+        """
+        #TODO download project
+        self.require_session()
+        return await self._session.create_project(title,remix_id=self.id)
+    
+    async def is_loved(self) -> bool:
+        """
+        プロジェクトに「好き」を付けているかを取得します。
+
+        Returns:
+            bool: プロジェクトに「好き」を付けているか
+        """
+        self.require_session()
+        response = await self.client.get(f"https://api.scratch.mit.edu/projects/{self.id}/loves/user/{self._session.username}")
+        data:ProjectLovePayload = response.json()
+        return data.get("userLove")
+
+    async def add_love(self) -> bool:
+        """
+        プロジェクトに「好き」を付けます。
+
+        Returns:
+            bool: ステータスが変更されたか
+        """
+        self.require_session()
+        response = await self.client.post(f"https://api.scratch.mit.edu/projects/{self.id}/loves/user/{self._session.username}")
+        data:ProjectLovePayload = response.json()
+        return data.get("statusChanged")
+    
+    async def remove_love(self) -> bool:
+        """
+        プロジェクトから「好き」を外します。
+
+        Returns:
+            bool: ステータスが変更されたか
+        """
+        self.require_session()
+        response = await self.client.delete(f"https://api.scratch.mit.edu/projects/{self.id}/loves/user/{self._session.username}")
+        data:ProjectLovePayload = response.json()
+        return data.get("statusChanged")
+    
+    async def is_favorited(self) -> bool:
+        """
+        プロジェクトに「お気に入り」を付けているかを取得します。
+
+        Returns:
+            bool: プロジェクトに「お気に入り」を付けているか
+        """
+        self.require_session()
+        response = await self.client.get(f"https://api.scratch.mit.edu/projects/{self.id}/favorites/user/{self._session.username}")
+        data:ProjectFavoritePayload = response.json()
+        return data.get("userFavorite")
+
+    async def add_favorite(self) -> bool:
+        """
+        プロジェクトに「お気に入り」を付けます。
+
+        Returns:
+            bool: ステータスが変更されたか
+        """
+        self.require_session()
+        response = await self.client.post(f"https://api.scratch.mit.edu/projects/{self.id}/favorites/user/{self._session.username}")
+        data:ProjectFavoritePayload = response.json()
+        return data.get("statusChanged")
+    
+    async def remove_favorite(self) -> bool:
+        """
+        プロジェクトから「お気に入り」を外します。
+
+        Returns:
+            bool: ステータスが変更されたか
+        """
+        self.require_session()
+        response = await self.client.delete(f"https://api.scratch.mit.edu/projects/{self.id}/favorites/user/{self._session.username}")
+        data:ProjectFavoritePayload = response.json()
+        return data.get("statusChanged")
+    
+    async def add_view(self) -> bool:
+        """
+        プロジェクトの閲覧数を増やします。
+
+        Returns:
+            bool: 閲覧数が増えたか
+        """
+        try:
+            await self.client.post(f"https://api.scratch.mit.edu/users/{self._author_username}/projects/{self.id}/views/")
+        except error.TooManyRequests:
+            return False
+        else:
+            return True
+    
+    async def post_comment(
+        self,content:str,
+        parent:"comment.Comment|int|None"=None,commentee:"user.User|int|None"=None,
+        is_old:bool=False
+    ) -> "comment.Comment":
+        """
+        コメントを投稿する。
+
+        Args:
+            content (str): コメントの内容
+            parent (Comment|int|None, optional): 返信する場合、返信元のコメントかID
+            commentee (User|int|None, optional): メンションする場合、ユーザーかそのユーザーのID
+            is_old (bool, optional): 古いAPIを使用して送信するか
+
+        Returns:
+            comment.Comment: 投稿されたコメント
+        """
+        return await comment.Comment.post_comment(self,content,parent,commentee,is_old)
+
+class ProjectVisibility:
+    """
+    プロジェクトのステータス。
+
+    Attributes:
+        id (int): プロジェクトのID
+        project (Project): ステータスを表しているプロジェクト
+        author (User): そのプロジェクトの作者
+
+        deleted (bool)
+        censored (bool)
+        censored_by_admin (bool)
+        censored_by_community (bool)
+        reshareble (bool)
+        message (str)
+    """
+    def __init__(self,data:ProjectVisibilityPayload,project:Project):
+        assert project.session
+        self.id = data.get("projectId")
+        self.project = project
+        self.author = self.project.author or project.session.user
+        self.author.id = data.get("creatorId")
+
+        self.deleted = data.get("deleted")
+        self.censored = data.get("censored")
+        self.censored_by_admin = data.get("censoredByAdmin")
+        self.censored_by_community = data.get("censoredByCommunity")
+        self.reshareble = data.get("reshareable")
+        self.message = data.get("message")
+
+class ProjectFeatured:
+    """
+    注目のプロジェクト欄を表す。
+
+    Attributes:
+        project (Project): 設定されているプロジェクト
+        author (User): そのプロジェクトの作者
+        label (ProjectFeaturedLabel): プロジェクトのラベル
+    """
+    def __repr__(self):
+        return repr(self.project)
+
+    def __new__(cls,data:UserFeaturedPayload,_user:"user.User"):
+        _project = data.get("featured_project_data")
+        if _project is None:
+            return
+        else:
+            return super().__new__(cls)
+
+    def __init__(self,data:UserFeaturedPayload,_user:"user.User"):
+        _project = data.get("featured_project_data")
+        _user_payload = data.get("user")
+        assert _project
+
+        self.project = Project(int(_project.get("id")),_user.client_or_session)
+        self.project._modified_at = _project.get("datetime_modified") + "Z"
+        self.project.title = _project.get("title")
+
+        self.author = self.project.author = _user
+        self.author.id = data.get("id")
+        self.author.profile_id = _user_payload.get("pk")
+
+        self.label = user.ProjectFeaturedLabel.get_from_id(data.get("featured_project_label_id"))
+
+
+def get_project(project_id:int,*,_client:client.HTTPClient|None=None) -> common._AwaitableContextManager[Project]:
+    """
+    プロジェクトを取得する。
+
+    Args:
+        project_id (int): 取得したいプロジェクトのID
+
+    Returns:
+        common._AwaitableContextManager[Project]: await か async with で取得できるプロジェクト
+    """
+    return common._AwaitableContextManager(Project._create_from_api(project_id,_client))
