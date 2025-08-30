@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  ## uncomment before merging to master once test suite is finalized
+  push:
+    branches:
+    - master
+    tags:
+      - '*'
+  pull_request:
+    branches:
+    - master
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CRDS_TEST_ROOT: /tmp
+  CRDS_PATH: /tmp/crds-cache-default-test
+  CRDS_TESTING_CACHE: /tmp/crds-cache-test
+  CRDS_SERVER_URL: https://hst-crds.stsci.edu
+  CRDS_CLIENT_RETRY_COUNT: 3
+  CRDS_CLIENT_RETRY_DELAY_SECONDS: 20
+  LD_LIBRARY_PATH: /usr/local/lib
+
+defaults:
+  run:
+    shell: bash -leo pipefail {0} {0}
+
+jobs:
+  cache:
+    uses: ./.github/workflows/cache.yml
+  pytest:
+    name: ${{ matrix.runs-on }} Python ${{ matrix.python-version }}
+    needs: [ cache ]
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on:
+          - ubuntu-latest
+          - macos-latest
+        python-version:
+          - '3.11'
+          - '3.12'
+          # if this breaks, add an upper pin to `requires-python` and revert this to the latest working version
+          - '3.*'
+    steps:
+      - uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938  # v4.2.0
+        with:
+          fetch-depth: 0
+      - uses: mamba-org/setup-micromamba@06375d89d211a1232ef63355742e9e2e564bc7f7  # v2.0.2
+        with:
+          environment-name: crds-testing
+          create-args: >-
+            python=${{ matrix.python-version }}
+            asdf
+            astropy
+            filelock
+            fitsverify
+            numpy
+            parsley
+            pillow
+            requests
+            scipy
+            six
+          init-shell: bash
+          cache-environment: true
+          cache-downloads: true
+      - run: pip install roman-datamodels git+https://github.com/spacetelescope/jwst
+      - run: pip uninstall --yes crds && ./install && pip install .[submission,test,docs,synphot]
+      - id: cache
+        uses: actions/cache@v4  # v4.0.2
+        with:
+          path: |
+            ${{ needs.cache.outputs.path }}
+            ${{ needs.cache.outputs.testing_cache }}
+          key: ${{ needs.cache.outputs.key }}
+      - run: ./runtests --cover

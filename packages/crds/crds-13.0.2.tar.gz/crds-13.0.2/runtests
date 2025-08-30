@@ -1,0 +1,38 @@
+#! /usr/bin/env python
+import sys
+import os
+import os.path
+import crds
+from crds import config, log
+
+os.chdir(os.path.dirname(sys.argv[0]) or ".")
+topdir = os.getcwd()
+
+CRDS_TEST_ROOT = os.environ.get("CRDS_TEST_ROOT", os.environ["HOME"])
+
+# Unlike historical CRDS with builtin cache,  test cache is now a separate dedicated entity
+# which contains mutated but otherwise same named mutated files.
+# os.environ["CRDS_MAPPATH"] = os.path.join(os.getcwd(), "..", "crds_cache_archive", "mappings")
+os.environ["CRDS_TESTING_CACHE"] = os.path.join(CRDS_TEST_ROOT, "crds-cache-test")
+
+# The *defined* CRDS cache for testing
+os.environ["CRDS_PATH"] = os.path.join(CRDS_TEST_ROOT, "crds-cache-default-test")
+
+# For testing,  even the default cache is controlled and overridden.  This is a test-only setting,
+# ordinarily the cache is controlled by CRDS_PATH, etc.   This controls where files are found if
+# the normal mechanisms for defining the cache are *not* used. It is not intended to replace them.
+os.environ["CRDS_DEFAULT_CACHE"] = os.environ["CRDS_PATH"]
+
+
+if "--cover-html" in sys.argv:
+    status = os.system("pytest --cov=crds --cov-report=html")
+elif "--cover" in sys.argv:
+    status = os.system("pytest --cov=crds --cov-report=term-missing")
+elif "--profile" in sys.argv:
+    status = os.system(f"pytest --profile --pstats-dir={topdir}/.profile-stats")
+else:
+    status = os.system("pytest")
+
+os.system("python -m crds.list --status --log-time")
+
+sys.exit(os.WEXITSTATUS(status))

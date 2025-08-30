@@ -1,0 +1,98 @@
+#! /bin/sh
+
+# ####
+# Usage
+#    install [--skip-types] [--dev]
+#
+# Options
+#    --skip-types : If not new reftypes have been defined, do not rebuild the reftype specs.
+#
+#    --dev : If working in an `edit` install of the package, i.e. `pip install -e`, there is
+#            no need to any further `pip install` operations since all code changes are immediately visible.
+#
+# Notes
+#    If both options are given, this script will do nothing.
+# ####
+
+cd `dirname $0`
+
+skip_types=0
+if [ "$1" = "--skip-types" ]; then
+    shift;
+    skip_types=1
+fi
+
+dev_install=0
+if [ "$1" = "--dev" ]; then
+    shift;
+    dev_install=1
+fi
+
+# The clean script removes temporary and junk files that should not be
+# committed to the source code repo.
+if [ $dev_install = 0 ]; then
+    if (test -e clean); then
+        ./clean
+    fi
+fi
+
+rm -f install.log
+
+st=0
+
+echo "Initial install to create _version.py..."
+pip install -e .
+st=$st$?
+
+# CRDS type specifications are configured in code as individual files in the
+# project "specs" subdirectories.  This step creates combined versions of the
+# specs files for faster loading at runtime by first removing the existing
+# combined spec and then invoking the project package.  Importing the project
+# packages triggers loading type specs which will automatically rebuild the
+# (intentionally removed) combined .json file for faster loading in the future.
+# Once the combined .json spec has been generated, it is committed and
+# installed as code by setup.py and it will be loaded in preference to the
+# individual specs to reduce impact on the file system.  Unless type specifications
+# are being modified,  regenerating the comined_specs.json files should have
+# no effect.   When types are added or modified,  the combined_specs.json file
+# will also automatically be modified during ./install,  and the changes should be
+# both committed to GitHub and later installed normally as source code by setup.py.
+# (setup.py does not regenerate these combined spec files,  it is assumed that
+# type developers will execute this ./install script at least once after adding
+# or changing CRDS type specs,  after which the combined spec file is effectively
+# source code.
+
+if [ $skip_types = 0 ]; then
+    find . -name combined_specs.json | xargs rm
+
+    find crds/hst/specs crds/jwst/specs crds/roman/specs crds/tobs/specs -name '*.*map' | xargs python -m crds.refactoring.checksum
+
+    python -m crds.hst
+    python -m crds.jwst
+    python -m crds.roman
+    python -m crds.tobs
+fi
+
+if [ $dev_install = 0 ]; then
+    echo "Doing setup install..."
+    pip install .
+fi
+st=$st$?
+
+# Optional CRDS test data is only installed by developers using ./install
+# to install CRDS from source code.  To support testing the
+# setup_test_cache script should also be run to install other test files.
+if [ $dev_install = 0 ]; then
+    # echo "Setup data..."
+    # python setup_data.py install --force >>install.log
+    # st=$st$?
+
+    if (test -e clean)
+    then
+        ./clean
+    fi
+fi
+
+echo final status $st
+st=`echo $st | tr -d 0 | cut -c1-1`
+exit $st
