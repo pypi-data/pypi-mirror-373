@@ -1,0 +1,100 @@
+import tkinter
+from tkinter import ttk
+from core.client import create_client_context
+from core.types import Fonts
+{% for module in modules.values() %}
+from {{ module.name.snake_case }}.gui import {{ module.name.pascal_case }}IndexPage
+{% endfor %}{% for item in all_models %}
+from {{ item.module.name.snake_case }}.{{ item.model.name.snake_case }}.gui import {{ item.model.name.pascal_case }}IndexPage, {{ item.model.name.pascal_case }}InstancePage
+{% endfor %}
+
+def gui_main(start_frame='{{ project.name.pascal_case }}IndexPage'):
+    app = {{ project.name.pascal_case }}GUI(start_frame)
+    app.mainloop()
+    
+class {{ project.name.pascal_case }}IndexPage(tkinter.Frame):
+     
+    def __init__(self, parent, controller:'{{ project.name.pascal_case }}GUI'): 
+        super().__init__(parent)
+
+        label = ttk.Label(self, text='{{ project.name.lower_case }}', font=Fonts.heading1, style='Custom.TButton')
+        label.grid(row=0, column=0)
+
+{% for module in modules.values() %}
+        button{{ loop.index }} = ttk.Button(self, text='{{ module.name.lower_case }}', command=lambda: controller.show_frame({{ module.name.pascal_case }}IndexPage), style='Custom.TButton')
+        button{{ loop.index }}.grid(row={{ loop.index }}, column=0)
+{% endfor %}
+
+class {{ project.name.pascal_case }}GUI(tkinter.Tk):
+
+    frame_classes = (
+        {{ project.name.pascal_case }}IndexPage, 
+{% for module in modules.values() %}
+        {{ module.name.pascal_case }}IndexPage,
+{% endfor %}
+{% for item in all_models %}
+        {{ item.model.name.pascal_case }}IndexPage,
+        {{ item.model.name.pascal_case }}InstancePage,
+{% endfor %}
+    )
+
+    def __init__(self, start_frame='{{ project.name.pascal_case }}IndexPage'):
+        super().__init__()
+        self.title('{{ project.name.lower_case }}')
+        self.geometry('1000x800')
+
+        self.ctx = create_client_context()
+
+        style = ttk.Style()
+        style.theme_use('classic')
+        style.configure('Custom.TButton')
+
+        container = ttk.Frame(self)
+        container.config(style='Custom.TButton')
+        container.grid(column=0, row=0, sticky='nsew')
+  
+        self.frames = {}
+        self.current_frame = None
+  
+        for frame_class in self.frame_classes:
+            self.frames[frame_class] = frame_class(container, self)
+            self.frames[frame_class].grid(row=0, column=0, sticky='nsew')
+            self.frames[frame_class].forget()
+  
+        self.show_frame_str(start_frame)
+  
+    def show_frame(self, frame_class, **kwargs):
+        frame = self.frames[frame_class]
+        frame.grid(row=0, column=0, sticky='nsew')
+        frame.tkraise()
+
+        try:
+            self.current_frame.forget()
+        except AttributeError:
+            """self.current_frame is None"""
+
+        on_show_frame = getattr(frame, 'on_show_frame', None)
+        if on_show_frame:
+            on_show_frame(**kwargs)
+        else:
+            print(f"Frame {frame_class} has no on_show_frame method")
+
+        self.current_frame = frame
+
+    def show_frame_str(self, frame_class_str, **kwargs):
+        frame_class = globals()[frame_class_str]
+        self.show_frame(frame_class, **kwargs)
+
+    def show_index_frame(self, **kwargs):
+        self.show_frame({{ project.name.pascal_case }}IndexPage, **kwargs)
+
+if __name__ == '__main__':
+
+    import argparse
+
+    _default_start_frame = '{{ project.name.pascal_case }}IndexPage'
+    parser = argparse.ArgumentParser(description='Run the gui')
+    parser.add_argument('--start-frame', help=f'start frame for gui, default: {_default_start_frame}', default=_default_start_frame)
+    args = parser.parse_args()
+
+    gui_main(args.start_frame)

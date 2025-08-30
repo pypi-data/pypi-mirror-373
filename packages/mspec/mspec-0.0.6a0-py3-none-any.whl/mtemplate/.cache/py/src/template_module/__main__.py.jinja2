@@ -1,0 +1,126 @@
+import argparse
+import random
+from pprint import pprint
+from core.db import create_db_context
+from core.client import create_client_context
+{% for model in module.models.values() %}
+from {{ module.name.snake_case }}.{{ model.name.snake_case }}.client import *
+from {{ module.name.snake_case }}.{{ model.name.snake_case }}.db import *
+from {{ module.name.snake_case }}.{{ model.name.snake_case }}.model import *
+{% endfor %}
+
+
+#
+# define arguments
+#
+
+
+parser = argparse.ArgumentParser(description='{{ project.name.snake_case }} - {{ module.name.lower_case }} - cli')
+
+parser.add_argument('command', type=str, choices=[
+    'data-seed',
+{% for model in module.models.values() %}
+    'verify-{{ model.name.kebab_case }}',
+    'random-{{ model.name.kebab_case }}',
+    'example-{{ model.name.kebab_case }}',
+    'db-create-{{ model.name.kebab_case }}',
+    'db-read-{{ model.name.kebab_case }}',
+    'db-update-{{ model.name.kebab_case }}',
+    'db-delete-{{ model.name.kebab_case }}',
+    'db-list-{{ model.name.kebab_case }}',
+    'client-create-{{ model.name.kebab_case }}',
+    'client-read-{{ model.name.kebab_case }}',
+    'client-update-{{ model.name.kebab_case }}',
+    'client-delete-{{ model.name.kebab_case }}',
+    'client-list-{{ model.name.kebab_case }}',
+{% endfor %}
+])
+
+parser.add_argument('--id', type=str, default=None)
+parser.add_argument('--json', type=str, default=None, help='pass in data as a json string')
+
+parser.add_argument('--offset', type=int, default=0, help='used with pagination')
+parser.add_argument('--limit', type=int, default=25, help='used with pagination')
+parser.add_argument('--seed', type=int, default=None, help='seed for random data generation')
+parser.add_argument('--count', type=int, default=101, help='number of items to seed')
+
+#
+# parse input
+#
+
+args = parser.parse_args()
+    
+if args.seed is not None:
+    random.seed(args.seed)
+
+cli_ctx = {}
+cli_ctx.update(create_db_context())
+cli_ctx.update(create_client_context())
+
+#
+# run program
+#
+
+if args.command == 'data-seed':
+    for _ in range(args.count):
+{% for model in module.models.values() %}
+        db_create_{{ model.name.snake_case }}(cli_ctx, {{ model.name.pascal_case }}.random())
+{% endfor %}
+
+{% for model in module.models.values() %}
+elif args.command == 'verify-{{ model.name.kebab_case }}':
+    result = {{ model.name.pascal_case }}.from_json(args.json).validate()
+
+elif args.command == 'random-{{ model.name.kebab_case }}':
+    result = {{ model.name.pascal_case }}.random().to_json()
+
+elif args.command == 'example-{{ model.name.kebab_case }}':
+    result = {{ model.name.pascal_case }}.example().to_json()
+
+elif args.command == 'db-create-{{ model.name.kebab_case }}':
+    if args.json is None:
+        raise Exception('must supply data via json argument')
+    result = db_create_{{ model.name.snake_case }}(cli_ctx, {{ model.name.pascal_case }}.from_json(args.json))
+
+elif args.command == 'db-read-{{ model.name.kebab_case }}':
+    result = db_read_{{ model.name.snake_case }}(cli_ctx, args.id)
+
+elif args.command == 'db-update-{{ model.name.kebab_case }}':
+    if args.json is None:
+        raise Exception('must supply data via json argument')
+    result = db_update_{{ model.name.snake_case }}(cli_ctx, args.id, {{ model.name.pascal_case }}.from_json(args.json))
+
+elif args.command == 'db-delete-{{ model.name.kebab_case }}':
+    result = db_delete_{{ model.name.snake_case }}(cli_ctx, args.id)
+
+elif args.command == 'db-list-{{ model.name.kebab_case }}':
+    result = db_list_{{ model.name.snake_case }}(cli_ctx, args.offset, args.limit)
+
+elif args.command == 'client-create-{{ model.name.kebab_case }}':
+    if args.json is None:
+        raise Exception('must supply data via json argument')
+    result = client_create_{{ model.name.snake_case }}(cli_ctx, {{ model.name.pascal_case }}.from_json(args.json))
+
+elif args.command == 'client-read-{{ model.name.kebab_case }}':
+    result = client_read_{{ model.name.snake_case }}(cli_ctx, )
+
+elif args.command == 'client-update-{{ model.name.kebab_case }}':
+    result = client_update_{{ model.name.snake_case }}(cli_ctx, )
+
+elif args.command == 'client-delete-{{ model.name.kebab_case }}':
+    result = client_delete_{{ model.name.snake_case }}(cli_ctx, )
+
+elif args.command == 'client-list-{{ model.name.kebab_case }}':
+    result = client_list_{{ model.name.snake_case }}(cli_ctx, args.offset, args.limit)
+{% endfor %}
+
+#
+# output result
+#
+
+if isinstance(result, dict):
+    pprint(result)
+elif result is None:
+    pass
+else:
+    print(result)
