@@ -1,0 +1,52 @@
+when:
+  - event: tag
+    branch: main
+
+matrix:
+  # PYTHON_VERSION: [3.11, 3.12, 3.13]
+  PYTHON_VERSION: [3.13]
+
+depends_on: ["publish_pypi"]
+
+steps:
+  sleep:
+    image: ghcr.io/astral-sh/uv:python3.11-alpine
+    commands:
+      - sleep 30
+  publish_docker_latest:
+    image: woodpeckerci/plugin-docker-buildx
+    settings:
+      platforms: linux/amd64,linux/arm64
+      repo: helgekr/cattle_grid
+      username:
+        from_secret: docker_username
+      password:
+        from_secret: docker_password
+      dockerfile: resources/docker/Dockerfile
+      tags:
+        - latest
+        - ${CI_COMMIT_TAG}
+        - ${CI_COMMIT_TAG}-python${PYTHON_VERSION}
+      build_args:
+        - tag=${CI_COMMIT_TAG}
+        - python_tag=${PYTHON_VERSION}
+    when:
+      - matrix: { PYTHON_VERSION: 3.13 }
+  publish_docker_other:
+    image: woodpeckerci/plugin-docker-buildx
+    settings:
+      platforms: linux/amd64,linux/arm64
+      repo: helgekr/cattle_grid
+      username:
+        from_secret: docker_username
+      password:
+        from_secret: docker_password
+      dockerfile: resources/docker/Dockerfile
+      tags:
+        - ${CI_COMMIT_TAG}-python${PYTHON_VERSION}
+      build_args:
+        - tag=${CI_COMMIT_TAG}
+        - python_tag=${PYTHON_VERSION}
+    when:
+      - matrix: { PYTHON_VERSION: 3.11 }
+      - matrix: { PYTHON_VERSION: 3.12 }
