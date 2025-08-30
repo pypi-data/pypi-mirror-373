@@ -1,0 +1,71 @@
+# Package MD5 documentation generation job
+
+peek_py_package_md5_doc:
+    extends: .alma8_old_build
+    dependencies:
+        - peek_py_package_build_community
+        - peek_py_package_build_enterprise
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "push"'
+          when: never
+        - if: '$CI_PIPELINE_SOURCE == "web"'
+        - if: '$CI_PIPELINE_SOURCE == "triggers"'
+        - if: '$CI_PIPELINE_SOURCE == "api"'
+    stage: doc
+    artifacts:
+        paths:
+            - $ARTIFACTS_DIR/pypkg_md5_table.md
+        expire_in: 1 week
+    script:
+        - echo "Creating package MD5 table..."
+        - mkdir -p $ARTIFACTS_DIR
+
+        # Debug Check what artifacts were downloaded
+        - echo "Checking downloaded artifacts..."
+        - echo "Current directory $(pwd)"
+        - echo "GIT_CLONE_PATH ${GIT_CLONE_PATH}"
+
+        # Set up a build environment from publish artifacts
+        - echo "Setting up build environment from publish artifacts..."
+        - export COMMUNITY_PACKAGES_DIR="${GIT_CLONE_PATH}/community_packages"
+        - export ENTERPRISE_PACKAGES_DIR="${GIT_CLONE_PATH}/enterprise_packages"
+        - find ${GIT_CLONE_PATH} -name "*.tar.gz"
+        - ls -la ${COMMUNITY_PACKAGES_DIR}/*.tar.gz
+        - ls -la ${ENTERPRISE_PACKAGES_DIR}/*.tar.gz
+
+        # Create a package MD5 table header
+        - echo "| Package | MD5 Hash | Size |" > $ARTIFACTS_DIR/pypkg_md5_table.md
+        - echo "|---------|----------|------|" >> $ARTIFACTS_DIR/pypkg_md5_table.md
+
+        # Process community packages
+        - echo "Processing community packages..."
+        - COMMUNITY_COUNT=0
+        -   for package_file in ${COMMUNITY_PACKAGES_DIR}/*.tar.gz;
+            do
+                package_name=$(basename "$package_file");
+                md5_hash=$(md5sum "$package_file" | cut -d' ' -f1);
+                file_size=$(ls -lh "$package_file" | awk '{print $5}');
+                echo "| ${package_name} | ${md5_hash} | ${file_size} |" >> $ARTIFACTS_DIR/pypkg_md5_table.md;
+                COMMUNITY_COUNT=$((COMMUNITY_COUNT + 1));
+                echo "Processed community package ${package_name}";
+            done;
+        - echo "Processed ${COMMUNITY_COUNT} community packages"
+
+        # Process enterprise packages
+        - echo "Processing enterprise packages..."
+        - ENTERPRISE_COUNT=0
+        -  for package_file in ${ENTERPRISE_PACKAGES_DIR}/*.tar.gz;
+            do
+                package_name=$(basename "$package_file");
+                md5_hash=$(md5sum "$package_file" | cut -d' ' -f1);
+                file_size=$(ls -lh "$package_file" | awk '{print $5}');
+                echo "| ${package_name} | ${md5_hash} | ${file_size} |" >> $ARTIFACTS_DIR/pypkg_md5_table.md;
+                ENTERPRISE_COUNT=$((ENTERPRISE_COUNT + 1));
+                echo "Processed enterprise package ${package_name}";
+            done;
+        - echo "Processed ${ENTERPRISE_COUNT} enterprise packages"
+
+
+        - echo "Package MD5 table created at $ARTIFACTS_DIR/pypkg_md5_table.md"
+        - echo "Contents:"
+        - cat $ARTIFACTS_DIR/pypkg_md5_table.md

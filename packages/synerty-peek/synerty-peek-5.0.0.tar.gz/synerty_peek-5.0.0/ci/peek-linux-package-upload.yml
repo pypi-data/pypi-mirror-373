@@ -1,0 +1,81 @@
+# Upload jobs for ci artifacts
+.upload_platform_packages_template:
+  stage: upload
+  script:
+    - echo "Starting platform packages upload..."
+    - curl --version
+    - cd $ARTIFACTS_DIR/
+    - pwd
+    - ls -la
+
+    # Create directory structure
+    - curl -X MKCOL ${DROPBOX_UPLOAD_URL}/
+
+    - export BASE="$(ls peek-platform*rpm | sed 's/.rpm//g')"
+    - export TAR="${BASE}.tar"
+
+    - tar cf "${TAR}" ${BASE}.* sbom
+
+    # Create tar files for each package (md and rpm with same base name)
+    - echo "Uploading ${TAR} to building directory...";
+    - time curl -k -f -v --upload-file "${TAR}" ${DROPBOX_UPLOAD_URL}/;
+    - echo "Upload completed for ${TAR}";
+
+    - echo "Platform packages upload completed"
+
+peek_linux_package_upload_rhel8:
+    extends:
+        - .upload_platform_packages_template
+        - .alma8_with_epel
+    needs:
+        - peek_linux_package_build_rhel8
+        - peek_linux_package_test_rhel8
+        - peek_sbom_generation_rhel8
+    variables:
+        LINUX_VERSION: "el8"
+    rules:
+        -   if: '$CI_PIPELINE_SOURCE == "push"'
+            when: never
+        -   if: '$CI_PIPELINE_SOURCE == "web"'
+        -   if: '$CI_PIPELINE_SOURCE == "triggers"'
+        -   if: '$CI_PIPELINE_SOURCE == "api"'
+        -   if: '$BUILD_TARGET == "RHEL8" || $BUILD_TARGET == null || 
+            $BUILD_TARGET == ""'
+
+peek_linux_package_upload_rhel9:
+    extends:
+        - .upload_platform_packages_template
+        - .alma9_with_epel
+    needs:
+        - peek_linux_package_build_rhel9
+        - peek_linux_package_test_rhel9
+        - peek_sbom_generation_rhel9
+    variables:
+        LINUX_VERSION: "el9"
+    rules:
+        -   if: '$CI_PIPELINE_SOURCE == "push"'
+            when: never
+        -   if: '$CI_PIPELINE_SOURCE == "web"'
+        -   if: '$CI_PIPELINE_SOURCE == "triggers"'
+        -   if: '$CI_PIPELINE_SOURCE == "api"'
+        -   if: '$BUILD_TARGET == "RHEL9" || $BUILD_TARGET == null || 
+           $BUILD_TARGET == ""'
+
+peek_linux_package_upload_amzn2023:
+    extends:
+        - .upload_platform_packages_template
+        - .amazonlinux2023_with_epel
+    needs:
+        - peek_linux_package_build_amzn2023
+        - peek_linux_package_test_amzn2023
+        - peek_sbom_generation_amzn2023
+    variables:
+        LINUX_VERSION: "amzn2023"
+    rules:
+        -   if: '$CI_PIPELINE_SOURCE == "push"'
+            when: never
+        -   if: '$CI_PIPELINE_SOURCE == "web"'
+        -   if: '$CI_PIPELINE_SOURCE == "triggers"'
+        -   if: '$CI_PIPELINE_SOURCE == "api"'
+        -   if: '$BUILD_TARGET == "amzn2023_7" || $BUILD_TARGET == null ||
+            $BUILD_TARGET == ""'

@@ -1,0 +1,432 @@
+.peek_linux_package_build_template:
+    extends: .peek_package_template
+    timeout: 2h
+    script:
+        # Set version variables based on RELEASE_TAG
+        - if [ -n "${RELEASE_TAG:-}" ];
+            then
+            export PACKAGE_VERSION="$(echo ${RELEASE_TAG} | cut -d. -f3)";
+            else
+            export PACKAGE_VERSION="$(echo ${RELEASE_BRANCH} | cut -d. -f3)";
+            fi
+        - echo "Version configuration - PACKAGE_BRANCH=${PACKAGE_BRANCH}, PACKAGE_VERSION=${PACKAGE_VERSION}"
+
+        # Define absolute path variables
+        - export PROJECT_ROOT="$(pwd)"
+        - export BUILD_ROOT="${PROJECT_ROOT}/build"
+        - export PEEK_INSTALL_DIR="${PEEK_SOFTWARE_HOME}/peek-platform"
+        - export PEEK_VENV_DIR="${PEEK_INSTALL_DIR}/venv"
+        - export PEEK_SCRIPTS_DIR="${PEEK_INSTALL_DIR}/scripts"
+        - export PEEK_NODEJS_DIR="${PEEK_INSTALL_DIR}/nodejs"
+        - export RPM_BUILD_ROOT="${BUILD_ROOT}/rpmbuild"
+        - export SPEC_FILE="${RPM_BUILD_ROOT}/SPECS/peek-platform.spec"
+
+        # Install peek-env, peek-python, and peek-postgresql packages from fetch job
+        - echo "Installing peek dependency packages..."
+        - dnf install -y
+            $ARTIFACTS_DIR/peek-env.rpm
+            $ARTIFACTS_DIR/peek-python.rpm
+            $ARTIFACTS_DIR/peek-postgresql.rpm
+            $ARTIFACTS_DIR/peek-oracle-instant-client.rpm
+
+        # Apply SED replacements to source files in ci directory
+        - export FILES_TO_UPDATE=$(echo
+            ${PROJECT_ROOT}/ci/spec/peek-platform.spec
+            ${PROJECT_ROOT}/ci/profile.d/*
+            ${PROJECT_ROOT}/ci/pkg-scripts/*
+            ${PROJECT_ROOT}/ci/service/*
+            ${PROJECT_ROOT}/ci/sudoers.d/*
+            ${PROJECT_ROOT}/ci/admin/*
+            ${PROJECT_ROOT}/ci/scripts/*
+            )
+
+        # Replace version variables in source files
+        - sed -i "s/SED_PACKAGE_BRANCH/${PACKAGE_BRANCH}/g" $FILES_TO_UPDATE
+        - sed -i "s/SED_PACKAGE_VERSION/${PACKAGE_VERSION}/g" $FILES_TO_UPDATE
+        - sed -i "s/SED_PACKAGE_DATE/$(date '+%a %b %d %Y')/g" $FILES_TO_UPDATE
+        - sed -i "s;SED_PEEK_HOME;${PEEK_HOME};g" $FILES_TO_UPDATE
+        - sed -i "s;SED_PEEK_PROFILE_D;${PEEK_PROFILE_D};g" $FILES_TO_UPDATE
+        - sed -i "s;SED_PEEK_SOFTWARE_HOME;${PEEK_SOFTWARE_HOME};g" $FILES_TO_UPDATE
+        - sed -i "s;SED_PEEK_DATA_HOME;${PEEK_DATA_HOME};g" $FILES_TO_UPDATE
+        - sed -i "s;SED_PEEK_RUN_HOME;${PEEK_RUN_HOME};g" $FILES_TO_UPDATE
+        - sed -i "s;SED_PEEK_LOG_HOME;${PEEK_LOG_HOME};g" $FILES_TO_UPDATE
+        - sed -i "s;SED_PEEK_CONFIG_HOME;${PEEK_CONFIG_HOME};g" $FILES_TO_UPDATE
+        - sed -i "s;SED_PEEK_TMP_HOME;${PEEK_TMP_HOME};g" $FILES_TO_UPDATE
+        - sed -i "s;SED_PEEK_SERVICE_CONFIG_HOME;${PEEK_SERVICE_CONFIG_HOME};g" $FILES_TO_UPDATE
+        - sed -i "s;SED_PEEK_SERVICE_LOG_DIR;${PEEK_SERVICE_LOG_DIR};g" $FILES_TO_UPDATE
+        - sed -i "s;SED_PEEK_VENV_DIR;${PEEK_VENV_DIR};g" $FILES_TO_UPDATE
+        - sed -i "s;SED_PEEK_SCRIPTS_DIR;${PEEK_SCRIPTS_DIR};g" $FILES_TO_UPDATE
+        - sed -i "s;SED_PEEK_NODEJS_DIR;${PEEK_NODEJS_DIR};g" $FILES_TO_UPDATE
+        - sed -i "s;SED_PEEK_SRC_SYMLINK;${PEEK_SRC_SYMLINK};g" $FILES_TO_UPDATE
+        - sed -i "s;SED_PEEK_ORACLE_HOME;${PEEK_ORACLE_HOME};g" $FILES_TO_UPDATE
+        - sed -i "s;SED_PEEK_PG_LD_LIBRARY_PATH;${PEEK_PG_LD_LIBRARY_PATH};g" $FILES_TO_UPDATE
+
+        # Install build dependencies and required tools
+        - test "$PKG_BUILD_FOR_RHEL8" != "true"
+            || dnf install -y wget curl tar bzip2 gcc gcc-c++ make rpm-build
+        - test "$PKG_BUILD_FOR_RHEL9" != "true"
+            || dnf install -y wget curl tar bzip2 gcc gcc-c++ make rpm-build
+        - test "$PKG_BUILD_FOR_AL_2023_7" != "true"
+            || dnf install -y wget curl tar bzip2 gcc gcc-c++ make rpm-build
+
+        # This is needed for the ldap python package to compile
+        - dnf install -y openldap-devel
+
+        # this is needed for cx-oracle to compile
+        - dnf install -y libaio-devel
+
+        - source ${PEEK_SOFTWARE_HOME}/env/activate
+
+        # Install Python build tools
+        - pip install --upgrade pip setuptools virtualenv build
+
+        # Create build directory
+        - mkdir -p ${BUILD_ROOT}
+        - pushd ${BUILD_ROOT}
+
+        # Set up build environment from publish artifacts
+        - echo "Setting up build environment from publish artifacts..."
+        - export COMMUNITY_PACKAGES_DIR="${GIT_CLONE_PATH}/community_packages"
+        - export ENTERPRISE_PACKAGES_DIR="${GIT_CLONE_PATH}/enterprise_packages"
+
+        # Create the new directory structure
+        - mkdir -p ${PEEK_INSTALL_DIR}
+        - mkdir -p ${PEEK_VENV_DIR}
+        - mkdir -p ${PEEK_SCRIPTS_DIR}
+        - mkdir -p ${PEEK_NODEJS_DIR}
+
+        # Source the peek environment
+        - source /etc/profile.d/lang.sh
+
+        # Use the new python from peek-python package to create virtualenv
+        - ${PEEK_SOFTWARE_HOME}/python/bin/python -m virtualenv ${PEEK_VENV_DIR}
+        - ls ${PEEK_VENV_DIR}/bin/python || ln -sv ${PEEK_VENV_DIR}/bin/python3 ${PEEK_VENV_DIR}/bin/python
+        - ls ${PEEK_VENV_DIR}/bin/python3 || true
+        - ls ${PEEK_VENV_DIR}/bin/pip || ln -sv ${PEEK_VENV_DIR}/bin/pip3 ${PEEK_VENV_DIR}/bin/pip
+        - ls ${PEEK_VENV_DIR}/bin/pip3 || true
+
+        # Activate the virtual environment
+        - export PATH="${PEEK_VENV_DIR}/bin:$PATH"
+
+        # Set up psycopg optimizations (enhanced from package_linux.sh)
+        - echo "Setting up generic compiler flags..."
+        - export CFLAGS="-O2 -mtune=generic -fPIC ${CFLAGS:-}"
+        - export CXXFLAGS="-O2 -mtune=generic -fPIC ${CXXFLAGS:-}"
+        - export LDFLAGS="-Wl,-rpath,\$ORIGIN ${LDFLAGS:-}"
+
+        # Add oracle instant client for runtime
+        - export ORACLE_HOME="${PEEK_ORACLE_HOME}"
+        - export LD_LIBRARY_PATH="${PEEK_ORACLE_HOME}:${LD_LIBRARY_PATH:-}"
+
+        # Get community and enterprise packages from pip_common.sh
+        - source ${PROJECT_ROOT}/pip_common.sh
+
+        # Extract versions from pinned dependencies file
+        - echo "Extracting package versions from ${PINNED_DEPS_PY_FILE}..."
+        - export PYTHON_LDAP_VERSION=$(grep "^python-ldap==" "${PINNED_DEPS_PY_FILE}" | cut -d'=' -f3)
+        - export PSYCOPG_VERSION=$(grep "^psycopg-c==" "${PINNED_DEPS_PY_FILE}" | cut -d'=' -f3)
+        - export CX_ORACLE_VERSION=$(grep "^cx-oracle==" "${PINNED_DEPS_PY_FILE}" | cut -d'=' -f3)
+        - echo "Versions - python-ldap ${PYTHON_LDAP_VERSION}"
+        - echo "Versions - psycopg ${PSYCOPG_VERSION}"
+        - echo "Versions - cx-oracle ${CX_ORACLE_VERSION}"
+
+        # Test that extracted versions are not empty
+        - echo "Validating extracted package versions..."
+        - if [ -z "${PYTHON_LDAP_VERSION}" ];
+            then
+            echo "ERROR PYTHON_LDAP_VERSION is empty" >&2;
+            exit 1;
+            fi
+        - if [ -z "${PSYCOPG_VERSION}" ];
+            then
+            echo "ERROR PSYCOPG_VERSION is empty" >&2;
+            exit 1;
+            fi
+        - if [ -z "${CX_ORACLE_VERSION}" ];
+            then
+            echo "ERROR CX_ORACLE_VERSION is empty" >&2;
+            exit 1;
+            fi
+        - echo "All package versions successfully extracted and validated"
+
+        # Pre-compile problematic packages with specific flags
+        - echo "Purging pip cache"
+        - pip cache purge
+
+        - pushd ${COMMUNITY_PACKAGES_DIR}
+
+        # Pre-compile python-ldap with system LDAP headers only
+        - echo "Pre-compiling python-ldap==${PYTHON_LDAP_VERSION}..."
+        - pip wheel
+            --no-binary python-ldap
+            "python-ldap==${PYTHON_LDAP_VERSION}"
+
+        # Pre-compile psycopg with current optimization flags
+        - echo "Pre-compiling psycopg==${PSYCOPG_VERSION}..."
+        - pip wheel
+            --no-binary psycopg
+            --no-binary psycopg-c
+            "psycopg==${PSYCOPG_VERSION}"
+            "psycopg-c==${PSYCOPG_VERSION}"
+
+        # Pre-compile cx-oracle with Oracle-specific flags
+        - echo "Pre-compiling cx-oracle==${CX_ORACLE_VERSION} with Oracle SDK..."
+        - env CPPFLAGS="-I${PEEK_ORACLE_HOME}/sdk/include"
+            LDFLAGS="-L${PEEK_ORACLE_HOME} -Wl,-rpath,${PEEK_ORACLE_HOME} ${LDFLAGS}"
+            pip wheel
+            --no-binary cx-oracle
+            "cx-oracle==${CX_ORACLE_VERSION}"
+
+        # Install all platform packages using pre-compiled wheels and remaining source packages
+        - echo "Installing all platform packages..."
+        - mv ${ENTERPRISE_PACKAGES_DIR}/*.gz ${COMMUNITY_PACKAGES_DIR}/
+        - time pip install
+            --find-links=${COMMUNITY_PACKAGES_DIR}
+            -r "${PINNED_DEPS_PY_FILE}"
+            *.gz
+
+        - popd
+
+
+        # Set up Node.js for frontend applications
+        - echo "Setting up Node.js for frontend applications..."
+        - export NODE_VERSION="${NODE_VERSION}"
+        - export NODE_DIR="${BUILD_ROOT}/node"
+        - export NODE_FILE="node-v${NODE_VERSION}-linux-x64.tar.xz"
+        - export NEXUS_NODEJS_CACHE_URL="http://nexus.synerty.com/repository/ci-wget-cache-nodejs/"
+        - wget -nv "${NEXUS_NODEJS_CACHE_URL}/v${NODE_VERSION}/${NODE_FILE}"
+        - time tar xJf ${NODE_FILE}
+        - mv node-v${NODE_VERSION}-linux-x64 ${NODE_DIR}
+        - rm -rf ${NODE_FILE}
+        - export PATH="${NODE_DIR}/bin:$PATH"
+
+        # Install required NPM packages globally
+        - npm cache clean --force
+        - npm -g install
+            @angular/cli@${ANGULAR_CLI_VERSION}
+            typescript@${TYPESCRIPT_VERSION}
+            tslint@${TSLINT_VERSION}
+
+        # Copy node components to nodejs directory instead of venv
+        - echo "Installing node components to separate nodejs directory..."
+        - cp -pr ${NODE_DIR}/* ${PEEK_NODEJS_DIR}/
+
+        # Return to build root
+        - cd ${BUILD_ROOT}
+
+        # Create share directory and copy ci files as whole directories
+        - mkdir -p ${PEEK_INSTALL_DIR}/share
+        - cp -av ${PROJECT_ROOT}/ci/pkg-scripts ${PEEK_INSTALL_DIR}/share/
+        - chmod +x ${PEEK_INSTALL_DIR}/share/pkg-scripts/*.sh
+
+        # Copy profile.d files to share directory for post-installation use
+        - cp -av ${PROJECT_ROOT}/ci/profile.d ${PEEK_INSTALL_DIR}/share/
+
+        # Copy scripts directory as whole directory to scripts location
+        - cp -av ${PROJECT_ROOT}/ci/scripts/* ${PEEK_SCRIPTS_DIR}/
+        - chmod +x ${PEEK_SCRIPTS_DIR}/*.sh
+
+        # Copy admin directory as whole directory to share/admin
+        - cp -av ${PROJECT_ROOT}/ci/admin ${PEEK_INSTALL_DIR}/share/
+        - chmod +x ${PEEK_INSTALL_DIR}/share/admin/*.sh
+
+        # Copy service directory as whole directory to share/service
+        - cp -av ${PROJECT_ROOT}/ci/service ${PEEK_INSTALL_DIR}/share/
+
+        # Copy sudoers.d as whole directory to share/sudoers.d
+        - cp -av ${PROJECT_ROOT}/ci/sudoers.d ${PEEK_INSTALL_DIR}/share/
+
+        # Return to build root
+        - cd ${BUILD_ROOT}
+
+        # Create RPM package structure
+        - mkdir -p ${RPM_BUILD_ROOT}/{SPECS,SOURCES,BUILD,RPMS,SRPMS}
+
+        # Copy additional files to SOURCES as whole directories
+        - cp -av ${PROJECT_ROOT}/ci/service ${RPM_BUILD_ROOT}/SOURCES/
+        - cp -av ${PROJECT_ROOT}/ci/sudoers.d ${RPM_BUILD_ROOT}/SOURCES/
+
+        # Copy spec file
+        - cp -v ${PROJECT_ROOT}/ci/spec/peek-platform.spec ${SPEC_FILE}
+
+        # Verify critical components are in place
+        - echo "Verifying installation components..."
+        - test -f ${PEEK_VENV_DIR}/bin/python
+        - test -f ${PEEK_VENV_DIR}/bin/pip
+        - test -d ${PEEK_VENV_DIR}/lib
+        - test -d ${PEEK_SCRIPTS_DIR}
+        - test -d ${PEEK_NODEJS_DIR}
+        - test -d ${PEEK_INSTALL_DIR}/share
+
+        # Test that Peek platform can be imported
+        - echo "Testing Peek platform import..."
+        - ${PEEK_VENV_DIR}/bin/python -c "import peek_platform; print('Peek platform version:', peek_platform.__version__)"
+
+        # Build RPM package with maximum performance optimizations
+        - echo "Building RPM package..."
+        - time rpmbuild
+            --define "_topdir ${RPM_BUILD_ROOT}"
+            --define "_binary_payload w6.gzdio"
+            --nocheck
+            --noclean
+            --noprep
+            -bb ${SPEC_FILE}
+
+        # Copy RPM to artifacts with new naming format
+        - export NEW_RPM_NAME="peek-platform-${PACKAGE_BRANCH}-${PACKAGE_VERSION}.${LINUX_VERSION}.x86_64.rpm"
+        - time cp -v ${RPM_BUILD_ROOT}/RPMS/x86_64/peek-platform-*.rpm
+            "$ARTIFACTS_DIR/$NEW_RPM_NAME"
+
+        # Calculate MD5 of generated RPM
+        - export rpm_file="$ARTIFACTS_DIR/$NEW_RPM_NAME"
+        - export RPM_MD5=$(md5sum "$rpm_file" | cut -d' ' -f1);
+        - export RPM_SIZE=$(ls -lh "$rpm_file" | awk '{print $5}');
+        - echo "RPM MD5 ${RPM_MD5}, Size ${RPM_SIZE}";
+
+        # Create single comprehensive build documentation
+        - |
+            cat > $ARTIFACTS_DIR/peek-platform-${PACKAGE_BRANCH}-${PACKAGE_VERSION}.${LINUX_VERSION}.x86_64.md << EOF
+            # Peek Platform Complete Build Documentation
+
+            ## Build Details
+
+            - **Date of build:** $(date '+%Y-%m-%d %H:%M:%S UTC')
+            - **Pipeline ID:** ${CI_PIPELINE_ID}
+            - **Pipeline URL:** ${CI_PIPELINE_URL}
+            - **Branch:** ${CI_COMMIT_REF_NAME}
+            - **Release Branch:** ${RELEASE_BRANCH}
+            - **Release Version:** ${RELEASE_TAG:-${PACKAGE_BRANCH}-${PACKAGE_VERSION}}
+            - **Linux Version:** ${LINUX_VERSION}
+            - **RPM MD5:** ${RPM_MD5}
+            - **RPM Size:** ${RPM_SIZE}
+
+            ## GitLab Server Information
+
+            - **Server Version:** ${CI_SERVER_VERSION}
+            - **Server URL:** ${CI_SERVER_URL}
+            - **Server Host:** ${CI_SERVER_HOST}
+
+            ## Build Environment Details
+
+            - **Node.js Version:** ${NODE_VERSION}
+            - **Python Version:** $(${PEEK_VENV_DIR}/bin/python --version)
+            - **Pip Version:** $(${PEEK_VENV_DIR}/bin/pip --version)
+
+            ## Service Management
+
+            Services are installed but disabled by default. Use systemctl to enable and start them.
+
+            ## Repository Commit Information
+
+            $(cat $ARTIFACTS_DIR/clones_sha1_table.md)
+
+            ## Package MD5 Information
+
+            $(cat $ARTIFACTS_DIR/pypkg_md5_table.md)
+
+            ## Installed Peek Packages
+
+            \`\`\`
+            $(${PEEK_VENV_DIR}/bin/pip list | grep -E "(peek|synerty)")
+            \`\`\`
+
+            ## Installed Other Packages
+
+            \`\`\`
+            $(${PEEK_VENV_DIR}/bin/pip list | grep -v -E "(peek|synerty)")
+            \`\`\`
+
+            ---
+
+            *Build completed successfully - Generated automatically by GitLab CI/CD Pipeline*
+
+            EOF
+
+        # List artifacts directory contents
+        - echo "Build artifacts created:"
+        - ls -lh $ARTIFACTS_DIR
+
+        # Return to project root
+        - popd
+
+        # Final verification
+        - echo "Final verification Peek platform build completed successfully"
+        - echo "RPM package created with modular directory structure"
+        - echo "Virtual environment ${PEEK_VENV_DIR}"
+        - echo "Scripts directory ${PEEK_SCRIPTS_DIR}"
+        - echo "Node.js directory ${PEEK_NODEJS_DIR}"
+
+    artifacts:
+        paths:
+            - $ARTIFACTS_DIR/peek-platform-*.rpm
+            - $ARTIFACTS_DIR/peek-platform-*.md
+
+# Concrete jobs for different distributions
+peek_linux_package_build_rhel8:
+    extends:
+        - .peek_linux_package_build_template
+        - .alma8_with_epel
+    dependencies:
+        - peek_py_package_build_community
+        - peek_py_package_build_enterprise
+        - peek_linux_dependencies_fetch_rhel8
+        - peek_git_sha1_doc
+        - peek_py_package_md5_doc
+    stage: lin_package
+    variables:
+        PKG_BUILD_FOR_RHEL8: "true"
+        LINUX_VERSION: "el8"
+    rules:
+        -   if: '$CI_PIPELINE_SOURCE == "push"'
+            when: never
+        -   if: '$CI_PIPELINE_SOURCE == "web"'
+        -   if: '$CI_PIPELINE_SOURCE == "triggers"'
+        -   if: '$CI_PIPELINE_SOURCE == "api"'
+        -   if: '$BUILD_TARGET == "RHEL8" || $BUILD_TARGET == null || 
+           $BUILD_TARGET == ""'
+
+peek_linux_package_build_rhel9:
+    extends:
+        - .peek_linux_package_build_template
+        - .alma9_with_epel
+    dependencies:
+        - peek_py_package_build_community
+        - peek_py_package_build_enterprise
+        - peek_linux_dependencies_fetch_rhel9
+        - peek_git_sha1_doc
+        - peek_py_package_md5_doc
+    stage: lin_package
+    variables:
+        PKG_BUILD_FOR_RHEL9: "true"
+        LINUX_VERSION: "el9"
+    rules:
+        -   if: '$CI_PIPELINE_SOURCE == "push"'
+            when: never
+        -   if: '$CI_PIPELINE_SOURCE == "web"'
+        -   if: '$CI_PIPELINE_SOURCE == "triggers"'
+        -   if: '$CI_PIPELINE_SOURCE == "api"'
+        -   if: '$BUILD_TARGET == "RHEL9" || $BUILD_TARGET == null || 
+           $BUILD_TARGET == ""'
+
+peek_linux_package_build_amzn2023:
+    extends:
+        - .peek_linux_package_build_template
+        - .amazonlinux2023_with_epel
+    dependencies:
+        - peek_py_package_build_community
+        - peek_py_package_build_enterprise
+        - peek_linux_dependencies_fetch_amzn2023
+        - peek_git_sha1_doc
+        - peek_py_package_md5_doc
+    stage: lin_package
+    variables:
+        PKG_BUILD_FOR_AL_2023_7: "true"
+        LINUX_VERSION: "amzn2023"
+    rules:
+        -   if: '$CI_PIPELINE_SOURCE == "push"'
+            when: never
+        -   if: '$CI_PIPELINE_SOURCE == "web"'
+        -   if: '$CI_PIPELINE_SOURCE == "triggers"'
+        -   if: '$CI_PIPELINE_SOURCE == "api"'
+        -   if: '$BUILD_TARGET == "amzn2023_7" || $BUILD_TARGET == null ||
+           $BUILD_TARGET == ""'
