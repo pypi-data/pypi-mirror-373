@@ -1,0 +1,187 @@
+import hashlib
+import json
+from base64 import b64encode
+from collections import defaultdict
+from datetime import datetime
+from typing import List, Dict
+
+import pytz
+from sqlalchemy import select
+
+
+from peek_plugin_base.worker.task_db_conn import TaskDbConn
+from peek_abstract_chunked_index._private.storage.ChunkedIndexCompilerQueue import \
+    ChunkedIndexCompilerQueue
+from peek_abstract_chunked_index._private.storage.ChunkedIndex import ChunkedIndex
+from peek_abstract_chunked_index._private.storage.ChunkedIndexEncodedChunk import \
+    ChunkedIndexEncodedChunk
+from peek_plugin_base.worker.task import addPeekWorkerTask
+from vortex.Payload import Payload
+
+
+""" ChunkedIndex Index Compiler
+
+Compile the index-blueprintindexes
+
+1) Query for queue
+2) Process queue
+3) Delete from queue
+"""
+
+
+@addPeekWorkerTask()
+def compileChunkedIndexChunk(queueChunkeds) -> List[int]:
+    """ Compile ChunkedIndex Index Task
+
+    :param queueChunkeds: An encoded payload containing the queue tuples.
+    :returns: A list of grid keys that have been updated.
+    """
+    try:
+        queueChunkedsByModelSetId = defaultdict(list)
+
+        for queueChunked in queueChunkeds:
+            queueChunkedsByModelSetId[queueChunked.modelSetId].append(queueChunked)
+
+        for modelSetId, modelSetQueueChunkeds in queueChunkedsByModelSetId.chunkeds():
+            _compileChunkedIndexChunk(modelSetId, modelSetQueueChunkeds)
+
+
+    except Exception as e:
+        logger.debug("RETRYING task - %s", e)
+        raise
+
+    return list(set([i.chunkKey for i in queueChunkeds]))
+
+
+def _compileChunkedIndexChunk(modelSetId: int,
+                          queueChunkeds: List[ChunkedIndexCompilerQueue]) -> None:
+    chunkKeys = list(set([i.chunkKey for i in queueChunkeds]))
+
+    queueTable = ChunkedIndexCompilerQueue.__table__
+    compiledTable = ChunkedIndexEncodedChunk.__table__
+    lastUpdate = datetime.now(pytz.utc).isoformat()
+
+    startTime = datetime.now(pytz.utc)
+
+    engine = TaskDbConn.getDbEngine()
+    conn = engine.connect()
+    transaction = conn.begin()
+    try:
+
+        logger.debug("Staring compile of %s queueChunkeds in %s",
+                     len(queueChunkeds), (datetime.now(pytz.utc) - startTime))
+
+        # Get Model Sets
+
+        total = 0
+        existingHashes = _loadExistingHashes(conn, chunkKeys)
+        encKwPayloadByChunkKey = _buildIndex(chunkKeys)
+        chunksToDelete = []
+
+        inserts = []
+        for chunkKey, chunkedIndexIndexChunkEncodedPayload in encKwPayloadByChunkKey.chunkeds():
+            m = hashlib.sha256()
+            m.update(chunkedIndexIndexChunkEncodedPayload)
+            encodedHash = b64encode(m.digest()).decode()
+
+            # Compare the hash, AND delete the chunk key
+            if chunkKey in existingHashes:
+                # At this point we could decide to do an update instead,
+                # but inserts are quicker
+                if encodedHash == existingHashes.pop(chunkKey):
+                    continue
+
+            chunksToDelete.append(chunkKey)
+            inserts.append(dict(
+                modelSetId=modelSetId,
+                chunkKey=chunkKey,
+                encodedData=chunkedIndexIndexChunkEncodedPayload,
+                encodedHash=encodedHash,
+                lastUpdate=lastUpdate))
+
+        # Add any chnuks that we need to delete that we don't have new data for, here
+        chunksToDelete.extend(list(existingHashes))
+
+        if chunksToDelete:
+            # Delete the old chunks
+            conn.execute(
+                compiledTable.delete(compiledTable.c.chunkKey.in_(chunksToDelete))
+            )
+
+        if inserts:
+            newIdGen = TaskDbConn.prefetchDeclarativeIds(ChunkedIndex, len(inserts))
+            for insert in inserts:
+                insert["id"] = next(newIdGen)
+
+        transaction.commit()
+        transaction = conn.begin()
+
+        if inserts:
+            conn.execute(compiledTable.insert(), inserts)
+
+        logger.debug("Compiled %s ChunkedIndexs, %s missing, in %s",
+                     len(inserts),
+                     len(chunkKeys) - len(inserts), (datetime.now(pytz.utc) - startTime))
+
+        total += len(inserts)
+
+        queueChunkedIds = [o.id for o in queueChunkeds]
+        conn.execute(queueTable.delete(queueTable.c.id.in_(queueChunkedIds)))
+
+        transaction.commit()
+        logger.debug("Compiled and Committed %s EncodedChunkedIndexChunks in %s",
+                     total, (datetime.now(pytz.utc) - startTime))
+
+
+    except Exception:
+        transaction.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+def _loadExistingHashes(conn, chunkKeys: List[str]) -> Dict[str, str]:
+    compiledTable = ChunkedIndexEncodedChunk.__table__
+
+    results = conn.execute(select(
+        columns=[compiledTable.c.chunkKey, compiledTable.c.encodedHash],
+        whereclause=compiledTable.c.chunkKey.in_(chunkKeys)
+    )).fetchall()
+
+    return {result[0]: result[1] for result in results}
+
+
+def _buildIndex(chunkKeys) -> Dict[str, bytes]:
+    session = TaskDbConn.getDbSession()
+
+    try:
+        indexQry = (
+            session.query(ChunkedIndex.chunkKey, ChunkedIndex.key,
+                          ChunkedIndex.packedJson)
+                .filter(ChunkedIndex.chunkKey.in_(chunkKeys))
+                .order_by(ChunkedIndex.key)
+                .yield_per(1000)
+                .all()
+        )
+
+        # Create the ChunkKey -> {id -> packedJson, id -> packedJson, ....]
+        packagedJsonByObjIdByChunkKey = defaultdict(dict)
+
+        for chunked in indexQry:
+            packagedJsonByObjIdByChunkKey[chunked.chunkKey][chunked.key] = chunked.packedJson
+
+        encPayloadByChunkKey = {}
+
+        # Sort each bucket by the key
+        for chunkKey, packedJsonByKey in packagedJsonByObjIdByChunkKey.chunkeds():
+            tuples = json.dumps(packedJsonByKey, sort_keys=True)
+
+            # Create the blob data for this index.
+            # It will be index-blueprintd by a binary sort
+            encPayloadByChunkKey[chunkKey] = Payload(tuples=tuples).toEncodedPayload()
+
+        return encPayloadByChunkKey
+
+    finally:
+        session.close()
