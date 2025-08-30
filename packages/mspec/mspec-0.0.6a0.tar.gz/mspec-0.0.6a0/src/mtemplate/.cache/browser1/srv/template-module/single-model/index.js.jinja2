@@ -1,0 +1,268 @@
+
+//
+// convert
+//
+
+const trueBoolStrings = ['1', 'true', 't', 'yes', 'y', 'on'];
+
+function convertListElementBool(input) {
+    return trueBoolStrings.includes(input.toLowerCase());
+}
+
+function convertListElementInt(input) {
+    return parseInt(input);
+}
+
+function convertListElementFloat(input) {
+    const split = input.split('.');
+    if (split.length > 2) {
+        throw new Error('Invalid float');
+    }
+    let result = parseFloat(input)
+    if (parseInt(split[1]) === 0) {
+        result += 0.0000001;
+    }
+    
+    return result;
+}
+
+function convertListElementEnum(input) {
+    return input;
+}
+
+function convertListElementStr(str) {
+    return str;
+}
+
+function convertListElementDatetime(input) {
+    const date = new Date(input);
+    if (isNaN(date.getTime())) {
+        throw new Error('Invalid datetime');
+    }
+    return date;
+}
+
+//
+// defs
+//
+
+{{ macro.browser1_enum_definitions(model.fields) }}
+
+//
+// data functions
+//
+
+function init{{ model.name.pascal_case }}(data) {
+    let result = {
+{{ macro.browser1_init_fields(model.fields) }}
+    }
+
+    if (typeof data.id !== 'undefined') {
+        result.id = data.id;
+    }
+    return result;
+}
+
+function example{{ model.name.pascal_case }}() {
+    const data = {
+{{ macro.browser1_example_fields(model.fields) }}
+    }
+    return {...data}
+}
+
+function random{{ model.name.pascal_case }}() {
+    return {
+{{ macro.browser1_random_fields(model.fields) }}
+    }
+}
+
+function verify{{ model.name.pascal_case }}(data) {
+
+    let result = {
+        valid: true,
+        errors: {}
+    }
+
+{{ macro.browser1_verify_fields(model.fields) }}
+
+    return result
+
+}
+
+function {{ model.name.camel_case }}FromInputTBody(tbody) {   
+    console.log('{{ model.name.camel_case }}FromInputTBody', tbody);
+    const data = {};
+
+    // parse id if exists
+
+    const idInput = tbody.querySelector('input[name="id"]');
+    if (idInput) {
+        data.id = idInput.value;
+    }
+
+{{ macro.browser1_from_input_tbody_fields(model.fields) }}
+
+    return data;
+}
+
+function {{ model.name.camel_case }}ToInputTBody(data, tbody) {
+    tbody.innerHTML = '';
+
+    // show id if present
+
+    if (typeof data.id !== 'undefined') {
+        const idTdKey = document.createElement('td');
+        idTdKey.textContent = 'id';
+
+        const idTdInput = document.createElement('td');
+        const idInput = document.createElement('input');
+        idInput.name = 'id';
+        idInput.value = data.id;
+        idInput.size = 35;
+        idInput.readOnly = true;
+        idTdInput.appendChild(idInput);
+
+        const idTdOther = document.createElement('td');
+        idTdOther.textContent = '-';
+
+        const idTr = document.createElement('tr');
+        idTr.appendChild(idTdKey);
+        idTr.appendChild(idTdInput);
+        idTr.appendChild(idTdOther);
+
+        tbody.appendChild(idTr);
+    }
+
+
+{{ macro.browser1_to_input_tbody(model.fields) }}
+
+    return tbody;
+
+}
+
+function {{ model.name.camel_case }}ToDisplayTBody(data, tbody) {
+    tbody.innerHTML = '';
+
+    // id - string
+
+    const idTdKey = document.createElement('td');
+    idTdKey.textContent = 'id';
+
+    const idTdValue = document.createElement('td');
+    idTdValue.textContent = data.id;
+
+    const idTr = document.createElement('tr');
+    idTr.appendChild(idTdKey);
+    idTr.appendChild(idTdValue);
+
+    tbody.appendChild(idTr);
+
+{{ macro.browser1_to_display_tbody(model.fields) }}
+
+    return tbody;
+}
+
+function {{ model.name.camel_case }}ToTableRow(data) {
+
+    const tr = document.createElement('tr');
+    tr.style.cursor = 'pointer';
+    tr.onclick = () => window.location.href = `/{{ module.name.kebab_case }}/{{ model.name.kebab_case }}/${data.id}`
+
+    // id - string
+
+    const idTd = document.createElement('td');
+    idTd.textContent = data.id;
+    tr.appendChild(idTd);
+
+{{ macro.browser1_to_table_row(model.fields) }}
+
+    return tr;
+
+}
+
+function {{ model.name.camel_case }}ListToDisplayTBody({{ model.name.camel_case }}List, tbody) {
+
+    tbody.innerHTML = '';
+
+    for (const {{ model.name.camel_case }} of {{ model.name.camel_case }}List) {
+        tbody.appendChild({{ model.name.camel_case }}ToTableRow({{ model.name.camel_case }}));
+    }
+
+    return tbody;
+
+}
+
+//
+// serialize functions
+//
+
+function {{ model.name.camel_case }}ForJSON(data) {
+    // convert an items types to be ready to JSON
+
+    let result = {}
+    for (const field in data) {
+        if (Object.prototype.toString.call(data[field]) === '[object Date]') {
+            result[field] = data[field].toISOString().split('.')[0];
+        }else if (Array.isArray(data[field])) {
+            result[field] = data[field].map((item) => {
+                if (Object.prototype.toString.call(item) === '[object Date]') {
+                    return item.toISOString().split('.')[0];
+                }else{
+                    return item;
+                }
+            });
+        }else{
+            result[field] = data[field];
+        }
+    }
+    return result;
+}
+
+//
+// client functions
+//
+
+function clientCreate{{ model.name.pascal_case }}(data) {
+    
+    return fetch('/api/{{ module.name.kebab_case }}/{{ model.name.kebab_case }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+    })
+}
+
+function clientRead{{ model.name.pascal_case }}(id) {
+
+    return fetch(`/api/{{ module.name.kebab_case }}/{{ model.name.kebab_case }}/${id}`, {
+        method: 'GET',
+    })
+}
+
+function clientUpdate{{ model.name.pascal_case }}(id, data) {
+
+    return fetch(`/api/{{ module.name.kebab_case }}/{{ model.name.kebab_case }}/${id}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+    })
+
+}
+
+function clientDelete{{ model.name.pascal_case }}(id) {
+
+    return fetch(`/api/{{ module.name.kebab_case }}/{{ model.name.kebab_case }}/${id}`, {
+        method: 'DELETE',
+    })
+
+}
+
+function clientList{{ model.name.pascal_case }}s(offset, size) {
+
+    return fetch(`/api/{{ module.name.kebab_case }}/{{ model.name.kebab_case }}?offset=${offset}&size=${size}`, {
+        method: 'GET',
+    })
+}
