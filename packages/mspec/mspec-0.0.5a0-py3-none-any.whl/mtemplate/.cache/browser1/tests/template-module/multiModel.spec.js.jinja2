@@ -1,0 +1,78 @@
+import { test, expect } from '@playwright/test';
+
+
+test('test - {{ module.name.lower_case }} - {{ model.name.lower_case }} - pagination', async ({ page }) => {
+  await page.goto('{{ client.default_host }}/');
+
+  await expect(page.locator('h1')).toContainText('{{ project.name.snake_case }}');
+  await page.getByRole('link', { name: '{{ module.name.lower_case }}' }).last().click();
+
+  await expect(page.locator('h1')).toContainText('{{ module.name.lower_case }}');
+  await page.getByRole('link', { name: '{{ model.name.lower_case }}' }).click();
+  await expect(page.getByRole('heading')).toContainText('{{ model.name.lower_case }}');
+
+  const fields = {{ macro.browser1_field_list(model.fields) }};
+  for (const field of fields) {
+    await expect(page.locator('th', {hasText: field}).first()).toBeVisible();
+  }
+
+  // await page.getByRole('button', { name: '>>>' }).click();
+  // await page.getByRole('button', { name: '<<<' }).click();
+  await page.getByRole('button', { name: 'refresh' }).click();
+});
+
+
+test('test - {{ module.name.lower_case }} - {{ model.name.lower_case }} - instance', async ({ page }) => {
+
+    const textToContain = []
+
+    // create item
+
+    await page.goto('{{ client.default_host }}/{{ module.name.kebab_case }}/{{ model.name.kebab_case }}');
+    await page.getByRole('button', { name: 'create' }).click();
+
+
+    await page.getByRole('button', { name: 'submit' }).click();
+
+    await expect(page.locator('#create-{{ model.name.kebab_case }}-status')).toContainText('success');
+
+    const createdItem = await page.locator('#created-{{ model.name.kebab_case }}');
+    const createdItemId = await createdItem.innerText();
+    textToContain.push(createdItemId);
+    
+    await createdItem.click();
+
+    for (const text of textToContain) {
+        await expect(page.locator('#{{ model.name.kebab_case }}-read-tbody')).toContainText(text);
+    }
+
+    await page.getByRole('button', { name: 'edit' }).click();
+    await page.getByRole('button', { name: 'save' }).click();
+    await page.getByRole('link', { name: createdItemId }).click();
+    
+    await page.getByRole('button', { name: 'delete' }).click();
+    await page.getByRole('button', { name: 'no, cancel' }).click();
+    await page.getByRole('link', { name: '{{ model.name.snake_case }}' }).click();
+
+    await page.getByPlaceholder('{{ model.name.lower_case }} id').click();
+    await page.getByPlaceholder('{{ model.name.lower_case }} id').fill(createdItemId);
+    await page.getByRole('button', { name: 'get' }).click();
+
+    for (const text of textToContain) {
+        await expect(page.locator('#{{ model.name.kebab_case }}-read-tbody')).toContainText(text);
+    }
+
+    await page.getByRole('button', { name: 'delete' }).click();
+    await page.getByRole('button', { name: 'yes, please delete' }).click();
+    await expect(page.locator('#{{ model.name.kebab_case }}-not-found')).toContainText('item not found');
+});
+
+test('test - {{ module.name.lower_case }} - {{ model.name.lower_case }} - create random', async ({ page }) => {
+  await page.goto('{{ client.default_host }}/{{ module.name.kebab_case }}/{{ model.name.kebab_case }}/create');
+
+  await page.getByRole('button', { name: 'random' }).click();
+  await page.getByRole('button', { name: 'submit' }).click();
+
+  await expect(page.locator('#create-{{ model.name.kebab_case }}-status')).toBeVisible();
+  await expect(page.locator('#create-{{ model.name.kebab_case }}-status')).toContainText('success');
+});

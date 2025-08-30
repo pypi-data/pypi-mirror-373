@@ -1,0 +1,118 @@
+import sqlite3
+from datetime import datetime
+from core.types import datetime_format_str
+from core.exceptions import NotFoundError
+from {{ module.name.snake_case }}.{{ model.name.snake_case }}.model import {{ model.name.pascal_case }}
+
+
+__all__ = [
+    'db_create_{{ model.name.snake_case }}', 
+    'db_read_{{ model.name.snake_case }}',
+    'db_update_{{ model.name.snake_case }}', 
+    'db_delete_{{ model.name.snake_case }}', 
+    'db_list_{{ model.name.snake_case }}',
+]
+
+def db_create_{{ model.name.snake_case }}(ctx:dict, obj:{{ model.name.pascal_case }}) -> {{ model.name.pascal_case }}:
+    """
+    create a single model in the database, verifying the data first.
+
+    args ::
+        ctx :: dict containing the database client
+        obj :: the {{ model.name.pascal_case }} object to create.
+
+    return :: and {{ model.name.pascal_case }} object with the new id.
+    """
+    if obj.id is not None:
+        raise ValueError('id must be null to create a new item')
+    
+    obj.validate()
+    cursor:sqlite3.Cursor = ctx['db']['cursor']
+
+{{ macro.py_db_create(model) }}
+
+    ctx['db']['commit']()
+    return obj
+
+def db_read_{{ model.name.snake_case }}(ctx:dict, id:str) -> {{ model.name.pascal_case }}:
+    """
+    read a single model from the database and verify it.
+
+    args ::
+        ctx :: dict containing the database client
+        id :: the id of the item to read.
+    
+    return :: the {{ model.name.pascal_case }} object.
+    raises :: NotFoundError if the item is not found.
+    """
+
+{{ macro.py_db_read(model) }}
+    
+    return {{ model.name.pascal_case }}(
+        id=str(entry[0]),
+{{ macro.py_sql_convert(model.fields) }}
+    ).validate()
+
+def db_update_{{ model.name.snake_case }}(ctx:dict, obj:{{ model.name.pascal_case }}) -> {{ model.name.pascal_case }}:
+    """
+    update a single model in the database, and verify the data first.
+
+    args ::
+        ctx :: dict containing the database client
+        obj :: the {{ model.name.pascal_case }} object to update.
+
+    return :: the {{ model.name.pascal_case }} object.
+    raises :: NotFoundError if the item is not found
+    """
+    if obj.id is None:
+        raise ValueError('id must not be null to update an item')
+    
+    obj.validate()
+    cursor:sqlite3.Cursor = ctx['db']['cursor']
+
+{{ macro.py_db_update(model) }}
+
+    ctx['db']['commit']()
+    return obj
+
+def db_delete_{{ model.name.snake_case }}(ctx:dict, id:str) -> None:
+    """
+    delete a single model from the database.
+
+    args ::
+        ctx :: dict containing the database client
+        id :: the id of the item to delete.
+    
+    return :: None
+    """
+
+    cursor:sqlite3.Cursor = ctx['db']['cursor']
+{{ macro.py_db_delete(model) }}
+
+    ctx['db']['commit']()
+
+def db_list_{{ model.name.snake_case }}(ctx:dict, offset:int=0, limit:int=25) -> list[{{ model.name.pascal_case }}]:
+    """
+    list single models from the database, and verify each
+
+    args ::
+        ctx :: dict containing the database client
+        offset :: the offset to start listing from.
+        limit :: the maximum number of items to list.
+    
+    return :: list of each item as a dict.
+    """
+    cursor:sqlite3.Cursor = ctx['db']['cursor']
+    
+    items = []
+    query = cursor.execute("SELECT * FROM {{ model.name.snake_case }} ORDER BY id LIMIT ? OFFSET ?", (limit, offset))
+
+    for entry in query.fetchall():
+{{ macro.py_db_list_lists(model) }}
+        
+        items.append({{ model.name.pascal_case }}(
+            id=str(entry[0]),
+{{ macro.py_sql_convert(model.fields) }}
+        ).validate())
+
+    return items
