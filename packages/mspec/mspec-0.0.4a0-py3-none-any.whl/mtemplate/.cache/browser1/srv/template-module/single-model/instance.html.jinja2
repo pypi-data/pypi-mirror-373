@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+
+    <head>
+        <title>{{ project.name.snake_case }}.{{ module.name.snake_case }}.{{ model.name.snake_case }}.id</title>
+        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+        <meta http-equiv="Pragma" content="no-cache" />
+        <meta http-equiv="Expires" content="0" />
+        <link rel="stylesheet" type="text/css" href="/style.css">
+        <script src="/{{ module.name.kebab_case }}/{{ model.name.kebab_case }}/index.js"></script>
+        <script type="text/javascript">
+
+            //
+            // views
+            //
+
+            function show{{ model.name.pascal_case }}ReadView() {
+                window.document.getElementById('{{ model.name.kebab_case }}-update').hidden = true;
+                window.document.getElementById('{{ model.name.kebab_case }}-delete').hidden = true;
+                window.document.getElementById('{{ model.name.kebab_case }}-read').hidden = false;
+            }
+
+            function show{{ model.name.pascal_case }}UpdateView() {
+                window.document.getElementById('{{ model.name.kebab_case }}-read').hidden = true;
+                window.document.getElementById('{{ model.name.kebab_case }}-delete').hidden = true;
+                window.document.getElementById('{{ model.name.kebab_case }}-update').hidden = false;
+            }
+
+            function update{{ model.name.pascal_case }}Status(status, className) {
+                const statusSpan = document.getElementById('update-{{ model.name.kebab_case }}-status')
+                statusSpan.hidden = false
+                statusSpan.innerText = status
+                statusSpan.className = className
+            }
+
+            function show{{ model.name.pascal_case }}DeleteView() {
+                window.document.getElementById('{{ model.name.kebab_case }}-read').hidden = true;
+                window.document.getElementById('{{ model.name.kebab_case }}-update').hidden = true;
+                window.document.getElementById('{{ model.name.kebab_case }}-delete').hidden = false;
+            }
+
+            //
+            // server ops
+            //
+
+            function fetch{{ model.name.pascal_case }}() {
+                const id = {{ model.name.camel_case }}Id();
+                console.log(`fetching {{ model.name.camel_case }} ${id}`);
+                clientRead{{ model.name.pascal_case }}(id)
+                    .then(response => {
+                        if (response.ok) {
+                            return response.text();
+                        } else {
+                            // if not found
+                            if (response.status === 404) {
+                                document.getElementById('{{ model.name.kebab_case }}-not-found').hidden = false;
+                            }
+                            throw new Error(`{{ model.name.camel_case }} ${id} read failed`);
+                        }
+                    })
+                    .then(text => {
+                        console.log(text);
+                        const data = init{{ model.name.pascal_case }}(JSON.parse(text));
+                        document.getElementById('{{ model.name.kebab_case }}-not-found').hidden = true;
+
+                        const readTBody = document.querySelector('#{{ model.name.kebab_case }}-read-tbody');
+                        {{ model.name.camel_case }}ToDisplayTBody(data, readTBody);
+
+                        const updateTBody = document.querySelector('#{{ model.name.kebab_case }}-update-tbody');
+                        {{ model.name.camel_case }}ToInputTBody(data, updateTBody);
+                    }).
+                    catch(error => {console.error(error)});
+            }
+
+            function delete{{ model.name.pascal_case }}() {
+                const id = {{ model.name.camel_case }}Id();
+                console.log(`deleting {{ model.name.camel_case }} ${id}`);
+                clientDelete{{ model.name.pascal_case }}(id)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`{{ model.name.camel_case }} ${id} delete failed`);
+                        }
+                        console.log(`{{ model.name.camel_case }} ${id} deleted`)
+                        window.location.reload();
+                    })
+                    .catch(error => {console.error(error)});
+            }
+
+            function update{{ model.name.pascal_case }}() {
+
+                const id = {{ model.name.camel_case }}Id();
+                
+                const updateTBody = document.querySelector('#{{ model.name.kebab_case }}-update-tbody');
+                const data = {{ model.name.camel_case }}FromInputTBody(updateTBody);
+
+                const verify = verify{{ model.name.pascal_case }}(data);
+                if (verify.valid !== true) {
+                    console.error(verify);
+                    throw new Error(`{{ model.name.camel_case }} ${id} invalid`);
+                }
+
+                console.log(`updating {{ model.name.camel_case }} ${id}`);
+
+                update{{ model.name.pascal_case }}Status('loading...', '')
+
+                clientUpdate{{ model.name.pascal_case }}(id, data)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`{{ model.name.camel_case }} ${id} update failed`);
+                        }
+                        const status = 'updated at ' + new Date().toLocaleTimeString()
+                        update{{ model.name.pascal_case }}Status(status, 'success')
+                        console.log(`{{ model.name.camel_case }} ${id} updated`)
+                    })
+                    .catch(error => {
+                        update{{ model.name.pascal_case }}Status('error', 'error')
+                        console.error(error)
+                    });
+
+            }
+
+            //
+            // on load
+            //
+
+            function {{ model.name.camel_case }}Id() {
+                return window.location.pathname.split('/').pop();
+            }
+
+            window.onload = () => {
+                const idBreadcrumb = document.getElementById('{{ model.name.kebab_case }}-id-breadcrumb')
+                const idLink = document.createElement('a');
+                idLink.href = '/{{ module.name.kebab_case }}/{{ model.name.kebab_case }}/' + {{ model.name.camel_case }}Id();
+                idLink.innerText = {{ model.name.camel_case }}Id();
+                idBreadcrumb.appendChild(idLink);
+
+                fetch{{ model.name.pascal_case }}();
+            }
+
+        </script>
+    </head>
+
+    <body>
+        <h1>{{ model.name.lower_case }}</h1>
+        <p>
+            <a href="/">{{ project.name.snake_case }}</a> . <a href="/{{ module.name.kebab_case }}">{{ module.name.snake_case }}</a> . <a href="/{{ module.name.kebab_case }}/{{ model.name.kebab_case }}">{{ model.name.snake_case }}</a> . <span id="{{ model.name.kebab_case }}-id-breadcrumb"></span>
+        </p>
+
+        <!-- 
+        read view layout 
+        -->
+
+        <div id="{{ model.name.kebab_case }}-read">
+            
+            <button onclick="fetch{{ model.name.pascal_case }}()">refresh</button>
+            &emsp;|&emsp;
+            <button onclick="show{{ model.name.pascal_case }}UpdateView()">edit</button>
+            &emsp;|&emsp;
+            <button onclick="show{{ model.name.pascal_case }}DeleteView()">delete</button>
+            &emsp;
+            <span id="{{ model.name.kebab_case }}-not-found" hidden>item not found</span>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>field</th>
+                        <th>value</th>
+                    </tr>
+                </thead>
+                <tbody id="{{ model.name.kebab_case }}-read-tbody">
+                </tbody>
+            </table>
+
+        </div>
+
+        <!-- 
+        update view layout 
+        -->
+
+        <div id="{{ model.name.kebab_case }}-update" hidden>
+
+            <button onclick="update{{ model.name.pascal_case }}()">save</button>
+            &emsp;|&emsp;
+            <button onclick="show{{ model.name.pascal_case }}ReadView()">cancel</button>
+            &emsp;|&emsp;
+            <span id="update-{{ model.name.kebab_case }}-status" hidden></span>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>field</th>
+                        <th>value</th>
+                        <th>other</th>
+                    </tr>
+                </thead>
+                <tbody id="{{ model.name.kebab_case }}-update-tbody">
+                </tbody>
+            </table>
+
+        </div>
+
+        <!-- 
+        delete view layout 
+        -->
+
+        <div id="{{ model.name.kebab_case }}-delete" hidden>
+
+            <p>confirm delete?</p>
+            <button onclick="delete{{ model.name.pascal_case }}()">yes, please delete</button>
+            &emsp;|&emsp;
+            <button onclick="show{{ model.name.pascal_case }}ReadView()">no, cancel</button>
+
+        </div>
+
+    </body>
+
+</html>
