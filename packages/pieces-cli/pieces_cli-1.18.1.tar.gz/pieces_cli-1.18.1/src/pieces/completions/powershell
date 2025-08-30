@@ -1,0 +1,413 @@
+using namespace System.Management.Automation
+using namespace System.Management.Automation.Language
+
+# PowerShell completion for pieces
+# Generated automatically - using Pieces CLI
+# Version: 1.18.1
+
+Register-ArgumentCompleter -Native -CommandName 'pieces' -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    
+    # Initialize variables
+    $commandElements = $commandAst.CommandElements
+    $commandPath = @()
+    $lastParameter = $null
+    $expectingParameterValue = $false
+    
+    # Parse command line dynamically
+    for ($i = 0; $i -lt $commandElements.Count; $i++) {
+        $element = $commandElements[$i]
+        
+        # Skip if not a string constant
+        if ($element -isnot [StringConstantExpressionAst]) {
+            continue
+        }
+        
+        $elementValue = $element.Value
+        $isLastElement = ($i -eq ($commandElements.Count - 1))
+        
+        # First element should be the command name
+        if ($i -eq 0) {
+            if ($elementValue -ne 'pieces') {
+                return @()  # Not our command
+            }
+            $commandPath += $elementValue
+            continue
+        }
+        
+        # Check if this is a parameter (starts with -)
+        if ($elementValue.StartsWith('-')) {
+            $lastParameter = $elementValue
+            $expectingParameterValue = $true
+            
+            # If this is the last element and we're still typing it
+            if ($isLastElement -and $cursorPosition -le $element.Extent.EndOffset) {
+                $expectingParameterValue = $false
+            }
+        }
+        else {
+            # This is a value (command, subcommand, or parameter value)
+            if ($expectingParameterValue) {
+                # It's a parameter value, reset the flag
+                $expectingParameterValue = $false
+                $lastParameter = $null
+            }
+            else {
+                # It's a command or subcommand
+                # Only add to path if we're not currently typing it
+                if (-not $isLastElement -or $cursorPosition -gt $element.Extent.EndOffset) {
+                    $commandPath += $elementValue
+                }
+            }
+        }
+    }
+    
+    # Determine what we're completing
+    $completingParameterValue = $false
+    if ($expectingParameterValue -and $lastParameter) {
+        $completingParameterValue = $true
+    }
+    
+    # Build the command path string for lookup
+    $pathKey = $commandPath -join ';'
+    
+    # Define parameter value choices
+    $parameterValueChoices = @{
+        'pieces;search;--mode' = @('fuzzy', 'ncs', 'fts')
+        'pieces;mcp;docs;--integration' = @('vscode', 'goose', 'cursor', 'claude', 'windsurf', 'zed', 'shortwave', 'claude_code', 'kiro', 'all', 'current', 'raycast', 'wrap')
+        'pieces;mcp;docs;-i' = @('vscode', 'goose', 'cursor', 'claude', 'windsurf', 'zed', 'shortwave', 'claude_code', 'kiro', 'all', 'current', 'raycast', 'wrap')
+        'pieces;mcp;repair;--integration' = @('vscode', 'goose', 'cursor', 'claude', 'windsurf', 'zed', 'shortwave', 'claude_code', 'kiro', 'all')
+        'pieces;mcp;repair;-i' = @('vscode', 'goose', 'cursor', 'claude', 'windsurf', 'zed', 'shortwave', 'claude_code', 'kiro', 'all')
+    }
+    
+    # Get completions
+    $completions = @()
+    
+    if ($completingParameterValue) {
+        # Complete parameter value
+        $lookupKey = "$pathKey;$lastParameter"
+        if ($parameterValueChoices.ContainsKey($lookupKey)) {
+            foreach ($choice in $parameterValueChoices[$lookupKey]) {
+                $completions += [CompletionResult]::new($choice, $choice, 'ParameterValue', $choice)
+            }
+        }
+    }
+    else {
+        # Complete commands, subcommands, or parameters
+        switch ($pathKey) {
+            'pieces' {
+                # Root level - show commands
+                $completions += [CompletionResult]::new('ask', 'ask', 'Command', 'Ask a question to the Copilot')
+                $completions += [CompletionResult]::new('chat', 'chat', 'Command', 'Select a chat')
+                $completions += [CompletionResult]::new('chats', 'chats', 'Command', 'Print all chats')
+                $completions += [CompletionResult]::new('commit', 'commit', 'Command', 'Auto-generate a GitHub commit message and commit changes')
+                $completions += [CompletionResult]::new('completion', 'completion', 'Command', 'Display shell completion scripts')
+                $completions += [CompletionResult]::new('config', 'config', 'Command', 'Configure settings')
+                $completions += [CompletionResult]::new('contribute', 'contribute', 'Command', 'How to contribute')
+                $completions += [CompletionResult]::new('create', 'create', 'Command', 'Create a new material')
+                $completions += [CompletionResult]::new('delete', 'delete', 'Command', 'Delete the current material')
+                $completions += [CompletionResult]::new('edit', 'edit', 'Command', 'Edit an existing material''s metadata')
+                $completions += [CompletionResult]::new('execute', 'execute', 'Command', 'Execute shell or bash materials')
+                $completions += [CompletionResult]::new('feedback', 'feedback', 'Command', 'Submit feedback')
+                $completions += [CompletionResult]::new('install', 'install', 'Command', 'Install PiecesOS')
+                $completions += [CompletionResult]::new('list', 'list', 'Command', 'List materials or apps or models')
+                $completions += [CompletionResult]::new('login', 'login', 'Command', 'Sign into PiecesOS')
+                $completions += [CompletionResult]::new('logout', 'logout', 'Command', 'Sign out from PiecesOS')
+                $completions += [CompletionResult]::new('mcp', 'mcp', 'Command', 'setup the MCP server for an integration')
+                $completions += [CompletionResult]::new('modify', 'modify', 'Command', 'Updates the current material content')
+                $completions += [CompletionResult]::new('onboarding', 'onboarding', 'Command', 'Start the onboarding process')
+                $completions += [CompletionResult]::new('open', 'open', 'Command', 'Opens PiecesOS or Applet')
+                $completions += [CompletionResult]::new('restart', 'restart', 'Command', 'Restart PiecesOS')
+                $completions += [CompletionResult]::new('run', 'run', 'Command', 'Runs CLI in a loop')
+                $completions += [CompletionResult]::new('search', 'search', 'Command', 'Perform a search for materials using the specified query string')
+                $completions += [CompletionResult]::new('share', 'share', 'Command', 'Share the current material')
+                $completions += [CompletionResult]::new('tui', 'tui', 'Command', 'Launch the TUI (Text User Interface) mode')
+                $completions += [CompletionResult]::new('version', 'version', 'Command', 'Gets version of PiecesOS')
+                # Global options
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'Show help message')
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'Show help message')
+                $completions += [CompletionResult]::new('--version', '--version', 'ParameterName', 'Show version')
+                $completions += [CompletionResult]::new('-v', '-v', 'ParameterName', 'Show version')
+                $completions += [CompletionResult]::new('--ignore-onboarding', '--ignore-onboarding', 'ParameterName', 'Skip onboarding')
+            }
+            'pieces;config' {
+                # Configure various Pieces CLI settings including default editor and other preferences
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--editor', '--editor', 'ParameterName', 'Set the default code editor')
+                $completions += [CompletionResult]::new('-e', '-e', 'ParameterName', 'Set the default code editor')
+            }
+            'pieces;list' {
+                # List and browse various Pieces resources including code materials, connected applications, and available AI models. Use the editor flag to open snippets directly in your default editor.
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--editor', '--editor', 'ParameterName', 'Open the chosen material in the editor')
+                $completions += [CompletionResult]::new('-e', '-e', 'ParameterName', 'Open the chosen material in the editor')
+                $completions += [CompletionResult]::new('materials', 'materials', 'ParameterValue', 'Valid choice for type')
+                $completions += [CompletionResult]::new('apps', 'apps', 'ParameterValue', 'Valid choice for type')
+                $completions += [CompletionResult]::new('models', 'models', 'ParameterValue', 'Valid choice for type')
+            }
+            'pieces;login' {
+                # Authenticate with PiecesOS to enable cloud features, and access your personal domain, long term memory
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;logout' {
+                # Sign out from your PiecesOS account, disabling the use of any of the Pieces features
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;search' {
+                # Search through your materials using various search modes including fuzzy search, neural code search, and full text search
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--mode', '--mode', 'ParameterName', 'Type of search')
+            }
+            'pieces;modify' {
+                # Save or update changes to the currently selected material. Use this after making modifications to persist your changes
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;delete' {
+                # Permanently delete the currently selected material from your Pieces database. This action cannot be undone
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;create' {
+                # Create a new code snippet or material in your Pieces database. You can create a snippet from clipboard content or enter it manually.
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('-c', '-c', 'ParameterName', 'Enter snippet content manually in the terminal or via stdin')
+                $completions += [CompletionResult]::new('--content', '--content', 'ParameterName', 'Enter snippet content manually in the terminal or via stdin')
+            }
+            'pieces;share' {
+                # Generate a shareable link for the currently selected material, allowing others to view and access your code snippet
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;edit' {
+                # Edit properties of an existing material including its name, language classification, and other metadata
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--name', '--name', 'ParameterName', 'Set a new name for the material')
+                $completions += [CompletionResult]::new('-n', '-n', 'ParameterName', 'Set a new name for the material')
+                $completions += [CompletionResult]::new('--classification', '--classification', 'ParameterName', 'Reclassify a material (eg. py, js)')
+                $completions += [CompletionResult]::new('-c', '-c', 'ParameterName', 'Reclassify a material (eg. py, js)')
+            }
+            'pieces;run' {
+                # Run the Pieces CLI in interactive loop mode, allowing you to execute multiple commands sequentially without restarting the CLI
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;execute' {
+                # Execute shell or bash code snippets directly from your saved materials, making it easy to run saved scripts and commands
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;feedback' {
+                # Submit feedback, bug reports, or feature requests to help improve the Pieces CLI. Your feedback is invaluable for making the tool better
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;contribute' {
+                # Learn how to contribute to the Pieces CLI project, including guidelines for submitting pull requests, reporting issues, and improving documentation
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;install' {
+                # Install or update PiecesOS, the local runtime that powers all Pieces applications. This command will download and set up PiecesOS for your platform
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;onboarding' {
+                # Start the interactive onboarding process to set up Pieces CLI, configure settings, and learn about key features through a guided tutorial
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;version' {
+                # Display version information for both Pieces CLI and PiecesOS, including build numbers and compatibility details
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;restart' {
+                # Restart the PiecesOS
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;ask' {
+                # Ask questions to the Pieces Copilot AI assistant with context from files, saved materials, or your long-term memory (LTM). Get intelligent code assistance and explanations
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--files', '--files', 'ParameterName', 'Provide one or more files or folders as context (absolute or relative path)')
+                $completions += [CompletionResult]::new('-f', '-f', 'ParameterName', 'Provide one or more files or folders as context (absolute or relative path)')
+                $completions += [CompletionResult]::new('--materials', '--materials', 'ParameterName', 'Use one or more saved materials as context (provide material''s index).')
+                $completions += [CompletionResult]::new('-m', '-m', 'ParameterName', 'Use one or more saved materials as context (provide material''s index).')
+                $completions += [CompletionResult]::new('--ltm', '--ltm', 'ParameterName', 'Enable Long-Term Memory (LTM) to include prior context')
+            }
+            'pieces;chats' {
+                # Display a list of all your saved conversations with the Pieces Copilot, showing titles and timestamps for easy navigation
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;chat' {
+                # Manage individual conversations with the Pieces Copilot. You can select, create, rename, or delete conversations
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('-n', '-n', 'ParameterName', 'Create a new chat')
+                $completions += [CompletionResult]::new('--new', '--new', 'ParameterName', 'Create a new chat')
+                $completions += [CompletionResult]::new('-r', '-r', 'ParameterName', 'Rename the conversation that you are currently. If nothing is specified it wi...')
+                $completions += [CompletionResult]::new('--rename', '--rename', 'ParameterName', 'Rename the conversation that you are currently. If nothing is specified it wi...')
+                $completions += [CompletionResult]::new('-d', '-d', 'ParameterName', 'Delete the chat that you are currently using in the ask command')
+                $completions += [CompletionResult]::new('--delete', '--delete', 'ParameterName', 'Delete the chat that you are currently using in the ask command')
+            }
+            'pieces;commit' {
+                # Automatically generate meaningful commit messages based on your code changes using AI, with options to stage files, add issue references, and push to remote
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('-p', '-p', 'ParameterName', 'Push the code to GitHub')
+                $completions += [CompletionResult]::new('--push', '--push', 'ParameterName', 'Push the code to GitHub')
+                $completions += [CompletionResult]::new('-a', '-a', 'ParameterName', 'Stage all the files before committing')
+                $completions += [CompletionResult]::new('--all', '--all', 'ParameterName', 'Stage all the files before committing')
+                $completions += [CompletionResult]::new('-i', '-i', 'ParameterName', 'Add issue number in the commit message')
+                $completions += [CompletionResult]::new('--issues', '--issues', 'ParameterName', 'Add issue number in the commit message')
+            }
+            'pieces;open' {
+                # Open various Pieces applications and components including PiecesOS, Copilot, Drive, and Settings from the command line
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('-p', '-p', 'ParameterName', 'Opens PiecesOS')
+                $completions += [CompletionResult]::new('--pieces_os', '--pieces_os', 'ParameterName', 'Opens PiecesOS')
+                $completions += [CompletionResult]::new('-c', '-c', 'ParameterName', 'Opens Pieces Copilot')
+                $completions += [CompletionResult]::new('--copilot', '--copilot', 'ParameterName', 'Opens Pieces Copilot')
+                $completions += [CompletionResult]::new('-d', '-d', 'ParameterName', 'Opens Pieces Drive')
+                $completions += [CompletionResult]::new('--drive', '--drive', 'ParameterName', 'Opens Pieces Drive')
+                $completions += [CompletionResult]::new('-s', '-s', 'ParameterName', 'Opens Pieces Settings')
+                $completions += [CompletionResult]::new('--settings', '--settings', 'ParameterName', 'Opens Pieces Settings')
+                $completions += [CompletionResult]::new('--ltm', '--ltm', 'ParameterName', 'Opens Pieces LTM (Long-Term Memory)')
+            }
+            'pieces;mcp' {
+                # Manage Model Context Protocol (MCP) integrations for various IDEs and tools including VS Code, Cursor, Claude Desktop, and Goose
+                $completions += [CompletionResult]::new('setup', 'setup', 'Command', 'Set up an integration')
+                $completions += [CompletionResult]::new('list', 'list', 'Command', 'List all MCP integrations')
+                $completions += [CompletionResult]::new('docs', 'docs', 'Command', 'Print the documentations for an integration')
+                $completions += [CompletionResult]::new('start', 'start', 'Command', 'Start the stdio MCP server')
+                $completions += [CompletionResult]::new('repair', 'repair', 'Command', 'Repair an MCP config settings')
+                $completions += [CompletionResult]::new('status', 'status', 'Command', 'Show the Status of the LTM and the MCPs')
+            }
+            'pieces;mcp;setup' {
+                # Set up an integration
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--globally', '--globally', 'ParameterName', 'For VS Code or Cursor to set the Global MCP')
+                $completions += [CompletionResult]::new('--specific-workspace', '--specific-workspace', 'ParameterName', 'For VS Code or Cursor to set the Local MCP')
+                $completions += [CompletionResult]::new('--stdio', '--stdio', 'ParameterName', 'Use the stdio MCP instead of sse')
+            }
+            'pieces;mcp;list' {
+                # List all MCP integrations
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--already-registered', '--already-registered', 'ParameterName', 'Display the list of the registered MCPs')
+                $completions += [CompletionResult]::new('--available-for-setup', '--available-for-setup', 'ParameterName', 'Display the list of the ready to be registered MCPs')
+            }
+            'pieces;mcp;docs' {
+                # Print the documentations for an integration
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--integration', '--integration', 'ParameterName', 'The integration to print its documentation')
+                $completions += [CompletionResult]::new('-i', '-i', 'ParameterName', 'The integration to print its documentation')
+                $completions += [CompletionResult]::new('--open', '--open', 'ParameterName', 'Open the queried docs in the browser')
+                $completions += [CompletionResult]::new('-o', '-o', 'ParameterName', 'Open the queried docs in the browser')
+            }
+            'pieces;mcp;start' {
+                # Start the stdio MCP server
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;mcp;repair' {
+                # Repair an MCP config settings
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--integration', '--integration', 'ParameterName', 'The integration to repair')
+                $completions += [CompletionResult]::new('-i', '-i', 'ParameterName', 'The integration to repair')
+            }
+            'pieces;mcp;status' {
+                # Show the Status of the LTM and the MCPs
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;completion' {
+                # Display the raw completion script for a specific shell
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('bash', 'bash', 'ParameterValue', 'Valid choice for shell')
+                $completions += [CompletionResult]::new('zsh', 'zsh', 'ParameterValue', 'Valid choice for shell')
+                $completions += [CompletionResult]::new('fish', 'fish', 'ParameterValue', 'Valid choice for shell')
+                $completions += [CompletionResult]::new('powershell', 'powershell', 'ParameterValue', 'Valid choice for shell')
+            }
+            'pieces;tui' {
+                # 
+Launch the Pieces CLI in TUI mode with a graphical interface.
+The TUI includes a main chat area, copilot panel on the right,
+and text input at the bottom for interactive conversations.
+
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;drive' {
+                # List and browse various Pieces resources including code materials, connected applications, and available AI models. Use the editor flag to open snippets directly in your default editor.
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--editor', '--editor', 'ParameterName', 'Open the chosen material in the editor')
+                $completions += [CompletionResult]::new('-e', '-e', 'ParameterName', 'Open the chosen material in the editor')
+                $completions += [CompletionResult]::new('materials', 'materials', 'ParameterValue', 'Valid choice for type')
+                $completions += [CompletionResult]::new('apps', 'apps', 'ParameterValue', 'Valid choice for type')
+                $completions += [CompletionResult]::new('models', 'models', 'ParameterValue', 'Valid choice for type')
+            }
+            'pieces;save' {
+                # Save or update changes to the currently selected material. Use this after making modifications to persist your changes
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;conversations' {
+                # Display a list of all your saved conversations with the Pieces Copilot, showing titles and timestamps for easy navigation
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            'pieces;conversation' {
+                # Manage individual conversations with the Pieces Copilot. You can select, create, rename, or delete conversations
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('-n', '-n', 'ParameterName', 'Create a new chat')
+                $completions += [CompletionResult]::new('--new', '--new', 'ParameterName', 'Create a new chat')
+                $completions += [CompletionResult]::new('-r', '-r', 'ParameterName', 'Rename the conversation that you are currently. If nothing is specified it wi...')
+                $completions += [CompletionResult]::new('--rename', '--rename', 'ParameterName', 'Rename the conversation that you are currently. If nothing is specified it wi...')
+                $completions += [CompletionResult]::new('-d', '-d', 'ParameterName', 'Delete the chat that you are currently using in the ask command')
+                $completions += [CompletionResult]::new('--delete', '--delete', 'ParameterName', 'Delete the chat that you are currently using in the ask command')
+            }
+            'pieces;ui' {
+                # 
+Launch the Pieces CLI in TUI mode with a graphical interface.
+The TUI includes a main chat area, copilot panel on the right,
+and text input at the bottom for interactive conversations.
+
+                $completions += [CompletionResult]::new('-h', '-h', 'ParameterName', 'show this help message and exit')
+                $completions += [CompletionResult]::new('--help', '--help', 'ParameterName', 'show this help message and exit')
+            }
+            default {
+                # Unknown path
+            }
+        }
+    }
+    
+    # Filter completions
+    $filtered = @()
+    foreach ($completion in $completions) {
+        if ([string]::IsNullOrEmpty($wordToComplete) -or $completion.CompletionText.StartsWith($wordToComplete, [StringComparison]::OrdinalIgnoreCase)) {
+            $filtered += $completion
+        }
+    }
+    
+    # Return filtered completions
+    # If empty, return empty array (prevents file completion)
+    return $filtered
+}
