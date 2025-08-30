@@ -1,0 +1,267 @@
+Metadata-Version: 2.4
+Name: flowfoundry
+Version: 1.1.0
+Summary: FlowFoundry: a strategy-first, cloud-agnostic agentic workflow framework (LangGraph/LangChain)
+Author: Mandar Parab
+License: Apache-2.0
+Project-URL: Homepage, https://github.com/m-np/flowfoundry
+Project-URL: Repository, https://github.com/m-np/flowfoundry
+Project-URL: Issues, https://github.com/m-np/flowfoundry/issues
+Project-URL: Documentation, https://github.com/m-np/flowfoundry#readme
+Keywords: RAG,LangGraph,LangChain,agents,LLM,framework
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pydantic>=2.7
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: typer>=0.12
+Requires-Dist: fastapi>=0.111
+Requires-Dist: uvicorn>=0.30
+Requires-Dist: langchain>=0.2
+Requires-Dist: langchain-community>=0.3
+Requires-Dist: langgraph>=0.2
+Requires-Dist: pypdf>=4.2
+Requires-Dist: langchain-ollama>=0.1.20
+Requires-Dist: accelerate>=1.10.1
+Requires-Dist: sentencepiece>=0.2.1
+Provides-Extra: openai
+Requires-Dist: openai>=1.40; extra == "openai"
+Requires-Dist: langchain-openai>=0.1.20; extra == "openai"
+Provides-Extra: llm-openai
+Requires-Dist: langchain-openai>=0.1.20; extra == "llm-openai"
+Provides-Extra: rag
+Requires-Dist: chromadb>=0.5; extra == "rag"
+Requires-Dist: sentence-transformers>=3.0; extra == "rag"
+Provides-Extra: search
+Requires-Dist: duckduckgo-search>=5.3; extra == "search"
+Requires-Dist: tavily-python>=0.3; extra == "search"
+Provides-Extra: rerank
+Requires-Dist: rank-bm25>=0.2; extra == "rerank"
+Requires-Dist: sentence-transformers>=3.0; extra == "rerank"
+Provides-Extra: qdrant
+Requires-Dist: qdrant-client>=1.9; extra == "qdrant"
+Provides-Extra: api
+Requires-Dist: fastapi>=0.111; extra == "api"
+Requires-Dist: uvicorn>=0.30; extra == "api"
+Provides-Extra: dev
+Requires-Dist: pytest>=8.2; extra == "dev"
+Requires-Dist: pytest-cov>=5.0; extra == "dev"
+Requires-Dist: mypy>=1.11; extra == "dev"
+Requires-Dist: ruff>=0.5; extra == "dev"
+Requires-Dist: black>=24.8; extra == "dev"
+Requires-Dist: types-PyYAML>=6.0.12.20240808; extra == "dev"
+Requires-Dist: build>=1.2; extra == "dev"
+Requires-Dist: twine>=5.1; extra == "dev"
+Dynamic: license-file
+
+# FlowFoundry
+
+*A strategy-first, cloud-agnostic framework for LLM workflows.*  
+Compose chunking, indexing, retrieval, reranking, and agentic flows — with **Keras-like ergonomics** over LangChain / LangGraph.
+
+---
+
+## ✨ Features
+
+- **Strategies**: chunking, indexing, retrieval, reranking  
+- **Functional API**: call strategies directly as Python functions  
+- **Blocks API**: compose strategies like layers  
+- **Nodes & Graphs**: LangGraph-backed workflows (YAML or Python)  
+- **Extensible**: register custom strategies or nodes  
+
+---
+
+## Installation
+
+Core only:
+
+```bash
+pip install flowfoundry
+```
+
+With extras:
+```bash
+pip install "flowfoundry[rag,search,rerank,qdrant,openai,llm-openai]"
+```
+
+Extras include: chromadb, qdrant-client, sentence-transformers, rank-bm25, openai, etc.
+All examples run offline by default (echo LLM). Missing deps no-op gracefully.
+
+Sanity check:
+```python
+from flowfoundry import ping, hello
+print(ping())          # -> "flowfoundry: ok"
+print(hello("there"))  # -> "hello, there!"
+```
+
+## Quickstart (Functional API)
+
+```python
+from flowfoundry.functional import (
+  chunk_recursive, index_chroma_upsert, index_chroma_query, preselect_bm25
+)
+
+text   = "FlowFoundry lets you mix strategies to build RAG."
+chunks = chunk_recursive(text, chunk_size=120, chunk_overlap=20, doc_id="demo")
+
+# Index & query (requires chromadb extra)
+index_chroma_upsert(chunks, path=".ff_chroma", collection="docs")
+hits = index_chroma_query("What is FlowFoundry?", path=".ff_chroma", collection="docs", k=8)
+
+# Optional rerank (requires rank-bm25)
+hits = preselect_bm25("What is FlowFoundry?", hits, top_k=5)
+
+print(hits[0]["text"])
+```
+
+### CLI
+
+All registered strategies are available via the flowfoundry CLI.
+
+Run:
+```bash
+# list families and functions
+flowfoundry list
+
+# call a strategy directly
+flowfoundry chunking fixed --kwargs '{"data":"hello world","chunk_size":5}'
+
+# equivalent generic call
+flowfoundry call chunking fixed --kwargs '{"data":"hello world","chunk_size":5}'
+```
+
+## Functional API Reference
+
+Available in `flowfoundry.functional`:
+
+---
+
+### Chunking
+
+| Function          | Purpose              | Extra deps |
+|-------------------|----------------------|------------|
+| `chunk_fixed`     | Fixed-size splitter  | –          |
+| `chunk_recursive` | Recursive splitter   | `langchain-text-splitters` |
+| `chunk_hybrid`    | Hybrid splitter      | –          |
+
+```python
+chunk_fixed(text, *, chunk_size=800, chunk_overlap=80, doc_id="doc") -> list[Chunk]
+chunk_recursive(text, *, chunk_size=800, chunk_overlap=80, doc_id="doc") -> list[Chunk]
+chunk_hybrid(text, **kwargs) -> list[Chunk]
+```
+
+---
+
+### Indexing (Chroma)
+
+| Function              | Purpose              | Extra deps |
+|-----------------------|----------------------|------------|
+| `index_chroma_upsert` | Upsert chunks into Chroma  |`chromadb` |
+| `index_chroma_query`  | Query Chroma   | `chromadb` |
+
+```python
+index_chroma_upsert(chunks, *, path=".ff_chroma", collection="docs") -> str
+index_chroma_query(query, *, path, collection, k=5) -> list[Hit]
+```
+---
+
+### Reranking
+
+| Function          | Purpose              | Extra deps |
+|-------------------|----------------------|------------|
+| `rerank_identity`     | No-op reranker  | –          |
+| `preselect_bm25` | BM25 preselect   | `rank-bm25` |
+| `rerank_cross_encoder`    | Cross-encoder reranker      |`sentence-transformers` |
+
+```python
+rerank_identity(query, hits, top_k=None) -> list[Hit]
+preselect_bm25(query, hits, top_k=20) -> list[Hit]
+rerank_cross_encoder(query, hits, *, model, top_k=None) -> list[Hit]
+```
+
+### Composition (LLM Answering)
+
+| Function          | Purpose              | Providers supported | Extra deps |
+|-------------------|----------------------|------------|----------------------|
+| `compose_llm`     | Generate an answer from hits via an LLM  | openai, ollama, huggingface, langchain | provider-specific |
+
+```python
+compose_llm(
+    question: str,
+    hits: list[Hit],
+    *,
+    provider: str,        # "openai", "ollama", "huggingface", "langchain"
+    model: str,           # e.g. "gpt-4o-mini", "llama3:8b", "distilgpt2"
+    max_context_chars=6000,
+    max_tokens=512,
+    reuse_provider=True,
+    **provider_kwargs     # api_key, host, backend, device, etc.
+) -> str
+```
+
+Example Code:
+```python
+from flowfoundry import index_chroma_query, preselect_bm25, compose_llm
+
+question = "What is people's budget?"
+hits = index_chroma_query(question, path=".ff_chroma", collection="docs", k=8)
+hits = preselect_bm25(question, hits, top_k=5)
+
+# OpenAI provider
+answer = compose_llm(
+    question, hits,
+    provider="openai",
+    model="gpt-4o-mini",
+    max_tokens=400,
+)
+print(answer)
+
+# Ollama provider
+answer = compose_llm(
+    question, hits,
+    provider="ollama",
+    model="llama3:8b",
+    host="http://localhost:11434",
+    max_tokens=400,
+)
+print(answer)
+
+# HuggingFace local transformers
+answer = compose_llm(
+    question, hits,
+    provider="huggingface",
+    model="distilgpt2",
+    max_tokens=200,
+)
+print(answer)
+```
+
+Example (CLI)
+
+Save retrieval hits into JSON first, then pass them to compose_llm:
+
+Step 1: query (Chroma)
+```bash
+flowfoundry indexing chroma_query \
+  --kwargs '{"query":"What is people'\''s budget?","path":".ff_chroma","collection":"docs","k":8}' > hits.json
+```
+
+Step 2: rerank (BM25)
+```bash
+ flowfoundry rerank bm25_preselect \
+  --kwargs "{\"query\":\"What is people's budget?\",\"hits\":$(cat hits.json),\"top_k\":5}" > hits_top5.json
+```
+
+Step 3: compose answer with OpenAI
+``` bash
+export OPENAI_API_KEY=...
+flowfoundry compose llm \
+  --kwargs "{\"question\":\"What is people's budget?\",\"hits\":$(cat hits_top5.json),\"provider\":\"openai\",\"model\":\"gpt-4o-mini\",\"max_tokens\":400}"
+```1
