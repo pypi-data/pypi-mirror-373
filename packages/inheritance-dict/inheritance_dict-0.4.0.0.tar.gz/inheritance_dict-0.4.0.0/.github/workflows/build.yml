@@ -1,0 +1,97 @@
+name: CI/CD
+on: push
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  black:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: psf/black@stable
+        with:
+          options: "--check"
+  pylint:
+    name: run pylint
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+          - '3.9'
+          - '3.10'
+          - '3.11'
+          - '3.12'
+          - '3.13'
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Pylint
+      run: |
+        pip install pylint
+        pylint inheritance_dict
+  test:
+    name: run tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+          - '3.9'
+          - '3.10'
+          - '3.11'
+          - '3.12'
+          - '3.13'
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Run test
+      run: |
+        pip install pytest-cov
+        pytest --junitxml=pytest.xml --cov-fail-under=100 --cov-report=term-missing:skip-covered --cov=inheritance_dict typetest.py
+    - name: Coveralls
+      uses: coverallsapp/github-action@v2
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+          - '3.9'
+          - '3.10'
+          - '3.11'
+          - '3.12'
+          - '3.13'
+    steps:
+    - name: checkout code
+      uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+    - run: |
+        pip install 'setuptools>=38.6.0,<69.0' twine>=1.11.0 wheel>=0.31.0 setuptools_scm>=6.2
+        python -m setuptools_scm
+        python setup.py sdist bdist_wheel
+  publish:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [black, build, test]
+    steps:
+    - name: checkout code
+      uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+    - run: |
+        pip install 'setuptools>=38.6.0,<69.0' twine>=1.11.0 wheel>=0.31.0 setuptools_scm>=6.2
+        python -m setuptools_scm
+        python setup.py sdist bdist_wheel
+    - name: Publish package
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        verbose: true
+        password: ${{ secrets.PYPI_TOKEN }}
