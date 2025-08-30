@@ -1,0 +1,32 @@
+when:
+  - event: tag
+    branch: main
+
+depends_on: ["publish_pypi"]
+
+steps:
+  build_openapi:
+    image: ghcr.io/astral-sh/uv:python3.11-alpine
+    commands:
+      - mkdir -p docs/assets/schemas
+      - uv sync --frozen
+      - uv run python -mcattle_grid openapi --component account --filename docs/assets/schemas/openapi_account.json
+  build_npm:
+    image: node:23-alpine
+    commands:
+      - echo //registry.npmjs.org/:_authToken=$NPM_ACCESS_TOKEN > ~/.npmrc
+      - cd resources/js_lib
+      - npm install
+      - npm run generate
+      - npm version ${CI_COMMIT_TAG}
+      - npm publish --access public
+      - npm run docs
+    environment:
+      NPM_ACCESS_TOKEN: { from_secret: npm_access_token }
+  publish_docs:
+    image: codeberg.org/xfix/plugin-codeberg-pages-deploy:1
+    settings:
+      folder: resources/js_lib/docs
+      branch: jsdocs
+      ssh_key:
+        from_secret: deploy_ssh_key
