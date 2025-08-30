@@ -1,0 +1,27 @@
+from .secrets import (  # noqa
+    CachingSecrets,
+    CompositeSecrets,
+    EMPTY_SECRETS,
+    EmptySecrets,
+    EnvVarSecrets,
+    FnSecrets,
+    LoggingSecrets,
+    MappingSecrets,
+    Secret,
+    SecretRef,
+    SecretRefOrStr,
+    Secrets,
+    secret_field,
+    secret_repr,
+)
+
+ref = SecretRef
+
+
+##
+
+
+from .. import lang as _lang  # noqa
+
+# FIXME: only happens when 'all' is imported lol
+_lang.register_conditional_import('..marshal', '.marshal', __package__)
