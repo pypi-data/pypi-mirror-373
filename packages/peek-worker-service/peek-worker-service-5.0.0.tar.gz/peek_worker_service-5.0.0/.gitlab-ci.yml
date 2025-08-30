@@ -1,0 +1,61 @@
+stages:
+    - disabled-test
+
+include:
+    - template: Security/SAST.gitlab-ci.yml
+    - template: Security/Dependency-Scanning.gitlab-ci.yml
+    - template: Security/Secret-Detection.gitlab-ci.yml
+    - template: Code-Quality.gitlab-ci.yml
+
+variables:
+    # Enable advanced SAST for better detection
+    GITLAB_ADVANCED_SAST_ENABLED: 'true'
+    
+    # Skip build/deploy stages from Auto-DevOps
+    BUILD_DISABLED: 'true'
+    DEPLOY_DISABLED: 'true'
+    TEST_DISABLED: 'true'
+    REVIEW_DISABLED: 'true'
+    DAST_DISABLED: 'true'
+    PERFORMANCE_DISABLED: 'true'
+    BROWSER_PERFORMANCE_DISABLED: 'true'
+    LOAD_PERFORMANCE_DISABLED: 'true'
+
+
+unit_tests_linux:
+    allow_failure: false
+    image: nexus.synerty.com:5000/peek-alma8-test
+    only:
+        - pushes
+        - web
+        - triggers
+        - merge_requests
+    script:
+        - export PIP_INDEX=http://${NEXUS_USER}:${NEXUS_PASSWORD}@${NEXUS_URL}/repository/pypi-all/pypi
+        - export PIP_INDEX_URL=http://${NEXUS_USER}:${NEXUS_PASSWORD}@${NEXUS_URL}/repository/pypi-all/simple
+        - export PIP_TRUSTED_HOST=${NEXUS_URL}
+        - pip install .
+        - trial --reporter=subunit `find peek_* -name "*Test.py"` | subunit-1to2 | subunit2junitxml
+            -o report.xml 1> /dev/null
+        - echo "Tests have succeeded, this package will be uploaded to nexus as 0.0.0"
+        - echo "This will only happen in the peek group project and master branch"
+        - rm -rf dist
+        - sed -i 's/version = "0.0.0"/version = "'0.0.0+b${CI_PIPELINE_ID}'"/g' pyproject.toml
+        - export TWINE_REPOSITORY_URL=http://${NEXUS_URL}/repository/pypi-internal/
+        - export TWINE_USERNAME=${NEXUS_USER}
+        - export TWINE_PASSWORD=${NEXUS_PASSWORD}
+        - if [[ ${CI_PROJECT_NAMESPACE} == peek/* ]] && [[ ${CI_COMMIT_REF_NAME} == 'master' ]];
+            then
+            wget https://gitlab.synerty.com/peek/community/synerty-peek/-/raw/master/gitlab/scripts/rm-from-nexux.py
+            && python -m build --sdist
+            && python rm-from-nexux.py "http://${NEXUS_URL}" "${NEXUS_USER}" "${NEXUS_PASSWORD}" "${CI_PROJECT_NAME}"
+            && twine upload dist/*.gz;
+            fi
+    stage: test
+    artifacts:
+        reports:
+            junit: report.xml
+    tags:
+        - linux
+
+
