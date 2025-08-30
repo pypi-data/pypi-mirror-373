@@ -1,0 +1,43 @@
+
+import datetime
+import uuid
+
+from nsj_rest_lib.decorator.dto import DTO
+from nsj_rest_lib.descriptor.dto_field import DTOField
+from nsj_rest_lib.descriptor.dto_field_validators import DTOFieldValidators
+from nsj_rest_lib.dto.dto_base import DTOBase
+
+
+
+# Configuracoes execucao
+from nsj_integracao_api_entidades.config import (tenant_is_partition_data)
+
+@DTO()
+class ProdutoFaixaPrecoSegmentoDTO(DTOBase):
+    # Atributos da entidade
+    id: uuid.UUID = DTOField(
+      pk=True,
+      entity_field='produto_faixa_preco_segmento',
+      resume=True,
+      not_null=True,
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    tenant: int = DTOField(
+      partition_data=tenant_is_partition_data,
+      resume=True,
+      not_null=True,)
+    produto_faixa_preco_vigencia: uuid.UUID = DTOField(
+      not_null=True,
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+    segmento: uuid.UUID = DTOField(
+      not_null=True,
+      strip=True,
+      min=36,
+      max=36,
+      validator=DTOFieldValidators().validate_uuid,)
+
