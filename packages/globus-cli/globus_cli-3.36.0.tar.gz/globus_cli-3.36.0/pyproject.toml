@@ -1,0 +1,155 @@
+[build-system]
+requires = ["setuptools>=77.0.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "globus-cli"
+description = "Globus CLI"
+readme = "README.rst"
+authors = [
+    { name = "Stephen Rosen", email = "sirosen@globus.org" },
+]
+license = "Apache-2.0"
+keywords = [
+    "globus",
+    "cli",
+    "command line",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "globus-sdk==3.62.0",
+    "click>=8.1.4,<9",
+    "jmespath==1.0.1",
+    "packaging>=17.0",
+    "typing_extensions>=4.0;python_version<'3.11'",
+    # these are dependencies of the SDK, but they are used directly in the CLI
+    # declare them here in case the underlying lib ever changes
+    "requests>=2.32.3,<3.0.0",
+]
+dynamic = ["version"]
+
+[project.urls]
+homepage = "https://github.com/globus/globus-cli"
+
+[project.scripts]
+globus = "globus_cli:main"
+
+[dependency-groups]
+coverage = [
+    "coverage[toml]>=7.10"
+]
+yaml = ["ruamel.yaml==0.18.15"]
+test = [
+    {include-group = "coverage"},
+    {include-group = "yaml"},  # loading test fixture data
+    "pytest>=7",
+    "pytest-xdist<4",
+    "pytest-timeout<3",
+    "click-type-test==1.1.0;python_version>='3.10'",
+    "responses==0.25.8",
+]
+test-mindeps = [
+    {include-group = "test"},
+    "click==8.1.8",
+    "requests==2.32.4",
+    "pyjwt==2.0.0",
+    "cryptography==3.3.1",
+    "packaging==17.0",
+    "typing_extensions==4.0",
+]
+typing = [
+    "mypy==1.17.1",
+    "types-jwt",
+    "types-requests",
+    "types-jmespath",
+]
+check-project-metadata = [
+    "mddj==0.2.0",
+    {include-group = "yaml"},
+    "build",
+    "twine",
+]
+# `dev` is what's installed if you `make install`
+dev = [
+    {include-group = "test"},
+    {include-group = "typing"},
+]
+
+[tool.setuptools.dynamic.version]
+attr = "globus_cli.version.__version__"
+
+[tool.isort]
+profile = "black"
+
+[tool.pytest.ini_options]
+addopts = "-n auto --maxprocesses 4 --dist loadscope --timeout 3 --color=yes"
+filterwarnings = [
+    "error",
+    # ignore SDK warnings for 'filter_role' until
+    # 'filter_roles' update is applied
+    "ignore:The `filter_role` parameter is deprecated.:globus_sdk.exc.RemovedInV4Warning:",
+]
+
+[tool.coverage.run]
+parallel = true
+patch = ["subprocess"]
+source = ["globus_cli"]
+[tool.coverage.paths]
+source = [
+    "src/",
+    "*/site-packages/",
+]
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 87
+exclude_lines =[
+    # the pragma to disable coverage
+    "pragma: no cover",
+    # don't complain if tests don't hit unimplemented methods/modes
+    "raise NotImplementedError",
+    "assert_never()",
+    # don't check on executable components of importable modules
+    "if __name__ == .__main__.:",
+    # don't check coverage on type checking conditionals
+    "if t.TYPE_CHECKING:",
+    # skip overloads
+    "@t.overload",
+    # skip abstract methods
+    "@abc.abstractmethod",
+]
+
+[tool.scriv]
+version = "literal: src/globus_cli/version.py: __version__"
+categories = "Bugfixes, Enhancements, Other"
+# we're using adoc, we'll produce fragments as 'md' and "fix" later
+format = "md"
+output_file = "changelog.adoc"
+entry_title_template = '{{ version }} ({{ date.strftime("%Y-%m-%d") }})'
+
+[tool.mypy]
+strict = true
+sqlite_cache = true
+
+# additional settings (not part of strict=true)
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+disallow_untyped_calls = false
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+module = [
+    "globus_cli.services.transfer.recursive_ls",
+    "globus_cli.termio.printers.unix_printer.awscli_text",
+]
