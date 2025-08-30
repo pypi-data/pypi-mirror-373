@@ -1,0 +1,81 @@
+import json
+import re
+from urllib.parse import parse_qs
+from core.exceptions import NotFoundError, RequestError, JSONResponse
+from {{ module.name.snake_case }}.{{ model.name.snake_case }}.model import {{ model.name.pascal_case }}
+from {{ module.name.snake_case }}.{{ model.name.snake_case }}.db import *
+
+
+__all__ = [
+    '{{ model.name.snake_case }}_routes'
+]
+
+#
+# router
+#
+
+def {{ model.name.snake_case }}_routes(ctx:dict, env:dict, raw_req_body:bytes):
+
+    # {{ model.name.lower_case }} - instance routes #
+
+    if (instance := re.match(r'/api/{{ module.name.kebab_case }}/{{ model.name.kebab_case }}/(.+)', env['PATH_INFO'])) is not None:
+        instance_id = instance.group(1)
+        if env['REQUEST_METHOD'] == 'GET':
+            try:
+                item = db_read_{{ model.name.snake_case }}(ctx, instance_id)
+                ctx['log'](f'GET {{ module.name.kebab_case }}.{{ model.name.kebab_case }}/{instance_id}')
+                raise JSONResponse('200 OK', item.to_dict())
+            except NotFoundError:
+                ctx['log'](f'GET {{ module.name.kebab_case }}.{{ model.name.kebab_case }}/{instance_id} - Not Found')
+                raise RequestError('404 Not Found', f'not found {{ module.name.kebab_case }}.{{ model.name.kebab_case }}.{instance_id}')
+
+        elif env['REQUEST_METHOD'] == 'PUT':
+            incoming_item = {{ model.name.pascal_case }}(**json.loads(raw_req_body.decode('utf-8'))).convert_types()
+
+            try:
+                if instance_id != incoming_item.id:
+                    raise RequestError('400 Bad Request', '{{ model.name.lower_case }} id mismatch')
+            except KeyError:
+                raise RequestError('400 Bad Request', '{{ model.name.lower_case }} is missing id')
+
+            try:
+                updated_item = db_update_{{ model.name.snake_case }}(ctx, incoming_item)
+            except NotFoundError:
+                ctx['log'](f'PUT {{ module.name.kebab_case }}.{{ model.name.kebab_case }}/{instance_id} - Not Found')
+                raise RequestError('404 Not Found', f'not found {{ module.name.kebab_case }}.{{ model.name.kebab_case }}.{instance_id}')
+            
+            ctx['log'](f'PUT {{ module.name.kebab_case }}.{{ model.name.kebab_case }}/{instance_id}')
+            raise JSONResponse('200 OK', updated_item.to_dict())
+
+        elif env['REQUEST_METHOD'] == 'DELETE':
+            db_delete_{{ model.name.snake_case }}(ctx, instance_id)
+            ctx['log'](f'DELETE {{ module.name.kebab_case }}.{{ model.name.kebab_case }}/{instance_id}')
+            raise JSONResponse('204 No Content')
+        
+        else:
+            ctx['log'](f'ERROR 405 {{ module.name.kebab_case }}.{{ model.name.kebab_case }}/{instance_id}')
+            raise RequestError('405 Method Not Allowed', 'invalid request method')
+
+    # {{ model.name.lower_case }} - model routes #
+
+    elif re.match(r'/api/{{ module.name.kebab_case }}/{{ model.name.kebab_case }}', env['PATH_INFO']):
+        if env['REQUEST_METHOD'] == 'POST':
+            incoming_item = {{ model.name.pascal_case }}(**json.loads(raw_req_body.decode('utf-8'))).convert_types()
+            item = db_create_{{ model.name.snake_case }}(ctx, incoming_item)
+
+            ctx['log'](f'POST {{ module.name.kebab_case }}.{{ model.name.kebab_case }} - id: {item.id}')
+            raise JSONResponse('200 OK', item.to_dict())
+        
+        elif env['REQUEST_METHOD'] == 'GET':
+            query = parse_qs(env['QUERY_STRING'])
+            offset = query.get('offset', [0])[0]
+            limit = query.get('limit', [25])[0]
+
+            items = db_list_{{ model.name.snake_case }}(ctx, offset=int(offset), limit=int(limit))
+            ctx['log'](f'GET {{ module.name.kebab_case }}.{{ model.name.kebab_case }}')
+
+            raise JSONResponse('200 OK', [{{ model.name.pascal_case }}.to_dict(item) for item in items])
+    
+        else:
+            ctx['log'](f'ERROR 405 {{ module.name.kebab_case }}.{{ model.name.kebab_case }}')
+            raise RequestError('405 Method Not Allowed', 'invalid request method')

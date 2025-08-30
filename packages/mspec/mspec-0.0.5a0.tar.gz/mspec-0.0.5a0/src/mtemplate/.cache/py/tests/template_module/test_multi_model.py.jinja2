@@ -1,0 +1,144 @@
+import unittest
+import sqlite3
+
+from core.db import create_db_context
+from core.client import create_client_context
+from core.exceptions import NotFoundError
+from {{ module.name.snake_case }}.{{ model.name.snake_case }}.model import {{ model.name.pascal_case }}
+from {{ module.name.snake_case }}.{{ model.name.snake_case }}.client import *
+
+
+test_ctx = create_db_context()
+test_ctx.update(create_client_context())
+
+class Test{{ model.name.pascal_case }}(unittest.TestCase):
+
+    def test_{{ model.name.snake_case }}_crud(self):
+        """
+        only need to test the client, which by also tests the server and other modules
+
+        + create
+        + read
+        + update
+        + delete
+        """
+
+        test_{{ model.name.snake_case }} = {{ model.name.pascal_case }}.example()
+        test_{{ model.name.snake_case }}.validate()
+
+        # create #
+
+        created_{{ model.name.snake_case }} = client_create_{{ model.name.snake_case }}(test_ctx, test_{{ model.name.snake_case }})
+        self.assertTrue(isinstance(created_{{ model.name.snake_case }}, {{ model.name.pascal_case }}))
+        created_{{ model.name.snake_case }}.validate()
+        test_{{ model.name.snake_case }}.id = created_{{ model.name.snake_case }}.id
+
+        self.assertEqual(created_{{ model.name.snake_case }}, test_{{ model.name.snake_case }})
+
+        # read #
+
+        test_{{ model.name.snake_case }}_read = client_read_{{ model.name.snake_case }}(test_ctx, created_{{ model.name.snake_case }}.id)
+        self.assertTrue(isinstance(test_{{ model.name.snake_case }}_read, {{ model.name.pascal_case }}))
+        test_{{ model.name.snake_case }}_read.validate()
+        self.assertEqual(test_{{ model.name.snake_case }}_read, test_{{ model.name.snake_case }})
+
+        # update #
+
+        updated_test_{{ model.name.snake_case }} = client_update_{{ model.name.snake_case }}(test_ctx, test_{{ model.name.snake_case }}_read)
+        self.assertTrue(isinstance(updated_test_{{ model.name.snake_case }}, {{ model.name.pascal_case }}))
+        updated_test_{{ model.name.snake_case }}.validate()
+        self.assertEqual(test_{{ model.name.snake_case }}_read, updated_test_{{ model.name.snake_case }})
+
+        # delete #
+
+        delete_return = client_delete_{{ model.name.snake_case }}(test_ctx, created_{{ model.name.snake_case }}.id)
+        self.assertIsNone(delete_return)
+        self.assertRaises(NotFoundError, client_read_{{ model.name.snake_case }}, test_ctx, created_{{ model.name.snake_case }}.id)
+
+        cursor:sqlite3.Cursor = test_ctx['db']['cursor']
+        fetched_item = cursor.execute(f"SELECT * FROM {{ model.name.snake_case }} WHERE id=?", (created_{{ model.name.snake_case }}.id,)).fetchone()
+        self.assertIsNone(fetched_item)
+
+
+        multi_int_result = cursor.execute(f"SELECT value FROM {{ model.name.snake_case }}_multi_int WHERE {{ model.name.snake_case }}_id=? ORDER BY position", (created_{{ model.name.snake_case }}.id,))
+        self.assertEqual(len(multi_int_result.fetchall()), 0)
+
+        multi_float_result = cursor.execute(f"SELECT value FROM {{ model.name.snake_case }}_multi_float WHERE {{ model.name.snake_case }}_id=? ORDER BY position", (created_{{ model.name.snake_case }}.id,))
+        self.assertEqual(len(multi_float_result.fetchall()), 0)
+
+        multi_string_result = cursor.execute(f"SELECT value FROM {{ model.name.snake_case }}_multi_string WHERE {{ model.name.snake_case }}_id=? ORDER BY position", (created_{{ model.name.snake_case }}.id,))
+        self.assertEqual(len(multi_string_result.fetchall()), 0)
+
+        multi_enum_result = cursor.execute(f"SELECT value FROM {{ model.name.snake_case }}_multi_enum WHERE {{ model.name.snake_case }}_id=? ORDER BY position", (created_{{ model.name.snake_case }}.id,))
+        self.assertEqual(len(multi_enum_result.fetchall()), 0)
+
+        multi_datetime_result = cursor.execute(f"SELECT value FROM {{ model.name.snake_case }}_multi_datetime WHERE {{ model.name.snake_case }}_id=? ORDER BY position", (created_{{ model.name.snake_case }}.id,))
+        self.assertEqual(len(multi_datetime_result.fetchall()), 0)
+        
+
+    def test_{{ model.name.snake_case }}_pagination(self):
+
+        # seed data #
+
+        items = client_list_{{ model.name.snake_case }}(test_ctx, offset=0, limit=101)
+        items_len = len(items)
+        if items_len > 100:
+            raise Exception('excpecting 100 items or less, delete db and restart test')
+        
+        if items_len < 50:
+            difference = 50 - items_len
+            for _ in range(difference):
+                item = {{ model.name.pascal_case }}.random()
+                item = client_create_{{ model.name.snake_case }}(test_ctx, item)
+        elif items_len > 50:
+            difference = items_len - 50
+            items_to_delete = items[:difference]
+            for item in items_to_delete:
+                client_delete_{{ model.name.snake_case }}(test_ctx, item.id)
+
+        test_{{ model.name.snake_case }} = {{ model.name.pascal_case }}.example()
+        test_{{ model.name.snake_case }}.validate()
+
+        # paginate #
+
+        pg_configs = [
+            {'page_size': 10, 'expected_pages': 5},
+            {'page_size': 20, 'expected_pages': 3},
+            {'page_size': 25, 'expected_pages': 2},
+            {'page_size': 50, 'expected_pages': 1}
+        ]
+
+        for pg_config in pg_configs:
+            page_size = pg_config['page_size']
+            expected_pages = pg_config['expected_pages']
+
+            offset = 0
+            item_ids = []
+            num_pages = 0
+            while True:
+                items = client_list_{{ model.name.snake_case }}(test_ctx, offset=offset, limit=page_size)
+                items_len = 0
+                for item in items:
+                    items_len += 1
+                    item.validate()
+
+                    self.assertTrue(isinstance(item, {{ model.name.pascal_case }}))
+                    item_ids.append(item.id)
+
+                if items_len > 0:
+                    num_pages += 1
+
+                if items_len < page_size:
+                    break
+
+                self.assertTrue(items_len <= page_size)
+
+                offset += page_size
+                
+            self.assertEqual(num_pages, expected_pages)
+            self.assertEqual(len(item_ids), 50)
+            self.assertEqual(len(set(item_ids)), 50)
+            
+
+if __name__ == '__main__':
+    unittest.main()
