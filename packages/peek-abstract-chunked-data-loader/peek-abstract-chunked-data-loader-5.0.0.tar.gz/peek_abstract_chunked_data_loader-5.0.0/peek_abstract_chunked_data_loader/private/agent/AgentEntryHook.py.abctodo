@@ -1,0 +1,141 @@
+import logging
+from typing import Optional
+
+from peek_plugin_base.agent.PluginAgentEntryHookABC import PluginAgentEntryHookABC
+from peek_abstract_chunked_data_loader._private.agent.AgentController import \
+    AgentController
+from peek_abstract_chunked_data_loader._private.server.agent_handlers.RpcForAgent import \
+    RpcForAgent
+from peek_abstract_chunked_data_loader._private.storage.AppServerSettingsTuple import \
+    AppServerSettingsTuple
+from peek_abstract_chunked_data_loader._private.storage.DeclarativeBase import \
+    loadStorageTuples
+from peek_abstract_chunked_data_loader._private.tuples import loadPrivateTuples
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker, scoped_session
+from twisted.internet.defer import inlineCallbacks
+
+logger = logging.getLogger(__name__)
+
+
+class AgentEntryHook(PluginAgentEntryHookABC):
+    def __init__(self, *args, **kwargs):
+        """" Constructor """
+        # Call the base classes constructor
+        PluginAgentEntryHookABC.__init__(self, *args, **kwargs)
+
+        #: Loaded Objects, This is a list of all objects created when we start
+        self._loadedObjects = []
+
+        self._appSettings: Optional[AppServerSettingsTuple] = None
+
+        self._oracleEngine = None
+        self._oracleSessionCreator = None
+
+        self._controller = None
+
+    @inlineCallbacks
+    def load(self) -> None:
+        """ Load
+
+        This will be called when the plugin is loaded.
+
+        """
+        loadStorageTuples()
+        loadPrivateTuples()
+
+        self._appSettings = yield RpcForAgent.getAppServerSettings()
+
+        if not self._appSettings:
+            logger.warning("Plugin settings have not been set, disabling startup.")
+            return
+
+        if not self._appSettings.enabled:
+            logger.warning("Plugin is disabled in settings, disabling startup.")
+            return
+
+        # Initialise and start the RPC for Server
+
+        self._reconnectToOracle()
+
+        self._controller = AgentController(self._appSettings, self._oracleSessionCreator)
+        self._loadedObjects.append(self._controller)
+
+        yield self._controller.load()
+
+        logger.debug("Loaded")
+
+    @inlineCallbacks
+    def start(self):
+        """ Start
+
+        This will be called when the plugin is started.
+
+        """
+        if not self._controller:
+            return
+
+        yield self._controller.start()
+
+        logger.debug("Started")
+
+    def stop(self):
+        """ Stop
+
+        This method is called by the platform to tell the peek app to shutdown and stop
+        everything it's doing
+        """
+        # Shutdown and dereference all objects we constructed when we started
+        while self._loadedObjects:
+            self._loadedObjects.pop().shutdown()
+
+        if self._oracleEngine:
+            self._oracleEngine.dispose()
+            self._oracleEngine = None
+
+        self._controller = None
+
+        logger.debug("Stopped")
+
+    def unload(self):
+        """Unload
+
+        This method is called after stop is called, to unload any last resources
+        before the PLUGIN is unlinked from the platform
+
+        """
+        logger.debug("Unloaded")
+
+    def _reconnectToOracle(self):
+
+        engineArgs = {
+            "max_identifier_length": 128,
+            "echo": False,  # Print every SQL statement executed
+            "pool_size": 2,  # Number of connections to keep open
+            "max_overflow": 10,
+            # Number that the pool size can exceed when required
+            "pool_timeout": 300,  # Timeout for getting conn from pool
+            "pool_recycle": 1800,  # Reconnect after 30 minutes
+        }
+
+        logger.debug("Connecting to ORACLE %s as %s",
+                     self._appSettings.appHost, self._appSettings.appOracleUsername)
+
+        dbUrl = 'oracle://%s:%s@%s:1521/NMS' % (self._appSettings.appOracleUsername,
+                                                self._appSettings.appOraclePassword,
+                                                self._appSettings.appHost)
+        # Create the engine
+        self._oracleEngine = create_engine(dbUrl, **engineArgs)
+
+        # Create the session maker
+        self._oracleSessionCreator = scoped_session(
+            sessionmaker(bind=self._oracleEngine))
+
+        session = self._oracleSessionCreator()
+        works = session.execute(text("SELECT 'Oracle oracle query' FROM DUAL"))
+        for row in works:
+            logger.debug(row[0])
+        session.close()
+
+        logger.info("Successfully connected to ORACLE %s as %s",
+                    self._appSettings.appHost, self._appSettings.appOracleUsername)
