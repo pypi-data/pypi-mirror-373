@@ -1,0 +1,15 @@
+{
+    "name": "OpenTelemetry Distro For odoo",
+    "description": """Monitor Odoo with OpenTelemetry.""",
+    "author": "Mangono",
+    "maintainers": "Mangono",
+    "website": "https://mangono.fr",
+    "category": "Technical",
+    "version": "0.1.3",
+    "license": "AGPL-3",
+    "depends": ["base"],
+    "installable": False,
+    "application": False,
+    "auto_install": False,
+    "post_load": "load_opentelemetry_odoo_distro",
+}
