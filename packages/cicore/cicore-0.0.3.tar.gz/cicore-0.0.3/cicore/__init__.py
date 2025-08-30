@@ -1,0 +1,1 @@
+core_version = 'cicore-0.0.3-devbase'
