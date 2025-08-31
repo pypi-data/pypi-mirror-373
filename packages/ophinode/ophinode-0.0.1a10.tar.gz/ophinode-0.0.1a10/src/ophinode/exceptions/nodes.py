@@ -1,0 +1,2 @@
+class InvalidAttributeNameError(Exception):
+    pass
