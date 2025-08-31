@@ -1,0 +1,1 @@
+"""ADBC adapter integration tests."""
