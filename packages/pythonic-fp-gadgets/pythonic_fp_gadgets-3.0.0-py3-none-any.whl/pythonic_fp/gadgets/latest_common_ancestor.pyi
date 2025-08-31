@@ -1,0 +1,3 @@
+__all__ = ['lca']
+
+def lca(cls1: type, cls2: type) -> type: ...
