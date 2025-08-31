@@ -1,0 +1,230 @@
+# pyziggy - Run automation scripts that interact with zigbee2mqtt.
+# Copyright (C) 2025 Attila Szarvas
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+"""
+Used by the ``pyziggy`` command line program.
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib
+import logging
+import os
+from pathlib import Path
+
+from .run import run_command, PyziggyConfig
+
+
+def _parent_exists(parser, arg):
+    path = Path(os.path.expanduser(arg))
+
+    if not path.parent.exists():
+        parser.error(f"The directory '{path.parent.absolute()}' does not exist!")
+
+    return path
+
+
+def _run_cmd(args, pre_run_check_only=False):
+    project_dir = Path(args.devices_client_file).parent
+    config_file = project_dir / "config.toml"
+
+    if not config_file.exists():
+        print(
+            f"Creating empty template for missing config file: {config_file}.\n"
+            f"Review and edit the config file, then relaunch this command."
+        )
+        PyziggyConfig.write_default(config_file)
+        exit(0)
+
+    config = PyziggyConfig.load(config_file)
+
+    if config is None:
+        print(f"Failed to load config file: {config_file.absolute()}")
+        exit(1)
+
+    devices_client_module_path = Path(args.devices_client_file)
+
+    if not devices_client_module_path.exists():
+        print(
+            f"The specified devices client module {devices_client_module_path.absolute()} is missing\n"
+            f"Using template to generate {devices_client_module_path.absolute()}.\n\n"
+            f"To add your modifications, open the directory {project_dir.absolute()} as a Python project "
+            f"and edit {devices_client_module_path.absolute()}"
+        )
+
+        module_code = """from pyziggy_autogenerate.available_devices import AvailableDevices
+
+devices = AvailableDevices()"""
+
+        with open(devices_client_module_path, "w") as f:
+            f.write(module_code)
+
+    run_command(
+        devices_client_module_path,
+        config,
+        no_startup_query=args.no_startup_query if not pre_run_check_only else False,
+        no_mypy=args.no_mypy if not pre_run_check_only else False,
+        pre_run_check_only=pre_run_check_only,
+    )
+
+
+def _pre_run_check_cmd(args):
+    _run_cmd(args, pre_run_check_only=True)
+
+
+from argparse import RawDescriptionHelpFormatter
+
+import textwrap
+
+
+def _wrap_for_terminal(s: list[str]) -> str:
+    width = 80
+
+    try:
+        width = os.get_terminal_size().columns
+    except:
+        pass
+
+    paragraphs = ["\n".join(textwrap.wrap(p, width=width)) for p in s]
+    return "\n".join(paragraphs)
+
+
+def _make_parser():
+    main_help = [
+        "pyziggy autogenerates Python classes using the device information "
+        "shared by Zigbee2MQTT. User code can interact with stateful device "
+        "and parameter objects, and pyziggy will continuously translate "
+        "this into MQTT communication.",
+        "",
+        "If you run the following command in an empty PROJECT_DIRECTORY it will "
+        "initialize it into a home automation project and create an "
+        "automation.py file that you can edit and run any time by "
+        "issuing the same command again. During initialization a config file "
+        "will be created where you can provide information about how to connect "
+        "to the MQTT broker.",
+        "",
+        "example:",
+        "    pyziggy run PROJECT_DIRECTORY/automation.py",
+    ]
+
+    parser = argparse.ArgumentParser(
+        description=_wrap_for_terminal(main_help),
+        formatter_class=RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--version", action="version", version=importlib.metadata.version("pyziggy")
+    )
+    parser.add_argument(
+        "-v", "--verbose", help="enables debug level logging", action="store_true"
+    )
+    subparsers = parser.add_subparsers(title="subcommands", required=True)
+
+    parser_run = subparsers.add_parser(
+        "run",
+        help="This is the main command that will load and run the automation project "
+        "specified by the module file containing a DevicesClient object. If the "
+        "specified module file doesn't exist, but its parent directory does, then "
+        "this command will set up the directory as a pyziggy automation project, "
+        "and create the module file, that instantiates an autogenerated "
+        "AvailableDevices(DevicesClient) object. To see what options "
+        "can be used with the run subcommand, issue 'pyziggy run -h'.",
+    )
+    parser_run.set_defaults(func=_run_cmd)
+    parser_run.add_argument(
+        "devices_client_file",
+        type=lambda x: _parent_exists(parser_run, x),
+        help="Python module file that creates a DevicesClient object. Use the "
+        "autogenerated AvailableDevices(DevicesClient) class in "
+        "pyziggy_autogenerate.available_devices.",
+    )
+
+    no_startup_query_help = (
+        "By default pyziggy sends a query for every parameter of every device "
+        "immediately after launching an automation. This setting switches that off, "
+        "leaving parameter values in an unknown state until Zigbee2MQTT sends an "
+        "update for them. This can be desirable during development, when an "
+        "automation is started and stopped very often. Querying every parameter in "
+        "a large Zigbee network every time can generate a lot of Zigbee traffic."
+    )
+
+    no_mypy_help = (
+        "Disables the mypy correctness check that runs on the automation project "
+        "module prior to launching it."
+    )
+
+    parser_run.add_argument(
+        "--no_startup_query",
+        help=no_startup_query_help,
+        action="store_true",
+    )
+    parser_run.add_argument(
+        "--no_mypy",
+        help=no_mypy_help,
+        action="store_true",
+    )
+
+    parser_check = subparsers.add_parser(
+        "check",
+        help="Similar to a dry-run. This subcommand is identical to run, except it "
+        "doesn't enter an infinite message loop, but exits with 0 if it could and "
+        "1 otherwise. This command will still connect to the MQTT broker, still "
+        "autogenerate the AvailableDevices class, and still run a mypy correctness "
+        "check on your automation project module. The only difference is not entering "
+        "the message loop at the end of this process..",
+    )
+    parser_check.set_defaults(func=_pre_run_check_cmd)
+    parser_check.add_argument(
+        "devices_client_file",
+        type=lambda x: _parent_exists(parser_run, x),
+        help="Python module file that instantiates a DevicesClient object. "
+        "For simple use-cases it should specifically instantiate an "
+        "AvailableDevices(DevicesClient) object.",
+    )
+    parser_check.add_argument(
+        "--no_mypy",
+        help=no_mypy_help,
+        action="store_true",
+    )
+    return parser
+
+
+def main(args: list[str] | None = None) -> None:
+    """
+    The entry point of the ``pyziggy`` command-line program.
+
+    You can import and call this function in a Python script as an alternative to
+    directly running the command-line program.
+
+    .. important::
+       The ``run`` subcommand requires the path of a Python module file that
+       instantiates the DevicesClient object -- i.e. the file that contains the
+       ``devices = AvailableDevices()`` line.
+
+       It will then import this module file and identify the DevicesClient object.
+
+       Because of this import mechanism you can't call :func:`pyziggy.cli.main` in the
+       same file that you are trying to import by passing it to the ``run`` subcommand.
+
+    :param args: The same arguments that you would pass on the command line to the
+                 ``pyziggy`` program. For a complete list see
+                 :ref:`command-line-reference`.
+    """
+
+    parser = _make_parser()
+    parsed_args = parser.parse_args(args)
+    logging.basicConfig(level=logging.DEBUG if parsed_args.verbose else logging.INFO)
+    parsed_args.func(parsed_args)
