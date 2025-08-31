@@ -1,0 +1,52 @@
+name: Publish Package
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 0.1.0)'
+        required: true
+        default: '0.1.0'
+      publish_to:
+        description: 'Where to publish'
+        required: true
+        default: 'pypi'
+        type: choice
+        options:
+        - pypi
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine
+
+    - name: Build package
+      run: python -m build
+
+    # Publish based on input or tag trigger
+    - name: Publish to PyPI
+      if: ${{ github.event.inputs.publish_to == 'pypi' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) }}
+      run: |
+        python -m twine upload --repository-url https://upload.pypi.org/legacy/ dist/*
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
