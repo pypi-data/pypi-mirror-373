@@ -1,0 +1,231 @@
+Metadata-Version: 2.4
+Name: h2ogpte
+Version: 1.6.40rc5
+Summary: Client library for Enterprise h2oGPTe
+Author-email: "H2O.ai, Inc." <support@h2o.ai>
+Project-URL: Source, https://github.com/h2oai/h2ogpte
+Project-URL: Issues, https://github.com/h2oai/h2ogpte/issues
+Project-URL: Documentation, https://h2oai.github.io/h2ogpte/
+Keywords: information-retrieval,LLM,large-language-models,question-answering,search,semantic-search,analytical-search,lexical-search,document-search,natural-language-querying
+Classifier: Development Status :: 4 - Beta
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Classifier: Programming Language :: Python :: Implementation :: PyPy
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: aiofiles
+Requires-Dist: aiohttp
+Requires-Dist: aiohttp-retry
+Requires-Dist: pydantic[dotenv]>=2.5.2
+Requires-Dist: pydantic-settings>=2.0.3
+Requires-Dist: requests
+Requires-Dist: websockets==11.0.3
+Requires-Dist: beautifulsoup4
+Requires-Dist: bs4
+Requires-Dist: lxml
+Requires-Dist: pandas
+Requires-Dist: httpx
+Requires-Dist: h2o_authn
+Requires-Dist: packaging
+Requires-Dist: filetype
+Requires-Dist: tzlocal
+
+### Python Client and Documentation
+
+- Python client: https://pypi.org/project/h2ogpte/
+- Technical API documentation: https://h2oai.github.io/h2ogpte/
+- General Documentation: https://docs.h2o.ai/h2ogpte-docs/
+- RAG Benchmarks: [latest results](https://github.com/h2oai/enterprise-h2ogpte/blob/main/rag_benchmark/results/test_client_e2e.md) and [how to reproduce](https://github.com/h2oai/enterprise-h2ogpte/tree/main/rag_benchmark)
+
+We recommend installing the client with the same version as the software:
+
+```bash
+pip install h2ogpte
+```
+
+### API Keys and Python Client Examples
+
+API keys are needed to programmatically connect to h2oGPTe from the Python client.
+
+There are two kinds of API keys:
+
+- **Global API key** allows a client to impersonate your user for all API calls.
+- **Collection-specific API keys** allows a client to chat with your specific collection.
+
+#### Global API keys
+
+If a collection is not specified when creating a new API key,
+that key is considered to be a global API key. Use global API
+keys to grant full user impersonation and system-wide access
+to all of your work. Anyone with access to one of your global
+API keys can create, delete, or interact with any of your past,
+current, and future collections, documents, chats, and settings.
+The GUI offers an **Impersonate** feature under the user settings.
+
+```py
+from h2ogpte import H2OGPTE
+
+client = H2OGPTE(
+    address='https://h2ogpte.genai.h2o.ai',
+    api_key='sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+)
+
+# Create a new collection
+collection_id = client.create_collection(
+    name='Contracts',
+    description='Paper clip supply contracts',
+)
+
+# Create documents
+# Note: Done for demonstration purposes only (not usually needed)
+with open('dunder_mifflin.txt', 'w') as f:
+    f.write('There were 55 paper clips shipped, 22 to Scranton and 33 to Filmer.')
+
+with open('initech.txt', 'w') as f:
+    f.write('David Brent did not sign any contract with Initech.')
+
+# Upload documents
+# Many file types are supported: text/image/audio documents and archives
+with open('dunder_mifflin.txt', 'rb') as f:
+    dunder_mifflin = client.upload('Dunder Mifflin.txt', f)
+
+with open('initech.txt', 'rb') as f:
+    initech = client.upload('IniTech.txt', f)
+
+# Ingest documents (Creates previews, chunks and embeddings)
+client.ingest_uploads(collection_id, [dunder_mifflin, initech])
+
+# Create a chat session
+chat_session_id = client.create_chat_session(collection_id)
+
+# Query the collection
+with client.connect(chat_session_id) as session:
+    reply = session.query(
+        'How many paper clips were shipped to Scranton?',
+        timeout=60,
+    )
+    print(reply.content)
+
+    reply = session.query(
+        'Did David Brent co-sign the contract with Initech?',
+        timeout=60,
+    )
+    print(reply.content)
+
+    # In case have multiple LLMs, route to LLM with best
+    # price/performance below given max cost
+    reply = session.query(
+        'Did David Brent co-sign the contract with Initech?',
+        llm='auto',
+        llm_args=dict(cost_controls=dict(max_cost=1e-2)),
+        timeout=60,
+    )
+    print(reply.content)
+
+    # Classification
+    reply = session.query(
+        'Did David Brent co-sign the contract with Initech?',
+        llm_args=dict(
+            guided_choice=['yes', 'no', 'unclear'],
+        ),
+        timeout=60,
+    )
+    print(reply.content)
+
+    # Create custom JSON
+    reply = session.query(
+        'How many paper clips were shipped to Scranton?',
+        llm_args=dict(
+            response_format='json_object',
+            guided_json={
+                'type': 'object',
+                'properties': {'count': {'type': 'integer'}},
+                'required': [
+                    'count',
+                ],
+            },
+        ),
+        timeout=60,
+    )
+    print(reply.content)
+
+    # Force multimodal vision mode (requires vision-capable LLMs)
+    reply = session.query(
+        'How many paper clips were shipped to Scranton?',
+        llm_args=dict(
+            enable_vision='on',
+        ),
+        timeout=60,
+    )
+    print(reply.content)
+
+# Summarize each document
+documents = client.list_documents_in_collection(collection_id, offset=0, limit=99)
+for doc in documents:
+    summary = client.process_document(
+        document_id=doc.id,
+        pre_prompt_summary='Pay attention to the following text in order to summarize.',
+        prompt_summary='Write a concise summary from the text above.',
+        timeout=60,
+    )
+    print(summary.content)
+
+# Chat with LLM without a collection
+chat_session_id = client.create_chat_session()
+
+with client.connect(chat_session_id) as session:
+    reply = session.query(
+        'Why is drinking water good for you?',
+        timeout=60,
+    )
+    print(reply.content)
+```
+
+#### Collection-specific API keys
+
+Use collection-specific API keys to grant external access to only chat with
+the specified collection and make related API calls. Collection-specific API
+keys do not allow any other API calls such as creation, deletion, or access
+to other collections or chats.
+
+```py
+from h2ogpte import H2OGPTE
+
+client = H2OGPTE(
+    address='https://h2ogpte.genai.h2o.ai',
+    api_key='sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+)
+
+# Automatically connects to the collection from the
+# collection-specific API key
+chat_session_id = client.create_chat_session_on_default_collection()
+
+# Query the collection
+with client.connect(chat_session_id) as session:
+    reply = session.query(
+        'How many paper clips were shipped to Scranton?',
+        timeout=60,
+    )
+    print(reply.content)
+
+    reply = session.query(
+        'Did David Brent co-sign the contract with Initech?',
+        timeout=60,
+    )
+    print(reply.content)
+
+# Summarize each document
+default_collection = client.get_default_collection()
+documents = client.list_documents_in_collection(default_collection.id, offset=0, limit=99)
+for doc in documents:
+    summary = client.summarize_document(
+        document_id=doc.id,
+        timeout=60,
+    )
+    print(summary.content)
+```
