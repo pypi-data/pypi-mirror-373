@@ -1,0 +1,52 @@
+name: 0. CI (auto on PR and merges)
+
+on:
+  pull_request:
+    branches: [ "main" ]
+    paths-ignore:
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+  push:
+    branches: [ "main" ]
+    paths-ignore:
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Unit tests (uv + pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies (default + dev)
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv python install 3.13
+          uv venv --python 3.13
+          source .venv/bin/activate
+          uv sync --all-groups
+
+      - name: Run tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          source .venv/bin/activate
+          pytest -q

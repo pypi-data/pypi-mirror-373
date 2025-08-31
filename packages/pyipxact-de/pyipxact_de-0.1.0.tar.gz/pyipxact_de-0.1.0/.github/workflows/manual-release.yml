@@ -1,0 +1,153 @@
+name: 1b. Manual Release (advanced, manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Select version bump type or release-as'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - release-as
+        default: patch
+      version:
+        description: 'Version for release-as (e.g., 0.2.3). Required if bump == release-as.'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create empty commit on a branch
+        id: prepare
+        env:
+          BUMP: ${{ github.event.inputs.bump }}
+          VERSION: ${{ github.event.inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --prune
+          git checkout -B main origin/main
+
+          case "$BUMP" in
+            patch)
+              TITLE="fix: manual version bump (patch)"
+              BODY=""
+              ;;
+            minor)
+              TITLE="feat: manual version bump (minor)"
+              BODY=""
+              ;;
+            major)
+              TITLE="feat!: manual version bump (major)"
+              BODY=$'BREAKING CHANGE: manual trigger to bump major version'
+              ;;
+            release-as)
+              if [ -z "${VERSION:-}" ]; then
+                echo "Error: version is required when bump=release-as" >&2
+                exit 1
+              fi
+              TITLE="chore: release"
+              BODY=$'Release-As: '"$VERSION"
+              ;;
+            *)
+              echo "Unknown bump: $BUMP" >&2
+              exit 1
+              ;;
+          esac
+          # Create a unique branch name and a non-version tag
+          TS=$(date -u +%Y%m%d%H%M%S)
+          if [ "$BUMP" = "release-as" ]; then
+            BRANCH="release/manual-release-as-${VERSION}"
+            TAG="manual-release/release-as-${VERSION}-${TS}"
+            LABELS="release,release-as"
+          else
+            BRANCH="release/manual-bump-${BUMP}-${TS}"
+            TAG="manual-release/${BUMP}-${TS}"
+            LABELS="release,semver:${BUMP}"
+          fi
+
+          git checkout -b "$BRANCH" main
+          git commit --allow-empty -m "$TITLE" -m "$BODY"
+          git push -u origin "$BRANCH"
+
+          # Create and push an informational tag (not a version tag)
+          git tag "$TAG"
+          git push origin "refs/tags/$TAG"
+
+          {
+            echo "branch=$BRANCH"
+            echo "title=$TITLE"
+            # Body may be empty
+            echo "body<<EOF"
+            printf "%s\n" "$BODY"
+            echo EOF
+            echo "labels=$LABELS"
+            echo "tag=$TAG"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open pull request and label it
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const branch = process.env.BRANCH;
+            const title = process.env.TITLE;
+            const body = process.env.BODY;
+            const labels = (process.env.LABELS || '').split(',').map(s => s.trim()).filter(Boolean);
+            const tag = process.env.TAG;
+            try {
+              const { data: pr } = await github.rest.pulls.create({
+                owner,
+                repo,
+                title,
+                head: branch,
+                base: 'main',
+                body,
+              });
+              core.info(`PR created: #${pr.number}`);
+
+              // Add labels, creating them if missing
+              for (const name of labels) {
+                try {
+                  await github.rest.issues.addLabels({ owner, repo, issue_number: pr.number, labels: [name] });
+                } catch (e) {
+                  try {
+                    await github.rest.issues.createLabel({ owner, repo, name, color: 'BFD4F2' });
+                    await github.rest.issues.addLabels({ owner, repo, issue_number: pr.number, labels: [name] });
+                  } catch (e2) {
+                    core.warning(`Failed to add/create label ${name}: ${e2.message}`);
+                  }
+                }
+              }
+
+              // Comment with reference info
+              const commentBody = `Automated manual release trigger.\n\nLabels: ${labels.join(', ') || '(none)'}\nTag: ${tag}`;
+              await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body: commentBody });
+            } catch (e) {
+              core.setFailed(e.message);
+            }
+        env:
+          BRANCH: ${{ steps.prepare.outputs.branch }}
+          TITLE: ${{ steps.prepare.outputs.title }}
+          BODY: ${{ steps.prepare.outputs.body }}
+          LABELS: ${{ steps.prepare.outputs.labels }}
+          TAG: ${{ steps.prepare.outputs.tag }}
