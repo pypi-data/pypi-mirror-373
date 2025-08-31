@@ -1,0 +1,104 @@
+name: Pytest unit/integration
+
+on:
+  pull_request:
+  push:
+    branches: [ master ]
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+# Use bash by default in all jobs
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-test:
+    name: Test Run (${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["ubuntu-latest", "macos-latest"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        exclude:
+          - os: ubuntu-latest
+            python-version: "3.10"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+            fetch-depth: 0
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install tox
+      - name: List installed packages
+        run: pip list
+      - name: Run tests with Tox 
+        run: tox -e default -- -k "not  test_galfit and not test_makePSF"
+
+      - name: Inspect coverage.xml
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10' }}
+        run: |
+          ls -l coverage.xml || (echo "coverage.xml not found" && exit 1)
+          head -n 5 coverage.xml
+
+
+      # Uncomment and configure the following step if you want to upload coverage to Codecov
+      #- name: Upload coverage to Codecov
+      #  if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10' }}
+      #  uses: codecov/codecov-action@v4
+      #  with:
+      #    use_oidc: true
+      #    file: ./coverage.xml
+      #    fail_ci_if_error: true
+
+
+          #- name: Show repo context seen by action
+          #if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10' }}
+          #run: |
+          #echo "GITHUB_REPOSITORY=$GITHUB_REPOSITORY"
+          #echo "CODECOV_SLUG=$CODECOV_SLUG"
+
+
+          #if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10' }}
+
+          #- name: Upload coverage to Codecov
+          #if: ${{ success() && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10' }}
+          #uses: codecov/codecov-action@v4
+          #with:
+          #slug: canorve/GALFITools
+          #files: ./coverage.xml
+          #override_branch: master
+          #override_commit: ${{ github.sha }}
+          #root_dir: .
+          #fail_ci_if_error: true
+          #verbose: true
+          #token: ${{ secrets.CODECOV_TOKEN }}
+
+        
+      - name: Upload coverage to Codecov
+        if: ${{ success()
+              && github.event_name == 'push'
+              && github.ref == 'refs/heads/master'
+              && matrix.os == 'ubuntu-latest'
+              && matrix.python-version == '3.11' }}
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}   # prevents throttling
+          slug: canorve/GALFITools
+          override_branch: master
+          override_commit: ${{ github.sha }}
+          root_dir: .
+          fail_ci_if_error: false
+          verbose: true
+
