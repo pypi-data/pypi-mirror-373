@@ -1,0 +1,214 @@
+{% raw %}
+<div id="app">
+<div class="content-row">
+    <div class="left-menu">
+    <!-- Create New Quiz button as a list item -->
+    <h3 @click="createNewQuiz">
+      ＋ Create new
+    </h3>
+    <ul>
+
+    <!-- Existing quiz list -->
+      <li 
+          v-for="quiz in quizList" 
+          :key="quiz.quiz_id" 
+          @click="getFullQuiz(quiz.quiz_id)" 
+          :class="{ selected: quiz.quiz_id === quizSelected }"
+        >        {{ quiz.name }}
+      </li>
+    </ul>
+  </div> <!-- ends left-menu -->
+
+  <div class="main-content">
+
+
+    <!-- Quiz title and status -->
+    <div class="focus-object-line">
+      <h2>{{ quizName }}</h2> 
+      <!-- p class='heymans-msg'> {{quizStateLabel}} </p -->
+    </div>
+
+    <!-- Collapsible Card: Create and Validate -->
+    <div class="card"  v-if="quizSelected">
+      <div class="card-header" 
+          :class="{ disabled: !cardActiveCreate }"
+          @click="showCreatePanel = !showCreatePanel">
+        <h4> Defining the quiz </h4>
+        <span class="toggle-icon">{{ showCreatePanel ? '▲' : '▼' }}</span>
+      </div>
+      <transition name="collapse">
+        <div class="card-body" v-show="showCreatePanel">
+          <div class="explanation-box">
+          To prepare a quiz for automated grading:
+          <ol>
+            <li>Create a quiz file. This file defines the quiz title, questions and answer key. The format is
+              <a href="https://docs.google.com/document/d/1uUg41KLDX7WaqRNs79GyJJYdZySLtIG5Wr1LCEbzysM/edit?usp=sharing" target="_blank" rel="noopener noreferrer">explained here</a>.
+            </li>
+            <li>Use <span class="button-label regular-button-label">Upload Quiz</span> to upload this file.</li>
+            <li>Use <span class="button-label llm-button-label">Validate Quiz</span> (<em>Optional</em>) to let Heymans assess the wording of your questions and answer key. After a few minutes, a validation report will appear below, with suggestions to improve the quiz and resolve ambiguities.
+            </li>
+            <li> Use <span class="button-label regular-button-label">Export Quiz</span> to download the quiz as a csv file in a Brightspace-compliant format.</li>
+            <li> On Brightspace, create a new quiz (or edit an existing quiz). Upload your exported file using <em>Add existing → Upload a file</em>.
+            </li>
+            <li>Your exam is now ready to be administered!</li>
+          </ol>
+          <em>N.B.:</em>
+          <ul>
+            <li>Uploading a new quiz file will <u>overwrite</u> any existing quiz data, including the validation report.</li>
+          <li>Heymans' validation report is usually very detailed. Suggestions might not be applicable in the context of your course.</li>
+        </ul>
+        </div>
+          <div class="button-row">
+          <!-- Triggering file upload event -->
+          <button class="regular-button" @click="triggerFileInput" :disabled="!buttonActiveUpload">
+            Upload Quiz
+          </button>
+
+          <input ref="fileInput" type="file" accept=".md,.txt" style="display: none" @change="uploadQuiz"/>
+            <button class="llm-button" @click="validateQuiz" :disabled="!buttonActiveValidate">
+              Validate Quiz
+            </button>
+
+            <button class="regular-button" @click="exportQuiz" :disabled="!(quizState=='has_questions')"> 
+              Export Quiz
+            </button>
+          </div>
+          <!-- upload and validate -->
+          <p class="heymans-msg">
+            Quiz has {{quizLen}} questions.
+            {{ validationMessage }}
+          </p>
+        <markdown-renderer v-if="validationReport" :content="validationReport" />
+        </div>
+      </transition>
+    </div>
+
+    <!-- Collapsible Card: Grade attempts -->
+    <div class="card"  v-if="quizSelected">
+      <div class="card-header" 
+          :class="{ disabled: !cardActiveGrade }"
+          @click="showGradePanel = !showGradePanel">
+        <h4> Grading attempts </h4>
+        <span class="toggle-icon">{{ showGradePanel ? '▲' : '▼' }}</span>
+      </div>
+      <transition name="collapse">
+        <div class="card-body" v-show="showGradePanel && cardActiveGrade">
+          <div class="explanation-box">
+          After you have administered the exam:
+          <ol>
+            <li>Download students' attempts on Brightspace via <em>Assessment → Grade (available under the menu next to your quiz) -> Export to CSV</em>, and download the export file when it's ready </li>
+            <li>Use <span class="button-label regular-button-label">Upload Attempts</span> to upload this file.</li>
+            <li>Use <span class="button-label llm-button-label">Start Grading</span>. This will take time, dependent on the number of questions and attempts.
+            </li>
+            <li>Once grading is completed, an error analysis report is generated: per question, Heymans assesses how each question has been scored, and gives a qualitative assessment whether this assessment seems fair.</li>
+            <li>Move on to the final stage (below) to evaluate and export these results.</li>
+          </ol>
+          <em>N.B.:</em><br> 
+          <ul>
+            <li>Uploading a new attempts file will <u>erase</u> any existing grading results, including the scores and analysis.</li>
+            <li>Similar to the validation report, the error report is usually very detailed. Suggestions might not be applicable in the context of your course. </li>
+        </ul>
+        </div>
+
+
+          <div class="button-row">
+          <!-- Triggering file upload event -->
+            <button class="regular-button" @click="triggerAttemptsInput" :disabled ="!buttonActiveAttempts"> Upload Attempts </button>
+            <input
+              ref="attemptsInput"
+              type="file"
+              accept=".csv,.txt"
+              style="display: none"
+              @change="uploadAttempts"
+            />
+            <button class="llm-button" @click="gradeQuiz" :disabled="!buttonActiveGrade">
+              Start Grading
+            </button>
+
+          </div>
+          <!-- upload and validate -->
+          <p class="heymans-msg">
+            {{ gradingMessage }}
+          </p>
+
+          <!-- <markdown-renderer v-if="gradingReport" :content="gradingReport" /> -->
+          <markdown-renderer v-if="analysisReport" :content="analysisReport" />
+
+        </div>
+      </transition>
+    </div>
+
+    <!-- Collapsible Card: Analyze results -->
+    <div class="card"  v-if="quizSelected">
+      <div class="card-header" 
+        :class="{ disabled: !cardActiveAnalyze }"
+        @click="showAnalyzePanel = !showAnalyzePanel">
+        <h4>Analyzing results</h4>
+        <span class="toggle-icon">{{ showAnalyzePanel ? '▲' : '▼' }}</span>
+      </div>
+      <transition name="collapse">
+        <div class="card-body" v-show="showAnalyzePanel && cardActiveAnalyze">
+          <div class="explanation-box">
+          Now that the exam has been graded, you can:
+          <ul>
+            <li>Use <span class="button-label regular-button-label">Export Scores</span> to download a csv file with scores per student in a Brightspace-compliant format.</li>
+            <li>Use <span class="button-label regular-button-label">Export Feedback</span> to download a zip file with per-student feedback reports. Generating this could take a few minutes.</li>
+            <li>Feedback reports can be emailed to students directly, or referenced in an exam inspection</li>
+        </ul>
+        </div>
+          <div class="button-row">
+            <button class="regular-button" @click="exportScores" :disabled="!(gradingStatus=='grading_done')">
+              Export Scores
+            </button>
+            <button class="regular-button" @click="exportAnalysis" :disabled="!cardActiveAnalyze">
+              Export Feedback
+            </button>
+            <spinner-gap :active="spinExportFeedback"></spinner-gap>
+          </div>
+
+          <p class="heymans-msg">
+            Your quiz has been graded. Download the scores and/or individualized feedback here.
+          </p>
+        </div>
+      </transition>
+    </div>
+
+    <!-- Button to delete quiz: -->
+    <div class="button-row" style="justify-content: flex-end;"  v-if="quizSelected">
+      <button class="regular-button" @click="deleteQuiz" :disabled="!quizSelected">
+        Delete quiz
+      </button>
+    </div>
+
+    <!-- Overlay to show errors: -->
+    <div id="overlay" class="overlay">
+      <div class="overlay-content">
+        <span class="alarm-symbol">⚠️</span>
+        <p id="overlay-message"></p>
+        <button class="regular-button" @click='closeOverlay'>Close</button>
+      </div>
+    </div>
+
+    <div class="debuginfo">
+      <pre>{{ quizSelected }}</pre>
+      <pre>cardActiveCreate: {{ cardActiveCreate }}</pre>
+      <pre>quizState: {{ quizState }}</pre>
+      <pre>gradingStatus: {{ gradingStatus }}</pre>
+      <pre>{{ fullQuizData }}</pre>
+    </div>
+
+  </div>  <!-- end main-content -->
+
+</div> <!--  end content-row -->
+</div> <!-- ends the app -->
+{% endraw %}
+
+{% if showDebugInfo %}
+<script>
+// Set display to block for all debuginfo class divs
+document.querySelectorAll('.debuginfo').forEach(function(div) {
+  div.style.display = 'block';
+});
+</script>
+{% endif %}
+    
