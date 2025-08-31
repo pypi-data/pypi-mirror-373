@@ -1,0 +1,4 @@
+class IsTestDataEnum:
+    REAL_DATA: 0
+    DATA_FOR_TESTS: 1
+    DATA_GENERETED_BY_TESTS: 2
