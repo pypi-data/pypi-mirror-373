@@ -1,0 +1,277 @@
+<div id="app">
+  <div ref="menu" class="menu scrollable-menu" v-bind:class="{ 'active': menuVisible }">
+    <div ref="menuCloseButton" class="close"><i class="fas fa-window-close"></i></div> 
+    {% if need_login %}
+      {% include 'login-div.html' %}
+    {% endif %}
+{% raw %}
+    <!-- Expert knowledge section -->
+    <div>
+      <small>For best performance, only enable knowledge and tools that you need</small>
+    </div>
+    <div>
+      <label>Expert knowledge:</label>
+      <div class="tool-item">
+          <input type="checkbox" 
+                 id="collection-opensesame" 
+                 v-model="collection_opensesame">
+          <label for="collection-opensesame">OpenSesame
+          <small><a href="https://osdoc.cogsci.nl/manual/sigmund/" target="_blank">Connect to OpenSesame</a></small>
+          </label>
+      </div>
+      <div class="tool-item">
+          <input type="checkbox" 
+                 id="collection-datamatrix" 
+                 v-model="collection_datamatrix">
+          <label for="collection-datamatrix">Python coding and data analysis</label>
+      </div>
+      <div class="tool-item">
+          <input type="checkbox" 
+                 id="collection-forum" 
+                 v-model="collection_forum">
+          <label for="collection-forum">CogSci community forum</label>
+      </div>
+    </div>
+    <hr class="menu-divider">    
+    <div>
+      <label>Tools:</label>
+      <div class="tool-item">
+          <input type="checkbox" 
+                 id="tool-execute-code" 
+                 v-model="tool_execute_code">
+          <label for="tool-execute-code">Code execution
+          <small><a href="https://github.com/open-cogsci/jupyter-extension-sigmund" target="_blank">Connect to JupyterLab, Notebook, Spyder or Rapunzel</a></small>
+          </label>
+      </div>
+      <div class="tool-item">
+          <input type="checkbox" 
+                 id="tool-search-google-scholar" 
+                 v-model="tool_search_google_scholar">
+          <label for="tool-search-google-scholar">Google Scholar</label>
+      </div>
+      <div class="tool-item">
+          <input type="checkbox" 
+                 id="tool-generate-image" 
+                 v-model="tool_generate_image">
+          <label for="tool-generate-image">Image generation</label>
+      </div>           
+    </div>
+    <hr class="menu-divider">
+    <!-- Model selection -->
+    <div class="model-selector">
+      <small>To save energy and protect the environment, use problem-solving models only for complex reasoning</small>
+        <div class="model-buttons">
+            <button 
+                @click="modelConfig = 'openai'" 
+                :class="{ active: modelConfig === 'openai' }">
+                <!-- Icon for OpenAI model -->
+                <img src="/static/openai.png" alt="OpenAI Icon">
+                <span>OpenAI<br><small>GPT5<br>Conversations</small></span>
+            </button>
+            <button 
+                @click="modelConfig = 'openai_thinking'" 
+                :class="{ active: modelConfig === 'openai_thinking' }">
+                <!-- Icon for OpenAI model -->
+                <img src="/static/openai.png" alt="OpenAI Icon">
+                <span>OpenAI<br><small>GPT5<br>Problem solving</small></span>
+            </button>
+            <button 
+                @click="modelConfig = 'anthropic'" 
+                :class="{ active: modelConfig === 'anthropic' }">
+                <!-- Icon for Anthropic model -->
+                <img src="/static/anthropic.png" alt="Anthropic Icon">
+                <span>Anthropic<br><small>Claude 4<br>Sonnet<br>Conversations</small></span>
+            </button>
+            <button 
+                @click="modelConfig = 'anthropic_thinking'" 
+                :class="{ active: modelConfig === 'anthropic_thinking' }">
+                <!-- Icon for Anthropic model -->
+                <img src="/static/anthropic.png" alt="Anthropic Icon">
+                <span>Anthropic<br><small>Claude 4.1<br>Opus<br>Problem solving</small></span>
+            </button>
+            <button 
+                @click="modelConfig = 'mistral'" 
+                :class="{ active: modelConfig === 'mistral' }">
+                <!-- Icon for Mistral model -->
+                <img src="/static/mistral.png" alt="Mistral Icon">
+                <span>Mistral<br><small>Medium<br>Conversations</small></span>
+            </button>
+            <button 
+                @click="modelConfig = 'magistral'" 
+                :class="{ active: modelConfig === 'magistral' }">
+                <!-- Icon for Mistral model -->
+                <img src="/static/mistral.png" alt="Mistral Icon">
+                <span>Magistral<br><small>Medium<br>Problem solving</small></span>
+            </button>
+        </div>        
+    </div>
+    <hr class="menu-divider">
+{% endraw %}    
+    {% if need_login %}
+    <div @click="navigateTo('/terms')">Terms and conditions</div>    
+    {% else %}
+    <div v-if="shouldShowNewConversationButton" @click="navigateTo(getNewConversationUrl())">New conversation</div>
+    <div @click="showConversations">Browse conversations</div>
+    <div @click="navigateTo('/api/conversation/clear')">Clear conversation</div>
+    <hr class="menu-divider">    
+    <div @click="navigateTo('/terms')">Terms and conditions</div>
+    <div @click="navigateTo('/subscribe/customer-portal')" v-if="showManageSubscriptions">Manage subscription</div>
+    <div @click="navigateTo('/api/conversation/export')">Download your data</div>
+    <div @click="navigateTo('/logout')">Log out</div>
+    {% endif %}
+{% raw %}    
+  </div>
+  <!-- Modal for browsing conversations -->
+  <div class="modal" v-if="showModal" v-bind:class="{ 'active': showModal }">
+    <div class="modal-content">
+      <div id='conversation-heading'>Conversations
+        <div class="close" @click="closeModal"><i class="fas fa-window-close"></i></div>
+      </div>
+      <!-- Search input and button -->
+      <div class="search-conversations">
+          <input v-model="searchQuery" @keydown.enter="fetchConversations" type="text" placeholder="Search …">
+      </div>      
+      <div id="loadingConversationsMessage" v-show="isLoadingConversations">Loading conversations …</div>
+      <div v-for="(conversation, index) in sortedConversations" :key="conversation.id">
+        <span v-if="index !== 0" class="delete-convo" @click="deleteConversation(conversation.id)">
+          <i class="fas fa-trash-alt"></i>
+        </span>
+        <span @click="activateConversation(conversation.id)" class="conversation-title">
+          {{ conversation.title }}
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endraw %}
+
+<script>
+function setSetting(key, value) {
+  const data = {};
+  data[key] = String(value);
+  console.log('setting:', key, ' = ', data);
+  fetch('/api/setting/set', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(data),
+  })
+  .then((response) => {
+    if (!response.ok) {
+      throw new Error(`Failed to set ${key} setting: ${response.statusText}`);
+    }
+    return response.json();
+  })
+  .then((json) => {
+    if (!json.success) {
+      throw new Error(`Failed to set ${key} setting: ${json.message}`);
+    }
+  })
+  .catch((error) => {
+    console.error(error);
+  });
+}
+
+new Vue({
+  el: '#app',
+  data: {
+    menuVisible: false,
+    showModal: false,
+    conversations: {},
+    showManageSubscriptions: {{ subscription_required|lower }},
+    isUploading: false,
+    modelConfig: sigmundSettings.model_config,
+    forceModelConfigUpdate: 0,
+    tool_execute_code: sigmundSettings.tool_execute_code === 'true',
+    tool_generate_image: sigmundSettings.tool_generate_image === 'true',
+    tool_search_google_scholar: sigmundSettings.tool_search_google_scholar === 'true',
+    collection_opensesame: sigmundSettings.collection_opensesame === 'true',
+    collection_datamatrix: sigmundSettings.collection_datamatrix === 'true',
+    collection_forum: sigmundSettings.collection_forum === 'true',
+    shouldShowNewConversationButton: true,
+    isLoadingConversations: true,
+    searchQuery: ''
+  },
+  computed: {
+    sortedConversations() {
+      return Object.entries(this.conversations)
+        .map(([id, [title, timestamp]]) => ({ id, title, timestamp }))
+        .sort((a, b) => b.timestamp - a.timestamp);
+    }
+  },
+  watch: {
+    modelConfig(value) { setSetting('model_config', value); },
+    tool_execute_code(value) { setSetting('tool_execute_code', value); },
+    tool_generate_image(value) { setSetting('tool_generate_image', value); },
+    tool_search_google_scholar(value) { setSetting('tool_search_google_scholar', value); },
+    collection_opensesame(value) { setSetting('collection_opensesame', value); },
+    collection_datamatrix(value) { setSetting('collection_datamatrix', value); },
+    collection_forum(value) { setSetting('collection_forum', value); }
+  },
+  methods: {
+    closeMenu(event) {
+      // Only close the menu if the click was not inside the menu
+      if (this.$refs.menuCloseButton.contains(event.target) || !this.$refs.menu.contains(event.target)) {
+        this.menuVisible = false;
+        window.removeEventListener('click', this.closeMenu);
+      }
+    },
+    getNewConversationUrl() {
+      return '/api/conversation/new';
+    },
+    toggleMenu: function() {
+      const responseElement = document.getElementById('response');
+      this.shouldShowNewConversationButton = responseElement.children.length > 1;
+      this.menuVisible = !this.menuVisible;
+      // Attach an event handler to close the menu when the window is clicked.
+      // This is done in a timeout to avoid it from being invoked directly as
+      // a result of the current click
+      setTimeout(() => {
+        if (this.menuVisible) {
+          window.addEventListener('click', this.closeMenu);
+        }
+      }, 100);
+    },
+    navigateTo: function(path) {
+      window.location.href = path;
+    },
+    showConversations: function() {
+      this.fetchConversations();
+      this.showModal = true;
+      this.menuVisible = false;
+      console.log('showing conversations')
+    },
+    closeModal: function() {
+      this.showModal = false;
+    },
+    fetchConversations(query = '') {
+        this.conversations = {};
+        this.isLoadingConversations = true;
+        fetch(`/api/conversation/list?query=${encodeURIComponent(this.searchQuery)}`)
+            .then(response => response.json())
+            .then(data => {
+                console.log(data);
+                this.conversations = data;
+                this.isLoadingConversations = false;
+            })
+            .catch(error => {
+                console.error('Error fetching conversations:', error);
+            });
+    },
+    activateConversation: function(conversationId) {
+      this.navigateTo(`/api/conversation/activate/${conversationId}`);
+    },
+    deleteConversation: function(conversationId) {
+      // Optimistically remove the conversation from the list
+      Vue.delete(this.conversations, conversationId);
+      // Make delete request to server
+      fetch(`/api/conversation/delete/${conversationId}`, { method: 'DELETE' })
+        .then(response => {
+          if (!response.ok) {
+            // If the delete failed, add it back to the list
+            this.fetchConversations();
+          }
+        });
+    }
+  }
+});
+</script>
