@@ -1,0 +1,266 @@
+# Cinetica
+
+Cinetica is a Python library designed to provide various modules for physics calculations and simulations.
+
+## Installation
+
+```bash
+pip install cinetica
+```
+
+## Usage
+
+### Movimiento Rectilíneo
+
+El módulo `cinetica.rectilineo` proporciona las clases `MovimientoRectilineoUniforme` (MRU) y `MovimientoRectilineoUniformementeVariado` (MRUV).
+
+**Ejemplo de uso de MRU:**
+
+```python
+from cinetica.rectilineo import MovimientoRectilineoUniforme
+
+# MRU
+mru = MovimientoRectilineoUniforme(posicion_inicial=10.0, velocidad_inicial=2.0)
+posicion_mru = mru.posicion(tiempo=5.0)
+velocidad_mru = mru.velocidad()
+print(f"MRU - Posición a los 5s: {posicion_mru} m, Velocidad: {velocidad_mru} m/s")
+```
+
+**Ejemplo de uso de MRUV:**
+
+```python
+from cinetica.rectilineo import MovimientoRectilineoUniformementeVariado
+
+# MRUV
+mruv = MovimientoRectilineoUniformementeVariado(posicion_inicial=0.0, velocidad_inicial=10.0, aceleracion_inicial=2.0)
+posicion_mruv = mruv.posicion(tiempo=3.0)
+velocidad_mruv = mruv.velocidad(tiempo=3.0)
+aceleracion_mruv = mruv.aceleracion()
+print(f"MRUV - Posición a los 3s: {posicion_mruv} m, Velocidad: {velocidad_mruv} m/s, Aceleración: {aceleracion_mruv} m/s^2")
+
+# MRUV sin tiempo
+mruv_sin_tiempo = MovimientoRectilineoUniformementeVariado(posicion_inicial=0.0, velocidad_inicial=0.0, aceleracion_inicial=2.0)
+velocidad_final_sin_tiempo = mruv_sin_tiempo.velocidad_sin_tiempo(posicion_final=16.0)
+print(f"MRUV - Velocidad final sin tiempo (para posición 16m): {velocidad_final_sin_tiempo} m/s")
+
+# MRUV - Tiempo a partir de la posición final
+# Ejemplo: Calcular el tiempo para alcanzar una posición de 16m
+tiempos_posicion = mruv.tiempo_por_posicion(posicion_final=16.0)
+print(f"MRUV - Tiempos para posición 16m: {tiempos_posicion[0]:.2f}s, {tiempos_posicion[1]:.2f}s")
+
+# MRUV - Tiempo a partir de la velocidad final
+# Ejemplo: Calcular el tiempo para alcanzar una velocidad de 20 m/s
+tiempo_velocidad = mruv.tiempo_por_velocidad(velocidad_final=20.0)
+print(f"MRUV - Tiempo para velocidad 20m/s: {tiempo_velocidad:.2f}s")
+
+# MRUV - Desplazamiento sin conocer el tiempo
+# Ejemplo: Calcular el desplazamiento para alcanzar una velocidad final de 20 m/s
+desplazamiento_sin_tiempo = mruv.desplazamiento_sin_tiempo(velocidad_final=20.0)
+print(f"MRUV - Desplazamiento sin tiempo (para velocidad 20m/s): {desplazamiento_sin_tiempo:.2f}m")
+```
+
+### Movimiento Parabólico
+
+El módulo `cinetica.parabolico` proporciona las clases `MovimientoParabolicoBase` para la simulación de la trayectoria y `MovimientoParabolicoAnalisis` para el cálculo de propiedades como el alcance y el tiempo de vuelo.
+
+**Ejemplo de uso:**
+
+```python
+from cinetica.parabolico import MovimientoParabolicoBase, MovimientoParabolicoAnalisis
+
+# Lanzamiento con velocidad inicial de 20 m/s y ángulo de 45 grados
+mp_base = MovimientoParabolicoBase(velocidad_inicial=20.0, angulo_grados=45)
+mp_analisis = MovimientoParabolicoAnalisis(mp_base)
+
+# Calcular posición a los 1.5 segundos
+pos_x, pos_y = mp_base.posicion(tiempo=1.5)
+print(f"MP - Posición a los 1.5s: x={pos_x:.2f} m, y={pos_y:.2f} m")
+
+# Calcular velocidad a los 1.5 segundos
+vel_x, vel_y = mp_base.velocidad(tiempo=1.5)
+print(f"MP - Velocidad a los 1.5s: vx={vel_x:.2f} m/s, vy={vel_y:.2f} m/s")
+
+# Calcular tiempo de vuelo, altura máxima y alcance máximo
+tiempo_vuelo = mp_analisis.tiempo_vuelo()
+altura_maxima = mp_analisis.altura_maxima()
+alcance_maximo = mp_analisis.alcance_maximo()
+print(f"MP - Tiempo de vuelo: {tiempo_vuelo:.2f} s")
+print(f"MP - Altura máxima: {altura_maxima:.2f} m")
+print(f"MP - Alcance máximo: {alcance_maximo:.2f} m")
+```
+
+### Movimiento Circular
+
+El módulo `cinetica.circular` proporciona las clases `MovimientoCircularUniforme` (MCU) y `MovimientoCircularUniformementeVariado` (MCUV).
+
+**Ejemplo de uso de MCU:**
+
+```python
+from cinetica.circular import MovimientoCircularUniforme
+import math
+
+# MCU con radio de 2m y velocidad angular de pi/2 rad/s
+mcu = MovimientoCircularUniforme(radio=2.0, velocidad_angular_inicial=math.pi/2)
+
+# Posición angular a los 1s
+pos_angular_mcu = mcu.posicion_angular(tiempo=1.0)
+print(f"MCU - Posición angular a 1s: {pos_angular_mcu:.2f} rad")
+
+# Velocidad tangencial y aceleración centrípeta
+vel_tangencial_mcu = mcu.velocidad_tangencial()
+acel_centripeta_mcu = mcu.aceleracion_centripeta()
+print(f"MCU - Velocidad tangencial: {vel_tangencial_mcu:.2f} m/s, Aceleración centrípeta: {acel_centripeta_mcu:.2f} m/s^2")
+```
+
+**Ejemplo de uso de MCUV:**
+
+```python
+from cinetica.circular import MovimientoCircularUniformementeVariado
+import math
+
+# MCUV con radio de 1m, vel. angular inicial 1 rad/s, acel. angular 0.5 rad/s^2
+mcuv = MovimientoCircularUniformementeVariado(radio=1.0, velocidad_angular_inicial=1.0, aceleracion_angular_inicial=0.5)
+
+# Velocidad angular a los 2s
+vel_angular_mcuv = mcuv.velocidad_angular(tiempo=2.0)
+print(f"MCUV - Velocidad angular a 2s: {vel_angular_mcuv:.2f} rad/s")
+
+# Aceleración tangencial y centrípeta a los 2s
+acel_tangencial_mcuv = mcuv.aceleracion_tangencial()
+acel_centripeta_mcuv = mcuv.aceleracion_centripeta(tiempo=2.0)
+acel_total_mcuv = mcuv.aceleracion_total(tiempo=2.0)
+print(f"MCUV - Aceleración tangencial: {acel_tangencial_mcuv:.2f} m/s^2, Aceleración centrípeta: {acel_centripeta_mcuv:.2f} m/s^2, Aceleración total: {acel_total_mcuv:.2f} m/s^2")
+
+# MCUV - Velocidad angular final sin tiempo
+# Ejemplo: Calcular la velocidad angular final para una posición angular de 5 rad
+vel_angular_final_sin_tiempo = mcuv.velocidad_angular_sin_tiempo(posicion_angular_final=5.0)
+print(f"MCUV - Velocidad angular final sin tiempo (para posición 5rad): {vel_angular_final_sin_tiempo:.2f} rad/s")
+
+# MCUV - Tiempo a partir de la posición angular final
+# Ejemplo: Calcular el tiempo para alcanzar una posición angular de 5 rad
+tiempos_posicion_angular = mcuv.tiempo_por_posicion_angular(posicion_angular_final=5.0)
+print(f"MCUV - Tiempos para posición angular 5rad: {tiempos_posicion_angular[0]:.2f}s, {tiempos_posicion_angular[1]:.2f}s")
+
+# MCUV - Tiempo a partir de la velocidad angular final
+# Ejemplo: Calcular el tiempo para alcanzar una velocidad angular de 3 rad/s
+tiempo_vel_angular = mcuv.tiempo_por_velocidad_angular(velocidad_angular_final=3.0)
+print(f"MCUV - Tiempo para velocidad angular 3rad/s: {tiempo_vel_angular:.2f}s")
+```
+
+### Movimiento Oscilatorio
+
+El módulo `cinetica.oscilatorio` proporciona la clase `MovimientoArmonicoSimple` (M.A.S.) para calcular la posición, velocidad, aceleración, período, frecuencia y energías en un movimiento armónico simple, y la clase `MovimientoArmonicoComplejo` (M.A.C.) para la superposición de múltiples M.A.S.
+
+**Ejemplo de uso de M.A.S.:**
+
+```python
+from cinetica.oscilatorio import MovimientoArmonicoSimple
+import math
+
+# M.A.S. con amplitud de 0.1m, frecuencia angular de 2*pi rad/s (f=1Hz)
+mas = MovimientoArmonicoSimple(amplitud=0.1, frecuencia_angular=2 * math.pi)
+
+# Posición, velocidad y aceleración a los 0.25s
+tiempo = 0.25
+posicion_mas = mas.posicion(tiempo)
+velocidad_mas = mas.velocidad(tiempo)
+aceleracion_mas = mas.aceleracion(tiempo)
+print(f"MAS - Posición a {tiempo}s: {posicion_mas:.4f} m")
+print(f"MAS - Velocidad a {tiempo}s: {velocidad_mas:.4f} m/s")
+print(f"MAS - Aceleración a {tiempo}s: {aceleracion_mas:.4f} m/s^2")
+
+# Período y frecuencia
+periodo_mas = mas.periodo()
+frecuencia_mas = mas.frecuencia()
+print(f"MAS - Período: {periodo_mas:.2f} s, Frecuencia: {frecuencia_mas:.2f} Hz")
+
+# Energías (requiere masa y constante elástica)
+masa = 0.5 # kg
+constante_elastica = mas.frecuencia_angular**2 * masa # k = m * omega^2
+energia_cinetica_mas = mas.energia_cinetica(tiempo, masa)
+energia_potencial_mas = mas.energia_potencial(tiempo, constante_elastica)
+energia_total_mas = mas.energia_total(masa, constante_elastica)
+print(f"MAS - Energía Cinética a {tiempo}s: {energia_cinetica_mas:.4f} J")
+print(f"MAS - Energía Potencial a {tiempo}s: {energia_potencial_mas:.4f} J")
+print(f"MAS - Energía Total: {energia_total_mas:.4f} J")
+```
+
+**Ejemplo de uso de M.A.C.:**
+
+```python
+from cinetica.oscilatorio import MovimientoArmonicoComplejo
+import numpy as np
+
+# Definir componentes MAS
+componente1 = {'amplitud': 2.0, 'frecuencia_angular': 1.0, 'fase_inicial': 0.0}
+componente2 = {'amplitud': 1.0, 'frecuencia_angular': 3.0, 'fase_inicial': np.pi / 2}
+componente3 = {'amplitud': 0.5, 'frecuencia_angular': 5.0, 'fase_inicial': np.pi}
+
+mac = MovimientoArmonicoComplejo([componente1, componente2, componente3])
+
+# Calcular posición, velocidad y aceleración en un tiempo específico
+tiempo_mac = 0.5
+posicion_mac = mac.posicion(tiempo_mac)
+velocidad_mac = mac.velocidad(tiempo_mac)
+aceleracion_mac = mac.aceleracion(tiempo_mac)
+
+print(f"MAC - Posición a {tiempo_mac}s: {posicion_mac:.4f} m")
+print(f"MAC - Velocidad a {tiempo_mac}s: {velocidad_mac:.4f} m/s")
+print(f"MAC - Aceleración a {tiempo_mac}s: {aceleracion_mac:.4f} m/s^2")
+```
+
+### Movimiento Relativo
+
+El módulo `cinetica.relativo` proporciona la clase `MovimientoRelativo` para calcular velocidades relativas entre objetos en 2D o 3D.
+
+**Ejemplo de uso:**
+
+```python
+from cinetica.relativo import MovimientoRelativo
+import numpy as np
+
+mr = MovimientoRelativo()
+
+# Velocidades de los objetos
+v_tren = [50, 0] # Tren moviéndose en el eje X a 50 km/h
+v_persona = [5, 0] # Persona caminando en el tren en la misma dirección a 5 km/h
+v_viento = [0, -20] # Viento soplando en el eje Y negativo a 20 km/h
+
+# Velocidad de la persona con respecto a tierra (V_P/T = V_P/Tren + V_Tren/Tierra)
+# Aquí, V_P/Tren es la velocidad de la persona relativa al tren, y V_Tren/Tierra es la velocidad absoluta del tren.
+# Si la persona camina en el tren, su velocidad absoluta es la suma de su velocidad relativa al tren y la velocidad del tren.
+v_persona_tierra = mr.velocidad_absoluta_a(v_persona, v_tren)
+print(f"Velocidad de la persona con respecto a tierra: {v_persona_tierra} km/h")
+
+# Velocidad del tren con respecto a la persona (V_Tren/P = V_Tren/Tierra - V_P/Tierra)
+v_tren_persona = mr.velocidad_relativa(v_tren, v_persona_tierra)
+print(f"Velocidad del tren con respecto a la persona: {v_tren_persona} km/h")
+
+# Escenario 2D: Barco en un río
+v_barco_rio = [10, 0] # Velocidad del barco respecto al río (10 km/h río abajo)
+v_rio_tierra = [0, 5] # Velocidad del río respecto a tierra (5 km/h hacia el norte)
+
+# Velocidad del barco respecto a tierra (V_B/T = V_B/R + V_R/T)
+v_barco_tierra = mr.velocidad_absoluta_a(v_barco_rio, v_rio_tierra)
+print(f"Velocidad del barco con respecto a tierra: {v_barco_tierra} km/h")
+print(f"Magnitud de la velocidad del barco: {mr.magnitud_velocidad(v_barco_tierra):.2f} km/h")
+print(f"Dirección de la velocidad del barco (radianes): {mr.direccion_velocidad(v_barco_tierra):.2f} rad")
+
+# Escenario 3D: Avión con viento
+v_avion_aire = [200, 50, 0] # Velocidad del avión respecto al aire
+v_aire_tierra = [20, -10, 5] # Velocidad del aire (viento) respecto a tierra
+
+# Velocidad del avión respecto a tierra (V_A/T = V_A/Aire + V_Aire/Tierra)
+v_avion_tierra = mr.velocidad_absoluta_a(v_avion_aire, v_aire_tierra)
+print(f"Velocidad del avión con respecto a tierra: {v_avion_tierra} km/h")
+print(f"Magnitud de la velocidad del avión: {mr.magnitud_velocidad(v_avion_tierra):.2f} km/h")
+print(f"Dirección de la velocidad del avión (vector unitario): {mr.direccion_velocidad(v_avion_tierra)}")
+```
+
+## Contributing
+
+Contributions are welcome! Please see the `CONTRIBUTING.md` for more details.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
