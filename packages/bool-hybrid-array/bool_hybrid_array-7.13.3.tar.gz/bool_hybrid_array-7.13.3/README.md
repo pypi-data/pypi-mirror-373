@@ -1,0 +1,249 @@
+# BoolHybridArray：高效的布尔混合数组库
+
+一个专为布尔值优化的数组类，能够根据数据特征自动在密集存储和稀疏存储模式间切换，兼顾性能和内存效率。
+
+ ***注意：目前社区中若存在名称类似（如包含 “bool-hybrid-array”+ 后缀、boolean_array、validate.io-boolean-array）的库，均与本项目（bool-hybrid-array）无关联，本项目的所有功能设计、代码实现均为独立开发；***
+***其他平台里的类似名库绝不是我的库***
+
+***注意：若你的原bool-hybrid-array库版本<7.10.9，看到此版本请立即更新到>=7.10.9版本，其他版本的导入都有问题！！！***
+
+作者：蔡靖杰（同维护者，PyPI账号Bkshell）
+
+## 安装方法
+
+使用pip安装：
+
+```bash
+
+pip install bool-hybrid-array
+
+```
+
+## 核心特性
+
+* **智能存储模式**：数据量小的位置使用密集存储numpy.ndarray数组，
+* 数据量大的位置为稀疏存储array.array稀疏数组
+* 非稀疏模式：数据大部分为非0（True）索引
+* 稀疏模式：数据大部分为0（False）索引
+* BoolHybridArr函数会自动切换
+* **内存高效**：稀疏数据场景下比普通列表节省50%-80%内存
+* **操作便捷**：支持类似列表的索引、切片和赋值操作
+* **快速统计**：内置高效的计数和布尔判断方法
+* **速度优势**：修改元素的时间还不比list慢
+## 快速开始
+
+### 基本用法
+```python
+
+# 导入类
+
+from bool_hybrid_array import BoolHybridArr,TruesArray,FalseArray
+
+# 创建实例
+
+arr = BoolHybridArr([True, False, True, False, True])
+
+arr2 = TruesArray(3)#7.9.0新增
+
+arr3 = FalsesArray(3)#7.9.0新增
+
+# 访问元素
+
+print(arr[0])  # 输出: True；
+
+print(arr[1:4])  # 输出:  BoolHybridArr([False, True, False])；
+
+print(arr2)  # 输出:  BoolHybridArr(True, True, True])；
+
+print(arr3)  # 输出:  BoolHybridArr([False, False, False])；
+```
+# 联系方式
+
+* 若遇到 Bug 或有功能建议，可发送邮件至：1289270215@qq.com（更正规）
+* 微信联系：18250730129（注：这是微信绑定的电话号码，优先微信沟通，请勿拨打电话哦）（微信联系回复最快）
+* 抖音（绑定电话号码同微信）（有群聊，加入可讨论）
+
+# 修改元素
+```python
+
+arr[2] = False
+
+print(arr)  # 输出: BoolHybridArr([True, False, False, False, True])
+
+```
+### 存储优化
+```python
+
+# 创建包含大量布尔值的数组（大部分为False）
+
+big_arr = BoolHybridArr([i % 100 == 0 for i in range(10000)])
+
+# 查看存储模式（此时应为稀疏模式）
+
+print(repr(big_arr))  # 输出: BoolHybridArray(split_index=100,size=10000,is_sparse=True,small_len=100,large_len=)不好意思large\_len我不知道
+
+# 自动优化存储
+
+big_arr.optimize()
+
+```
+### 其他功能
+```python
+
+# 统计True的数量
+
+print(arr.count(True))  # 输出: 2
+
+# 检查是否至少有一个True
+
+print(any(arr))  # 输出: True
+
+# 检查是否全为True
+
+print(all(arr))  # 输出: False
+
+# 复制数组（7.9.1新增）
+
+arr_copy = arr.copy()
+
+arr_copy[0] = False
+
+print(arr[0])      # 输出: True（原数组不变）
+
+print(arr_copy[0]) # 输出: False（拷贝数组已修改）
+
+#寻找一个元素出现的索引(7.9.2新增)
+
+arr_find = BoolHybridArr([i % 2 for i in range(10)])
+
+print(arr_find.find(True))#输出：[1,3,5,7,9]
+
+print(arr_find.find(False))#输出：[2,4,6,8,10]
+
+# 查找第一个/最后一个出现的位置（7.10.3新增）
+
+print(arr_find.index(True))   # 输出：1（第一个True的位置）
+
+print(arr_find.rindex(True))  # 输出：9（最后一个True的位置）
+
+#index/rindex的空数组处理（7.10.4新增）
+
+none_arr =  BoolHybridArr([])
+
+print(none_arr.index(True))#ValueError：无法在空的 BoolHybridArray 中查找元素
+
+#查看是否需要优化（7.10.7新增，7.10.20+能用）
+
+print(big_arr.memory_usage(detail=True))
+'''样例输出（瞎编，但格式是这样）
+{
+    "总占用(字节)": 210,
+    "密集区占用": 180,
+    "稀疏区占用": 30,
+    "对比原生list节省": "99.5%",
+    "对比numpy节省": "79.0%",
+    "是否需要优化": "是",
+    "优化理由/说明": "稀疏区索引密度过高，优化后可转为密集存储提升速度"
+}
+'''
+big_arr.optimize()  # 调用优化方法
+
+print(big_arr.memory_usage(detail=True)["是否需要优化"])#"否"
+
+'''当处理动态变化的布尔数组（如频繁增删元素）时，建议在关键操作后调用memory_usage(detail=True)检查状态，通过optimize()保持最优性能。'''
+
+#将数组转为int类型（7.11.0新增）：
+
+print(int(arr))#输出：17（0b10001）
+
+#位运算（7.13.0新增）
+
+arr1 = BoolHybridArr([True, False, True, False])  # 0b1010
+
+arr2 = BoolHybridArr([True, True, False, False])   # 0b1100
+
+print(arr1 & arr2)  # 输出：BoolHybridArr([True,False,False,False])  # 0b1000
+
+print(arr1 | arr2)  # 输出：BoolHybridArr([True,True,True,False])  # 0b1110
+
+print([True, False] | arr1[:2])  # 反向运算：[True,False] | [True,False] → [True,False]
+
+print(arr1 ^ arr2)  # 输出：BoolHybridArr([False,True,True,False])  # 0b0110
+
+print(~arr1)  # 输出：BoolHybridArr([False,True,False,True])  # 0b0101（对应整数 ~10 = -11 的二进制布尔逻辑）
+
+arr = BoolHybridArr([True, False, True])  # 0b101
+
+arr <<= 2  # 左移2位：尾部补2个False → [True,False,True,False,False]（0b10100）
+
+print(arr)
+
+arr >>= 3  # 右移3位：尾部删3个元素 → [True,False]（0b10）
+
+print(arr)
+
+print(arr << -1)  # 负数左移：等价于右移1位 → [True]
+
+```
+## 性能优势
+
+在包含100万个布尔值且只有10%为True的场景下
+或在包含100万个布尔值且只有10%为False的场景下：
+
+* ###### 普通Python列表：约占用1MB内存
+* BoolHybridArray：约占用100KB内存（节省90%）
+* 随机访问速度基本保持一致
+
+## 版本历史
+
+* **7.8.13**：PyPI上的初始版本，支持基本功能和自动存储优化
+* **7.9.0**：添加TruesArray和FalsesArray
+* **7.9.1**：修复介绍的bug，增加copy功能
+* **7.9.2**：新增find()方法
+* **7.10.0**：优化内部存储，重构密集部分（但使用还是一样）
+* **7.10.1**：与运算和或运算增加异常提醒
+* **7.10.2**：修复了之前所有版本的index错误
+* **7.10.3**：新增rindex
+* **7.10.4**：修正样例代码中的错误，增加index/rindex的空数组处理
+* **7.10.5**：修复7.10.4版本index/rindex中size没加self的错误
+* **7.10.6**：比7.10.0进一步优化内部储存
+* **7.10.7**：新增arr.memory_usage方法查看是否优化，支持查看内存占用详情及优化建议，配合arr.optimize()实现存储自动调优
+* **7.10.8**：增加cython加速
+* **7.10.9**：修复之前所有版本的导入问题
+* **7.10.10**：修复unit8溢出问题
+* **7.10.11**：尝试修复memory_usage方法的错误
+* **7.10.12**：尝试修复memory_usage方法的错误×2
+* **7.10.13**：尝试修复memory_usage方法的错误×3
+* **7.10.14**：尝试修复unit8溢出问题×2
+* **7.10.15**：尝试修复unit8溢出问题×3
+* **7.10.16**：修复unit8溢出问题×4+尝试修复memory_usage方法的错误×4
+* **7.10.17**：尝试修复memory_usage方法的错误×4
+* **7.10.18**：尝试修复memory_usage方法的错误×5
+* **7.10.19**：尝试修复memory_usage方法的错误×6
+* **7.10.20**：尝试修复memory_usage方法的错误×7
+* **7.11.0**：新增int功能，把布尔数组转为int类型
+* **7.12.0**：在优化函数中新增应对超级稀疏/超级密集情况的方案
+* **7.13.0**：新增多种位运算功能
+* **7.13.1**：修复普通左移参数为负数时结果错误
+* **7.13.2**：修复左移时的sqrt问题，优化左移
+* **7.13.3**：修复左移的问题
+
+##**彩蛋：**
+
+- Q：为什么要“密集+稀疏？”
+- A：因为在做线性筛的时候遇到了个问题：密集数组太占内存，稀疏数组跑起来卡，所以就做了这个
+- Q：为什么要“密集numpy.ndarray，稀疏array.array”？
+- A：因为他本来只做线性筛，只修改数组，不insert、pop、remove;稀疏区长度变化平凡，要numpy.ndarray的“**修改就创建新实例**”的话那炸了，所以用array.array,密集区长度不变；所以可以用更高效的numpy.ndarray
+- Q：为什么要有TruesArray/FalsesArray？直接用BoolHybridArr(\[True]\*n)/BoolHybridArr(\[False]\*n)不行吗？
+- A：因为BoolHybridArr(\[True]\*n)在计算\[True]\*n时如果n太大，那么列表的内存会溢出
+- Q：**BoolHybridArr**和**BoolHybridArray**有什么区别？
+- A：BoolHybridArray是本库中**唯一一个类**，所有函数都是围绕他进行的，但需要split\_index,size,is\_sparse；
+BoolHybridArr是一个**函数**，用于把一个可迭代对象转为BoolHybridArray类
+- Q：为什么不建议自定义属性？
+- A：因为本库的类存在多处会清空自定义属性的代码，所以不建议自定义属性
+- Q：为什么不建议把太大的本类型数组打印？
+- A：虽然本类型数组省内存，但字符串不省内存，一个True要4字节，一个False要5字节，连逗号都要占1字节（numpy.ndarray：我都比字符串省内存）
+
+## 许可证
+
+本项目采用**MIT许可证**，详情参见**LICENSE文件**。
