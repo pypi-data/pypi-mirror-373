@@ -1,0 +1,284 @@
+from __future__ import annotations
+
+from collections.abc import Hashable
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Any, TypeGuard, TypeVar
+
+from django.db.models import ForeignKey
+from graphql import (
+    DocumentNode,
+    FieldNode,
+    GraphQLEnumType,
+    GraphQLError,
+    GraphQLIncludeDirective,
+    GraphQLInputObjectType,
+    GraphQLInterfaceType,
+    GraphQLObjectType,
+    GraphQLResolveInfo,
+    GraphQLScalarType,
+    GraphQLSkipDirective,
+    GraphQLUnionType,
+    OperationDefinitionNode,
+    OperationType,
+    Undefined,
+    get_argument_values,
+    get_directive_values,
+)
+
+from undine.exceptions import (
+    DirectiveLocationError,
+    GraphQLErrorGroup,
+    GraphQLGetRequestMultipleOperationsNoOperationNameError,
+    GraphQLGetRequestNonQueryOperationError,
+    GraphQLGetRequestNoOperationError,
+    GraphQLGetRequestOperationNotFoundError,
+)
+from undine.settings import undine_settings
+from undine.utils.text import to_snake_case
+
+if TYPE_CHECKING:
+    from collections.abc import Generator, Iterable
+
+    from graphql import (
+        DirectiveLocation,
+        DocumentNode,
+        ExecutionResult,
+        GraphQLList,
+        GraphQLNonNull,
+        GraphQLOutputType,
+        GraphQLWrappingType,
+        SelectionNode,
+    )
+    from graphql.execution.values import NodeWithDirective
+
+    from undine import Field, GQLInfo
+    from undine.directives import Directive
+    from undine.typing import ModelField
+
+
+__all__ = [
+    "build_response",
+    "check_directives",
+    "get_arguments",
+    "get_queried_field_name",
+    "get_underlying_type",
+    "graphql_error_path",
+    "is_connection",
+    "is_edge",
+    "is_node_interface",
+    "is_page_info",
+    "is_relation_id",
+    "is_subscription_operation",
+    "should_skip_node",
+]
+
+
+TGraphQLType = TypeVar(
+    "TGraphQLType",
+    GraphQLScalarType,
+    GraphQLObjectType,
+    GraphQLInterfaceType,
+    GraphQLUnionType,
+    GraphQLEnumType,
+    GraphQLInputObjectType,
+)
+
+
+# Getters
+
+
+def get_underlying_type(
+    gql_type: (
+        TGraphQLType
+        | GraphQLList[TGraphQLType]
+        | GraphQLList[GraphQLNonNull[TGraphQLType]]
+        | GraphQLNonNull[TGraphQLType]
+        | GraphQLNonNull[GraphQLList[TGraphQLType]]
+        | GraphQLNonNull[GraphQLList[GraphQLNonNull[TGraphQLType]]]
+        | GraphQLWrappingType[TGraphQLType]
+    ),
+) -> TGraphQLType:
+    while hasattr(gql_type, "of_type"):
+        gql_type = gql_type.of_type
+    return gql_type
+
+
+def get_arguments(info: GQLInfo) -> dict[str, Any]:
+    """Get input arguments for the current field from the GraphQL resolve info."""
+    graphql_field = info.parent_type.fields[info.field_name]
+    return get_argument_values(graphql_field, info.field_nodes[0], info.variable_values)
+
+
+def get_queried_field_name(original_name: str, info: GQLInfo) -> str:
+    """Get the name of a field in the current query."""
+    return original_name if info.path.key == info.field_name else info.path.key  # type: ignore[return-value]
+
+
+async def pre_evaluate_request_user(info: GQLInfo) -> None:
+    """
+    Fetches the request user from the context and caches it to the request.
+    This is a workaround when current user is required in an async event loop,
+    but the function itself is not async.
+    """
+    # '_current_user' would be set by 'django.contrib.auth.middleware.get_user' when calling 'request.user'
+    info.context._cached_user = await info.context.auser()  # type: ignore[attr-defined]  # noqa: SLF001
+
+
+# Predicates
+
+
+def is_connection(field_type: GraphQLOutputType) -> TypeGuard[GraphQLObjectType]:
+    return (
+        isinstance(field_type, GraphQLObjectType)
+        and field_type.name.endswith("Connection")
+        and "pageInfo" in field_type.fields
+        and "edges" in field_type.fields
+    )
+
+
+def is_edge(field_type: GraphQLOutputType) -> TypeGuard[GraphQLObjectType]:
+    return (
+        isinstance(field_type, GraphQLObjectType)
+        and field_type.name.endswith("Edge")
+        and "cursor" in field_type.fields
+        and "node" in field_type.fields
+    )
+
+
+def is_node_interface(field_type: GraphQLOutputType) -> TypeGuard[GraphQLInterfaceType]:
+    return (
+        isinstance(field_type, GraphQLInterfaceType)  # comment here for better formatting
+        and field_type.name == "Node"
+        and "id" in field_type.fields
+    )
+
+
+def is_page_info(field_type: GraphQLOutputType) -> TypeGuard[GraphQLObjectType]:
+    return (
+        isinstance(field_type, GraphQLObjectType)
+        and field_type.name == "PageInfo"
+        and "hasNextPage" in field_type.fields
+        and "hasPreviousPage" in field_type.fields
+        and "startCursor" in field_type.fields
+        and "endCursor" in field_type.fields
+    )
+
+
+def is_typename_metafield(field_node: SelectionNode) -> TypeGuard[FieldNode]:
+    if not isinstance(field_node, FieldNode):
+        return False
+    return field_node.name.value.lower() == "__typename"
+
+
+def is_relation_id(field: ModelField, field_node: FieldNode) -> TypeGuard[Field]:
+    return isinstance(field, ForeignKey) and field.get_attname() == to_snake_case(field_node.name.value)
+
+
+def is_subscription_operation(document: DocumentNode) -> bool:
+    if len(document.definitions) != 1:
+        return False
+
+    operation_definition = document.definitions[0]
+    if not isinstance(operation_definition, OperationDefinitionNode):
+        return False
+
+    return operation_definition.operation == OperationType.SUBSCRIPTION
+
+
+def should_skip_node(node: NodeWithDirective, variable_values: dict[str, Any]) -> bool:
+    skip_args = get_directive_values(GraphQLSkipDirective, node, variable_values)
+    if skip_args is not None and skip_args["if"] is True:
+        return True
+
+    include_args = get_directive_values(GraphQLIncludeDirective, node, variable_values)
+    return include_args is not None and include_args["if"] is False
+
+
+def is_non_null_default_value(default_value: Any) -> bool:
+    return not isinstance(default_value, Hashable) or default_value not in {Undefined, None}
+
+
+# Misc.
+
+
+@contextmanager
+def graphql_error_path(info: GQLInfo, *, key: str | int | None = None) -> Generator[GQLInfo, None, None]:
+    """Context manager that sets the path of all GraphQL errors raised during its context."""
+    if key is not None:
+        info = GraphQLResolveInfo(  # type: ignore[assignment]
+            field_name=info.field_name,
+            field_nodes=info.field_nodes,
+            return_type=info.return_type,
+            parent_type=info.parent_type,
+            path=info.path.add_key(key),
+            schema=info.schema,
+            fragments=info.fragments,
+            root_value=info.root_value,
+            operation=info.operation,
+            variable_values=info.variable_values,
+            context=info.context,
+            is_awaitable=info.is_awaitable,
+        )
+
+    try:
+        yield info
+
+    except GraphQLError as error:
+        if error.path is None:
+            error.path = info.path.as_list()
+        raise
+
+    except GraphQLErrorGroup as error_group:
+        for err in error_group.flatten():
+            if err.path is None:
+                err.path = info.path.as_list()
+        raise
+
+
+def check_directives(directives: Iterable[Directive] | None, *, location: DirectiveLocation) -> None:
+    """Check that given directives are allowed in the given location."""
+    if directives is None:
+        return
+
+    for directive in directives:
+        if location not in directive.__locations__:
+            raise DirectiveLocationError(directive=directive, location=location)
+
+
+def validate_get_request_operation(document: DocumentNode, operation_name: str | None = None) -> None:
+    """Validates that the operation in the document can be executed in an HTTP GET request."""
+    operation_definitions: list[OperationDefinitionNode] = [
+        definition_node
+        for definition_node in document.definitions
+        if isinstance(definition_node, OperationDefinitionNode)
+    ]
+
+    if len(operation_definitions) == 0:
+        raise GraphQLGetRequestNoOperationError
+
+    if operation_name is None:
+        if len(operation_definitions) != 1:
+            raise GraphQLGetRequestMultipleOperationsNoOperationNameError
+
+        if operation_definitions[0].operation != OperationType.QUERY:
+            raise GraphQLGetRequestNonQueryOperationError
+
+        return
+
+    for operation in operation_definitions:
+        if operation.name is None:
+            continue
+
+        if operation.name.value != operation_name:
+            continue
+
+        if operation.operation != OperationType.QUERY:
+            raise GraphQLGetRequestNonQueryOperationError
+
+        return
+
+    raise GraphQLGetRequestOperationNotFoundError(operation_name=operation_name)
+
+
+def build_response(data: dict[str, Any] | None = None, errors: list[GraphQLError] | None = None) -> ExecutionResult:
+    return undine_settings.EXECUTION_CONTEXT_CLASS.build_response(data=data, errors=errors or [])
