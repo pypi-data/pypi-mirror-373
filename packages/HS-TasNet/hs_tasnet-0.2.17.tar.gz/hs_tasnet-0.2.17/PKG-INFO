@@ -1,0 +1,191 @@
+Metadata-Version: 2.4
+Name: HS-TasNet
+Version: 0.2.17
+Summary: HS TasNet
+Project-URL: Homepage, https://pypi.org/project/hs-tasnet/
+Project-URL: Repository, https://github.com/lucidrains/hs-tasnet
+Author-email: Phil Wang <lucidrains@gmail.com>
+License: MIT License
+        
+        Copyright (c) 2025 Phil Wang
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+License-File: LICENSE
+Keywords: artificial intelligence,deep learning,music separation,real time
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Requires-Python: >=3.9
+Requires-Dist: accelerate>=1.10.0
+Requires-Dist: einops>=0.8.1
+Requires-Dist: einx>=0.3.0
+Requires-Dist: ema-pytorch
+Requires-Dist: librosa
+Requires-Dist: matplotlib
+Requires-Dist: musdb
+Requires-Dist: sounddevice
+Requires-Dist: soundfile
+Requires-Dist: torch>=2.8
+Requires-Dist: torchaudio
+Requires-Dist: torchcodec
+Provides-Extra: test
+Requires-Dist: pytest; extra == 'test'
+Description-Content-Type: text/markdown
+
+<img src="./fig1.png" width="350px"></img>
+
+## HS-TasNet
+
+Implementation of [HS-TasNet](https://arxiv.org/abs/2402.17701), "Real-time Low-latency Music Source Separation using Hybrid Spectrogram-TasNet", proposed by the research team at L-Acoustics
+
+## Install
+
+```bash
+$ pip install HS-TasNet
+```
+
+## Usage
+
+```python
+import torch
+from hs_tasnet import HSTasNet
+
+model = HSTasNet()
+
+audio = torch.randn(1, 2, 204800) # ~5 seconds of stereo
+
+separated_audios, _ = model(audio)
+
+assert separated_audios.shape == (1, 4, 2, 204800) # second dimension is the separated tracks
+```
+
+With the `Trainer`
+
+```python
+# model
+
+from hs_tasnet import HSTasNet, Trainer
+
+model = HSTasNet()
+
+# trainer
+
+trainer = Trainer(
+    model,
+    dataset = None,               # add your in-house Dataset
+    concat_musdb_dataset = True,  # concat the musdb dataset automatically
+    batch_size = 2,
+    max_steps = 2,
+    cpu = True,
+)
+
+trainer()
+
+# after much training
+# inferencing
+
+model.sounddevice_stream(
+    duration_seconds = 2,
+    return_reduced_sources = [0, 2]
+)
+
+# or from the exponentially smoothed model (in the trainer)
+
+trainer.ema_model.sounddevice_stream(...)
+
+# or you can load from a specific checkpoint
+
+model.load('./checkpoints/path.to.desired.ckpt.pt')
+model.sounddevice_stream(...)
+
+# to load an HS-TasNet from any of the saved checkpoints, without having to save its hyperparameters, just run
+
+model = HSTasNet.init_and_load_from('./checkpoints/path.to.desired.ckpt.pt')
+
+```
+
+## Training script
+
+First make sure dependencies are there by running
+
+```shell
+$ sh scripts/install.sh
+```
+
+Then make sure `uv` is installed
+
+```shell
+$ pip install uv
+```
+
+Finally run the following to train a newly initialized model on a small subset of MusDB, and make sure the loss goes down
+
+```shell
+$ uv run train.py
+```
+
+For distributed training, you just need to run `accelerate config` first, courtesy of [`accelerate` from 🤗](https://huggingface.co/docs/accelerate/en/index) but single machine is fine too
+
+## Experiment tracking
+
+To enable online experiment monitoring / tracking, you need to have `wandb` installed and logged in
+
+```shell
+$ pip install wandb && wandb login
+```
+
+Then
+
+```shell
+$ uv run train.py --use-wandb
+```
+
+To wipe the previous checkpoints and evaluated results, append `--clear-folders`
+
+## Test
+
+```shell
+$ uv pip install '.[test]' --system
+```
+
+Then
+
+```shell
+$ pytest tests
+```
+
+## Sponsors
+
+This open sourced work is sponsored by [Sweet Spot](https://github.com/sweetspotsoundsystem)
+
+## Citations
+
+```bibtex
+@misc{venkatesh2024realtimelowlatencymusicsource,
+    title    = {Real-time Low-latency Music Source Separation using Hybrid Spectrogram-TasNet}, 
+    author   = {Satvik Venkatesh and Arthur Benilov and Philip Coleman and Frederic Roskam},
+    year     = {2024},
+    eprint   = {2402.17701},
+    archivePrefix = {arXiv},
+    primaryClass = {eess.AS},
+    url      = {https://arxiv.org/abs/2402.17701}, 
+}
+```
