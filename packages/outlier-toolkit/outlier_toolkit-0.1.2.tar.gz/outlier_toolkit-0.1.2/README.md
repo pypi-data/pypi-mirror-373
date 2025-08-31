@@ -1,0 +1,122 @@
+# 🧰 Outlier Toolkit 🛠️
+
+A **standalone Python library** for detecting, handling, and transforming outliers in numeric and categorical data.  
+No external dependencies required.
+
+---
+
+## 📜 License
+
+This project is licensed under the **Apache License 2.0**. See the [LICENSE](./LICENSE) file for more details.
+
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+
+---
+
+
+## 📊 Features
+
+### 1. Outlier Detection
+- **Z-score Detection**: Identify extreme values based on standard deviation.
+- **IQR Detection**: Detect outliers using the interquartile range (Q1, Q3).
+
+### 2. Outlier Handling Techniques
+- **Remove Outliers**: Drop outlier values from datasets.
+- **Replace Outliers**: Replace outliers with mean, median, or most frequent values.
+
+### 3. Winsorization
+- **Standard Winsorization**: Cap extreme values at a fixed percentile.
+- **Adaptive Quartiles**: Replace low/high outliers using Q1 and Q3.
+- **Adaptive Inliers**: Replace low/high outliers using nearest inlier values (custom method).
+
+### 4. Binning
+- **Equal Width Binning**: Divide numeric range into equal-width intervals.
+- **Equal Frequency Binning**: Divide data so each bin has approximately the same number of values.
+- **Auto Binning (Outlier-based)**: Automatically separate low/high outliers and inliers using IQR.
+
+---
+
+## 🔧 Installation
+
+```bash
+pip install outlier_library
+```
+
+No external libraries required. Compatible with Python 3.7+.
+
+---
+
+## 🧮 Usage
+
+```
+
+from outlier.i_outlier.Zscore import detect_outliers_zscore
+from outlier.i_outlier.IQR import detect_outliers_iqr
+from outlier.outlierTech.remove import remove_outliers
+from outlier.outlierTech.replace import replace_outliers
+from outlier.outlierTech.winsorization.standard import winsorize_standard
+from outlier.outlierTech.winsorization.adaptive import winsorize_quartiles
+from outlier.outlierTech.winsorization.adaptive import winsorize_inliers
+from outlier.outlierGroup.binning import eq_width_bin
+from outlier.outlierGroup.binning import eq_freq_bin
+from outlier.outlierGroup.binning import custom_binning
+
+
+
+# Sample Test data
+numeric_data = [1, 2, 85, 95, 65, 75, 53, 67, 87, 89, 93, 1001, 1027, 3018]
+categorical_data = ["Male", "Female", "Male", "Male", "Unknown", "Unknown", "Other"]
+
+#Detection
+print("=== Zscore Detection ===")
+print(detect_outliers_zscore(numeric_data))
+
+print("\n=== IQR Detection ===")
+print(detect_outliers_iqr(numeric_data))
+
+#Handling
+print("\n=== Remove Outliers ===")
+print(remove_outliers(numeric_data, method="IQR"))
+
+print("\n=== Replace Outliers (auto-detect) ===")
+print(replace_outliers(numeric_data, method="IQR"))
+print(replace_outliers(categorical_data, method="IQR"))
+
+#Winsorization
+print("\n=== Winsorization (Standard 5%) ===")
+print(winsorize_standard(numeric_data[:]))
+
+print("\n=== Winsorization (Adaptive Quartiles) ===")
+print(winsorize_quartiles(numeric_data[:]))
+
+print("\n=== Winsorization (Adaptive Inliers) ===")
+print(winsorize_inliers(numeric_data[:]))
+
+#Binning
+print("\n=== Binning (Equal Width Binning) ===")
+print(eq_width_bin(numeric_data[:]))
+
+print("\n=== Binning (Equal Width Binning) ===")
+print(eq_freq_bin(numeric_data[:]))
+
+print("\n=== Binning (Equal Width Binning) ===")
+print(custom_binning(numeric_data[:]))
+```
+---
+
+## 📝 Notes
+
+- Works for numeric and categorical data.
+- All functions are standalone and do not require external libraries.
+- Custom winsorization allows mapping outliers to nearest inliers for more controlled transformations.
+
+---
+
+## 👩‍💻 Author
+**Irene Betsy D** 
+
+---
+
+
+
+
