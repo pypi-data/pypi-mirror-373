@@ -1,0 +1,158 @@
+name: Test Examples
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'test_examples/**', '.github/workflows/test-examples.yml', 'minecraft_datapack_language/**' ]
+  pull_request:
+    branches: [ main ]
+    paths: [ 'test_examples/**', '.github/workflows/test-examples.yml', 'minecraft_datapack_language/**' ]
+
+jobs:
+  test-examples:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install pipx
+      run: |
+        python -m pip install --user pipx
+        python -m pipx ensurepath
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+        
+    - name: Install MDL via pipx
+      run: |
+        pipx install minecraft-datapack-language
+        
+    - name: Verify MDL installation
+      run: |
+        mdl --help
+        mdl --version || echo "Version command not available"
+        
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -e .
+        
+    - name: Test working MDL examples
+      run: |
+        echo "Testing working MDL examples..."
+        
+        # Test each working MDL file
+        for file in test_examples/*.mdl; do
+          echo "Testing $file"
+          mdl check "$file"
+          mdl build --mdl "$file" -o test_examples/dist
+        done
+        
+    - name: Run test suite
+      run: |
+        python test_examples/run_all_tests.py
+        
+    - name: Test CLI functionality
+      run: |
+        echo "Testing CLI functionality..."
+        
+        # Test help
+        mdl --help
+        
+        # Test new command
+        mdl new cli_test --name "CLI Test" --pack-format 82
+        
+        # Verify created project
+        ls -la cli_test/
+        cat cli_test/*.mdl
+        
+        # Test check and build
+        mdl check cli_test/
+        mdl build --mdl cli_test/ -o test_examples/dist
+        
+        # Clean up
+        rm -rf cli_test/
+        
+    - name: Test Python API
+      run: |
+        echo "Testing Python API compatibility..."
+        
+        # Test basic Pack creation
+        python -c "
+        from minecraft_datapack_language import Pack
+        p = Pack('test', 'Test pack', 82)
+        ns = p.namespace('test')
+        ns.function('test_func', 'say Hello World')
+        print('[+] Basic Pack creation works')
+        "
+        
+        # Test function calls
+        python -c "
+        from minecraft_datapack_language import Pack
+        p = Pack('test', 'Test pack', 82)
+        ns = p.namespace('test')
+        ns.function('helper', 'say Helper function')
+        ns.function('main', 'say Main function', 'function test:helper')
+        print('[+] Function calls work')
+        "
+        
+        # Test lifecycle hooks
+        python -c "
+        from minecraft_datapack_language import Pack
+        p = Pack('test', 'Test pack', 82)
+        ns = p.namespace('test')
+        ns.function('init', 'say Initializing')
+        p.on_load('test:init')
+        p.on_tick('test:init')
+        print('[+] Lifecycle hooks work')
+        "
+        
+        # Test tags
+        python -c "
+        from minecraft_datapack_language import Pack
+        p = Pack('test', 'Test pack', 82)
+        p.tag('function', 'minecraft:load', values=['test:init'])
+        p.tag('function', 'minecraft:tick', values=['test:tick'])
+        print('[+] Tags work')
+        "
+        
+    - name: Verify generated datapacks
+      run: |
+        echo "Verifying generated datapacks..."
+        ls -la test_examples/dist/
+        
+        # Check that datapacks have the expected structure
+        for dir in test_examples/dist/*/; do
+          if [[ -d "$dir" ]] && [[ "$(basename "$dir")" != "data" ]]; then
+            echo "Checking datapack: $dir"
+            ls -la "$dir"
+            
+            # Check for pack.mcmeta
+            if [[ -f "$dir/pack.mcmeta" ]]; then
+              echo "[+] pack.mcmeta found in $dir"
+            else
+              echo "[-] pack.mcmeta missing in $dir"
+              exit 1
+            fi
+            
+            # Check for data directory
+            if [[ -d "$dir/data" ]]; then
+              echo "[+] data directory found in $dir"
+            else
+              echo "[-] data directory missing in $dir"
+              exit 1
+            fi
+          fi
+        done
+        
+    - name: Upload test artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-datapacks
+        path: test_examples/dist/
+        retention-days: 7
