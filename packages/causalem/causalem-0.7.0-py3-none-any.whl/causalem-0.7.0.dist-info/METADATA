@@ -1,0 +1,378 @@
+Metadata-Version: 2.4
+Name: causalem
+Version: 0.7.0
+Summary: Causal Inference using Ensemble Matching
+Author-email: "Alireza S. Mahani, Mansour T.A. Sharabiani" <alireza.s.mahani@gmail.com>
+License: MIT License
+        
+        Copyright (c) 2025-Present Alireza S. Mahani, Mansour T.A. Sharabiani
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+        
+Keywords: causal-inference,matching,ensemble learning
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: numpy>=1.23
+Requires-Dist: pandas>=2.0
+Requires-Dist: scikit-learn>=1.3
+Requires-Dist: joblib>=1.2
+Requires-Dist: matplotlib>=3.5
+Requires-Dist: tqdm>=4.0
+Requires-Dist: statsmodels>=0.14
+Requires-Dist: scikit-survival
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: ruff>=0.11.7; extra == "dev"
+Requires-Dist: mypy>=1.5; extra == "dev"
+Requires-Dist: pre-commit>=2.20; extra == "dev"
+Requires-Dist: sphinx>=6.0; extra == "dev"
+Requires-Dist: sphinx-autobuild; extra == "dev"
+Requires-Dist: sphinx-rtd-theme; extra == "dev"
+Dynamic: license-file
+
+# CausalEM – Ensemble Matching for Causal Inference
+
+> **CausalEM** is a toolbox for multi-arm treatment‑effect estimation using stochastic matching and a stacked ensemble of heterogeneous ML models. It supports continuous, binary, and survival outcomes.
+
+---
+
+## Key Features
+
+1. **Stochastic nearest-neighbor (NN) matching** -> Larger effective sample size (ESS) and improved TE estimation accuracy compared to standard (deterministic) NN matching.
+1. **G-computation using two-staged, stacked ensemble of hetrogeneous learners** -> Generalization of standard G-computation framework to ensemble learning; cross-fitting of propensity-score and outcome models, similar to DoubleML.
+1. **Support for multi-arm treatments** -> Improved multi-arm ESS via stochastic matching.
+1. **Mediation analysis** -> Plug-in G-computation for interventional mediation effects (IDE/IIE) with binary treatment and binary/continuous mediators and outcomes, supporting bootstrap confidence intervals and optional stochastic matching.
+1. **Support for survival outcomes** -> Use of data simulation from survival outcome models to implement stacked-ensemble for TE estimation in right-censored, time-to-event data.
+1. **Bootstrapped confidence interval (CI) estimation** -> Honest estimation of CI by including entire (matching + TE estimation) pipeline in bootstrap loop.
+1. **Compatible with `scikit-learn`** -> Maximum flexibility in using ML models by providing access to `scikit-learn` (and `scikit-survival` for survival) for propensity-score, outcome and meta-learner stages.
+1. **Full reproducibility of results** --> Careful implementation of random number generation (RNG) seeding, including in `scikit-learn` models.
+<!-- 1. **Available in Python and R** -> Identical - function-centric - API in both languages using `reticulate`; combined with RNG management, leads to identical, reproducible results across the two platforms. -->
+
+---
+
+## API
+
+| Function                 | Brief description                                         |
+| ------------------------ | --------------------------------------------------------- |
+| `estimate_te`           | Main pipeline – ensemble matching + meta‑learner          |
+| `estimate_mediation`    | Mediation analysis with plug-in G-computation             |
+| `StochasticMatcher`      | 1:1 nearest‑neighbor matcher (deterministic ↔ stochastic) |
+| `summarize_matching`     | Diagnostics: ESS, ASMD, variance ratios, overlap plots    |
+| `load_data_lalonde`      | Copy of Lalonde job‑training dataset                     |
+| `load_data_tof` | Simulated TOF dataset (survival or binary outcome)                            |
+
+---
+
+## ⚙️ Installation <!--- install -->
+
+```bash
+pip install causalem
+```
+
+Optional dev extras:
+
+```bash
+pip install "causalem[dev]"
+```
+
+Minimum Python 3.9. Tested on macOS and Windows.
+
+---
+
+## Package Vignette
+
+For a more detailed introduction to `CausalEM`, including the underlying math, see the _package vignette_ [insert link later], available on arXiv.
+
+---
+
+## 🚀 Quick Start <!--- quickstart -->
+
+### Two-arm Analysis
+
+Load the necessary packages:
+
+```python
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+
+from causalem import (
+  estimate_te,
+  load_data_tof,
+  stochastic_match,
+  summarize_matching
+)
+```
+Load the ToF data with two treatment levels and binarized outcome:
+```python
+X, t, y = load_data_tof(
+  raw = False,
+  treat_levels = ['PrP', 'SPS'],
+  outcome_type="binary",
+)
+```
+Stochastic matching using propensity scores:
+```python
+lr = LogisticRegression(solver="newton-cg", max_iter=1000)
+lr.fit(X, t)
+score = lr.predict_proba(X)[:, 1]
+logit_score = np.log(score / (1 - score))
+
+cluster = stochastic_match(
+    treatment=t,
+    score=logit_score,
+    nsmp=10,
+    scale=1.0,
+    random_state=0,
+)
+
+diag = summarize_matching(
+  cluster, X,
+  treatment=t, plot=False
+)
+print("Combined Effective Sample Size (ESS):", diag.ess["combined"])
+print("Absolute standardized mean difference (ASMD) by covariate:\n")
+print(diag.summary)
+```
+TE estimation:
+```python
+res = estimate_te(
+    X,
+    t,
+    y,
+    outcome_type="binary",
+    niter=5,
+    matching_scale=1.0,
+    matching_is_stochastic=True,
+    random_state_master=1,
+)
+print("Two-arm TE:", res["te"])
+```
+
+### Multi-arm Analysis
+
+Load data for multi-arm analysis:
+```python
+df = load_data_tof(
+  raw = True,
+  outcome_type="binary",
+)
+t_all = df["treatment"].to_numpy()
+X_all = df[["age", "zscore"]].to_numpy()
+y_all = df["outcome"].to_numpy()
+```
+Constructing propensity scores using multinomial logistic regression:
+```python
+lr_multi = LogisticRegression(multi_class="multinomial", max_iter=1000)
+lr_multi.fit(X_all, t_all)
+proba = lr_multi.predict_proba(X_all)
+ref = "PrP"
+cols = [i for i, c in enumerate(lr_multi.classes_) if c != ref]
+logit_multi = np.log(proba[:, cols] / (1 - proba[:, cols]))
+```
+Multi-arm stochastic matching:
+```python
+cluster_multi = stochastic_match(
+    treatment=t_all,
+    score=logit_multi,
+    nsmp=5,
+    scale=1.0,
+    ref_group=ref,
+    random_state=0,
+)
+diag_multi = summarize_matching(
+    cluster_multi, X_all, treatment=t_all, ref_group=ref, plot=False
+)
+print("Multi-arm ESS per draw:\n", diag_multi.ess["per_draw"])  # dict of counts by group
+```
+Multi-arm TE estimation:
+```python
+res_multi = estimate_te(
+    X_all,
+    t_all,
+    y_all,
+    outcome_type="binary",
+    ref_group=ref,
+    niter=5,
+    matching_scale=1.0,
+    matching_is_stochastic=True,
+    random_state_master=1,
+)
+print("Multi-arm pairwise effects:\n", res_multi["pairwise"])
+```
+
+### Confidence-Interval Calculation
+
+Adding bootstrap CI to the two-arm analysis:
+```python
+res_boot = estimate_te(
+    X,
+    t,
+    y,
+    outcome_type="binary",
+    niter=5,
+    nboot=200,
+    matching_scale=1.0,
+    matching_is_stochastic=True,
+    random_state_master=1,
+    random_state_boot=7,
+)
+print("Bootstrap CI:", res_boot["ci"])
+```
+
+### Heterogeneous Ensemble
+
+```python
+learners = [
+    LogisticRegression(max_iter=1000),
+    RandomForestClassifier(n_estimators=200, max_depth=3),
+]
+res_ensemble = estimate_te(
+    X,
+    t,
+    y,
+    outcome_type="binary",
+    model_outcome=learners,
+    niter=len(learners),
+    do_stacking=True,
+    matching_scale=1.0,
+    matching_is_stochastic=True,
+    random_state_master=42,
+)
+print("Ensemble TE:", res_ensemble["te"])
+```
+
+### Stacking vs No-Stacking
+
+```python
+# No-stacking: average per-iteration effects without appearance weights
+res_ns = estimate_te(
+    X,
+    t,
+    y,
+    outcome_type="binary",
+    niter=5,
+    do_stacking=False,
+    random_state_master=0,
+)
+
+# Stacking: meta-learner fit with appearance weights over the matched union
+res_stack = estimate_te(
+    X,
+    t,
+    y,
+    outcome_type="binary",
+    niter=5,
+    do_stacking=True,
+    random_state_master=0,
+)
+```
+
+### TE Estimation for Survival Outcomes
+```python
+X_surv, t_surv, y_surv = load_data_tof(
+  raw=False
+  , treat_levels = ['SPS', 'PrP']
+)
+res_surv = estimate_te(
+    X_surv,
+    t_surv,
+    y_surv,
+    outcome_type="survival",
+    niter=5,
+    matching_scale=1.0,
+    matching_is_stochastic=True,
+    random_state_master=0,
+)
+print("Survival HR:", res_surv["te"])
+```
+
+### Mediation Analysis
+
+```python
+# Load ToF data with mediation structure
+from causalem.datasets import load_data_tof
+from causalem.mediation import estimate_mediation
+
+# Load ToF data: binary treatment (PrP vs SPS), continuous mediator (op_time), binary outcome
+X, A, M, Y = load_data_tof(
+    raw=False,
+    treat_levels=['PrP', 'SPS'],  # Binary treatment comparison
+    outcome_type="binary",        # Binary outcome for simpler interpretation  
+    include_mediator=True         # Include mediator variable (op_time)
+)
+
+# Estimate mediation effects
+result = estimate_mediation(X, A, M, Y, random_state_master=42)
+
+print("Total Effect (TE):", result["te"])
+print("Interventional Direct Effect (IDE):", result["ide"]) 
+print("Interventional Indirect Effect (IIE):", result["iie"])
+print("Proportion Mediated:", result["prop_mediated"])
+```
+
+<!-- ## `CausalEM` in `R`
+
+After installing the Python package, install the R wrapper:
+```R
+install.packages('CausalEM')
+```
+-->
+
+## License
+
+This project is licensed under the terms of the MIT License.
+
+## Release Notes
+
+### 0.7.0
+- Added mediation analysis functionality with `estimate_mediation` function for interventional mediation effects using plug-in G-computation.
+- Supports binary treatment with binary/continuous mediators and continuous outcomes.
+- Features bootstrap confidence intervals and optional integration with stochastic matching for improved robustness.
+- Estimates total effect (TE), interventional direct effect (IDE), and interventional indirect effect (IIE).
+
+### 0.6.2
+- Exposed a new `n_mc` argument in estimate_te for specifying Monte‑Carlo draws per matched unit in survival analyses, replacing the previously fixed single draw.
+- Clarified treatment‑effect estimands for stacking vs. no‑stacking modes, noting that stacked results are appearance‑weighted across the matched union.
+- Documented appearance‑weighted meta‑learning and matched‑union survival contrasts.
+
+### 0.6.1
+- Corrected the version number in `pyproject.toml` file.
+
+### 0.6.0
+- Improved consistency of return data structure when `do_stacking=False` in multi-arm TE estimation.
+
+### 0.5.4
+- Added github action for publishing to PyPI
+
+### 0.5.3
+- First public release
+
+### 0.5.1
+- Edits to readme
+- Added github action for publishing to (test) PyPI
+
+### 0.5.0
+
+- First test release
