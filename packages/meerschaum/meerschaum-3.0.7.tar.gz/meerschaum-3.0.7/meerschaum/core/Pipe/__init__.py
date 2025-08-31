@@ -1,0 +1,590 @@
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim:fenc=utf-8
+
+"""
+Pipes are the primary metaphor of the Meerschaum system.
+You can interact with pipe data via `meerschaum.Pipe` objects.
+
+If you are working with multiple pipes, it is highly recommended that you instead use
+`meerschaum.get_pipes` to create a dictionary of Pipe objects.
+
+```
+>>> from meerschaum import get_pipes
+>>> pipes = get_pipes()
+```
+
+# Examples
+For the below examples to work, `sql:remote_server` must be defined (check with `edit config`)
+with correct credentials, as well as a network connection and valid permissions.
+
+## Manually Adding Data
+---
+
+```
+>>> from meerschaum import Pipe
+>>> ### Columns only need to be defined if you're creating a new pipe.
+>>> pipe = Pipe('csv', 'energy', columns={'datetime': 'time', 'id': 'station_id'})
+>>> 
+>>> ### Create a Pandas DataFrame somehow,
+>>> ### or you can use a dictionary of lists instead.
+>>> df = pd.read_csv('data.csv')
+>>> pipe.sync(df)
+```
+
+## Registering a Remote Pipe
+---
+
+```
+>>> from meerschaum import Pipe
+>>> pipe = Pipe('sql:remote_server', 'energy', parameters={
+...     'fetch': {
+...         'definition': 'SELECT * FROM energy_table',
+...     },
+...     'columns': {'datetime': 'time', 'id': 'station_id'}
+... })
+>>> 
+>>> pipe.sync()
+```
+
+"""
+
+from __future__ import annotations
+
+import sys
+import copy
+
+import meerschaum as mrsm
+from meerschaum.utils.typing import Optional, Dict, Any, Union, List, InstanceConnector
+from meerschaum.utils.formatting._pipes import pipe_repr
+from meerschaum.config import get_config
+
+
+class Pipe:
+    """
+    Access Meerschaum pipes via Pipe objects.
+    
+    Pipes are identified by the following:
+
+    1. Connector keys (e.g. `'sql:main'`)
+    2. Metric key (e.g. `'weather'`)
+    3. Location (optional; e.g. `None`)
+    
+    A pipe's connector keys correspond to a data source, and when the pipe is synced,
+    its `fetch` definition is evaluated and executed to produce new data.
+    
+    Alternatively, new data may be directly synced via `pipe.sync()`:
+    
+    ```
+    >>> from meerschaum import Pipe
+    >>> pipe = Pipe('csv', 'weather')
+    >>>
+    >>> import pandas as pd
+    >>> df = pd.read_csv('weather.csv')
+    >>> pipe.sync(df)
+    ```
+    """
+
+    from ._fetch import (
+        fetch,
+        get_backtrack_interval,
+    )
+    from ._data import (
+        get_data,
+        get_backtrack_data,
+        get_rowcount,
+        get_data,
+        get_doc,
+        get_value,
+        _get_data_as_iterator,
+        get_chunk_interval,
+        get_chunk_bounds,
+        get_chunk_bounds_batches,
+        parse_date_bounds,
+    )
+    from ._register import register
+    from ._attributes import (
+        attributes,
+        parameters,
+        columns,
+        indices,
+        indexes,
+        dtypes,
+        autoincrement,
+        autotime,
+        upsert,
+        static,
+        tzinfo,
+        enforce,
+        null_indices,
+        mixed_numerics,
+        get_columns,
+        get_columns_types,
+        get_columns_indices,
+        get_indices,
+        get_parameters,
+        get_dtypes,
+        update_parameters,
+        tags,
+        get_id,
+        id,
+        get_val_column,
+        parents,
+        parent,
+        children,
+        target,
+        _target_legacy,
+        guess_datetime,
+        precision,
+        get_precision,
+    )
+    from ._cache import (
+        _get_cache_connector,
+        _cache_value,
+        _get_cached_value,
+        _invalidate_cache,
+        _get_cache_dir_path,
+        _write_cache_key,
+        _write_cache_file,
+        _write_cache_conn_key,
+        _read_cache_key,
+        _read_cache_file,
+        _read_cache_conn_key,
+        _load_cache_keys,
+        _load_cache_files,
+        _load_cache_conn_keys,
+        _get_cache_keys,
+        _get_cache_file_keys,
+        _get_cache_conn_keys,
+        _clear_cache_key,
+        _clear_cache_file,
+        _clear_cache_conn_key,
+    )
+    from ._show import show
+    from ._edit import edit, edit_definition, update
+    from ._sync import (
+        sync,
+        get_sync_time,
+        exists,
+        filter_existing,
+        _get_chunk_label,
+        get_num_workers,
+        _persist_new_special_columns,
+    )
+    from ._verify import (
+        verify,
+        get_bound_interval,
+        get_bound_time,
+    )
+    from ._delete import delete
+    from ._drop import drop, drop_indices
+    from ._index import create_indices
+    from ._clear import clear
+    from ._deduplicate import deduplicate
+    from ._bootstrap import bootstrap
+    from ._dtypes import enforce_dtypes, infer_dtypes
+    from ._copy import copy_to
+
+    def __init__(
+        self,
+        connector: str = '',
+        metric: str = '',
+        location: Optional[str] = None,
+        parameters: Optional[Dict[str, Any]] = None,
+        columns: Union[Dict[str, str], List[str], None] = None,
+        indices: Optional[Dict[str, Union[str, List[str]]]] = None,
+        tags: Optional[List[str]] = None,
+        target: Optional[str] = None,
+        dtypes: Optional[Dict[str, str]] = None,
+        instance: Optional[Union[str, InstanceConnector]] = None,
+        upsert: Optional[bool] = None,
+        autoincrement: Optional[bool] = None,
+        autotime: Optional[bool] = None,
+        precision: Union[str, Dict[str, Union[str, int]], None] = None,
+        static: Optional[bool] = None,
+        enforce: Optional[bool] = None,
+        null_indices: Optional[bool] = None,
+        mixed_numerics: Optional[bool] = None,
+        temporary: bool = False,
+        cache: Optional[bool] = None,
+        cache_connector_keys: Optional[str] = None,
+        mrsm_instance: Optional[Union[str, InstanceConnector]] = None,
+        connector_keys: Optional[str] = None,
+        metric_key: Optional[str] = None,
+        location_key: Optional[str] = None,
+        instance_keys: Optional[str] = None,
+        indexes: Union[Dict[str, str], List[str], None] = None,
+        debug: bool = False,
+    ):
+        """
+        Parameters
+        ----------
+        connector: str
+            Keys for the pipe's source connector, e.g. `'sql:main'`.
+
+        metric: str
+            Label for the pipe's contents, e.g. `'weather'`.
+
+        location: str, default None
+            Label for the pipe's location. Defaults to `None`.
+
+        parameters: Optional[Dict[str, Any]], default None
+            Optionally set a pipe's parameters from the constructor,
+            e.g. columns and other attributes.
+            You can edit these parameters with `edit pipes`.
+
+        columns: Union[Dict[str, str], List[str], None], default None
+            Set the `columns` dictionary of `parameters`.
+            If `parameters` is also provided, this dictionary is added under the `'columns'` key.
+
+        indices: Optional[Dict[str, Union[str, List[str]]]], default None
+            Set the `indices` dictionary of `parameters`.
+            If `parameters` is also provided, this dictionary is added under the `'indices'` key.
+
+        tags: Optional[List[str]], default None
+            A list of strings to be added under the `'tags'` key of `parameters`.
+            You can select pipes with certain tags using `--tags`.
+
+        dtypes: Optional[Dict[str, str]], default None
+            Set the `dtypes` dictionary of `parameters`.
+            If `parameters` is also provided, this dictionary is added under the `'dtypes'` key.
+
+        mrsm_instance: Optional[Union[str, InstanceConnector]], default None
+            Connector for the Meerschaum instance where the pipe resides.
+            Defaults to the preconfigured default instance (`'sql:main'`).
+
+        instance: Optional[Union[str, InstanceConnector]], default None
+            Alias for `mrsm_instance`. If `mrsm_instance` is supplied, this value is ignored.
+
+        upsert: Optional[bool], default None
+            If `True`, set `upsert` to `True` in the parameters.
+
+        autoincrement: Optional[bool], default None
+            If `True`, set `autoincrement` in the parameters.
+
+        autotime: Optional[bool], default None
+            If `True`, set `autotime` in the parameters.
+
+        precision: Union[str, Dict[str, Union[str, int]], None], default None
+            If provided, set `precision` in the parameters.
+            This may be either a string (the precision unit) or a dictionary of in the form
+            `{'unit': <unit>, 'interval': <interval>}`.
+            Default is determined by the `datetime` column dtype
+            (e.g. `datetime64[us]` is `microsecond` precision).
+
+        static: Optional[bool], default None
+            If `True`, set `static` in the parameters.
+
+        enforce: Optional[bool], default None
+            If `False`, skip data type enforcement.
+            Default behavior is `True`.
+
+        null_indices: Optional[bool], default None
+            Set to `False` if there will be no null values in the index columns.
+            Defaults to `True`.
+
+        mixed_numerics: bool, default None
+            If `True`, integer columns will be converted to `numeric` when floats are synced.
+            Set to `False` to disable this behavior.
+            Defaults to `True`.
+
+        temporary: bool, default False
+            If `True`, prevent instance tables (pipes, users, plugins) from being created.
+
+        cache: Optional[bool], default None
+            If `True`, cache the pipe's metadata to disk (in addition to in-memory caching).
+            If `cache` is not explicitly `True`, it is set to `False` if `temporary` is `True`.
+            Defaults to `True` (from `None`).
+
+        cache_connector_keys: Optional[str], default None
+            If provided, use the keys to a Valkey connector (e.g. `valkey:main`).
+        """
+        from meerschaum.utils.warnings import error, warn
+        if (not connector and not connector_keys) or (not metric and not metric_key):
+            error(
+                "Please provide strings for the connector and metric\n    "
+                + "(first two positional arguments)."
+            )
+
+        ### Fall back to legacy `location_key` just in case.
+        if not location:
+            location = location_key
+
+        if not connector:
+            connector = connector_keys
+
+        if not metric:
+            metric = metric_key
+
+        if location in ('[None]', 'None'):
+            location = None
+
+        from meerschaum._internal.static import STATIC_CONFIG
+        negation_prefix = STATIC_CONFIG['system']['fetch_pipes_keys']['negation_prefix']
+        for k in (connector, metric, location, *(tags or [])):
+            if str(k).startswith(negation_prefix):
+                error(f"A pipe's keys and tags cannot start with the prefix '{negation_prefix}'.")
+
+        self.connector_keys = str(connector)
+        self.connector_key = self.connector_keys ### Alias
+        self.metric_key = metric
+        self.location_key = location
+        self.temporary = temporary
+        self.cache = cache if cache is not None else (not temporary)
+        self.cache_connector_keys = (
+            str(cache_connector_keys)
+            if cache_connector_keys is not None
+            else None
+        )
+        self.debug = debug
+
+        self._attributes: Dict[str, Any] = {
+            'connector_keys': self.connector_keys,
+            'metric_key': self.metric_key,
+            'location_key': self.location_key,
+            'parameters': {},
+        }
+
+        ### only set parameters if values are provided
+        if isinstance(parameters, dict):
+            self._attributes['parameters'] = parameters
+        else:
+            if parameters is not None:
+                warn(f"The provided parameters are of invalid type '{type(parameters)}'.")
+            self._attributes['parameters'] = {}
+
+        columns = columns or self._attributes.get('parameters', {}).get('columns', None)
+        if isinstance(columns, (list, tuple)):
+            columns = {str(col): str(col) for col in columns}
+        if isinstance(columns, dict):
+            self._attributes['parameters']['columns'] = columns
+        elif isinstance(columns, str) and 'Pipe(' in columns:
+            pass
+        elif columns is not None:
+            warn(f"The provided columns are of invalid type '{type(columns)}'.")
+
+        indices = (
+            indices
+            or indexes
+            or self._attributes.get('parameters', {}).get('indices', None)
+            or self._attributes.get('parameters', {}).get('indexes', None)
+        )
+        if isinstance(indices, dict):
+            indices_key = (
+                'indexes'
+                if 'indexes' in self._attributes['parameters']
+                else 'indices'
+            )
+            self._attributes['parameters'][indices_key] = indices
+
+        if isinstance(tags, (list, tuple)):
+            self._attributes['parameters']['tags'] = tags
+        elif tags is not None:
+            warn(f"The provided tags are of invalid type '{type(tags)}'.")
+
+        if isinstance(target, str):
+            self._attributes['parameters']['target'] = target
+        elif target is not None:
+            warn(f"The provided target is of invalid type '{type(target)}'.")
+
+        if isinstance(dtypes, dict):
+            self._attributes['parameters']['dtypes'] = dtypes
+        elif dtypes is not None:
+            warn(f"The provided dtypes are of invalid type '{type(dtypes)}'.")
+
+        if isinstance(upsert, bool):
+            self._attributes['parameters']['upsert'] = upsert
+
+        if isinstance(autoincrement, bool):
+            self._attributes['parameters']['autoincrement'] = autoincrement
+
+        if isinstance(autotime, bool):
+            self._attributes['parameters']['autotime'] = autotime
+
+        if isinstance(precision, dict):
+            self._attributes['parameters']['precision'] = precision
+        elif isinstance(precision, str):
+            self._attributes['parameters']['precision'] = {'unit': precision}
+
+        if isinstance(static, bool):
+            self._attributes['parameters']['static'] = static
+            self._static = static
+
+        if isinstance(enforce, bool):
+            self._attributes['parameters']['enforce'] = enforce
+
+        if isinstance(null_indices, bool):
+            self._attributes['parameters']['null_indices'] = null_indices
+
+        if isinstance(mixed_numerics, bool):
+            self._attributes['parameters']['mixed_numerics'] = mixed_numerics
+
+        ### NOTE: The parameters dictionary is {} by default.
+        ###       A Pipe may be registered without parameters, then edited,
+        ###       or a Pipe may be registered with parameters set in-memory first.
+        _mrsm_instance = mrsm_instance if mrsm_instance is not None else (instance or instance_keys)
+        if _mrsm_instance is None:
+            _mrsm_instance = get_config('meerschaum', 'instance', patch=True)
+
+        if not isinstance(_mrsm_instance, str):
+            self._instance_connector = _mrsm_instance
+            self.instance_keys = str(_mrsm_instance)
+        else:
+            self.instance_keys = _mrsm_instance
+
+        if self.instance_keys == 'sql:memory':
+            self.cache = False
+
+
+    @property
+    def meta(self):
+        """
+        Return the four keys needed to reconstruct this pipe.
+        """
+        return {
+            'connector_keys': self.connector_keys,
+            'metric_key': self.metric_key,
+            'location_key': self.location_key,
+            'instance_keys': self.instance_keys,
+        }
+
+    def keys(self) -> List[str]:
+        """
+        Return the ordered keys for this pipe.
+        """
+        return {
+            key: val
+            for key, val in self.meta.items()
+            if key != 'instance'
+        }
+
+    @property
+    def instance_connector(self) -> Union[InstanceConnector, None]:
+        """
+        The instance connector on which this pipe resides.
+        """
+        if '_instance_connector' not in self.__dict__:
+            from meerschaum.connectors.parse import parse_instance_keys
+            conn = parse_instance_keys(self.instance_keys)
+            if conn:
+                self._instance_connector = conn
+            else:
+                return None
+        return self._instance_connector
+
+    @property
+    def connector(self) -> Union['Connector', None]:
+        """
+        The connector to the data source.
+        """
+        if '_connector' not in self.__dict__:
+            from meerschaum.connectors.parse import parse_instance_keys
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore')
+                try:
+                    conn = parse_instance_keys(self.connector_keys)
+                except Exception:
+                    conn = None
+            if conn:
+                self._connector = conn
+            else:
+                return None
+        return self._connector
+
+    def __str__(self, ansi: bool=False):
+        return pipe_repr(self, ansi=ansi)
+
+    def __eq__(self, other):
+        try:
+            return (
+                isinstance(self, type(other))
+                and self.connector_keys == other.connector_keys
+                and self.metric_key == other.metric_key
+                and self.location_key == other.location_key
+                and self.instance_keys == other.instance_keys
+            )
+        except Exception:
+            return False
+
+    def __hash__(self):
+        ### Using an esoteric separator to avoid collisions.
+        sep = "[\"']"
+        return hash(
+            str(self.connector_keys) + sep
+            + str(self.metric_key) + sep
+            + str(self.location_key) + sep
+            + str(self.instance_keys) + sep
+        )
+
+    def __repr__(self, ansi: bool=True, **kw) -> str:
+        if not hasattr(sys, 'ps1'):
+            ansi = False
+
+        return pipe_repr(self, ansi=ansi, **kw)
+
+    def __pt_repr__(self):
+        from meerschaum.utils.packages import attempt_import
+        prompt_toolkit_formatted_text = attempt_import('prompt_toolkit.formatted_text', lazy=False)
+        return prompt_toolkit_formatted_text.ANSI(pipe_repr(self, ansi=True))
+
+    def __getstate__(self) -> Dict[str, Any]:
+        """
+        Define the state dictionary (pickling).
+        """
+        return {
+            'connector_keys': self.connector_keys,
+            'metric_key': self.metric_key,
+            'location_key': self.location_key,
+            'parameters': self._attributes.get('parameters', None),
+            'instance_keys': self.instance_keys,
+        }
+
+    def __setstate__(self, _state: Dict[str, Any]):
+        """
+        Read the state (unpickling).
+        """
+        self.__init__(**_state)
+
+    def __getitem__(self, key: str) -> Any:
+        """
+        Index the pipe's attributes.
+        If the `key` cannot be found`, return `None`.
+        """
+        if key in self.attributes:
+            return self.attributes.get(key, None)
+
+        aliases = {
+            'connector': 'connector_keys',
+            'connector_key': 'connector_keys',
+            'metric': 'metric_key',
+            'location': 'location_key',
+        }
+        aliased_key = aliases.get(key, None)
+        if aliased_key is not None:
+            return self.attributes.get(aliased_key, None)
+
+        property_aliases = {
+            'instance': 'instance_keys',
+            'instance_key': 'instance_keys',
+        }
+        aliased_key = property_aliases.get(key, None)
+        if aliased_key is not None:
+            key = aliased_key
+        return getattr(self, key, None)
+
+    def __copy__(self):
+        """
+        Return a shallow copy of the current pipe.
+        """
+        return mrsm.Pipe(
+            self.connector_keys, self.metric_key, self.location_key,
+            instance=self.instance_keys,
+            parameters=self._attributes.get('parameters', None),
+        )
+
+    def __deepcopy__(self, memo):
+        """
+        Return a deep copy of the current pipe.
+        """
+        return self.__copy__()
