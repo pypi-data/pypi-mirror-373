@@ -1,0 +1,60 @@
+name: Test unpinned package from PyPI
+
+on:
+  # Run daily, at 00:00.
+  schedule:
+    - cron: '0 0 * * *'
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Allow only one concurrent workflow, skipping runs queued between the run
+# in-progress and latest queued. And cancel in-progress runs.
+concurrency:
+  group:
+    ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-package:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@v0.9.0
+        with:
+          run-install: false
+          cache: false
+          post-cleanup: false
+
+      - name: Download the pixi configuration file from the master branch
+        run: |
+          curl -LO https://raw.githubusercontent.com/easyscience/diffraction-lib/master/pixi/prod/pixi.toml
+
+      - name: Download the tests from the master branch
+        run: |
+          curl -LO https://github.com/easyscience/diffraction-lib/archive/refs/heads/master.zip
+          unzip master.zip "diffraction-lib-master/tests/*" -d . 
+          mv diffraction-lib-master/tests ./tests 
+          rm -rf master.zip diffraction-lib-master
+
+      - name: Create the environment and install dependencies
+        run: pixi install
+
+      - name: Run unit tests to verify the installation
+        run: pixi run unit-tests
+
+      - name: Run functional tests to verify the installation
+        run: pixi run func-tests
+
+      - name: List the available EasyDiffraction tutorials
+        run: pixi run tutorials-list
+
+      - name: Fetch the EasyDiffraction tutorials
+        run: pixi run tutorials-fetch
+
+      - name: Test tutorials as notebooks
+        run: pixi run notebook-tests
