@@ -1,0 +1,68 @@
+orchestrator:
+  id: orka-ui
+  strategy: decision-tree
+  queue: orka:generated
+  agents:
+    - answer_9
+    - test_failover
+    - need_answer
+    - router_answer
+agents:
+  - id: answer_9
+    type: openai-answer
+    queue: orka:answer_9
+    prompt: >
+      Rephrase this input in a more understandable way: "{{ get_input() }}"
+  - id: test_failover
+    type: failover
+    input: answer_9
+    children:
+      - id: failing_test_agent1
+        type: failing
+        queue: orka:failing_test_agent1
+      - id: actual_working_agent
+        type: duckduckgo
+        queue: orka:actual_working_agent
+        prompt: "{{ get_input() }}"
+    depends_on:
+      - failing_test_agent1
+      - actual_working_agent
+      - answer_9
+  - id: need_answer
+    type: openai-binary
+    queue: orka:is_fact
+    prompt: "Does '{{ get_input() }}' ask a question that requires an answer, or is it an assertion that requires fact validation? Return true if it is a question, false if it is an assertion."
+    depends_on:
+      - test_failover
+  - id: router_answer
+    type: router
+    params:
+      decision_key: need_answer
+      routing_map:
+        "true":
+          - test_failover2
+        "false":
+          - validate_fact
+    depends_on:
+      - need_answer
+  - id: test_failover2
+    type: failover
+    input: router_answer
+    children:
+      - id: failing_test_agent2
+        type: failing
+        queue: orka:failing_test_agent2
+      - id: build_answer
+        type: openai-answer
+        queue: orka:validation_queue
+        prompt: Given this question "{{ get_input() }}", and the search results "{{ get_agent_response('test_failover') }}", return a compelling answer.
+    depends_on:
+      - router_answer
+      - failing_test_agent2
+      - build_answer
+  - id: validate_fact
+    type: openai-answer
+    queue: orka:validation_queue
+    prompt: "Validate the following assertion based on the search results. Assertion: {{ get_input() }}. Search results: {{ get_agent_response('test_failover') }}, return a compelling answer."
+    depends_on:
+      - router_answer
