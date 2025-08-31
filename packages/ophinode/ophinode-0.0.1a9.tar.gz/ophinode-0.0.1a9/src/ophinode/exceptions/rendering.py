@@ -1,0 +1,2 @@
+class NonRenderableNodeError(Exception):
+    pass
