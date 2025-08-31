@@ -1,0 +1,151 @@
+
+<ng-container
+    [ngSwitch]="(userLoginAuthMethodResponseTuple$ | async).authMethod"
+>
+    <!-- Alerts Section -->
+    <div class="alerts-container">
+        <ng-container *ngIf="errors$ | async as errors">
+            <nz-alert
+                *ngFor="let error of errors"
+                nzType="error"
+                [nzMessage]="error"
+                nzShowIcon
+                class="alert-item"
+            >
+            </nz-alert>
+        </ng-container>
+
+        <ng-container *ngIf="warnings$ | async as warnings">
+            <nz-alert
+                *ngFor="let warning of warnings"
+                nzType="warning"
+                [nzMessage]="warning"
+                nzShowIcon
+                class="alert-item"
+            >
+            </nz-alert>
+        </ng-container>
+    </div>
+
+    <div class="auth-section" *ngSwitchCase="AUTH_METHODS.ONE_TIME_PASSCODE">
+        <h4>One-time Password</h4>
+
+        <div class="otp-actions">
+            <button
+                nz-button
+                nzType="primary"
+                class="otp-request-btn field-button"
+                [disabled]="isOtpRequestButtonDisabled$ | async"
+                (click)="requestOtp()"
+            >
+                {{ otpRequestButtonText$ | async }}
+            </button>
+
+            <button
+                nz-button
+                class="reset-btn field-button"
+                [disabled]="!(userSelectedTokens$ | async)?.length"
+                (click)="resetSelection()"
+            >
+                Reset Selection
+            </button>
+            <div class="grow"></div>
+            <div class="btn-group">
+                <button
+                    nz-button
+                    nzSize="large"
+                    nzType="primary"
+                    (click)="gotoNextLoginStepIndex()"
+                    [nzLoading]="isAuthenticating$ | async"
+                >
+                    Login
+                    <span nz-icon nzType="right"></span>
+                </button>
+            </div>
+        </div>
+
+        <ng-container
+            *ngIf="
+                isOtpRequestButtonDisabled$ | async;
+                else newCodeRequiredEmpty
+            "
+        >
+            <div class="selected-words" *ngIf="(otpOptions$ | async)?.length">
+                <h5>Selected Words:</h5>
+                <div class="selected-word-list">
+                    {{
+                        (userSelectedTokens$ | async).join(" ") ||
+                            "Tap some words below"
+                    }}
+                </div>
+            </div>
+
+            <div class="otp-grid">
+                <div
+                    *ngFor="let option of otpOptions$ | async"
+                    class="otp-card"
+                    [class.selected]="
+                        (userSelectedTokens$ | async)?.includes(option.value)
+                    "
+                    [class.disabled]="option.disabled"
+                    (click)="onOtpCardClick(option.value)"
+                >
+                    <span class="otp-word">{{ option.label }}</span>
+                </div>
+            </div>
+        </ng-container>
+    </div>
+
+    <div
+        class="text-password-login-container"
+        *ngSwitchCase="AUTH_METHODS.PASSWORD"
+    >
+        <div class="text-password-input">
+            <h4>Password</h4>
+            <nz-form-item>
+                <nz-form-control>
+                    <nz-input-group [nzSuffix]="suffixTemplate">
+                        <input
+                            [type]="isPasswordVisible ? 'text' : 'password'"
+                            nz-input
+                            [ngModel]="password"
+                            nzSize="large"
+                            (ngModelChange)="onPasswordModelChange($event)"
+                            (keydown.enter)="gotoNextLoginStepIndex()"
+                            placeholder="Enter your password"
+                        />
+                    </nz-input-group>
+                    <ng-template #suffixTemplate>
+                        <span
+                            nz-icon
+                            [nzType]="
+                                isPasswordVisible ? 'eye' : 'eye-invisible'
+                            "
+                            (click)="isPasswordVisible = !isPasswordVisible"
+                        >
+                        </span>
+                    </ng-template>
+                </nz-form-control>
+            </nz-form-item>
+        </div>
+
+        <div class="login-actions">
+            <button
+                class="next-button"
+                nz-button
+                nzType="primary"
+                nzSize="large"
+                [nzLoading]="isAuthenticating$ | async"
+                (click)="gotoNextLoginStepIndex()"
+            >
+                <span>Login</span>
+                <span nz-icon nzType="right"></span>
+            </button>
+        </div>
+    </div>
+</ng-container>
+
+<ng-template #newCodeRequiredEmpty>
+    <nz-empty [nzNotFoundContent]="'Code Expired, Request a New Code'">
+    </nz-empty>
+</ng-template>
