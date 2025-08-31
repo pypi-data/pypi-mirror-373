@@ -1,0 +1,88 @@
+name: Typecheck
+
+on:
+  push:
+    branches:
+      - "main"
+    paths-ignore:
+      - "**.json"
+      - "**.md"
+      - "**.csv"
+      - "**.html"
+  pull_request:
+    paths-ignore:
+      - "**.json"
+      - "**.md"
+      - "**.csv"
+      - "**.html"
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
+
+permissions:
+  contents: read
+
+env:
+  FORCE_COLOR: 1 # Request colored output from CLI tools supporting it
+  TERM: xterm-256color # needed for FORCE_COLOR to work on mypy on Ubuntu, see https://github.com/python/mypy/issues/13817
+  CLICOLOR_FORCE: 1 # recognized by uv
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  mypy:
+    name: Check code with mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+      - run: uv run --python=3.11 --group=dev mypy
+
+  pyright:
+    name: Run pyright on the codebase
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+      - run: |
+          uv python pin 3.11
+          uv sync --group=dev
+          echo "${PWD}/.venv/bin" >> "${GITHUB_PATH}"
+      - name: Run pyright
+        uses: jakebailey/pyright-action@v2
+        with:
+          version: PATH
+
+  create-issue-on-failure:
+    name: Create an issue if daily typecheck failed
+    runs-on: ubuntu-latest
+    needs: [mypy, pyright]
+    if: >-
+      ${{
+        github.repository == 'AlexWaygood/typeshed-stats'
+        && always()
+        && github.event_name == 'schedule'
+        && (
+          needs.mypy.result == 'failure'
+          || needs.pyright.result == 'failure'
+        )
+      }}
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.issues.create({
+              owner: "AlexWaygood",
+              repo: "typeshed-stats",
+              title: `Daily typecheck failed on ${new Date().toDateString()}`,
+              body: "Run listed here: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            })

@@ -1,0 +1,46 @@
+name: Test website generation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths-ignore:
+      - "tests/**"
+      - "examples/**"
+      - "**.json"
+      - "**.csv"
+      - "**.html"
+
+env:
+  FORCE_COLOR: 1 # Request colored output from CLI tools supporting it
+  CLICOLOR_FORCE: 1 # recognized by uv
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  test-website:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v6
+      - run: uv pip install -e . --group=dev --system
+      - run: uv pip freeze
+      - name: Regenerate examples and docs
+        run: python scripts/regenerate.py --download-typeshed
+      - name: Check the generated files with pre-commit
+        uses: pre-commit/action@v3.0.1
+      - name: Build docs
+        run: mkdocs build --strict
+      - name: Upload docs
+        uses: actions/upload-artifact@v4
+        with:
+          name: doc-html
+          path: site
