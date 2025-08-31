@@ -1,0 +1,7 @@
+SCRIBE_VULNERABILITIES_DATASET = "API Vulnerabilities"
+SCRIBE_PRODUCTS_DATASET = "asbom_filtered"
+SCRIBE_POLICY_DATASET = "policy_initiative"
+SCRIBE_TEAM_STAT_DATASET = "MARKETING Team activity"
+SCRIBE_LINEAGE_DATASET = "extended_lineage_new"
+SCRIBE_RISK_DATASET = "product_risk_1.0"
+SCRIBE_FINDINGS_DATASET = "Findings"
