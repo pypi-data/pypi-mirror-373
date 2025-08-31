@@ -1,0 +1,107 @@
+services:
+  # 核心CLI服务（无web依赖）
+  aiforge-core:
+    build:
+      context: ${PWD}
+      dockerfile: ${AIFORGE_DOCKERFILE_PATH:-Dockerfile}
+      args:
+        - INSTALL_WEB=false
+        - AIFORGE_LOCALE=${AIFORGE_LOCALE:-en}
+    container_name: aiforge-core
+    volumes:
+      - ${AIFORGE_CONFIG_DIR:-./aiforge_config}:/app/config
+      - ${AIFORGE_WORK_DIR:-./aiforge_work}:/app/aiforge_work
+      - ${AIFORGE_LOGS_DIR:-./logs}:/app/logs
+    environment:
+      - AIFORGE_DOCKER_MODE=true
+      - AIFORGE_CONFIG_DIR=/app/config
+      # 不强制提供 API KEY 启动 
+      # - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      # - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - AIFORGE_LOCALE=${AIFORGE_LOCALE:-en}
+    networks:
+      - aiforge-network
+    restart: unless-stopped
+    entrypoint: [ "sleep", "infinity" ]
+    healthcheck:
+      test: [ "CMD", "ps", "aux", "|", "grep", "-v", "grep", "|", "grep", "-q", "sleep.*infinity" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Web服务（可选）
+  aiforge-web:
+    build:
+      context: ${PWD}
+      dockerfile: ${AIFORGE_DOCKERFILE_PATH:-Dockerfile}
+      args:
+        - INSTALL_WEB=true
+        - AIFORGE_LOCALE=${AIFORGE_LOCALE:-en}
+    container_name: aiforge-web
+    ports:
+      - "${AIFORGE_WEB_PORT:-8000}:8000"
+    volumes:
+      - ${AIFORGE_CONFIG_DIR:-./aiforge_config}:/app/config
+      - ${AIFORGE_WORK_DIR:-./aiforge_work}:/app/aiforge_work
+      - ${AIFORGE_LOGS_DIR:-./logs}:/app/logs
+    environment:
+      - AIFORGE_DOCKER_MODE=true
+      - AIFORGE_CONFIG_DIR=/app/config
+      # 不强制提供 API KEY 启动 
+      # - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      # - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - AIFORGE_LOCALE=${AIFORGE_LOCALE:-en}
+    networks:
+      - aiforge-network
+    restart: unless-stopped
+    command: [ "web", "--host", "0.0.0.0", "--port", "8000" ]
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/health/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    profiles: [ "web" ]
+
+  # SearXNG搜索引擎
+  searxng:
+    image: searxng/searxng:latest
+    container_name: aiforge-searxng
+    expose:
+      - "8080"
+    volumes:
+      - ${AIFORGE_SEARXNG_DIR:-./searxng}:/etc/searxng:rw
+    networks:
+      - aiforge-network
+    restart: unless-stopped
+    profiles: [ "search" ]
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx代理
+  nginx:
+    image: nginx:alpine
+    container_name: aiforge-nginx
+    ports:
+      - "55510:80"
+    volumes:
+      - ${AIFORGE_NGINX_CONF_PATH:-/etc/nginx/conf.d/default.conf}:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - searxng
+    networks:
+      - aiforge-network
+    restart: unless-stopped
+    profiles: [ "search" ]
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:80" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  aiforge-network:
+    driver: bridge
