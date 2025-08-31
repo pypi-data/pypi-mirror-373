@@ -1,0 +1,66 @@
+# Build documentation generation jobs
+
+peek_git_sha1_doc:
+    extends: .alma8_old_build
+    dependencies:
+        - peek_git_clone_repos_community
+        - peek_git_clone_repos_enterprise
+    allow_failure: true
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "push"'
+          when: never
+        - if: '$CI_PIPELINE_SOURCE == "web"'
+        - if: '$CI_PIPELINE_SOURCE == "triggers"'
+        - if: '$CI_PIPELINE_SOURCE == "api"'
+    stage: doc
+    artifacts:
+        paths:
+            - $ARTIFACTS_DIR/clones_sha1_table.md
+        expire_in: 1 week
+    script:
+        - echo "Creating repository commit SHA1 table..."
+        - mkdir -p $ARTIFACTS_DIR
+
+        # Create community repository commit table
+        - echo "Processing community repositories..."
+        - echo "| Repository | Commit SHA1 | Commit Message | Author | UTC - Date/Time |" > $ARTIFACTS_DIR/clones_sha1_table.md
+        - echo "|------------|------|----------------|---------|---------------|" >> $ARTIFACTS_DIR/clones_sha1_table.md
+        - cd "${GIT_CLONE_PATH}/cloned_community_repos"
+        - for repo_dir in *;
+          do
+            if [ -d "$repo_dir" ] && [ -d "$repo_dir/.git" ];
+            then
+              repo_name="$repo_dir";
+              cd "$repo_dir";
+              sha1=$(git log -1 --pretty=format:"%h");
+              message=$(git log -1 --pretty=format:"%s");
+              author=$(git log -1 --pretty=format:"%an");
+              utc_date=$(git log -1 --pretty=format:"%aI");
+              echo "| **${repo_name}** | ${sha1} | ${message} | ${author} | ${utc_date} |" >> $ARTIFACTS_DIR/clones_sha1_table.md;
+              cd .. > /dev/null;
+            fi;
+          done
+        - cd - > /dev/null
+
+        # Add enterprise repository commit table
+        - echo "Processing enterprise repositories..."
+        - cd "${GIT_CLONE_PATH}/cloned_enterprise_repos"
+        - for repo_dir in *;
+          do
+            if [ -d "$repo_dir" ] && [ -d "$repo_dir/.git" ];
+            then
+              repo_name="$repo_dir";
+              cd "$repo_dir";
+              sha1=$(git log -1 --pretty=format:"%h");
+              message=$(git log -1 --pretty=format:"%s");
+              author=$(git log -1 --pretty=format:"%an");
+              utc_date=$(git log -1 --pretty=format:"%aI");
+              echo "| **${repo_name}** | ${sha1} | ${message} | ${author} | ${utc_date} |" >> $ARTIFACTS_DIR/clones_sha1_table.md;
+              cd .. > /dev/null;
+            fi;
+          done
+        - cd - > /dev/null
+
+        - echo "Repository commit SHA1 table created at $ARTIFACTS_DIR/clones_sha1_table.md"
+        - echo "Contents:"
+        - cat $ARTIFACTS_DIR/clones_sha1_table.md

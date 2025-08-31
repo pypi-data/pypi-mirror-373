@@ -1,0 +1,115 @@
+# Git repository cloning jobs
+
+peek_git_clone_repos_community:
+    extends: .alma8_old_build
+    allow_failure: false
+    artifacts:
+        paths:
+            - ${GIT_CLONE_PATH}/cloned_community_repos
+        expire_in: 1 day
+    only:
+        - web
+        - triggers
+        - api
+    script:
+        - source ./pip_common.sh
+        - export PACKAGE_GRP="community"
+        - export PACKAGES="${COMMUNITY_PKGS}"
+        - export SRC_PATH="${GIT_CLONE_PATH}/cloned_community_repos"
+        - export USER="${GIT_USER}"
+        - export PASSWORD="${GIT_PASSWORD}"
+        - export CI_PROJECT_ROOT_NAMESPACE="${CI_PROJECT_NAMESPACE%/*}"
+        - echo "Cloning all the repositories at ${SRC_PATH}"
+        - mkdir -p ${SRC_PATH} && cd ${SRC_PATH}
+        - repoUrls=""
+        - for repo in ${PACKAGES};
+          do
+            rm -fR ${repo};
+            if [ "${repo}" = 'peek' ];
+            then
+              pathTo=peek;
+            elif [ "${CI_PROJECT_ROOT_NAMESPACE}" = 'peek' ];
+            then
+              pathTo=peek/${PACKAGE_GRP};
+            else
+              pathTo=${CI_PROJECT_ROOT_NAMESPACE}/${PACKAGE_GRP};
+            fi;
+            repoUrls="${repoUrls} https://${USER}:${PASSWORD}@gitlab.synerty.com/${pathTo}/${repo}.git";
+          done
+        - echo ${repoUrls} | xargs -n1 -P4 git clone
+        - for repo in ${PACKAGES};
+          do
+            pushd ${repo};
+            if git fetch origin "${CI_COMMIT_REF_NAME}";
+            then
+              echo "${repo} Checking out ${CI_COMMIT_REF_NAME}";
+              git checkout "${CI_COMMIT_REF_NAME}";
+            elif git fetch origin "${RELEASE_BRANCH}";
+            then
+              echo "${repo} Checking out ${RELEASE_BRANCH}";
+              git checkout "${RELEASE_BRANCH}";
+            else
+              echo "${repo} Failed to switch to ${CI_COMMIT_REF_NAME}" >&2;
+              echo "${repo} Failed to switch to ${RELEASE_BRANCH}" >&2;
+              echo "${repo} Using master instead" >&2;
+            fi;
+            popd;
+          done
+    stage: fetch
+
+peek_git_clone_repos_enterprise:
+    extends: .alma8_old_build
+    allow_failure: false
+    artifacts:
+        paths:
+            - ${GIT_CLONE_PATH}/cloned_enterprise_repos
+        expire_in: 1 day
+    only:
+        - web
+        - triggers
+        - api
+    script:
+        - source ./pip_common.sh
+        - export PACKAGE_GRP="enterprise"
+        - export PACKAGES="${ENTERPRISE_PKGS}"
+        - export SRC_PATH="${GIT_CLONE_PATH}/cloned_enterprise_repos"
+        - export USER="${GIT_USER}"
+        - export PASSWORD="${GIT_PASSWORD}"
+        - export CI_PROJECT_ROOT_NAMESPACE="${CI_PROJECT_NAMESPACE%/*}"
+        - echo "Cloning all the repositories at ${SRC_PATH}"
+        - mkdir -p ${SRC_PATH} && cd ${SRC_PATH}
+        - repoUrls=""
+        - for repo in ${PACKAGES};
+          do
+            rm -fR ${repo};
+            if [ "${repo}" = 'peek' ];
+            then
+              pathTo=peek;
+            elif [ "${CI_PROJECT_ROOT_NAMESPACE}" = 'peek' ];
+            then
+              pathTo=peek/${PACKAGE_GRP};
+            else
+              pathTo=${CI_PROJECT_ROOT_NAMESPACE}/${PACKAGE_GRP};
+            fi;
+            repoUrls="${repoUrls} https://${USER}:${PASSWORD}@gitlab.synerty.com/${pathTo}/${repo}.git";
+          done
+        - echo ${repoUrls} | xargs -n1 -P4 git clone
+        - for repo in ${PACKAGES};
+          do
+            pushd ${repo};
+            if git fetch origin "${CI_COMMIT_REF_NAME}";
+            then
+              echo "${repo} Checking out ${CI_COMMIT_REF_NAME}";
+              git checkout "${CI_COMMIT_REF_NAME}";
+            elif git fetch origin "${RELEASE_BRANCH}";
+            then
+              echo "${repo} Checking out ${RELEASE_BRANCH}";
+              git checkout "${RELEASE_BRANCH}";
+            else
+              echo "${repo} Failed to switch to ${CI_COMMIT_REF_NAME}" >&2;
+              echo "${repo} Failed to switch to ${RELEASE_BRANCH}" >&2;
+              echo "${repo} Using master instead" >&2;
+            fi;
+            popd;
+          done
+    stage: fetch
