@@ -1,0 +1,803 @@
+# ----------------------------------------------------
+# Name: findpeaks.py
+# Author: E.Taskesen
+# Contact: erdogant@gmail.com
+# github: https://github.com/erdogant/findpeaks
+# Licence: MIT
+# ----------------------------------------------------
+
+try:
+    import findpeaks.union_find as union_find
+    from findpeaks.filters.lee import lee_filter
+    from findpeaks.filters.lee_enhanced import lee_enhanced_filter
+    from findpeaks.filters.lee_sigma import lee_sigma_filter
+    from findpeaks.filters.kuan import kuan_filter
+    from findpeaks.filters.frost import frost_filter
+    from findpeaks.filters.median import median_filter
+    from findpeaks.filters.mean import mean_filter
+except:
+    #### DEBUG ONLY ####
+    import union_find as union_find
+    from filters.lee import lee_filter
+    from filters.lee_enhanced import lee_enhanced_filter
+    from filters.lee_sigma import lee_sigma_filter
+    from filters.kuan import kuan_filter
+    from filters.frost import frost_filter
+    from filters.median import median_filter
+    from filters.mean import mean_filter
+# ######################
+
+from scipy.ndimage.morphology import generate_binary_structure, binary_erosion
+from scipy.ndimage.filters import maximum_filter
+
+from tqdm import tqdm
+import numpy as np
+import pandas as pd
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+# %% Import cv2
+def _import_cv2():
+    # Only for 2D images required
+    try:
+        import cv2
+        return cv2
+    except:
+        raise ImportError('cv2 must be installed manually. Try to: <pip install opencv-python> or <pip install opencv-python-headless>')
+
+
+# %% Scaling
+def scale(X):
+    """Normalize data (image) by scaling.
+
+    Scaling Description
+    -------------------
+    Scaling in range [0-255] by img*(255/max(img))
+
+    Parameters
+    ----------
+    X: array-like
+        Input image data.
+
+    Returns
+    -------
+    X: array-like
+        Scaled image.
+
+    """
+    logger.info('Scaling image between [0-255] and to uint8')
+    try:
+        # Normalizing between 0-255
+        X = X - X.min()
+        try:
+            X = X / X.max()
+        except:
+            X = X * 0
+        X = X * 255
+        # Downscale typing
+        X = np.uint8(X)
+    except:
+        logger.warning('Scaling not possible.')
+    return X
+
+
+# %%
+def togray(X):
+    """Convert color to grey-image.
+
+    Grayscale Conversion Description
+    --------------------------------
+    Convert 3d-RGB colors to 2d-grey image.
+
+    Parameters
+    ----------
+    X: array-like
+        Input image data.
+
+    Returns
+    -------
+    X: array-like
+        2d-image.
+
+    """
+    # Import cv2
+    cv2 = _import_cv2()
+    try:
+        logger.info('Conversion to gray image.')
+        
+        # Check if image is already grayscale (1 channel)
+        if len(X.shape) == 2:
+            logger.info('Image is already grayscale, no conversion needed.')
+            return X
+        
+        # Check if image has valid number of channels for conversion
+        if len(X.shape) != 3 or X.shape[2] not in [3, 4]:
+            logger.warning(f'Image has {len(X.shape)} dimensions with shape {X.shape}, cannot convert to grayscale.')
+            return X
+            
+        if X.dtype != np.uint8:
+            logger.warning(f'Input image dtype is {X.dtype}, converting to uint8.')
+            X = X.astype(np.uint8)
+
+        X = cv2.cvtColor(X, cv2.COLOR_BGR2GRAY)
+    except Exception as e:
+        logger.error(f'Conversion to gray failed using cv2: {e}')
+        # Return original image if conversion fails
+        return X
+
+    return X
+
+
+# %%
+def resize(X, size=None):
+    """Resize image.
+
+    Parameters
+    ----------
+    X: array-like
+        Input image data.
+    size: tuple, (default: None)
+        size to desired (width,length).
+
+    Returns
+    -------
+    X: array-like
+
+    """
+    # Import cv2
+    cv2 = _import_cv2()
+    try:
+        if size is not None:
+            logger.info('Resizing image to %s.' %(str(size)))
+            X = cv2.resize(X, size)
+    except Exception as e:
+        logger.warning(f'Resizing not possible: {e}')
+    return X
+
+
+# %%
+def denoise(X, method='fastnl', window=9, cu=0.25):
+    """Denoise input data.
+
+    Denoising Description
+    ---------------------
+    Denoising the data is very usefull before detection of peaks. Multiple methods are implemented to denoise the data.
+    The bilateral filter uses a Gaussian filter in the space domain,
+    but it also uses one more (multiplicative) Gaussian filter component which is a function of pixel intensity differences.
+    The Gaussian function of space makes sure that only pixels are 'spatial neighbors' are considered for filtering,
+    while the Gaussian component applied in the intensity domain (a Gaussian function of intensity differences)
+    ensures that only those pixels with intensities similar to that of the central pixel ('intensity neighbors')
+    are included to compute the blurred intensity value. As a result, this method preserves edges, since for pixels lying near edges,
+    neighboring pixels placed on the other side of the edge, and therefore exhibiting large intensity variations when
+    compared to the central pixel, will not be included for blurring.
+
+    Parameters
+    ----------
+    X: array-like
+        Input image data.
+    method: string, (default: 'fastnl', None to disable)
+        Filtering method to remove noise
+            * None
+            * 'fastnl'
+            * 'bilateral'
+            * 'lee'
+            * 'lee_enhanced'
+            * 'lee_sigma'
+            * 'kuan'
+            * 'frost'
+            * 'median'
+            * 'mean'
+    window: int, (default: 3)
+        Denoising window. Increasing the window size may removes noise better but may also removes details of image in certain denoising methods.
+    cu: float, (default: 0.25)
+        The noise variation coefficient, applies for methods: ['kuan','lee','lee_enhanced']
+    sigma: float, (default: 0.9)
+        Speckle noise standard deviation, applies for methods: ['lee_sigma']
+    num_looks : int, (default: 1)
+        Number of looks of the SAR img, applies for methods: ['lee_sigma']
+    tk: int, (default: 5)
+        Threshold of neighbouring pixels outside of the 98th percentile, applies for methods: ['lee_sigma']
+
+    Returns
+    -------
+    X: array-like
+        Denoised data.
+
+    References
+    ----------
+    * https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_filtering/py_filtering.html
+
+    """
+    if window is None: window=9
+    if cu is None: cu=0.25
+    # Import library
+    cv2 = _import_cv2()
+
+    # Peform the denoising
+    # try:
+    logger.info('Denoising with [%s], window: [%d].' %(method, window))
+    if method=='fastnl':
+        if len(X.shape)==2:
+            X = cv2.fastNlMeansDenoising(X, h=window)
+        elif len(X.shape)==3:
+            logger.info('Denoising color image.')
+            X = cv2.fastNlMeansDenoisingColored(X, h=window)
+        else:
+            logger.warning(f'Cannot denoise image with {len(X.shape)} dimensions')
+    elif method=='bilateral':
+        X = cv2.bilateralFilter(X, window, 75, 75)
+    elif method=='lee':
+        X = lee_filter(X, win_size=window, cu=cu)
+    elif method=='lee_enhanced':
+        X = lee_enhanced_filter(X, win_size=window, cu=cu, k=1, cmax=1.73)
+    elif method=='lee_sigma':
+        X = lee_sigma_filter(X, sigma=0.9, win_size=window, num_looks=1, tk=5)
+    elif method=='kuan':
+        X = kuan_filter(X, win_size=window, cu=cu)
+    elif method=='frost':
+        X = frost_filter(X, win_size=window, damping_factor=2)
+    elif method=='median':
+        X = median_filter(X, win_size=window)
+    elif method=='mean':
+        X = mean_filter(X, win_size=window)
+    # except:
+    #     if verbose>=2: print('[findpeaks] >Warning: Denoising failt!')
+    return X
+
+
+# %%
+def mask(X, limit=0):
+    """Determine peaks in 2d-array using a mask.
+
+    Mask Method Description
+    -----------------------
+    Takes an image and detect the peaks using the local maximum filter.
+    Returns a boolean mask of the peaks (i.e. 1 when the pixel's value is the neighborhood maximum, 0 otherwise)
+
+    Parameters
+    ----------
+    X: array-like
+        Input image data.
+    limit: float, (default: None)
+        Values > limit are set as regions of interest (ROI).
+
+    Returns
+    -------
+    dict()
+        Xraw: array-like.
+            Input image.
+        Xdetect: array-like (same shape as input data)
+            detected peaks with respect the input image. Elements are the scores.
+        Xranked: array-like (same shape as input data)
+            detected peaks with respect the input image. Elements are the ranked peaks (1=best).
+
+    References
+    ----------
+    * https://stackoverflow.com/questions/3684484/peak-detection-in-a-2d-array
+
+    """
+    if limit is None: limit=0
+
+    logger.info('Detect peaks using the mask method with limit=%s.' %(limit))
+    # define an 8-connected neighborhood
+    neighborhood = generate_binary_structure(2, 2)
+
+    # apply the local maximum filter; all pixel of maximal value in their neighborhood are set to 1
+    local_max = maximum_filter(X, footprint=neighborhood)==X
+    # local_max is a mask that contains the peaks we are looking for, but also the background.
+    # In order to isolate the peaks we must remove the background from the mask.
+
+    # we create the mask of the background
+    background = (X <= limit)
+
+    # Erode the background in order to successfully subtract it form local_max,
+    # otherwise a line will appear along the background border (artifact of the local maximum filter)
+    eroded_background = binary_erosion(background, structure=neighborhood, border_value=1)
+
+    # We obtain the final mask, containing only peaks, by removing the background from the local_max mask (xor operation)
+    Xdetect = local_max ^ eroded_background
+
+    # Nothing to rank but for consistency purposes
+    Xranked = Xdetect.astype(int)
+    idxs=np.where(Xranked)
+    for i, idx in enumerate(zip(idxs[0], idxs[1])):
+        Xranked[idx]=i+1
+
+    # Make dict
+    result = {'Xdetect': Xdetect, 'Xranked': Xranked}
+
+    # Return
+    return result
+
+
+# %%
+def topology2d(X, limit=None, whitelist=['peak','valley']):
+    """Determine peaks and valleys in 2d-array using toplogy method.
+
+    Topology 2D Description
+    -----------------------
+    This function calls the topology function that ONLY computes peaks in case of 2d-arrays.
+    To detect the valleys, the image is inverted and the topology function is called.
+    The final results is the combined peak and valleys.
+
+    Parameters
+    ----------
+    X: array-like data
+        Input data.
+    limit: float, (default: None)
+        score > limit are set as regions of interest (ROI).
+
+    Returns
+    -------
+    dict()
+        Xdetect: array-like
+            detected peaks/valleys in the same shape as the input image. Elements are the scores. (high=best peak and low=best valley).
+        Xranked: array-like
+            detected peaks/valleys in the same shape as the input image. Elements are the ranked peaks (1=best peak and -1 is best valley).
+        persistence: DataFrame().
+            * x, y: Coordinates
+            * birth: Birth level, tuple(coordinate, rgb value)
+            * death: Death level, tuple(coordinate, rgb value)
+            * score: Persistence scores
+            * peak: True if peak
+            * valley: True if valley
+
+    """
+    result_peak = {'groups0': [], 'Xdetect': np.zeros_like(X).astype(float), 'Xranked': np.zeros_like(X).astype(float), 'peak': None, 'valley': None, 'persistence': pd.DataFrame(columns=['x','y','birth_level','death_level','score'])}
+    result_valley = {'groups0': [], 'Xdetect': np.zeros_like(X).astype(float), 'Xranked': np.zeros_like(X).astype(float), 'peak': None, 'valley': None, 'persistence': pd.DataFrame(columns=['x','y','birth_level','death_level','score'])}
+
+    # Detect peaks
+    if np.any(np.isin(whitelist, 'peak')):
+        result_peak = topology(X, limit=limit, reverse=True)
+        result_peak['persistence']['peak']=True
+        result_peak['persistence']['valley']=False
+
+    # Compute max value in array to create the negative image
+    # max_val = 255 if np.max(X.ravel())>1 else 1
+    # Detect valleys
+    # result_valley = topology(max_val-X, limit=limit)
+    if np.any(np.isin(whitelist, 'valley')):
+        result_valley = topology(X, limit=limit, reverse=False)
+        result_valley['persistence']['peak']=False
+        result_valley['persistence']['valley']=True
+        result_valley['persistence']['death_level'] = result_valley['persistence']['death_level'] * -1
+        result_valley['persistence']['birth_level'] = result_valley['persistence']['birth_level'] * -1
+
+    # Combine results
+    persistence = pd.concat([result_peak['persistence'], result_valley['persistence']])
+    persistence.sort_values(by='score', ascending=False, inplace=True)
+    # Combine datamatrix
+    Xdetect = result_peak['Xdetect']
+    idx = np.where(result_valley['Xdetect'])
+    if len(idx[0])>0: Xdetect[idx] = result_valley['Xdetect'][idx] * -1
+    # Combine the ranked ones
+    Xranked = result_peak['Xranked']
+    idx = np.where(result_valley['Xranked'])
+    if len(idx[0])>0: Xranked[idx] = result_valley['Xranked'][idx] * -1
+    # Combine the group0
+    groups0 = result_peak['groups0'] + result_valley['groups0']
+    # Make dict
+    result = {'persistence': persistence, 'Xdetect': Xdetect, 'Xranked': Xranked, 'groups0': groups0}
+    # Return
+    return result
+
+
+# %%
+def topology(X, limit=None, reverse=True, neighborhood_generator=None):
+    """Determine peaks using topology method based on persistent homology.
+
+    Topology Method Description
+    ---------------------------
+    The topology method uses persistent homology to detect peaks and valleys in data.
+    The core idea is to consider the function graph that assigns each pixel its level,
+    then simulate a water level that continuously descends to lower levels.
+
+    At local maxima, islands emerge (birth events). At saddle points, two islands merge;
+    the lower island merges into the higher island (death events). The persistence diagram
+    depicts death-over-birth values of all islands, where persistence is the difference
+    between birth and death levels - the vertical distance from the main diagonal.
+
+    **Advantages over thresholding methods:**
+
+    - Naturally handles noise and artifacts that affect simple thresholding
+    - Provides quantitative significance measures (persistence scores)
+    - Mathematically stable and robust
+    - Enables principled filtering based on persistence rather than arbitrary thresholds
+
+    **Applications:**
+
+    - **Line Detection**: Particularly effective for Hough Transform applications where
+      traditional voting methods are susceptible to noise. The persistence-based approach
+      significantly outperforms threshold-based methods in synthetic data experiments.
+    - **Peak Detection**: General peak/valley detection in 1D and 2D data
+    - **Feature Detection**: Robust detection of significant features in noisy data
+
+    **Hough Transform Integration:**
+
+    This method addresses key limitations of classical Hough transform voting:
+
+    - Replaces simple thresholding with persistent homology-based peak detection
+    - Enhances robustness against noise and artifacts
+    - Provides mathematical stability guarantees
+    - Enables principled parameter selection based on persistence scores
+
+    The method not only identifies local maxima but also quantifies their significance
+    through persistence scores, allowing for principled filtering of peaks based on
+    their topological importance rather than arbitrary thresholds.
+
+    Parameters
+    ----------
+    X: array-like data
+        Input data.
+    limit: float, (default: None)
+        score > limit are set as regions of interest (ROI).
+        None: Take all positions into consideration.
+    reverse: bool, (default: True)
+        For 1d-vectors, reverse should be True to detect peaks and valleys.
+        For 2d-images, the peaks are detected by setting reverse=True and valleys by reverse=False.
+    neighborhood_generator: callable, (default: None)
+        Custom neighborhood generator function. If None, uses default 8-neighborhood.
+        The function should take parameters (p, w, h) and return neighboring coordinates.
+
+    Returns
+    -------
+    dict()
+        Xdetect: array-like
+            detected peaks in the same shape as the input image. Elements are the scores (higher is better).
+        Xranked: array-like
+            detected peaks in the same shape as the input image. Elements are the ranked peaks (1=best).
+        peak: array-like
+            Detected peaks
+        valley: array-like
+            Detected valley
+        groups0: array-like
+            Unstructured results
+        persistence: DataFrame()
+            DataFrame with columns:
+
+            - x, y: Coordinates
+            - birth: Birth level, tuple(coordinate, rgb value)
+            - death: Death level, tuple(coordinate, rgb value)
+            - score: Persistence scores
+
+    References
+    ----------
+        * Johannes Ferner et al, Persistence-based Hough Transform for Line Detection, https://arxiv.org/abs/2504.16114
+        * H. Edelsbrunner and J. Harer, Computational Topology. An Introduction, 2010, ISBN 0-8218-4925-5.
+        * Initial implementation: Stefan Huber <shuber@sthu.org>, editted by: Erdogan Taskesen <erdogant@gmail.com>, 2020
+
+    """
+    if limit is None:
+        limit = float(np.min(X)) - 1
+    if X.max().max()<limit:
+        limit=X.max().max()-1
+        logger.info('Minimum limit should be %s or smaller.' %(limit))
+
+    logger.info('Detect peaks using topology method with limit at %s.' %(limit))
+
+    if not reverse:
+        X = reverse_values(X.copy())
+        reverse=True
+
+    results = {'groups0': [], 'Xdetect': np.zeros_like(X).astype(float), 'Xranked': np.zeros_like(X).astype(float), 'peak': None, 'valley': None, 'persistence': pd.DataFrame(columns=['x','y','birth_level','death_level','score'])}
+    h, w = X.shape
+    max_peaks, min_peaks = None, None
+    groups0 = {}
+
+    # It is important to ensure unique values because the method sorts the values and only unique values are processed.
+    # Without adjusting duplicated values, peaks with exactly the same height will be skipped.
+    if X.shape[1] <=2:
+        X = _make_unique(X)
+    else:
+        X = _make_unique_fast(X)
+        # X = np.maximum(X + ((X > 0).astype(int) * np.random.random(X.shape) / 10), 0)
+
+    # Get indices orderd by value from high to low. As a tie-breaker, we use
+    indices = list(zip(*np.where(X >= limit)))
+
+    # We add p as a secondary key to have an unambiguous total order below when
+    # we enumerate neighboring cells of cells and consistency regarding
+    # "oldest" component.
+    indices.sort(key=lambda p: (_get_indices(X, p), p), reverse=reverse)
+
+    # Maintains the growing sets
+    uf = union_find.UnionFind()
+
+    def _get_comp_birth(p):
+        return _get_indices(X, uf[p])
+
+    # Process pixels from high to low
+    for i, p in tqdm(enumerate(indices), disable=disable_tqdm(), desc=logger.info("Topology")):
+        v = _get_indices(X, p)
+
+        if neighborhood_generator is None:
+            ni = [uf[q] for q in _iter_neighbors(p, w, h) if q in uf]
+        else:
+            ni = [uf[q] for q in _iter_neighbors_generator(p, w, h)(p, w, h, neighborhood_generator=neighborhood_generator) if q in uf]
+
+        # Sort by (value, index) as key. Note that this is the same sorting order as for indices. Otherwise, we have an inconsistent notion of the "older" component!
+        nc = sorted([(_get_comp_birth(q), q) for q in set(ni)], reverse=True)
+
+        if i == 0:
+            groups0[p] = (v, v, None)
+
+        uf.add(p, -i)
+
+        if len(nc) > 0:
+            oldp = nc[0][1]
+            uf.union(oldp, p)
+            # Merge all others with oldp
+            for bl, q in nc[1:]:
+                if uf[q] not in groups0:
+                    groups0[uf[q]] = (float(bl), float(bl) - float(v), p)
+                uf.union(oldp, q)
+
+    groups0 = [(k, groups0[k][0], groups0[k][1], groups0[k][2]) for k in groups0]
+    groups0.sort(key=lambda g: g[2], reverse=True)
+
+    # Filter on limit
+    if (limit is not None):
+        Ikeep = np.array(list(map(lambda x: x[2], groups0))) > limit
+        groups0 = np.array(groups0, dtype='object')
+        groups0 = groups0[Ikeep].tolist()
+
+    if len(groups0)>0:
+        # Extract the max peaks and sort
+        max_peaks = np.array(list(map(lambda x: [x[0][0], x[1]], groups0)))
+        idxsort = np.argsort(max_peaks[:, 0])
+        max_peaks = max_peaks[idxsort, :]
+        # Extract the min peaks and sort
+        min_peaks = np.array(list(map(lambda x: [(x[3][0] if x[3] is not None else 0), x[2]], groups0)))
+        idxsort = np.argsort(min_peaks[:, 0])
+        min_peaks = min_peaks[idxsort, :]
+        # min_peaks = np.round(min_peaks, decimals=3)
+
+        # Build the output results in the same manner as the input image
+        Xdetect = np.zeros_like(X).astype(float)
+        Xranked = np.zeros_like(X).astype(int)
+        for i, homclass in enumerate(groups0):
+            p_birth, bl, pers, p_death = homclass
+            y, x = p_birth
+            Xdetect[y, x] = pers
+            Xranked[y, x] = i + 1
+
+        # If data is 1d-vector (and not image), make single vector
+        if (X.shape[1]==2): #and (np.all(Xdetect[:, 1]==0)):
+            Xdetect = Xdetect[:, 0]
+            Xranked = Xranked[:, 0]
+
+        # Store in dataframe
+        df_persistence = pd.DataFrame()
+        df_persistence['x'] = np.array(list(map(lambda x: x[0][1], groups0)))
+        df_persistence['y'] = np.array(list(map(lambda x: x[0][0], groups0)))
+        df_persistence['birth_level'] = np.array(list(map(lambda x: float(x[1]), groups0)))
+        df_persistence['death_level'] = np.array(list(map(lambda x: float(x[1]) - float(x[2]), groups0)))
+        df_persistence['score'] = np.array(list(map(lambda x: float(x[2]), groups0)))
+        # Results
+        results = {}
+        results['groups0'] = groups0
+        results['Xdetect'] = Xdetect
+        results['Xranked'] = Xranked
+        results['peak'] = max_peaks
+        results['valley'] = min_peaks
+        results['persistence'] = df_persistence
+
+    # return
+    return results
+
+
+def reverse_values(image_array):
+    # Clip the values to ensure they are between 0 and 255
+    clipped_array = np.clip(image_array, np.min(image_array), np.max(image_array))
+
+    # Reverse the values
+    reversed_array = np.max(image_array) - clipped_array
+
+    return reversed_array
+
+def _get_indices(im, p):
+    # return im[p[0]][p[1]]
+    return im[p[0], p[1]]
+
+def generate_default_neighborhood(p, h, w, eight_neighborship=True):
+    y, x = p
+
+    if eight_neighborship:
+        neigh = [(y + j, x + i) for i in [-1, 0, 1] for j in [-1, 0, 1]]
+    else:
+        # 4-neighborship
+         neigh = [(y-1, x), (y+1, x), (y, x-1), (y, x+1)]
+
+    neigh = [(j, i) for j, i in neigh if 0 <= j < h or 0 <= i < w or (j != y or i != x)]
+
+    return neigh
+
+
+def _iter_neighbors_generator(p, w, h, neighborhood_generator=None):
+    if neighborhood_generator is None:
+        neighborhood_generator = generate_default_neighborhood
+
+    neigh = neighborhood_generator(p, w, h)
+
+    for j, i in neigh:
+        yield j, i
+
+
+def _iter_neighbors(p, w, h):
+    y, x = p
+
+    # 8-neighborship
+    neigh = [(y + j, x + i) for i in [-1, 0, 1] for j in [-1, 0, 1]]
+    # 4-neighborship
+    # neigh = [(y-1, x), (y+1, x), (y, x-1), (y, x+1)]
+
+    for j, i in neigh:
+        if j < 0 or j >= h:
+            continue
+        if i < 0 or i >= w:
+            continue
+        if j == y and i == x:
+            continue
+        yield j, i
+
+def _post_processing(X, Xraw, min_peaks, max_peaks, interpolate, lookahead, labxRaw=None):
+    if lookahead<1: raise Exception('[findpeaks] >lookhead parameter should be at least 1.')
+    labx_s = np.zeros((len(X))) * np.nan
+    results = {}
+    results['min_peaks_s'] = None
+    results['max_peaks_s'] = None
+    results['xs'] = np.arange(0, len(Xraw))
+    results['labx_s'] = labx_s
+    results['labx'] = np.zeros((len(Xraw))) * np.nan
+    results['min_peaks'] = None
+    results['max_peaks'] = None
+
+    if len(min_peaks)>0 and len(max_peaks)>0 and (max_peaks[0][0] is not None):
+
+        idx_peaks, _ = zip(*max_peaks)
+        idx_peaks = np.array(list(idx_peaks)).astype(int)
+        idx_valleys, _ = zip(*min_peaks)
+        # Add first and last row
+        # idx_valleys = np.array(idx_valleys)
+        idx_valleys = np.append(np.array(list(idx_valleys)), len(X) - 1).astype(int)
+        idx_valleys = np.append(0, idx_valleys)
+
+        # Group distribution
+        count=1
+        for i in range(0, len(idx_valleys) - 1):
+            if idx_valleys[i]!=idx_valleys[i + 1]:
+                labx_s[idx_valleys[i]:idx_valleys[i + 1] + 1] = count
+                count=count + 1
+
+        # Scale back to original data
+        if interpolate is not None:
+            min_peaks = np.minimum(np.ceil(((idx_valleys / len(X)) * len(Xraw))).astype(int), len(Xraw) - 1)
+            max_peaks = np.minimum(np.ceil(((idx_peaks / len(X)) * len(Xraw))).astype(int), len(Xraw) - 1)
+            # Scaling is not accurate for indexing and therefore, a second wave of searching for max_peaks
+            max_peaks_corr = []
+            for max_peak in max_peaks:
+                getrange = np.arange(np.maximum(max_peak - lookahead, 0), np.minimum(max_peak + lookahead, len(Xraw)))
+                max_peaks_corr.append(getrange[np.argmax(Xraw[getrange])])
+            # Scaling is not accurate for indexing and therefore, a second wave of searching for min_peaks
+            min_peaks_corr = []
+            for min_peak in min_peaks:
+                getrange = np.arange(np.maximum(min_peak - lookahead, 0), np.minimum(min_peak + lookahead, len(Xraw)))
+                min_peaks_corr.append(getrange[np.argmin(Xraw[getrange])])
+            # Set the labels
+            count = 1
+            labx = np.zeros((len(Xraw))) * np.nan
+            for i in range(0, len(min_peaks) - 1):
+                if min_peaks[i]!=min_peaks[i + 1]:
+                    labx[min_peaks[i]:min_peaks[i + 1] + 1] = count
+                    count=count + 1
+
+            # Store based on original
+            results['labx'] = labx
+            results['min_peaks'] = np.c_[min_peaks_corr, Xraw[min_peaks_corr]]
+            results['max_peaks'] = np.c_[max_peaks_corr, Xraw[max_peaks_corr]]
+
+        results['min_peaks_s'] = np.c_[idx_valleys, X[idx_valleys]]
+        results['max_peaks_s'] = np.c_[idx_peaks, X[idx_peaks]]
+        if labxRaw is None:
+            results['labx_s'] = labx_s
+        else:
+            results['labx_s'] = labxRaw
+
+    # Return
+    return results
+
+# %% Normalize.
+def normalize(X, minscale = 0.5, maxscale = 4, scaler: str = 'zscore'):
+    # Instead of Min-Max scaling, that shrinks any distribution in the [0, 1] interval, scaling the variables to
+    # Z-scores is better. Min-Max Scaling is too sensitive to outlier observations and generates unseen problems,
+
+    # Set sizes to 0 if not available
+    X[np.isinf(X)]=0
+    X[np.isnan(X)]=0
+    if minscale is None: minscale=0.5
+
+    # out-of-scale datapoints.
+    if scaler == 'zscore' and len(np.unique(X)) > 3:
+        # Handle division by zero or very small values to prevent RuntimeWarning
+        X_std = np.std(X)
+        if abs(X_std) < 1e-10:  # Very small threshold to avoid numerical issues
+            X = X.flatten() - np.mean(X)  # Skip division when std is essentially zero
+        else:
+            X = (X.flatten() - np.mean(X)) / X_std
+        X = X + (minscale - np.min(X))
+    elif scaler == 'minmax':
+        min_val = np.min(X)
+        max_val = np.max(X)
+        X = minscale + maxscale * (X - min_val) / (max_val - min_val)
+    else:
+        X = X.ravel()
+    # Max digits is 4
+    X = np.array(list(map(lambda x: round(x, 4), X)))
+
+    return X
+
+# %%
+def disable_tqdm():
+    """Set the logger for verbosity messages."""
+    return (True if (logger.getEffectiveLevel()>=30) else False)
+
+def _make_unique_fast(X: np.ndarray) -> np.ndarray:
+    """Add small deterministic noise to make values unique, preserving relative order."""
+    if not np.issubdtype(X.dtype, np.floating):
+        X = X.astype(np.float64)
+    eps = np.finfo(X.dtype).eps
+    noise = np.arange(X.size, dtype=np.float64).reshape(X.shape) * eps
+
+    # Only apply noise where X is not exactly zero
+    return np.where(X != 0, X + noise, X)
+
+def _make_unique(arr: np.ndarray):
+    """Method iterates through elements of the input array to ensure all values are unique.
+       Duplicate values are reduced by the smallest possible increment for the given data type.
+       """
+    logger.debug('Making values unique')
+    res = np.empty_like(arr)
+    it = np.nditer([arr, res], [], [['readonly'], ['writeonly', 'allocate']])
+    seen = set()
+    with it:
+        while not it.finished:
+            a = it[0].item()
+            while a in seen and np.isfinite(a):
+                a = np.nextafter(a, -np.inf)
+            it[1] = a
+            if a not in seen:
+                seen.add(a)
+            it.iternext()
+    return res
+
+# def _make_unique(arr: np.ndarray) -> np.ndarray:
+#     """Make all finite values in the array unique by perturbing duplicates slightly."""
+#     # Convert to float64 if needed
+#     if not np.issubdtype(arr.dtype, np.floating):
+#         arr = arr.astype(np.float64)
+#     dtype = arr.dtype
+
+#     arr_flat = arr.ravel()
+#     res = arr_flat.copy()
+#     is_finite = np.isfinite(res)
+#     finite_vals = res[is_finite]
+#     unique, counts = np.unique(finite_vals, return_counts=True)
+#     dupes = unique[counts > 1]
+#     if dupes.size == 0:
+#         return arr.copy()
+    
+#     seen = {}
+#     mask = np.isin(finite_vals, dupes)
+#     indices = np.where(mask)[0]
+#     values = finite_vals[mask]
+
+#     for i, val in tqdm(zip(indices, values), total=len(values), disable=disable_tqdm(), desc=logger.info("Making values unique")):
+#         count = seen.get(val, 0)
+#         perturbed = np.nextafter(val, -np.inf, dtype=dtype) - count * np.finfo(dtype).eps
+#         finite_vals[i] = perturbed
+#         seen[val] = count + 1
+
+#     res[is_finite] = finite_vals
+#     return res.reshape(arr.shape)
