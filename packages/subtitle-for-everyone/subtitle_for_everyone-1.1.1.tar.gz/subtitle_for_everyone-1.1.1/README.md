@@ -1,0 +1,339 @@
+# SubPlz - Subtitle Pipeline for Everyone
+
+**Professional subtitle generator - made for anime enthusiast**
+
+[![PyPI version](https://badge.fury.io/py/subtitle-for-everyone.svg)](https://badge.fury.io/py/subtitle-for-everyone)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## Features
+
+### User Interface Options
+- **Modern TUI Interface** - Interactive terminal interface with real-time progress monitoring
+- **Traditional CLI** - Command-line interface for automation and scripting
+- **Tabbed Navigation** - Process videos, monitor progress, configure settings, and view results
+- **Visual Progress Tracking** - Real-time progress bars and step-by-step status updates
+
+### Core Functionality  
+- **One-command processing** - Process YouTube URLs or local video files
+- **Clean burned-in subtitles** - Professional white text with black outline
+- **AI-powered transcription** - Uses OpenAI Whisper for accurate subtitle generation
+- **Multiple input formats** - Supports YouTube URLs and local video files
+- **Smart dependency handling** - Automatic dependency checking with installation guidance
+- **Automatic cleanup** - Configurable temporary file management
+
+## Installation
+
+```bash
+pip install subtitle-for-everyone
+```
+
+## System Requirements
+
+### Required Dependencies
+- **Python 3.8+**
+- **FFmpeg** - For video processing
+  - Windows: Download from [ffmpeg.org](https://ffmpeg.org/download.html)
+  - macOS: `brew install ffmpeg`
+  - Linux: `sudo apt install ffmpeg`
+
+### Python Dependencies (Installed Automatically)
+- `yt-dlp` - YouTube video downloading
+- `openai-whisper` - AI subtitle generation
+- `torch` - Machine learning backend
+- `ffmpeg-python` - Video processing
+- `tqdm` - Progress bars
+- `textual` - Modern terminal user interface
+- `rich` - Rich text and beautiful formatting
+
+## Quick Start
+
+### Interactive TUI Interface (Default)
+
+```bash
+# Launch the modern terminal interface
+subplz
+
+# Features:
+# - Visual file selection and URL input
+# - Real-time progress monitoring with progress bars
+# - Interactive settings configuration
+# - Processing history and results management
+# - Tabbed interface for organized workflow
+```
+
+### Traditional Command Line Interface
+
+```bash
+# Use traditional CLI mode
+subplz --cli https://www.youtube.com/watch?v=VIDEO_ID
+
+# The command will:
+# 1. Download the video
+# 2. Generate subtitles using AI
+# 3. Burn clean white subtitles into the video
+# 4. Save to 'processed_videos' folder
+```
+
+### Process Local Videos
+
+```bash
+# CLI mode for local video file
+subplz --cli /path/to/your/video.mp4
+subplz --cli "C:\\Users\\Name\\Videos\\myvideo.mp4"
+
+# TUI mode supports file browsing through the interface
+subplz
+```
+
+### Interface Options
+
+```bash
+# Launch TUI (default behavior)
+subplz
+subplz --tui
+
+# Use CLI mode  
+subplz --cli <video_source>
+
+# CLI with custom output directory
+subplz --cli https://www.youtube.com/watch?v=VIDEO_ID -o my_output_folder
+```
+
+## Terminal User Interface Features
+
+### Process Tab
+- YouTube URL input with validation
+- Local file browser integration
+- Processing queue management
+- One-click processing initiation
+
+### Progress Tab
+- Real-time progress bars (0-100%)
+- Current processing step display
+- Scrolling log with timestamps
+- Visual status indicators
+
+### Settings Tab
+- Whisper model selection (tiny, base, small, medium, large)
+- Output directory configuration
+- Video quality settings
+- Temporary file cleanup options
+- Save and reset functionality
+
+### Results Tab
+- Processing history with statistics
+- Duration and file size tracking
+- Quick access to output files
+- Clear history management
+
+## Professional Subtitle Quality
+
+SubPlz generates clean, readable subtitles optimized for professional use:
+
+- **White text** (#FFFFFF) for maximum visibility
+- **Black outline** for contrast on any background
+- **No background box** - clean appearance without distracting backgrounds
+- **Arial Bold font** at size 24 for optimal readability
+- **Bottom center positioning** with appropriate margins
+- **Consistent formatting** across all video content
+
+## Command Reference
+
+### TUI Commands
+```bash
+subplz              # Launch interactive interface (default)
+subplz --tui        # Explicitly launch TUI mode
+```
+
+### CLI Commands
+```bash
+subplz --cli <source>                    # Process video in CLI mode
+subplz --cli <source> -o <directory>     # Custom output directory
+subplz --cli https://youtube.com/watch?v=ID  # YouTube video
+subplz --cli /path/to/video.mp4          # Local video file
+```
+
+### Available Entry Points
+```bash
+subplz              # Main entry point (TUI by default)
+subplz-cli          # Direct CLI access
+subplz-tui          # Direct TUI access
+```
+
+## Output
+
+- Processed videos are saved with `_with_subtitles` suffix
+- Original video quality is preserved
+- Subtitles are permanently burned into the video
+- Temporary files are automatically cleaned up
+
+## Dependency Troubleshooting
+
+If you get dependency errors, SubPlz will guide you:
+
+### Missing FFmpeg
+```
+Missing dependencies: ffmpeg
+
+Installation Instructions:
+To install FFmpeg:
+   Windows: Download from https://ffmpeg.org/download.html
+   macOS: brew install ffmpeg  
+   Linux: sudo apt install ffmpeg
+   Then add FFmpeg to your system PATH
+```
+
+### Missing yt-dlp
+```
+Missing dependencies: yt-dlp
+
+Installation Instructions:  
+To install yt-dlp:
+   pip install yt-dlp
+```
+
+## Advanced Configuration
+
+SubPlz provides configuration options for customization:
+
+```python
+# Programmatic configuration
+from subplz.config import NETFLIX_SUBTITLE_STYLE
+
+# Customize subtitle appearance
+NETFLIX_SUBTITLE_STYLE['fontsize'] = 28  # Larger text
+NETFLIX_SUBTITLE_STYLE['primary_colour'] = "&Hffffff"  # White text (default)
+NETFLIX_SUBTITLE_STYLE['outline'] = 3  # Thicker outline for better visibility
+```
+
+### TUI Configuration
+The interactive interface provides settings management through forms:
+- Whisper model selection for accuracy vs. speed trade-offs
+- Output directory customization
+- Quality settings for processing speed optimization
+- Temporary file cleanup preferences
+
+## Usage Examples
+
+### Basic TUI Workflow
+```bash
+# 1. Launch interface
+subplz
+
+# 2. Navigate to Process tab
+# 3. Enter YouTube URL or browse for local file
+# 4. Click Process button
+# 5. Monitor progress in Progress tab
+# 6. View results in Results tab
+```
+
+### CLI Batch Processing
+```python
+import subprocess
+
+video_sources = [
+    "https://www.youtube.com/watch?v=VIDEO1",
+    "https://www.youtube.com/watch?v=VIDEO2", 
+    "/path/to/local/video.mp4"
+]
+
+for source in video_sources:
+    subprocess.run(["subplz", "--cli", source])
+```
+
+### Local Video Processing
+```bash
+# Interactive mode with file browser
+subplz
+
+# Direct CLI processing
+subplz --cli "/Users/name/Movies/lecture.mp4"
+subplz --cli "C:\\Downloads\\presentation.mp4"  
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **"Command not found: subplz"**
+   ```bash
+   pip install --upgrade subtitle-for-everyone
+   # Alternative: python -m subplz
+   ```
+
+2. **"FFmpeg not found"**
+   - Install FFmpeg and add to system PATH
+   - Restart terminal after installation
+   - Verify with: `ffmpeg -version`
+
+3. **Memory issues during processing**
+   - Configure smaller Whisper model in TUI Settings tab
+   - Or modify: `WHISPER_MODEL = "tiny"` in configuration
+
+4. **Video download failures**
+   - Some videos may be region-blocked or private
+   - Check video accessibility in browser first
+   - Try different video URLs
+
+5. **TUI display issues**
+   - Ensure terminal supports rich text rendering
+   - Try different terminal emulator if problems persist
+   - Use CLI mode as fallback: `subplz --cli`
+
+### Performance Optimization
+
+- **Whisper Model Selection**: tiny (fastest) → base → small → medium → large (most accurate)
+- **Quality Settings**: Adjust in TUI Settings for speed vs. quality trade-offs
+- **Cleanup Settings**: Enable temporary file cleanup to save disk space
+
+## Technical Architecture
+
+### Interface Design
+- **Textual Framework**: Modern terminal user interface with reactive programming
+- **Async Processing**: Non-blocking operations for responsive user experience
+- **Event-Driven Architecture**: Clean separation of UI and business logic
+- **Backward Compatibility**: Full CLI support maintained for automation
+
+### Processing Pipeline
+- **Dependency Validation**: Automatic checking of required tools
+- **Multi-format Support**: YouTube URLs and local video files
+- **Progress Tracking**: Real-time status updates and logging
+- **Error Recovery**: Graceful handling of failures with user feedback
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Support
+
+- **GitHub Issues**: [github.com/guider23/subplz/issues](https://github.com/guider23/subplz/issues)
+- **Email**: sofiyasenthilkumar@gmail.com
+
+## Acknowledgments
+
+- [OpenAI Whisper](https://github.com/openai/whisper) - AI-powered transcription technology
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) - YouTube video downloading capabilities
+- [FFmpeg](https://ffmpeg.org/) - Video processing and subtitle burning
+- [Textual](https://github.com/Textualize/textual) - Modern terminal user interface framework
+- [Rich](https://github.com/Textualize/rich) - Rich text and beautiful formatting
+
+## Changelog
+
+### Version 1.1.0
+- **NEW**: Modern Terminal User Interface (TUI) with Textual framework
+- **NEW**: Interactive file browser and settings management
+- **NEW**: Real-time progress monitoring with visual feedback
+- **NEW**: Tabbed interface for organized workflow
+- **NEW**: Processing history and results management
+- **ENHANCED**: Unified entry point with CLI/TUI selection
+- **ENHANCED**: Professional documentation and user experience
+- **MAINTAINED**: Full backward compatibility with existing CLI
+
+---
+
+**Professional subtitle generation solution by Sid & Kan**
