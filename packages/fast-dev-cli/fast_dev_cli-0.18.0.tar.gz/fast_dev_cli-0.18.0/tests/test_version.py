@@ -1,0 +1,78 @@
+import re
+from pathlib import Path
+
+import pytest
+from asynctor import Shell
+from asynctor.compat import chdir
+
+from fast_dev_cli import __version__
+from fast_dev_cli.cli import (
+    TOML_FILE,
+    Exit,
+    ShellCommandError,
+    _parse_version,
+    get_current_version,
+    read_version_from_file,
+    version,
+    version_callback,
+)
+
+
+def test_version(capsys):
+    version()
+    assert get_current_version(is_poetry=False) in capsys.readouterr().out
+    assert get_current_version(is_poetry=False) == __version__
+    assert get_current_version() == __version__
+    with pytest.raises(ShellCommandError):
+        get_current_version(is_poetry=True)
+
+
+def test_read_version(tmp_path: Path, capsys):
+    assert read_version_from_file("fast_dev_cli") == __version__
+    toml_text = 'version = "0.1.0"'
+    assert read_version_from_file("", toml_text=toml_text) == "0.1.0"
+    with chdir(tmp_path):
+        tmp_path.joinpath(TOML_FILE).write_text("")
+        assert read_version_from_file("") == "0.0.0"
+        assert "WARNING" in capsys.readouterr().out
+        init_file = tmp_path / "app" / "__init__.py"
+        init_file.parent.mkdir()
+        init_file.write_text("")
+        assert read_version_from_file("") == "0.0.0"
+        assert "WARNING" in capsys.readouterr().out
+        assert get_current_version() == "0.0.0"
+
+
+def test_parse_version():
+    pattern = re.compile(r"version\s*=")
+    line = 'version="0.0.1" # adsfasf version="0.0.2"'
+    assert _parse_version(line, pattern) == "0.0.1"
+    line = 'version = "0.0.1" # adsfasf version="0.0.2"'
+    assert _parse_version(line, pattern) == "0.0.1"
+    line = "version = '0.0.1' # adsfasf version=\"0.0.2\""
+    assert _parse_version(line, pattern) == "0.0.1"
+    line = "version='0.0.1' # adsfasf version=\"0.0.2\""
+    assert _parse_version(line, pattern) == "0.0.1"
+    line = 'version="0.0.1"'
+    assert _parse_version(line, pattern) == "0.0.1"
+    pattern = re.compile(r"__version__\s*=")
+    line = '__version__ = "0.0.1"'
+    assert _parse_version(line, pattern) == "0.0.1"
+    line = '__version__ = "0.0.1"  # 0.0.2'
+    assert _parse_version(line, pattern) == "0.0.1"
+
+
+def test_display_self_version(capsys):
+    with pytest.raises(Exit):
+        version_callback(True)
+    assert __version__ in capsys.readouterr().out
+    out = Shell("fast --version").capture_output().strip()
+    assert out == f"Fast Dev Cli Version: {__version__}"
+    out_v = Shell("fast -V").capture_output().strip()
+    assert out_v == out
+
+
+def test_fast_version():
+    out = Shell("fast version").capture_output().strip()
+    assert f"Fast Dev Cli Version: {__version__}" in out
+    assert f"fast_dev_cli/__init__.py: {__version__}" in out
