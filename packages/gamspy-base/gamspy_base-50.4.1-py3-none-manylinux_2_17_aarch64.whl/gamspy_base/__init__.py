@@ -1,0 +1,23 @@
+import os
+from pathlib import Path
+from .version import __version__
+directory = str(Path(__file__).resolve().parent)
+
+import shutil
+import gamspy_arm_perf
+for file in gamspy_arm_perf.files:
+	if not os.path.exists(os.path.join(directory, file)):
+		shutil.copy(os.path.join(gamspy_arm_perf.directory, file), os.path.join(directory, file))
+defaults = {'CNS': 'PATH', 'DNLP': 'IPOPTH', 'EMP': 'CONVERT', 'LP': 'CPLEX', 'MCP': 'PATH', 'MINLP': 'SHOT', 'MIP': 'CPLEX', 'MIQCP': 'SHOT', 'MPEC': 'NLPEC', 'NLP': 'IPOPTH', 'QCP': 'IPOPTH', 'RMINLP': 'IPOPTH', 'RMIP': 'CPLEX', 'RMIQCP': 'IPOPTH'}
+
+default_solvers = ['CONOPT', 'CONOPT4', 'CONVERT', 'CPLEX', 'GUSS', 'IPOPT', 'IPOPTH', 'KESTREL', 'NLPEC', 'PATH', 'SHOT']
+
+addon_solvers = ['CBC', 'CONOPT3', 'COPT', 'DICOPT', 'EXAMINER', 'EXAMINER2', 'GUROBI', 'HIGHS', 'MILES', 'MINOS', 'MOSEK', 'MPSGE', 'PATHNLP', 'RESHOP', 'SBB', 'SCIP', 'SNOPT', 'SOPLEX', 'XPRESS']
+
+available_solvers = ['CBC', 'CONOPT', 'CONOPT3', 'CONOPT4', 'CONVERT', 'COPT', 'CPLEX', 'DICOPT', 'EXAMINER', 'EXAMINER2', 'GUROBI', 'HIGHS', 'IPOPT', 'IPOPTH', 'KESTREL', 'MILES', 'MINOS', 'MOSEK', 'MPSGE', 'NLPEC', 'PATH', 'PATHNLP', 'RESHOP', 'SBB', 'SCIP', 'SHOT', 'SNOPT', 'SOPLEX', 'XPRESS']
+
+capabilities = {'ALPHAECP': ['MINLP', 'MIQCP'], 'ANTIGONE': ['NLP', 'CNS', 'DNLP', 'RMINLP', 'MINLP', 'QCP', 'MIQCP', 'RMIQCP'], 'CBC': ['LP', 'MIP', 'RMIP'], 'CONOPT': ['LP', 'RMIP', 'NLP', 'CNS', 'DNLP', 'RMINLP', 'QCP', 'RMIQCP'], 'CONOPT3': ['LP', 'RMIP', 'NLP', 'CNS', 'DNLP', 'RMINLP', 'QCP', 'RMIQCP'], 'CONOPT4': ['LP', 'RMIP', 'NLP', 'CNS', 'DNLP', 'RMINLP', 'QCP', 'RMIQCP'], 'CONVERT': ['LP', 'MIP', 'RMIP', 'NLP', 'MCP', 'MPEC', 'RMPEC', 'CNS', 'DNLP', 'RMINLP', 'MINLP', 'QCP', 'MIQCP', 'RMIQCP', 'EMP'], 'COPT': ['LP', 'MIP', 'RMIP', 'QCP', 'MIQCP', 'RMIQCP'], 'CPLEX': ['LP', 'MIP', 'RMIP', 'QCP', 'MIQCP', 'RMIQCP'], 'DE': ['EMP'], 'DECISC': ['LP'], 'DECISM': ['LP'], 'DICOPT': ['MINLP', 'MIQCP'], 'EXAMINER': ['LP', 'MIP', 'RMIP', 'NLP', 'MCP', 'MPEC', 'RMPEC', 'DNLP', 'RMINLP', 'MINLP', 'QCP', 'MIQCP', 'RMIQCP'], 'EXAMINER2': ['LP', 'MIP', 'RMIP', 'NLP', 'MCP', 'DNLP', 'RMINLP', 'MINLP', 'QCP', 'MIQCP', 'RMIQCP'], 'GAMSCHK': ['LP', 'MIP', 'RMIP', 'NLP', 'MCP', 'DNLP', 'RMINLP', 'MINLP', 'QCP', 'MIQCP', 'RMIQCP'], 'GLOMIQO': ['NLP', 'CNS', 'DNLP', 'RMINLP', 'MINLP', 'QCP', 'MIQCP', 'RMIQCP'], 'GUROBI': ['LP', 'MIP', 'RMIP', 'NLP', 'DNLP', 'RMINLP', 'MINLP', 'QCP', 'MIQCP', 'RMIQCP'], 'GUSS': ['LP', 'MIP', 'RMIP', 'NLP', 'MCP', 'CNS', 'DNLP', 'RMINLP', 'MINLP', 'QCP', 'MIQCP', 'RMIQCP'], 'HIGHS': ['LP', 'MIP', 'RMIP'], 'IPOPT': ['LP', 'RMIP', 'NLP', 'CNS', 'DNLP', 'RMINLP', 'QCP', 'RMIQCP'], 'IPOPTH': ['LP', 'RMIP', 'NLP', 'CNS', 'DNLP', 'RMINLP', 'QCP', 'RMIQCP'], 'JAMS': ['EMP'], 'KESTREL': ['LP', 'MIP', 'RMIP', 'NLP', 'MCP', 'MPEC', 'RMPEC', 'CNS', 'DNLP', 'RMINLP', 'MINLP', 'QCP', 'MIQCP', 'RMIQCP', 'EMP'], 'LINDO': ['LP', 'MIP', 'RMIP', 'NLP', 'DNLP', 'RMINLP', 'MINLP', 'QCP', 'MIQCP', 'RMIQCP', 'EMP'], 'LINDOGLOBAL': ['LP', 'MIP', 'RMIP', 'NLP', 'DNLP', 'RMINLP', 'MINLP', 'QCP', 'MIQCP', 'RMIQCP'], 'LOGMIP': ['EMP'], 'MILES': ['MCP'], 'MINOS': ['LP', 'RMIP', 'NLP', 'CNS', 'DNLP', 'RMINLP', 'QCP', 'RMIQCP'], 'MOSEK': ['LP', 'MIP', 'RMIP', 'NLP', 'DNLP', 'RMINLP', 'MINLP', 'QCP', 'MIQCP', 'RMIQCP'], 'MPSGE': [], 'NLPEC': ['MCP', 'MPEC', 'RMPEC'], 'PATH': ['MCP', 'CNS'], 'PATHNLP': ['LP', 'RMIP', 'NLP', 'DNLP', 'RMINLP', 'QCP', 'RMIQCP'], 'QUADMINOS': ['LP', 'RMIP'], 'RESHOP': ['EMP'], 'SBB': ['MINLP', 'MIQCP'], 'SCIP': ['MIP', 'NLP', 'CNS', 'DNLP', 'RMINLP', 'MINLP', 'QCP', 'MIQCP', 'RMIQCP'], 'SHOT': ['MINLP', 'MIQCP'], 'SNOPT': ['LP', 'RMIP', 'NLP', 'CNS', 'DNLP', 'RMINLP', 'QCP', 'RMIQCP'], 'SOPLEX': ['LP', 'RMIP'], 'XPRESS': ['LP', 'MIP', 'RMIP', 'NLP', 'CNS', 'DNLP', 'RMINLP', 'MINLP', 'QCP', 'MIQCP', 'RMIQCP']}
+
+files = ['optpath.def', 'libgurobi.so', 'gmscvnux.out', 'gdxdiff', 'gmscvnus.run', 'libipopt.so', 'libgdxcclib64.so', 'optgams.def', 'libco4cclib64.so', 'libcrypto.so.3', 'libgomp.so.1', 'gamsstmp.txt', 'libshtcclib64.so', 'libgcc_s.so.1', 'gamsgetkey', 'libguccclib64.so', 'gevopt.def', 'libdctmdclib64.so', 'gmske_ux.out', 'eula.pdf', 'gmsgenus.run', 'gmscmpun.txt', 'gamslice.txt', 'gamsprobe', 'gamscmex.out', 'optconvert.def', 'libcvdcclib64.so', 'libgmdcclib64.so', 'libpath52.so', 'libjoatdclib64.so', 'optcplex.def', 'gmsgenux.out', 'libconoptlu.so', 'gamserrs.txt', 'libcpxcclib64.so', 'gams', 'libgfortran.so.5', 'libcplex2212.so', 'libssl.so.3', 'optipopt.def', 'libgsscclib64.so', 'optnlpec.def', 'optconopt.def', 'liboptdclib64.so', 'libptccclib64.so', 'gmske_us.run', 'gdxdump', 'gmsprmun.txt', 'libgmszlib164.so', 'libipocclib64.so', 'libstdc++.so.6']
+
+file_paths = [directory + os.sep + file for file in files]
