@@ -1,0 +1,67 @@
+---
+title: Examples
+---
+
+A few patterns to get you started.
+
+## Simple function benchmark
+
+```python
+from pybench import bench
+
+@bench(name="sum-small", n=1000, repeat=10)
+def sum_small():
+    return sum(range(100))
+```
+
+## Context mode to isolate hot path
+
+```python
+from pybench import Bench, BenchContext
+
+suite = Bench("strings")
+
+@suite.bench(name="join-baseline", baseline=True)
+def base(b: BenchContext):
+    s = ",".join(str(i) for i in range(50))
+    b.start(); _ = ",".join([s] * 5); b.end()
+```
+
+## Parameterized cases
+
+```python
+from pybench import bench
+
+@bench(name="join_param", params={"n": [100, 1000], "sep": ["-", ":"]})
+def join_param(n: int, sep: str):
+    sep.join(str(i) for i in range(n))
+```
+
+## Running
+
+```bash
+pybench examples/ --profile smoke     # default
+pybench examples/ --profile thorough  # heavier runs
+```
+
+## Save, export, compare (quick tour)
+
+```bash
+pybench examples/ --save latest
+pybench examples/ --save-baseline main
+pybench examples/ --export json:run.json
+pybench examples/ --compare main --fail-on mean:5%,p99:10%
+```
+
+## Markdown report sample
+
+When you `--export md`, you get a compact table ready for PRs and docs:
+
+| group   | benchmark             | time (avg) | p99      | vs base        |
+| ---     | ---                   | ---        | ---      | ---            |
+| strings | join-baseline  ★      | 12.30 µs   | 12.80 µs | baseline       |
+| strings | join_split            | 11.95 µs   | 12.10 µs | 1.03× faster   |
+| strings | join_plus             | 24.10 µs   | 24.50 µs | 2.00× slower   |
+
+- “≈ same” appears when mean differs ≤ 1% vs the group baseline.
+- Use `baseline=True` on one case per group to anchor comparisons.

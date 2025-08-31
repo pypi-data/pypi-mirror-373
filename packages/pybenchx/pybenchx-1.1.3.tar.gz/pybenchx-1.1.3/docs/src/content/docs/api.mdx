@@ -1,0 +1,81 @@
+---
+title: API Reference
+---
+
+## Decorator: `bench(**opts)`
+
+Register a function as a benchmark case.
+
+Options:
+- name: case name
+- params: dict[str, list] to generate variants (cartesian product)
+- args/kwargs: fixed positional/keyword arguments
+- n: iterations per repeat (default 100)
+- repeat: number of repeats (default 20)
+- warmup: warmup repeats (default 2)
+- group: table group name
+- baseline: mark case as baseline for its group
+
+Modes:
+- function mode: time the whole call
+- context mode: first parameter is `BenchContext`; only the region between `start()` and `end()` is measured
+
+Example:
+```python
+from pybench import bench, BenchContext
+
+@bench(name="join")
+def join(sep: str = ","):
+    sep.join(str(i) for i in range(100))
+
+@bench(name="concat", n=1000, repeat=10)
+def concat(b: BenchContext):
+    s = ""; b.start()
+    for i in range(100): s += str(i)
+    b.end()
+```
+
+## Class: `Bench(suite_name=None, *, group=None)`
+
+Create a suite; use `suite.bench(...)` to group cases and define a baseline.
+
+```python
+from pybench import Bench, BenchContext
+
+suite = Bench("strings")
+
+@suite.bench(name="join-baseline", baseline=True)
+def base(b: BenchContext):
+    ...
+```
+
+Notes:
+- `group` default is `suite_name` (unless it is "bench"/"default").
+- Use multiple suites to structure a large project.
+
+## Class: `BenchContext`
+
+- `start()` / `end()`: mark the critical section
+- Resets automatically each iteration during measurement
+- Prefer this mode when setup dominates per-iteration cost
+
+## Results
+
+Data model:
+- Run(meta, suite_signature, results: list[VariantResult])
+- VariantResult(name, group, n, repeat, baseline, stats, samples_ns)
+- StatSummary(mean, median, stdev, min, max, p75, p99, p995)
+
+The rendered table adds:
+- iter/s: derived from mean
+- vs base: `baseline`, `≈ same` (≤1% diff), `x× faster/slower`
+
+## Parameterization patterns
+
+```python
+@bench(name="op", params={"n": [10, 100], "sep": ["-", ":"]})
+def op(n: int, sep: str):
+    sep.join(str(i) for i in range(n))
+```
+
+You can also keep `params` and override at runtime with `-P sep=":"`.

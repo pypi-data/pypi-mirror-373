@@ -1,0 +1,60 @@
+---
+title: Internals
+---
+
+High-level notes for maintainers and curious users.
+
+## Core components
+
+- Bench / bench decorator
+  - `Bench` holds `Case` items; `Bench(...).bench(...)` registers decorated functions.
+  - `bench(**opts)` is a shorthand for the global default suite.
+- Case
+  - Metadata: `name`, `mode` ("func" or "context"), `n`, `repeat`, `warmup`, `args/kwargs`, `params`, `group`, `baseline`.
+  - `params`→ cartesian product variants via `make_variants`.
+- BenchContext
+  - Manual timing: `start()/end()` accumulates nanoseconds; excludes setup noise.
+- Run/VariantResult
+  - `Run` aggregates `VariantResult` entries, each with stats and optional `samples_ns`.
+
+## Discovery and execution (CLI)
+
+- `discover(paths)`: files or `**/*bench.py` under directories.
+- `load_module_from_path`: import file with a stable module name (`_module_name_for_path`).
+- `run(...)` pipeline:
+  1. Optional warmup per case.
+  2. `prepare_variants`: detects `BenchContext` usage and calibrates `n` per variant using `--budget`/`--max-n` (or "smoke").
+  3. Execute repeats via `run_single_repeat` and collect `VariantResult`s.
+  4. Filter, sort, and render table.
+
+## Shared utilities
+
+- `utils.fmt_time_ns` for human-readable time units.
+- `utils.percentile` for p75/p99/p995 interpolation.
+- `utils.compute_speedups` for group baseline comparison used by reporters.
+
+## Calibration
+
+- `calibrate_n(...)` grows `n` exponentially toward `target_ns` and refines with ±20% probes.
+- Context mode:
+  - If `BenchContext` is actually used (detected by a probe call), only the hot region is timed.
+  - Otherwise, the whole function is timed (same as function mode).
+
+## Accuracy & robustness
+
+- Clock: `perf_counter_ns` when available.
+- GC: collect and disable around runs; CLI attempts `gc.freeze()` if present.
+- Warmup: executes untimed iterations to stabilize caches/CPU.
+- Percentiles: linear interpolation.
+- Colors: TTY-detected, opt-out with `--no-color`.
+
+## Table & baseline
+
+- Groups are rendered with a dim header.
+- Baseline chosen by `baseline=True` or name heuristic (contains "baseline"/"base").
+- `vs base` shows `≈ same` when relative mean diff ≤ 1%.
+
+## Exports and compare
+
+- Export reports: `--export json|md|csv[:path]`.
+- Compare runs: `--compare BASELINE|PATH` with `--fail-on mean:%,p99:%` policies. P-values via Mann–Whitney U (approx). `p99` policy uses actual p99 delta.
