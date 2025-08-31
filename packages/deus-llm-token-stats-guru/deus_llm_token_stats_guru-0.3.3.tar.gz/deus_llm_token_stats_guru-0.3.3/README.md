@@ -1,0 +1,658 @@
+# Deus LLM Token Stats Guru
+
+Advanced LLM token analysis and statistics toolkit for comprehensive document processing and multi-format text
+extraction.
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## Features
+
+- **📊 Multi-Format Document Processing**: Supports 25+ file formats across office documents, data files, and text
+  formats
+- **🎯 Accurate Token Counting**: Uses OpenAI's tiktoken library for precise token counts
+- **🔄 Recursive Processing**: Automatically discovers and processes all supported files in directories
+- **🤖 Multiple Encoding Models**: Supports different OpenAI models (gpt-4, gpt-3.5-turbo, etc.)
+- **⚡ Dual CLI Interface**: Two convenient command-line tools (`deus-llm-token-guru` and `llm-token-stats`)
+- **📈 Comprehensive Analytics**: Detailed statistics including file sizes, row counts, and processing times
+- **💾 JSON Export**: Results can be exported to JSON format for further analysis
+- **🛡️ Type Safety**: Full type hints and modern Python features
+- **🔧 Extensible Architecture**: Modular processor-based design for easy format additions
+- **🏢 Office Suite Support**: Full Microsoft Office and OpenDocument format compatibility
+- **🌐 Web Document Support**: HTML, RTF, and other web-based document formats
+- **📝 Developer-Friendly**: Supports source code files and configuration formats
+
+## Installation
+
+```bash
+pip install deus-llm-token-stats-guru
+```
+
+### Optional Dependencies
+
+For full format support, install with specific extras:
+
+```bash
+# Microsoft Office formats (Word, Excel, PowerPoint)
+pip install deus-llm-token-stats-guru[office]
+
+# PDF processing with multiple extraction methods
+pip install deus-llm-token-stats-guru[pdf]
+
+# Excel files (.xlsx, .xls)
+pip install deus-llm-token-stats-guru[excel]
+
+# Word documents (.docx, .doc)
+pip install deus-llm-token-stats-guru[docx]
+
+# PowerPoint presentations (.pptx, .ppt)
+pip install deus-llm-token-stats-guru[powerpoint]
+
+# OpenDocument formats (LibreOffice/OpenOffice)
+pip install deus-llm-token-stats-guru[opendocument]
+
+# RTF (Rich Text Format)
+pip install deus-llm-token-stats-guru[rtf]
+
+# HTML processing
+pip install deus-llm-token-stats-guru[html]
+
+# Install all optional dependencies
+pip install deus-llm-token-stats-guru[all]
+```
+
+## Supported File Formats
+
+The package supports **25+ file extensions** across **10 specialized processors**:
+
+### 📊 Data & Spreadsheet Files
+
+- **CSV/TSV**: `.csv`, `.tsv` - Comma/tab-separated values with robust parsing
+- **Excel**: `.xlsx`, `.xls` - Microsoft Excel workbooks (all sheets)
+
+### 📝 Document Files
+
+- **Microsoft Word**: `.docx`, `.doc` - Word documents with full text extraction
+- **PDF**: `.pdf` - Portable Document Format with multiple extraction engines
+- **RTF**: `.rtf` - Rich Text Format (compatible with Google Docs exports)
+
+### 📊 Presentation Files
+
+- **PowerPoint**: `.pptx`, `.ppt` - Microsoft PowerPoint presentations
+
+### 🏢 OpenDocument Formats
+
+- **OpenDocument**: `.odt`, `.ods`, `.odp`, `.odg`, `.odf` - LibreOffice/OpenOffice formats
+
+### 🌐 Web & Markup Files
+
+- **HTML**: `.html`, `.htm`, `.xhtml` - Web documents with tag parsing
+- **JSON**: `.json`, `.jsonl`, `.ndjson` - JavaScript Object Notation
+
+### 📄 Text & Source Code Files
+
+- **Text**: `.txt`, `.text`, `.log`
+- **Markdown**: `.md`, `.markdown`, `.mdown`, `.mkd`
+- **Documentation**: `.rst` (reStructuredText)
+- **Programming Languages**: `.py`, `.js`, `.c`, `.cpp`, `.h`, `.hpp`, `.java`, `.cs`, `.php`, `.rb`, `.go`, `.rs`
+- **Web Technologies**: `.html`, `.css`, `.xml`
+- **Configuration**: `.yml`, `.yaml`, `.toml`, `.ini`, `.cfg`
+- **Scripts**: `.sh`, `.bat`, `.ps1`
+
+### 🚀 Processing Features by Format
+
+| Format Category   | Extensions                  | Key Features                                              |
+|-------------------|-----------------------------|-----------------------------------------------------------|
+| **CSV/Data**      | `.csv`, `.tsv`              | Multi-strategy parsing, malformed file handling           |
+| **Office Docs**   | `.docx`, `.xlsx`, `.pptx`   | Full text extraction, multi-sheet/slide support           |
+| **Legacy Office** | `.doc`, `.xls`, `.ppt`      | Backward compatibility with older formats                 |
+| **PDF**           | `.pdf`                      | Multiple extraction engines (PyMuPDF, PyPDF2, pdfplumber) |
+| **OpenDocument**  | `.odt`, `.ods`, `.odp`      | Native LibreOffice format support                         |
+| **Web/Markup**    | `.html`, `.xml`, `.json`    | Tag parsing, structure preservation                       |
+| **Source Code**   | `.py`, `.js`, `.java`, etc. | Syntax-aware text extraction                              |
+| **Config Files**  | `.yml`, `.toml`, `.ini`     | Configuration format parsing                              |
+
+## Quick Start
+
+### Command Line Usage
+
+```bash
+# Count tokens in all supported files in current directory
+deus-llm-token-guru .
+
+# Alternative command (same functionality)
+llm-token-stats ./data
+
+# Process specific directory with all file types
+deus-llm-token-guru /path/to/documents --model gpt-3.5-turbo
+
+# Save comprehensive results to JSON file
+llm-token-stats /path/to/documents --output analysis.json
+
+# Enable debug logging to see processing details
+deus-llm-token-guru /path/to/documents --debug --log-file debug.log
+
+# Quiet mode (suppress progress output)
+llm-token-stats ./data --quiet
+
+# Process mixed file types recursively
+deus-llm-token-guru ./project_docs --model gpt-4
+```
+
+### Python API Usage
+
+```python
+from deus_llm_token_stats_guru import DocumentProcessor
+from pathlib import Path
+
+# Initialize document processor
+processor = DocumentProcessor(encoding_model="gpt-4")
+
+# Count tokens in a single file (any supported format)
+result = processor.count_tokens_in_file(Path("document.pdf"))
+print(f"Total tokens: {result['total_tokens']:,}")
+print(f"File type: {result['file_type']}")
+
+# Process entire directory (all supported file types)
+summary = processor.count_tokens_in_directory(Path("./documents"))
+print(f"Processed {summary['total_files']} files")
+print(f"Total tokens: {summary['total_tokens']:,}")
+print(f"File types found: {set(r['file_type'] for r in summary['file_results'])}")
+
+# Backward compatibility - CSV-specific processing
+from deus_llm_token_stats_guru import CSVTokenCounter
+
+csv_counter = CSVTokenCounter(encoding_model="gpt-4")
+csv_result = csv_counter.count_tokens_in_csv(Path("data.csv"))
+```
+
+## Available Commands
+
+The package provides two CLI commands:
+
+- **`deus-llm-token-guru`**: Main command name
+- **`llm-token-stats`**: Alternative shorter command
+
+Both commands have identical functionality.
+
+## API Reference
+
+### DocumentProcessor
+
+Main class for counting tokens across all supported file formats.
+
+#### Methods
+
+- `__init__(encoding_model: str = "gpt-4")`: Initialize with specific encoding model
+- `count_tokens_in_text(text: str) -> int`: Count tokens in a text string
+- `count_tokens_in_file(file_path: Path) -> CountResult`: Count tokens in any supported file format
+- `count_tokens_in_directory(directory: Path) -> CountSummary`: Process all supported files in directory recursively
+- `get_supported_extensions() -> Set[str]`: Get all supported file extensions
+- `get_processor_for_file(file_path: Path) -> BaseFileProcessor`: Get appropriate processor for file
+
+### CSVTokenCounter (Backward Compatibility)
+
+Legacy class maintained for backward compatibility. Inherits from DocumentProcessor.
+
+#### Methods
+
+- `count_tokens_in_csv(file_path: Path) -> CountResult`: Count tokens in CSV file (alias for count_tokens_in_file)
+
+#### Type Definitions
+
+```python
+class CountResult(TypedDict):
+    file_path: str
+    total_tokens: int
+    row_count: int  # For structured data (CSV, Excel)
+    column_count: int  # For structured data (CSV, Excel)  
+    encoding_model: str
+    file_size_bytes: int
+    file_type: str  # NEW: Processor type (CSV, PDF, DOCX, etc.)
+    processor_name: str  # NEW: Human-readable processor name
+
+
+class CountSummary(TypedDict):
+    total_files: int
+    total_tokens: int
+    total_rows: int
+    total_file_size_bytes: int
+    encoding_model: str
+    file_results: List[CountResult]
+    processing_time_seconds: float
+    supported_extensions: Set[str]  # NEW: All supported file extensions
+```
+
+## Examples
+
+### Multi-Format File Processing
+
+```python
+from deus_llm_token_stats_guru import DocumentProcessor
+from pathlib import Path
+
+# Initialize processor
+processor = DocumentProcessor(encoding_model="gpt-4")
+
+# Process different file types
+files_to_process = [
+    "report.pdf",  # PDF document
+    "data.xlsx",  # Excel spreadsheet  
+    "presentation.pptx",  # PowerPoint presentation
+    "article.docx",  # Word document
+    "config.json",  # JSON data
+    "readme.md",  # Markdown text
+    "analysis.csv"  # CSV data
+]
+
+for file_path in files_to_process:
+    if Path(file_path).exists():
+        result = processor.count_tokens_in_file(Path(file_path))
+
+        print(f"File: {file_path}")
+        print(f"Type: {result['file_type']}")
+        print(f"Tokens: {result['total_tokens']:,}")
+        print(f"Size: {result['file_size_bytes']:,} bytes")
+        print("---")
+
+# Get all supported extensions
+extensions = processor.get_supported_extensions()
+print(f"Supported extensions ({len(extensions)}): {', '.join(sorted(extensions))}")
+```
+
+### Directory Processing with Different Models
+
+```python
+from deus_llm_token_stats_guru import DocumentProcessor
+from pathlib import Path
+
+models = ["gpt-4", "gpt-3.5-turbo"]
+directory = Path("./mixed_documents")
+
+for model in models:
+    processor = DocumentProcessor(encoding_model=model)
+    summary = processor.count_tokens_in_directory(directory)
+
+    # Analyze results by file type
+    file_types = {}
+    for result in summary['file_results']:
+        file_type = result['file_type']
+        if file_type not in file_types:
+            file_types[file_type] = {'count': 0, 'tokens': 0}
+        file_types[file_type]['count'] += 1
+        file_types[file_type]['tokens'] += result['total_tokens']
+
+    print(f"Model: {model}")
+    print(f"Total files: {summary['total_files']}")
+    print(f"Total tokens: {summary['total_tokens']:,}")
+    print(f"Processing time: {summary['processing_time_seconds']:.2f}s")
+    print("File types processed:")
+    for file_type, stats in file_types.items():
+        print(f"  {file_type}: {stats['count']} files, {stats['tokens']:,} tokens")
+    print()
+```
+
+### Cost Estimation for Multi-Format Documents
+
+```python
+from deus_llm_token_stats_guru import DocumentProcessor
+
+processor = DocumentProcessor(encoding_model="gpt-4")
+summary = processor.count_tokens_in_directory("./document_library")
+
+# Estimate OpenAI API costs (example rates)
+gpt4_cost_per_1k = 0.03  # USD per 1K tokens (input)
+gpt4_output_cost_per_1k = 0.06  # USD per 1K tokens (output)
+
+# Calculate costs for different scenarios
+input_cost = (summary['total_tokens'] / 1000) * gpt4_cost_per_1k
+processing_cost = input_cost * 1.2  # Assume 20% output tokens
+
+print(f"Document analysis for {summary['total_files']} files:")
+print(f"Total tokens: {summary['total_tokens']:,}")
+print(f"Estimated GPT-4 input cost: ${input_cost:.2f}")
+print(f"Estimated processing cost: ${processing_cost:.2f}")
+print(f"Cost per document: ${processing_cost / summary['total_files']:.3f}")
+
+# Break down by file type
+file_type_stats = {}
+for result in summary['file_results']:
+    file_type = result['file_type']
+    if file_type not in file_type_stats:
+        file_type_stats[file_type] = {'tokens': 0, 'files': 0}
+    file_type_stats[file_type]['tokens'] += result['total_tokens']
+    file_type_stats[file_type]['files'] += 1
+
+print("\nCost breakdown by file type:")
+for file_type, stats in sorted(file_type_stats.items()):
+    type_cost = (stats['tokens'] / 1000) * gpt4_cost_per_1k * 1.2
+    print(f"  {file_type}: {stats['files']} files, ${type_cost:.2f}")
+```
+
+### CLI Output Format
+
+The CLI tools output JSON with comprehensive multi-format support:
+
+```json
+{
+  "summary": {
+    "total_files": 8,
+    "total_tokens": 45230,
+    "total_rows": 150,
+    "total_file_size_mb": 12.7,
+    "encoding_model": "gpt-4",
+    "processing_time_seconds": 2.45,
+    "supported_extensions": [
+      ".csv",
+      ".pdf",
+      ".docx",
+      ".xlsx",
+      "..."
+    ]
+  },
+  "file_details": [
+    {
+      "file_path": "/path/to/report.pdf",
+      "file_type": "PDF",
+      "processor_name": "PDF",
+      "tokens": 8540,
+      "rows": 0,
+      "columns": 0,
+      "size_mb": 2.1
+    },
+    {
+      "file_path": "/path/to/data.xlsx",
+      "file_type": "XLSX",
+      "processor_name": "Excel",
+      "tokens": 3200,
+      "rows": 245,
+      "columns": 8,
+      "size_mb": 0.9
+    },
+    {
+      "file_path": "/path/to/presentation.pptx",
+      "file_type": "PPTX",
+      "processor_name": "PowerPoint",
+      "tokens": 1850,
+      "rows": 0,
+      "columns": 0,
+      "size_mb": 4.2
+    },
+    {
+      "file_path": "/path/to/analysis.csv",
+      "file_type": "CSV",
+      "processor_name": "CSV",
+      "tokens": 5140,
+      "rows": 50,
+      "columns": 4,
+      "size_mb": 0.7
+    }
+  ]
+}
+```
+
+## Environment Setup
+
+### 1. Create Virtual Environment
+
+```bash
+python -m venv .venv
+```
+
+### 2. Activate Virtual Environment
+
+```bash
+# Linux/macOS
+source .venv/bin/activate
+
+# Windows
+.venv\Scripts\activate
+```
+
+### 3. Install Package
+
+```bash
+pip install --upgrade pip
+pip install deus-llm-token-stats-guru
+```
+
+## Development
+
+### Local Installation
+
+```bash
+git clone https://github.com/yourusername/deus-llm-token-stats-guru.git
+cd deus-llm-token-stats-guru
+pip install -e .
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=src --cov-report=term-missing
+
+# Run specific test file
+pytest tests/unit/test_core.py
+```
+
+### Code Quality
+
+```bash
+# Format code
+ruff format src/ tests/
+
+# Lint code
+ruff check src/ tests/
+
+# Type checking
+mypy src/
+```
+
+### Building Package
+
+```bash
+# Build package
+python setup.py sdist bdist_wheel
+
+# Check package
+twine check dist/*
+
+# Test installation
+pip install dist/*.whl
+```
+
+## Supported Models
+
+The package supports all OpenAI tiktoken encoding models:
+
+- `gpt-4` (default)
+- `gpt-3.5-turbo`
+- `text-davinci-003`
+- `text-davinci-002`
+- `code-davinci-002`
+- Custom encodings via tiktoken
+
+## Performance
+
+- Processes ~1000 rows/second on typical hardware
+- Memory usage scales with CSV file size
+- Supports files with millions of rows
+- Recursive directory scanning with progress tracking
+
+## Error Handling
+
+The package includes comprehensive error handling:
+
+- `FileProcessingError`: Issues reading or processing CSV files
+- `EncodingError`: Problems with tiktoken encoding
+- `ConfigurationError`: Invalid configuration or paths
+
+## Use Cases
+
+### 📊 Enterprise Document Analysis
+
+```bash
+# Analyze mixed office documents and data files
+deus-llm-token-guru ./corporate_docs --model gpt-4 --output enterprise_analysis.json
+```
+
+### 💰 LLM Cost Planning
+
+```bash
+# Estimate API costs for document processing workflows
+llm-token-stats ./knowledge_base --model gpt-3.5-turbo --output cost_planning.json
+```
+
+### 🔄 Batch Multi-Format Processing
+
+```python
+# Process multiple directories with different document types
+from deus_llm_token_stats_guru import DocumentProcessor
+
+processor = DocumentProcessor()
+directories = [
+    "./legal_docs",  # PDFs, Word docs
+    "./data_exports",  # CSV, Excel files  
+    "./presentations",  # PowerPoint files
+    "./source_code",  # Various code files
+    "./configs"  # JSON, YAML configs
+]
+
+total_tokens = 0
+for dir_path in directories:
+    summary = processor.count_tokens_in_directory(dir_path)
+    total_tokens += summary['total_tokens']
+
+    print(f"\n📁 {dir_path}:")
+    print(f"   Files: {summary['total_files']}")
+    print(f"   Tokens: {summary['total_tokens']:,}")
+
+    # Show file type distribution
+    file_types = {}
+    for result in summary['file_results']:
+        file_type = result['file_type']
+        file_types[file_type] = file_types.get(file_type, 0) + 1
+
+    for file_type, count in file_types.items():
+        print(f"   {file_type}: {count} files")
+
+print(f"\n🎯 Total tokens across all directories: {total_tokens:,}")
+```
+
+### 🏢 Office Suite Integration
+
+```python
+# Specialized office document processing
+from deus_llm_token_stats_guru import DocumentProcessor
+
+processor = DocumentProcessor()
+
+# Process typical office workflow files
+office_files = [
+    "quarterly_report.docx",  # Word report
+    "budget_analysis.xlsx",  # Excel spreadsheet  
+    "board_presentation.pptx",  # PowerPoint deck
+    "meeting_notes.pdf",  # PDF minutes
+    "project_data.csv",  # Data export
+    "specifications.rtf"  # RTF document
+]
+
+for file_path in office_files:
+    result = processor.count_tokens_in_file(Path(file_path))
+    print(f"📄 {file_path} ({result['file_type']}): {result['total_tokens']:,} tokens")
+```
+
+### 🌐 Web Content Analysis
+
+```bash
+# Process web-exported documents (HTML, RTF from Google Docs)
+deus-llm-token-guru ./web_exports --model gpt-4 --output web_content_analysis.json
+```
+
+### 👩‍💻 Developer Workflow Integration
+
+```python
+# Analyze documentation and code repositories
+from deus_llm_token_stats_guru import DocumentProcessor
+
+processor = DocumentProcessor()
+
+# Process development artifacts
+dev_summary = processor.count_tokens_in_directory("./project")
+
+# Filter results by category
+docs = [r for r in dev_summary['file_results'] if r['file_type'] in ['Text', 'JSON']]
+code = [r for r in dev_summary['file_results'] if r['file_path'].endswith(('.py', '.js', '.java'))]
+
+print(f"📚 Documentation: {sum(r['total_tokens'] for r in docs):,} tokens")
+print(f"💻 Source code: {sum(r['total_tokens'] for r in code):,} tokens")
+```
+
+## Future Roadmap
+
+- 🔮 **Additional Format Support**: Binary formats (images with OCR, audio transcripts)
+- 🤖 **LLM Provider Integration**: Support for Anthropic Claude, Google Gemini, local models
+- 📊 **Advanced Analytics**: Token distribution analysis, content similarity metrics
+- 🌐 **Web Interface**: Browser-based document analysis dashboard
+- ⚡ **Performance Optimization**: Parallel processing, streaming for large files
+- 🔗 **API Integration**: REST API for service integration
+- 📱 **Cloud Storage Support**: Direct S3, Google Drive, SharePoint integration
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Make changes with tests
+4. Run quality checks: `ruff check && mypy src/ && pytest`
+5. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Changelog
+
+### v0.3.3 (Current)
+
+- 👤 **Author Update**: Changed author to "deus-global" and email to "sean@deus.com.tw"
+
+### v0.3.2
+
+- 📚 **Documentation Update**: Comprehensive README.md with all 25+ supported file formats
+- 🏷️ **Format Categorization**: Organized file formats by category with detailed descriptions
+- 📖 **Enhanced Examples**: Multi-format processing examples and use cases
+- 🚀 **Updated API Documentation**: DocumentProcessor examples with backward compatibility
+- 📊 **CLI Output Examples**: Updated JSON output format with file_type and processor_name
+
+### v0.3.1
+
+- 🏢 **Multi-Format Document Support**: 25+ file extensions across 10 processors
+- 📊 **Office Suite Integration**: Full Microsoft Office (.docx, .xlsx, .pptx) and legacy format support
+- 🌐 **OpenDocument Support**: LibreOffice/OpenOffice formats (.odt, .ods, .odp, .odg, .odf)
+- 📄 **Enhanced Document Processing**: PDF (multi-engine), RTF, HTML, JSON support
+- 💻 **Developer-Friendly**: Source code files, configuration formats, Markdown
+- 🛡️ **Robust CSV Processing**: Multi-strategy parsing with malformed file handling
+- 📦 **PEP 625 Compliance**: Fixed PyPI package naming for proper distribution
+- 🔧 **Optional Dependencies**: Granular installation options for specific format groups
+- ⚡ **Processor Architecture**: Extensible, modular design for easy format additions
+- 🔄 **Backward Compatibility**: Maintained CSVTokenCounter API for existing users
+
+### v0.2.1
+
+- 🔄 **Package Refactoring**: Transitioned from CSV-only to multi-format architecture
+- 🏗️ **Processor System**: Implemented BaseFileProcessor with specialized processors
+- 📊 **Enhanced Metadata**: Added file_type and processor_name to results
+- 🛠️ **PyPI Compatibility**: Resolved license metadata conflicts
+
+### v0.1.0
+
+- 🚀 **Initial Release**: Core CSV token counting functionality
+- ⚡ **Dual CLI Interface**: `deus-llm-token-guru` and `llm-token-stats` commands
+- 🤖 **Multi-Model Support**: Various OpenAI encoding models (gpt-4, gpt-3.5-turbo)
+- 📊 **Comprehensive Output**: Detailed statistics with JSON export
+- 🛡️ **Type Safety**: Full Python type hints and modern features
+- 🧪 **Testing**: Complete test suite with coverage
