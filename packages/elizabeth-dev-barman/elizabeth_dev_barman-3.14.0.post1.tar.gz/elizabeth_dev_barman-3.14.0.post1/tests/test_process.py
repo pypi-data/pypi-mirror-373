@@ -1,0 +1,201 @@
+# -*- coding: utf-8 -*-
+# © Copyright EnterpriseDB UK Limited 2011-2025
+#
+# This file is part of Barman.
+#
+# Barman is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Barman is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Barman.  If not, see <http://www.gnu.org/licenses/>.
+
+import errno
+import os
+
+import mock
+from testing_helpers import build_config_from_dicts
+
+from barman.lockfile import (
+    ServerBackupLock,
+    ServerBackupSyncLock,
+    ServerCronLock,
+    ServerWalArchiveLock,
+    ServerWalReceiveLock,
+    ServerWalSyncLock,
+)
+from barman.process import ProcessInfo, ProcessManager
+
+
+# noinspection PyMethodMayBeStatic
+class TestProcessInfo(object):
+    """
+    ProcessInfo obj tests
+    """
+
+    def test_init(self):
+        """
+        Test the init method
+        """
+        pi = ProcessInfo(pid=12345, server_name="test_server", task="test_task")
+
+        assert pi.pid == 12345
+        assert pi.server_name == "test_server"
+        assert pi.task == "test_task"
+
+
+class TestProcessManager(object):
+    """
+    Simple class for testing the ProcessManager obj
+    """
+
+    def test_init(self, tmpdir):
+        """
+        Test the init method
+        """
+        # Build a basic configuration
+        config = build_config_from_dicts({"barman_lock_directory": tmpdir.strpath})
+        config.name = "main"
+        # Acquire a lock and initialise the ProjectManager.
+        # Expect the ProjectManager to Retrieve the
+        # "Running process" identified by the lock
+        lock = ServerWalReceiveLock(tmpdir.strpath, "main")
+        with lock:
+            pm = ProcessManager(config)
+
+        # Test for the length of the process list
+        assert len(pm.process_list) == 1
+        # Test for the server identifier of the process
+        assert pm.process_list[0].server_name == "main"
+        # Test for the task type
+        assert pm.process_list[0].task == "receive-wal"
+        # Read the pid from the lockfile and test id against the ProcessInfo
+        # contained in the process_list
+        with open(lock.filename, "r") as lockfile:
+            pid = lockfile.read().strip()
+            assert int(pid) == pm.process_list[0].pid
+
+        # Test lock file parse error.
+        # Skip the lock and don't raise any exception.
+        with lock:
+            with open(lock.filename, "w") as lockfile:
+                lockfile.write("invalid")
+            pm = ProcessManager(config)
+            assert len(pm.process_list) == 0
+
+    def test_list(self, tmpdir):
+        """
+        Test the list method from the ProjectManager class
+        """
+        config = build_config_from_dicts({"barman_lock_directory": tmpdir.strpath})
+        config.name = "main"
+
+        lockfile = tmpdir.join(".%s-receive-wal.lock" % config.name)
+
+        # Listing the processes should not modify the lockfile content
+        lockfile.write("0\n")
+        pm = ProcessManager(config)
+        assert pm.list("receive-wal") == []
+        assert "0\n" == lockfile.read()
+
+        # If there is a running process it must correctly read its pid
+        with ServerWalReceiveLock(tmpdir.strpath, config.name):
+            pm = ProcessManager(config)
+            process = pm.list("receive-wal")[0]
+        assert "main" == process.server_name
+        assert "receive-wal" == process.task
+        assert os.getpid() == process.pid
+        assert str(os.getpid()) == lockfile.read().strip()
+
+    def test_list_all_tasks(self, tmpdir):
+        """
+        Test that ProcessManager correctly retrieves locks for all supported tasks.
+        For each task in the :data:`TASKS` mapping, a valid lock should result in a
+        corresponding :class:`ProcessInfo` with the correct server name, task and PID.
+        """
+        config = build_config_from_dicts({"barman_lock_directory": tmpdir.strpath})
+        config.name = "test"
+        # Mapping tasks to their respective lock classes
+        tasks = {
+            "receive-wal": ServerWalReceiveLock,
+            "backup": ServerBackupLock,
+            "cron": ServerCronLock,
+            "archive-wal": ServerWalArchiveLock,
+            "sync-wal": ServerWalSyncLock,
+        }
+        for task, lock_class in tasks.items():
+            with lock_class(tmpdir.strpath, config.name):
+                pm = ProcessManager(config)
+                procs = pm.list(task)
+                # Only one valid process lock should be registered.
+                assert len(procs) == 1, f"Failed for task: {task}"
+                proc = procs[0]
+                assert proc.server_name == config.name
+                assert proc.task == task
+                assert proc.pid == os.getpid()
+                lockfile = tmpdir.join(".%s-%s.lock" % (config.name, task))
+                assert lockfile.read().strip() == str(os.getpid())
+
+        # Test for the backup-sync process
+        fake_backup_id = "fake_backup"
+        with ServerBackupSyncLock(tmpdir.strpath, config.name, fake_backup_id):
+            pm = ProcessManager(config)
+            procs = pm.list("sync-backup")
+            assert len(procs) == 1, "Failed to retrieve sync-backup process"
+            proc = procs[0]
+            assert proc.server_name == config.name
+            assert proc.task == "sync-backup"
+            assert proc.pid == os.getpid()
+            lockfile_path = os.path.join(
+                tmpdir.strpath,
+                ".%s-%s-sync-backup.lock" % (config.name, fake_backup_id),
+            )
+            with open(lockfile_path, "r") as lf:
+                assert lf.read().strip() == str(os.getpid())
+
+    @mock.patch("os.kill")
+    def test_kill(self, kill_mock, tmpdir):
+        """
+        Test the Kill method from the ProjectManager class.
+        Mocks the os.kill used inside the kill method
+        """
+        config = build_config_from_dicts({"barman_lock_directory": tmpdir.strpath})
+        config.name = "main"
+        # Acquire a lock, simulating a running process
+        with ServerWalReceiveLock(tmpdir.strpath, "main"):
+            # Build a ProcessManager and retrieve the receive-wal process
+            pm = ProcessManager(config)
+            pi = pm.list("receive-wal")[0]
+            # Exit at the first invocation of kill (this is a failed kill)
+            kill_mock.side_effect = OSError(errno.EPERM, "", "")
+            kill = pm.kill(pi)
+            # Expect the kill result to be false
+            assert kill is False
+            assert kill_mock.call_count == 1
+            kill_mock.assert_called_with(pi.pid, 2)
+
+            kill_mock.reset_mock()
+            # Exit at the second invocation of kill (this is a successful kill)
+            kill_mock.side_effect = [None, OSError(errno.ESRCH, "", "")]
+            # Expect the kill result to be true
+            kill = pm.kill(pi)
+            assert kill
+            assert kill_mock.call_count == 2
+            kill_mock.assert_has_calls([mock.call(pi.pid, 2), mock.call(pi.pid, 0)])
+
+            kill_mock.reset_mock()
+            # Check for the retry feature. exit at the second iteration of the
+            # kill cycle
+            kill_mock.side_effect = [None, None, OSError(errno.ESRCH, "", "")]
+            kill = pm.kill(pi)
+            assert kill
+            assert kill_mock.call_count == 3
+            kill_mock.assert_has_calls(
+                [mock.call(pi.pid, 2), mock.call(pi.pid, 0), mock.call(pi.pid, 0)]
+            )
