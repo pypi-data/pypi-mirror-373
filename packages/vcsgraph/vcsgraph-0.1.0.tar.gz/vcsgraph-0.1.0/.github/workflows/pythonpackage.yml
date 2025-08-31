@@ -1,0 +1,48 @@
+name: Python package
+
+on: [push, pull_request]
+
+env:
+  PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
+
+jobs:
+  build:
+
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        python-version: [3.9, "3.10", "3.11", '3.12', '3.13']
+# See https://github.com/actions/toolkit/issues/399
+#        include:
+#          - os: ubuntu-latest
+#            python-version: pypy3
+#            experimental: true
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Run ruff
+        run: |
+          python -m pip install ruff
+          ruff check .
+          ruff format --check .
+        if: "matrix.python-version != 'pypy3'"
+      - name: Test suite run (Linux)
+        run: |
+          python -m unittest vcsgraph.tests.test_suite
+        env:
+          PYTHONHASHSEED: random
+          PYTHONPATH: .
+      - name: Run mypy
+        run: |
+          python -m mypy vcsgraph
+        if: "matrix.python-version != 'pypy3'"
