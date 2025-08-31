@@ -1,0 +1,190 @@
+project:
+  name: "order-service"
+  version: "1.0.0"
+  language: "go"
+  framework: "clean-arch"
+
+aggregates:
+  - name: "Order"
+    fields:
+      - name: "ID"
+        type: "string"
+      - name: "CustomerID"
+        type: "string"
+      - name: "Items"
+        type: "[]OrderItem"
+      - name: "Status"
+        type: "string"
+      - name: "TotalAmount"
+        type: "float64"
+      - name: "CreatedAt"
+        type: "time.Time"
+      - name: "UpdatedAt"
+        type: "time.Time"
+
+  - name: "Payment"
+    fields:
+      - name: "ID"
+        type: "string"
+      - name: "OrderID"
+        type: "string"
+      - name: "Amount"
+        type: "float64"
+      - name: "Status"
+        type: "string"
+      - name: "Method"
+        type: "string"
+      - name: "CreatedAt"
+        type: "time.Time"
+
+# 会话管理配置
+session:
+  saga:
+    enabled: true
+    orchestration: "orchestration"  # "choreography" 或 "orchestration"
+    timeout: 300  # 秒
+  context:
+    storage: "redis"  # "redis" 或 "postgres"
+    ttl: 3600  # 秒
+    prefix: "order_session:"  # 键前缀
+  checkpoint:
+    enabled: true
+    interval: 30  # 秒
+    strategy: "time"  # "time" 或 "event"
+    max_retries: 3
+  recovery:
+    enabled: true
+    strategy: "compensate"  # "retry" 或 "compensate"
+    max_attempts: 5
+    backoff: "exponential"  # "exponential" 或 "linear"
+
+# 长时任务配置
+long_running:
+  enabled: true
+  tasks:
+    - name: "order_fulfillment"
+      type: "workflow"
+      timeout: 1800  # 30分钟
+      stages:
+        - name: "validate_inventory"
+          service: "inventory_service"
+          endpoint: "/check"
+          timeout: 60
+        - name: "process_payment"
+          service: "payment_service"
+          endpoint: "/process"
+          timeout: 120
+        - name: "reserve_inventory"
+          service: "inventory_service"
+          endpoint: "/reserve"
+          timeout: 60
+        - name: "schedule_shipping"
+          service: "shipping_service"
+          endpoint: "/schedule"
+          timeout: 300
+        - name: "confirm_order"
+          service: "order_service"
+          endpoint: "/confirm"
+          timeout: 30
+      compensation:
+        - stage: "process_payment"
+          action: "refund"
+          service: "payment_service"
+        - stage: "reserve_inventory"
+          action: "release_reservation"
+          service: "inventory_service"
+        - stage: "schedule_shipping"
+          action: "cancel_shipment"
+          service: "shipping_service"
+
+    - name: "image_processing"
+      type: "batch"
+      timeout: 3600  # 1小时
+      stages:
+        - name: "upload_validation"
+          service: "image_service"
+          endpoint: "/validate"
+          timeout: 60
+        - name: "image_processing"
+          service: "image_service"
+          endpoint: "/process"
+          timeout: 1800
+        - name: "thumbnail_generation"
+          service: "image_service"
+          endpoint: "/thumbnails"
+          timeout: 600
+        - name: "cdn_upload"
+          service: "cdn_service"
+          endpoint: "/upload"
+          timeout: 300
+      compensation:
+        - stage: "cdn_upload"
+          action: "remove_from_cdn"
+          service: "cdn_service"
+        - stage: "image_processing"
+          action: "cleanup_temp_files"
+          service: "image_service"
+
+# 事件定义
+events:
+  - name: "OrderCreated"
+    aggregate: "Order"
+    fields:
+      - name: "OrderID"
+        type: "string"
+      - name: "CustomerID"
+        type: "string"
+      - name: "Items"
+        type: "[]OrderItem"
+      - name: "TotalAmount"
+        type: "float64"
+
+  - name: "PaymentProcessed"
+    aggregate: "Payment"
+    fields:
+      - name: "PaymentID"
+        type: "string"
+      - name: "OrderID"
+        type: "string"
+      - name: "Amount"
+        type: "float64"
+      - name: "Status"
+        type: "string"
+
+# 存储配置
+storage:
+  type: "postgresql"
+  host: "localhost"
+  port: 5432
+  database: "order_service"
+  username: "user"
+  password: "password"
+
+# Redis配置
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+
+# NATS配置
+nats:
+  url: "nats://localhost:4222"
+
+# 服务配置
+services:
+  inventory_service:
+    host: "localhost"
+    port: 8081
+  payment_service:
+    host: "localhost"
+    port: 8082
+  shipping_service:
+    host: "localhost"
+    port: 8083
+  image_service:
+    host: "localhost"
+    port: 8084
+  cdn_service:
+    host: "localhost"
+    port: 8085
