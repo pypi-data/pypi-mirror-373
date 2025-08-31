@@ -1,0 +1,141 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.1.2] - 2025-08-31
+
+### <!-- 0 --> 🏗️ Breaking changes
+
+- Breaking changes to kernel initialisation and launching [#78](https://github.com/fleming79/async-kernel/pull/78)
+
+- Enhancement -  Make kernel async enterable. [#77](https://github.com/fleming79/async-kernel/pull/77)
+
+### <!-- 5 --> 📝 Documentation
+
+- Fix alias for latest docs and limit release versions. [#75](https://github.com/fleming79/async-kernel/pull/75)
+
+### <!-- 6 --> 🌀 Miscellaneous
+
+- CI and pre-commit maintenance [#76](https://github.com/fleming79/async-kernel/pull/76)
+
+## [0.1.1] - 2025-08-28
+
+### <!-- 6 --> 🌀 Miscellaneous
+
+- Prepare for release v0.1.1 [#74](https://github.com/fleming79/async-kernel/pull/74)
+
+- Bugfixes - fix installing without trio and installing a kernelspec [#73](https://github.com/fleming79/async-kernel/pull/73)
+
+## [0.1.0] - 2025-08-28
+
+### <!-- 0 --> 🏗️ Breaking changes
+
+- Caller.queue_call add argument send_nowait  and convert to sync that optionally returns an awaitable. [#71](https://github.com/fleming79/async-kernel/pull/71)
+
+### <!-- 1 --> 🚀 Features
+
+- Add anyio_backend_options and use uvloop by default [#70](https://github.com/fleming79/async-kernel/pull/70)
+
+### <!-- 5 --> 📝 Documentation
+
+- Use mike for documentation versioning. [#67](https://github.com/fleming79/async-kernel/pull/67)
+
+- Update docs, readme and project description. [#66](https://github.com/fleming79/async-kernel/pull/66)
+
+### <!-- 6 --> 🌀 Miscellaneous
+
+- Prepare for release v0.1.0 [#72](https://github.com/fleming79/async-kernel/pull/72)
+
+- Drop matplotlib dependency. [#69](https://github.com/fleming79/async-kernel/pull/69)
+
+## [0.1.0-rc3] - 2025-08-26
+
+### <!-- 1 --> 🚀 Features
+
+- Add more classifers and code coverage [#64](https://github.com/fleming79/async-kernel/pull/64)
+
+### <!-- 6 --> 🌀 Miscellaneous
+
+- Prepare for release v0.1.0-rc3 [#65](https://github.com/fleming79/async-kernel/pull/65)
+
+- Add workflow_run event because the release is not triggered if  the release is created by another workflow. [#62](https://github.com/fleming79/async-kernel/pull/62)
+
+## [0.1.0-rc2] - 2025-08-26
+
+### <!-- 6 --> 🌀 Miscellaneous
+
+- Prepare for release v0.1.0-rc2 [#61](https://github.com/fleming79/async-kernel/pull/61)
+
+## [0.1.0-rc1] - 2025-08-26
+
+### <!-- 5 --> 📝 Documentation
+
+- Update licensing and contribution notes [#27](https://github.com/fleming79/async-kernel/pull/27)
+
+### <!-- 6 --> 🌀 Miscellaneous
+
+- Prepare for release v0.1.0-rc1 [#60](https://github.com/fleming79/async-kernel/pull/60)
+
+- Merge pull request #56 from fleming79/release/v0.1.0-rc1 [#56](https://github.com/fleming79/async-kernel/pull/56)
+
+- Revise new release [#55](https://github.com/fleming79/async-kernel/pull/55)
+
+- New release workflow in one step with publish option. [#51](https://github.com/fleming79/async-kernel/pull/51)
+
+- Improve release workflow, update documentation and license info. [#29](https://github.com/fleming79/async-kernel/pull/29)
+
+- Maintenance [#26](https://github.com/fleming79/async-kernel/pull/26)
+
+## [0.1.0-rc0] - 2025-08-24
+
+### <!-- 1 --> 🚀 Features
+
+- First release [#18](https://github.com/fleming79/async-kernel/pull/18)
+
+- Switch to vcs for versioning. [#2](https://github.com/fleming79/async-kernel/pull/2)
+
+### <!-- 2 --> 🐛 Fixes
+
+- Use no-local-version in pyproject.toml instead. [#5](https://github.com/fleming79/async-kernel/pull/5)
+
+- Use no-local-version on ci. [#4](https://github.com/fleming79/async-kernel/pull/4)
+
+### <!-- 5 --> 📝 Documentation
+
+- Revise workflow to work with tags that start with 'v'. No longer sets the tag when writing the changelog. [#16](https://github.com/fleming79/async-kernel/pull/16)
+
+- Switch to python installer to run git cliff. [#14](https://github.com/fleming79/async-kernel/pull/14)
+
+- Revise changelog template. [#12](https://github.com/fleming79/async-kernel/pull/12)
+
+- Do changelog as PR instead of push to main. [#8](https://github.com/fleming79/async-kernel/pull/8)
+
+- Git cliff [#7](https://github.com/fleming79/async-kernel/pull/7)
+
+- Fix mkdocs publishing [#6](https://github.com/fleming79/async-kernel/pull/6)
+
+### <!-- 6 --> 🌀 Miscellaneous
+
+- Bugfix [#25](https://github.com/fleming79/async-kernel/pull/25)
+
+- Update changelog [#24](https://github.com/fleming79/async-kernel/pull/24)
+
+- Update changelog [#22](https://github.com/fleming79/async-kernel/pull/22)
+
+- Release workflow changes [#21](https://github.com/fleming79/async-kernel/pull/21)
+
+- Update release workflow to use a template that appends output from git-cliff [#17](https://github.com/fleming79/async-kernel/pull/17)
+
+- Bump the actions group across 1 directory with 2 updates [#3](https://github.com/fleming79/async-kernel/pull/3)
+
+[0.1.2]: https://github.com/fleming79/async-kernel/compare/v0.1.1..v0.1.2
+[0.1.1]: https://github.com/fleming79/async-kernel/compare/v0.1.0..v0.1.1
+[0.1.0]: https://github.com/fleming79/async-kernel/compare/v0.1.0-rc3..v0.1.0
+[0.1.0-rc3]: https://github.com/fleming79/async-kernel/compare/v0.1.0-rc2..v0.1.0-rc3
+[0.1.0-rc2]: https://github.com/fleming79/async-kernel/compare/v0.1.0-rc1..v0.1.0-rc2
+[0.1.0-rc1]: https://github.com/fleming79/async-kernel/compare/v0.1.0-rc0..v0.1.0-rc1
+
+<!-- generated by git-cliff -->
