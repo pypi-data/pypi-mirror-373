@@ -1,0 +1,389 @@
+# API version for configuration evolution
+apiVersion: v1
+
+# Agent Information
+name: "{{ project_name }}"
+description: "{{ description }}"
+version: "{{ version }}"
+url: http://localhost:8000
+provider_organization: AgentUp
+provider_url: https://agentup.dev
+icon_url: https://raw.githubusercontent.com/RedDotRocket/AgentUp/refs/heads/main/assets/icon.png
+documentation_url: https://docs.agentup.dev
+
+# Agent Execution Configuration
+agent_type: "{{ agent_type | default('reactive') }}"
+{% if agent_type == 'iterative' %}
+memory_config:
+  persistence: true
+  max_entries: 1000
+  ttl_hours: 24
+
+iterative_config:
+  max_iterations: {{ max_iterations | default(10) }}
+  reflection_interval: 1
+  require_explicit_completion: true
+  timeout_minutes: 30
+{% endif %}
+
+# CORS Configuration
+cors:
+  enabled: {{ cors_enabled | default(true) }}
+  origins: {{ cors_origins | default(['http://localhost:3000', 'http://localhost:3001', 'http://localhost:8080']) | tojson }}
+  methods: {{ cors_methods | default(['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'HEAD']) | tojson }}
+  headers: {{ cors_headers | default(['Content-Type', 'X-API-Key', 'Authorization']) | tojson }}
+  allow_credentials: {{ cors_allow_credentials | default(false) }}
+  max_age: {{ cors_max_age | default(600) }}
+
+# Plugin configurations (use agentup plugin sync / add / remove)
+plugins:{% if initial_plugins %}
+{% for plugin in initial_plugins %}
+  {{ plugin.package }}:
+    enabled: {{ plugin.enabled | default(true) }}
+{% if plugin.plugin_override %}
+    plugin_override:
+{% for mw in plugin.plugin_override %}
+      - name: {{ mw.name }}
+        config: {{ mw.config | tojson }}
+{% endfor %}
+{% endif %}
+{% if plugin.capabilities %}
+    capabilities:
+{% for cap_id, cap_config in plugin.capabilities.items() %}
+      {{ cap_id }}:
+        enabled: {{ cap_config.enabled | default(true) }}
+{% if cap_config.required_scopes %}
+        required_scopes: {{ cap_config.required_scopes | tojson }}
+{% endif %}
+{% if cap_config.capability_override %}
+        capability_override:
+{% for mw in cap_config.capability_override %}
+          - name: {{ mw.name }}
+            config: {{ mw.config | tojson }}
+{% endfor %}
+{% endif %}
+{% if cap_config.config %}
+        config: {{ cap_config.config | tojson }}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if plugin.config %}
+    config: {{ plugin.config | tojson }}
+{% endif %}
+{% endfor %}
+{% else %} {}
+{% endif %}
+
+# Plugin defaults that plugins inherit
+plugin_defaults:
+  middleware:
+{% if has_middleware and 'rate_limit' in feature_config.get('middleware', []) %}
+    rate_limited:
+      requests_per_minute: {{ rate_limit_rpm | default(60) }}
+      burst_size: {{ rate_limit_burst | default(72) }}
+{% endif %}
+{% if has_middleware and 'cache' in feature_config.get('middleware', []) %}
+    cached:
+      backend_type: {{ cache_backend | default('memory') }}
+      default_ttl: {{ middleware_cache_ttl | default(300) }}
+      max_size: {{ cache_max_size | default(1000) }}
+{% if cache_backend == 'valkey' %}
+      valkey_url: "${VALKEY_URL:valkey://localhost:6379}"
+      valkey_db: 1
+{% endif %}
+{% endif %}
+{% if has_middleware and 'retry' in feature_config.get('middleware', []) %}
+    retryable:
+      max_attempts: {{ retry_max_attempts | default(3) }}
+      initial_delay: {{ retry_initial_delay | default(1.0) }}
+      max_delay: {{ retry_max_delay | default(60.0) }}
+{% endif %}
+
+{%- if has_mcp %}
+
+# Model Context Protocol
+mcp:
+  enabled: true
+  client_enabled: {{ mcp_client_enabled | default(true) }}
+  servers:
+    - name: "stdio"
+      enabled: true
+      transport: "stdio"
+      command: "python"
+      args: ["scripts/mcp/weather_server.py", "--transport", "stdio"]
+      timeout: 30
+      # Expose MCP tools as skills in AgentCard for multi-agent discovery
+      expose_as_skills: true
+      # MCP tools require explicit scope mapping using server:tool format
+      # This prevents naming conflicts when multiple servers expose similar tools
+      tool_scopes:
+        "stdio:get_alerts": ["alerts:read"]
+        "stdio:get_forecast": ["weather:read"]
+{% endif %}
+
+# Security Configuration
+security:
+  enabled: {{ security_enabled | default(false) }}
+{% if security_enabled %}
+  auth:
+{% if auth_type == 'api_key' or not auth_type %}
+    api_key:
+      header_name: {{ auth_header_name | default('X-API-Key') }}
+      location: {{ auth_location | default('header') }}
+      keys:
+        # Note, the following key is randomly generated during AgentUp project creation
+        - key: "{{ generate_api_key() }}"
+          scopes: ["api:admin"{% if has_mcp %}, "files:read", "files:write"{% endif %}]
+{% if generate_multiple_keys %}
+        - key: "{{ generate_api_key() }}"
+          scopes: ["files:read", "files:write"{% if has_mcp %}, "alerts:read", "weather:read"{% endif %}]
+{% endif %}
+{% elif auth_type == 'jwt' %}
+    bearer:
+      # Note: JWT Bearer token authentication
+      jwt_secret: "${JWT_SECRET:{{ generate_jwt_secret() }}}"
+      algorithm: HS256
+      issuer: {{ project_name_snake }}
+      audience: a2a-clients
+{% elif auth_type == 'oauth2' %}
+    oauth2:
+{% if oauth2_provider == 'github' %}
+      # GitHub OAuth2 configuration (token introspection-based)
+      client_id: "${GITHUB_CLIENT_ID}"
+      client_secret: "${GITHUB_CLIENT_SECRET}"
+      authorization_url: "https://github.com/login/oauth/authorize"
+      token_url: "https://github.com/login/oauth/access_token"
+      redirect_uri: "${GITHUB_REDIRECT_URI:http://localhost:8000/auth/callback}"
+      scopes: ["user", "user:email"]
+      validation_strategy: "introspection"
+      introspection_endpoint: "https://api.github.com/applications/${GITHUB_CLIENT_ID}/token"
+{% elif oauth2_provider == 'google' %}
+      # Google OAuth2 configuration (JWT-based)
+      client_id: "${GOOGLE_CLIENT_ID}"
+      client_secret: "${GOOGLE_CLIENT_SECRET}"
+      authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
+      token_url: "https://oauth2.googleapis.com/token"
+      redirect_uri: "${GOOGLE_REDIRECT_URI:http://localhost:8000/auth/callback}"
+      scopes: ["openid", "email", "profile"]
+      validation_strategy: "jwt"
+      jwks_url: "https://www.googleapis.com/oauth2/v3/certs"
+      jwt_algorithm: "RS256"
+      jwt_issuer: "https://accounts.google.com"
+      jwt_audience: "${GOOGLE_CLIENT_ID}"
+{% elif oauth2_provider == 'keycloak' %}
+      # Keycloak OAuth2 configuration (JWT-based)
+      client_id: "${KEYCLOAK_CLIENT_ID}"
+      client_secret: "${KEYCLOAK_CLIENT_SECRET}"
+      authorization_url: "${KEYCLOAK_BASE_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/auth"
+      token_url: "${KEYCLOAK_BASE_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token"
+      redirect_uri: "${KEYCLOAK_REDIRECT_URI:http://localhost:8000/auth/callback}"
+      scopes: ["openid", "profile", "email"]
+      validation_strategy: "jwt"
+      jwks_url: "${KEYCLOAK_BASE_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/certs"
+      jwt_algorithm: "RS256"
+      jwt_issuer: "${KEYCLOAK_BASE_URL}/realms/${KEYCLOAK_REALM}"
+      jwt_audience: "${KEYCLOAK_CLIENT_ID}"
+{% else %}
+      # Generic OAuth2 configuration
+      client_id: "${OAUTH2_CLIENT_ID}"
+      client_secret: "${OAUTH2_CLIENT_SECRET}"
+      authorization_url: "${OAUTH2_AUTHORIZATION_URL:https://your-provider.com/oauth/authorize}"
+      token_url: "${OAUTH2_TOKEN_URL:https://your-provider.com/oauth/token}"
+      redirect_uri: "${OAUTH2_REDIRECT_URI:http://localhost:8000/auth/callback}"
+      scopes: ["openid", "profile", "email"]
+      validation_strategy: "jwt"
+      jwks_url: "${OAUTH2_JWKS_URL:https://your-provider.com/.well-known/jwks.json}"
+      jwt_algorithm: "RS256"
+      jwt_issuer: "${OAUTH2_JWT_ISSUER:https://your-provider.com}"
+      jwt_audience: "${OAUTH2_JWT_AUDIENCE:{{ project_name_snake }}}"
+{% endif %}
+{% endif %}
+  # Scope hierarchy for fine-grained authorization
+  scope_hierarchy:
+    # Admin scopes inherit all capabilities
+    api:admin: ["api:write", "api:read"]
+    api:write: ["api:read"]
+    # File operations hierarchy
+    files:admin: ["files:write", "files:read"]
+    files:write: ["files:read"]
+    # System operations hierarchy
+    system:admin: ["system:write", "system:read"]
+    system:write: ["system:read"]
+{% if has_mcp %}
+    weather:admin: ["alerts:read", "weather:read"]
+{% endif %}
+{% endif %}
+
+{%- if ai_provider_config %}
+
+# AI Provider configuration
+ai_provider:
+  provider: {{ ai_provider_config.provider }}
+{% if ai_provider_config.provider == 'openai' %}
+  api_key: ${OPENAI_API_KEY}
+  model: {{ ai_provider_config.model | default('gpt-4o-mini') }}
+{% elif ai_provider_config.provider == 'anthropic' %}
+  api_key: ${ANTHROPIC_API_KEY}
+  model: {{ ai_provider_config.model | default('claude-3-5-sonnet-20241022') }}
+{% elif ai_provider_config.provider == 'ollama' %}
+  model: {{ ai_provider_config.model | default('llama3') }}
+  base_url: ${OLLAMA_BASE_URL:http://localhost:11434}
+{% endif %}
+  stream: {{ ai_provider_config.stream | default(true) | tojson }}
+  temperature: {{ ai_temperature | default(0.7) }}
+  max_tokens: {{ ai_max_tokens | default(1000) }}
+  top_p: {{ ai_top_p | default(1.0) }}
+{% endif -%}
+{%- if ai_enabled %}
+
+# AI system prompt and configuration
+ai:
+  enabled: {{ ai_enabled | default(true) }}
+{% if ai_system_prompt %}
+  system_prompt: |
+{{ ai_system_prompt | indent(4, True) }}
+{% else %}
+  system_prompt: |
+    You are {{ project_name }}, an AI agent created with AgentUp.
+
+    Your role:
+    - Understand user requests naturally and conversationally
+    - Use the appropriate functions when needed to help users
+    - Provide helpful, accurate, and friendly responses
+    - Maintain context across conversations
+
+    Always be helpful, accurate, and maintain a friendly tone.
+{% endif %}
+{% endif %}
+
+# Global system-wide defaults
+global_defaults:
+  middleware:
+{% if has_middleware and 'rate_limit' in feature_config.get('middleware', []) %}
+    rate_limiting:
+      enabled: true
+      requests_per_minute: {{ rate_limit_rpm | default(60) }}
+      burst_size: {{ rate_limit_burst | default(72) }}
+{% else %}
+    rate_limiting:
+      enabled: false
+      requests_per_minute: 60
+      burst_size: 72
+{% endif %}
+{% if has_middleware and 'cache' in feature_config.get('middleware', []) %}
+    caching:
+      enabled: true
+      backend: {{ cache_backend | default('memory') }}
+      default_ttl: {{ middleware_cache_ttl | default(300) }}
+      max_size: {{ cache_max_size | default(1000) }}
+{% if cache_backend == 'valkey' %}
+      # Valkey connection configuration
+      valkey_url: "${VALKEY_URL:valkey://localhost:6379}"
+      valkey_db: 1  # Use DB 1 for cache (DB 0 for state)
+      valkey_max_connections: 10
+      valkey_connection_timeout: 5
+{% endif %}
+{% else %}
+    caching:
+      enabled: false
+      backend: memory
+      default_ttl: 300
+      max_size: 1000
+{% endif %}
+{% if has_middleware and 'retry' in feature_config.get('middleware', []) %}
+    retry:
+      enabled: true
+      max_attempts: {{ retry_max_attempts | default(3) }}
+      initial_delay: {{ retry_initial_delay | default(1.0) }}
+      max_delay: {{ retry_max_delay | default(60.0) }}
+{% else %}
+    retry:
+      enabled: false
+      max_attempts: 3
+      initial_delay: 1.0
+      max_delay: 60.0
+{% endif %}
+
+# Push notifications configuration
+push_notifications:
+  enabled: {{ push_enabled | default(true) }}
+  backend: {{ push_backend | default('memory') }}
+{% if push_backend == 'valkey' %}
+  key_prefix: "agentup:push:"
+{% endif %}
+  validate_urls: {{ push_validate_urls | default(true) }}
+  retry_attempts: {{ push_retry_attempts | default(3) }}
+  timeout: {{ push_timeout | default(30) }}
+
+
+{%- if has_state_management %}
+
+
+# State management configuration
+state_management:
+  enabled: true
+{% if state_backend == 'valkey' %}
+  backend: valkey
+  ttl: {{ state_ttl | default(3600) }}
+  config:
+    url: '${VALKEY_STATE_URL:valkey://localhost:6379}'
+    key_prefix: "agentup:state:"
+{% elif state_backend == 'memory' %}
+  backend: memory
+  ttl: {{ state_ttl | default(3600) }}
+  config: {}
+{% elif state_backend == 'file' %}
+  backend: file
+  ttl: {{ state_ttl | default(3600) }}
+  config:
+    storage_dir: "{{ state_storage_dir | default('./conversation_states') }}"
+{% endif %}
+{% endif %}
+
+# Logging configuration
+logging:
+  enabled: {{ logging_enabled | default(true) }}
+  level: "{{ log_level | default('INFO') }}"
+  format: "{{ log_format | default('text') }}"
+
+  # Console output settings
+  console:
+    enabled: {{ console_logging | default(true) }}
+    colors: {{ console_colors | default(true) }}
+
+  # Advanced features
+  correlation_id: {{ correlation_id | default(false) }}
+  request_logging: {{ request_logging | default(false) }}
+  # Uvicorn integration
+  uvicorn:
+    access_log: {{ uvicorn_access_log | default(false) }}
+    disable_default_handlers: true
+    use_colors: {{ uvicorn_colors | default(console_colors | default(true)) }}
+  # modules logging
+  modules:
+    "a2a": "ERROR" # Suppress all a2a logs below ERROR level
+    "a2a.utils": "ERROR" # Specifically suppress a2a.utils logs
+    "a2a.utils.telemetry": "ERROR" # Specifically suppress telemetry logs
+    "httpcore.connection": "ERROR"
+    "httpcore.http11": "ERROR"
+    "httpx": "ERROR"
+
+# Development configuration
+# WARNING: These features can be security risks and should NEVER be enabled in production
+development:
+  enabled: {{ development_enabled | default(false) }}  # Master switch for ALL development features
+{% if development_enabled %}
+
+  # Filesystem plugin loading -
+  # This allows loading arbitrary Python code from the filesystem, NEVER enable in production
+  filesystem_plugins:
+    enabled: {{ filesystem_plugins_enabled | default(false) }}  # Default: disabled for security
+{% if filesystem_plugins_enabled %}
+    allowed_directories:
+{% if plugin_directory %}
+      - {{ plugin_directory }}  # Custom plugin directory
+{% else %}
+      - ~/.agentup/plugins  # Default plugin directory
+{% endif %}
+{% endif %}
+{% endif %}

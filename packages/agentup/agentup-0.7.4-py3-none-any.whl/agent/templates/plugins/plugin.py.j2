@@ -1,0 +1,211 @@
+"""
+{{ display_name }} plugin for AgentUp{% if template == "ai" %} with AI capabilities{% endif %}.
+
+{{ description }}
+"""
+
+from typing import Dict, Any
+
+from agent.plugins.base import Plugin
+from agent.plugins.decorators import capability
+from agent.plugins.models import CapabilityContext
+
+
+class {{ class_name }}(Plugin):
+    """Entry point class for the {{ display_name }} plugin."""
+
+    def __init__(self):
+        """Initialize the plugin."""
+        super().__init__()
+        self.name = "{{ plugin_name_snake }}"
+        self.version = "1.0.0"
+        {% if template == "ai" %}
+        self.llm_service = None
+        {% endif %}
+
+    {% if template == "ai" %}
+    async def initialize(self, config: Dict[str, Any], services: Dict[str, Any]):
+        """Initialize plugin with configuration and services."""
+        self.config = config
+
+        # Store LLM service for AI operations
+        self.llm_service = services.get("llm")
+
+        # Setup other services as needed
+        if "http_client" in services:
+            self.http_client = services["http_client"]
+
+    {% endif %}
+    def _get_parameters(self, context: CapabilityContext) -> dict[str, Any]:
+        """Extract parameters from context, checking multiple locations for compatibility."""
+        params = context.metadata.get("parameters", {})
+        if not params and context.task and context.task.metadata:
+            params = context.task.metadata
+        return params
+
+    @capability(
+        id="{{ capability_id }}",
+        name="{{ display_name }}",
+        description="{{ description }}",
+        scopes=[{% if template == "ai" %}"{{ plugin_name }}:use", "ai:function"{% else %}"{{ plugin_name }}:use"{% endif %}],
+        ai_function={% if template == "ai" %}True{% else %}False{% endif %}{% if template == "ai" %},
+        ai_parameters={
+            "type": "object",
+            "properties": {
+                "input": {
+                    "type": "string",
+                    "description": "The input to process with {{ display_name }}"
+                }
+            },
+            "required": ["input"]
+        },
+        # A2A AgentSkill metadata (optional - add examples for better AI understanding)
+        examples=[
+            # Add examples of how to use this capability
+            # e.g., "Process the data from the file",
+            # "Analyze the provided text",
+        ]
+        {% endif %}
+    )
+    async def {{ capability_method_name }}(self, context: CapabilityContext) -> Dict[str, Any]:
+        """Execute the {{ display_name.lower() }} capability."""
+        try:
+            {% if template == "ai" %}
+            # Extract parameters for AI functions
+            params = self._get_parameters(context)
+            input_text = params.get("input", "")
+
+            # If no input in parameters, try to extract from context
+            if not input_text:
+                input_text = self._extract_task_content(context)
+            {% else %}
+            # Extract input from context using base class method
+            input_text = self._extract_task_content(context)
+            {% endif %}
+
+            # Log the start of processing
+            self.logger.info("Starting capability execution",
+                           capability_id="{{ capability_id }}",
+                           input_length=len(input_text) if input_text else 0)
+
+            {% if template == "ai" %}
+            # AI-powered processing
+            if self.llm_service and input_text:
+                # Example: Use LLM to process the input
+                # Adapt this to your specific use case
+                prompt = f"""Process the following input for {{ display_name }}:
+{input_text}
+Provide a helpful response."""
+
+                try:
+                    # Call LLM service - adapt to your LLM service interface
+                    if hasattr(self.llm_service, 'generate'):
+                        response = await self.llm_service.generate(prompt, max_tokens=200)
+                    elif hasattr(self.llm_service, 'chat'):
+                        response = await self.llm_service.chat(
+                            [{"role": "user", "content": prompt}],
+                            max_tokens=200
+                        )
+                    else:
+                        # Fallback if LLM service interface is unknown
+                        response = f"Processed: {input_text}"
+
+                    result = response.strip() if hasattr(response, 'strip') else str(response)
+                except Exception as llm_error:
+                    self.logger.warning("LLM processing failed, using fallback", error=str(llm_error))
+                    result = f"{{ display_name }} processed (fallback): {input_text}"
+            else:
+                # Fallback when no LLM service or no input
+                result = "{{ display_name }} ready. No input provided or LLM service unavailable."
+            {% else %}
+            # Basic processing - implement your logic here
+            result = f"{{ display_name }} processed: {input_text}"
+
+            # TODO: Add your actual processing logic here
+            # For example:
+            # result = await self.process_data(input_text)
+            {% endif %}
+
+            # Log successful completion
+            self.logger.info("Capability execution completed",
+                           capability_id="{{ capability_id }}",
+                           result_length=len(result) if result else 0)
+
+            return {
+                "success": True,
+                "content": result,
+                "metadata": {
+                    "capability": "{{ capability_id }}",
+                    {% if template == "ai" %}
+                    "ai_powered": bool(self.llm_service),
+                    {% endif %}
+                    "input_length": len(input_text) if input_text else 0
+                }
+            }
+
+        except Exception as e:
+            # Log the error with structured data
+            self.logger.error("Error in capability execution",
+                            capability_id="{{ capability_id }}",
+                            error=str(e),
+                            exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "content": f"Error in {{ display_name }}: {str(e)}"
+            }
+
+    def get_config_schema(self) -> Dict[str, Any]:
+        """Define configuration schema for the plugin."""
+        return {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Enable/disable the plugin"
+                },
+                "debug": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Enable debug logging"
+                }{% if template == "ai" %},
+                "max_retries": {
+                    "type": "integer",
+                    "default": 3,
+                    "description": "Maximum number of retries for AI operations"
+                }
+                {% endif %}
+            },
+            "additionalProperties": False
+        }
+
+    def validate_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate plugin configuration."""
+        errors = []
+        warnings = []
+
+        # Add your custom validation logic here
+        # Example:
+        # if config.get("some_required_field") is None:
+        #     errors.append("some_required_field is required")
+
+        return {
+            "valid": len(errors) == 0,
+            "errors": errors,
+            "warnings": warnings
+        }
+
+    async def cleanup(self):
+        """Cleanup resources when plugin is destroyed."""
+        {% if template == "ai" %}
+        # Clear LLM service reference
+        self.llm_service = None
+
+        # Close HTTP client if available
+        if hasattr(self, 'http_client') and hasattr(self.http_client, 'close'):
+            await self.http_client.close()
+        {% else %}
+        # Add any cleanup logic here
+        pass
+        {% endif %}
