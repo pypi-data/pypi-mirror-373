@@ -1,0 +1,1 @@
+::: cognite.neat.session._template.TemplateAPI
