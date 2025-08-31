@@ -1,0 +1,66 @@
+version: v1
+
+id_policy:
+  kind: uuid
+  field: id
+
+defaults:
+  vector:
+    metric: cosine
+    normalize: true
+  timestamps:
+    auto_create: true
+    auto_update: true
+
+entities:
+  - name: memo # base entity - all other entities are derived from this
+    description: "Base memory unit"
+    fields:
+      id:          { type: string, required: true, system: true } # uuid
+      user_id:     { type: string, required: true, system: true } # any string
+      statement:   { type: string, required: true, max_length: 8000 }
+      created_at:  { type: datetime, required: true, system: true }
+      updated_at:  { type: datetime, system: true }
+      vector:      { type: vector, anchored_to: statement, system: true }
+    relations:
+      - name: memo_related
+        description: "Generic relation between memos"
+        directed: true
+        predicates: [RELATED_TO]
+        source: memo
+        target: memo
+
+  - name: note
+    parent: memo
+    description: "General note or observation to memorize"
+    fields:
+      project: { type: string }  # Optional project namespace for filtering
+      origin: { type: enum, choices: [system, user], default: system } # source of the note - optional
+    relations:
+      - name: note_document
+        description: "Note providing context to a document"
+        directed: true
+        predicates: [ANNOTATES]
+        source: note
+        target: document
+
+  - name: document
+    parent: memo
+    description: "Document-like memo with extended content"
+    fields:
+      project: { type: string }  # Optional project namespace for filtering
+      details: { type: string, required: true }
+      url:     { type: string }  # Reference URL for external docs
+    relations:
+      - name: document_note
+        description: "Document referenced by a note"
+        directed: false
+        predicates: [REFERENCED_BY]
+        source: document
+        target: note
+      - name: task_document
+        description: "Document providing details or requirements for a task"
+        directed: true
+        predicates: [SUPPORTS]
+        source: document
+        target: note
