@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2024 Helge
+#
+# SPDX-License-Identifier: MIT
+
+when:
+  - event: tag
+    branch: main
+
+steps:
+  build_package:
+    image: ghcr.io/astral-sh/uv:python3.11-alpine
+    environment:
+      UV_PUBLISH_TOKEN: { from_secret: pypi_api_key }
+    commands:
+      - uv sync
+      - uv build
+      - uv publish
+  build_assets:
+    image: alpine:3.19
+    commands:
+      - apk add curl zip
+      - zip -r fediverse_pasture_assets.zip assets/
+      - 'curl -H "Authorization: Bearer $CODEBERG_API_TOKEN" --upload-file fediverse_pasture_assets.zip -X PUT https://codeberg.org/api/packages/funfedidev/generic/fediverse_pasture_assets/$CI_COMMIT_TAG/fediverse_pasture_assets.zip'
+    environment:
+      CODEBERG_API_TOKEN: { from_secret: codeberg_api_token }
