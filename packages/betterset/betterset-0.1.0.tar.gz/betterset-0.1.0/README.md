@@ -1,0 +1,132 @@
+# betterset
+
+[![PyPI version](https://badge.fury.io/py/betterset.svg)](https://badge.fury.io/py/betterset)
+[![GitHub release](https://img.shields.io/github/v/release/izzet/betterset)](https://github.com/izzet/betterset/releases)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+
+Extended set operations: algebraic, functional, and utilities on top of Python's built-in `set`.
+
+## Features
+
+- **Operator overloads**: `+` union, `*` cartesian product, `**` n-fold cartesian, `@` relation composition
+- **Algebraic utilities**: `powerset`, `cartesian`, `complement`, `disjoint`, `partition`, `closure`
+- **Functional utilities**: `map`, `filter`, `reduce`, and `flatten`
+- **Drop-in feel**: Built directly on top of `set`
+
+## Installation
+
+```bash
+pip install betterset
+```
+
+Or with uv:
+
+```bash
+uv add betterset
+```
+
+## Quick Start
+
+```python
+from betterset import BetterSet as S
+
+A = S({1, 2, 3})
+B = S({3, 4})
+
+# Operators
+assert (A + B) == {1, 2, 3, 4}          # union via +
+assert (A * {"x", "y"}) == {(1, "x"), (1, "y"), (2, "x"), (2, "y"), (3, "x"), (3, "y")}
+assert (S({1, 2}) ** 2) == {(1, 1), (1, 2), (2, 1), (2, 2)}
+assert (S({(1, 2), (2, 3)}) @ S({(2, 5), (3, 7)})) == {(1, 5), (2, 7)}
+
+# Algebraic
+ps = A.powerset()                        # set of frozensets
+assert frozenset({1, 2}) in ps
+assert A.disjoint({4, 5}) is True
+assert A.complement({1, 2, 3, 4, 5}) == {4, 5}
+parts = A.partition(2)                   # partitions into 2 non-empty blocks
+
+# Functional
+assert A.map(lambda x: x % 2) == {0, 1}
+assert A.filter(lambda x: x >= 2) == {2, 3}
+assert A.reduce(lambda acc, x: acc + x, 0) == 6
+assert S.flatten([[1, 2], {2, 3}, (3, 4)]) == {1, 2, 3, 4}
+
+# Cartesian as method
+assert A.cartesian({"x"}) == {(1, "x"), (2, "x"), (3, "x")}
+
+# Closure under an operation
+def step(x: int):
+    return [x + 1] if x < 3 else []
+
+assert S({1}).closure(step) == {1, 2, 3}
+```
+
+## API Reference
+
+### Class: `BetterSet`
+
+- Operators
+
+  - `A + B` → union
+  - `A * B` → cartesian product of elements as tuples
+  - `A ** n` → n-fold cartesian product (`A ** 0 == {()}`)
+  - `A @ B` → relation composition when `A` and `B` are sets of pairs
+  - In-place variants: `+=`, `*=`
+
+- Algebraic methods
+
+  - `powerset() -> BetterSet[FrozenSet[T]]`
+  - `cartesian(other: Iterable[U]) -> BetterSet[tuple[T, U]]`
+  - `disjoint(other: Iterable[T]) -> bool`
+  - `complement(universe: Iterable[T]) -> BetterSet[T]`
+  - `partition(k: int) -> BetterSet[tuple[tuple[T, ...], ...]]`
+  - `closure(op: Callable[[T], Iterable[T]]) -> BetterSet[T]`
+
+- Functional methods
+  - `map(func: Callable[[T], U]) -> BetterSet[U]`
+  - `filter(predicate: Callable[[T], bool]) -> BetterSet[T]`
+  - `reduce(func: Callable[[U, T], U], initial: Optional[U] = None) -> U`
+  - `@classmethod flatten(iterable: Iterable[Iterable[T]]) -> BetterSet[T]`
+
+## Requirements
+
+- Python 3.8+
+
+## Development
+
+```bash
+# Clone the repository
+git clone https://github.com/izzet/betterset.git
+cd betterset
+
+# Install with uv (uses uv.lock for reproducible builds)
+uv sync --group dev
+
+# Set up pre-commit hooks (recommended)
+uv run pre-commit install
+
+# Run tests
+uv run pytest
+
+# Format code
+uv run ruff format .
+
+# Check linting
+uv run ruff check .
+
+# Build package
+uv build
+```
+
+**Note**: This project uses `uv.lock` for reproducible dependency management. The lock file is committed to ensure all developers and CI/CD use identical dependency versions.
+
+**Pre-commit hooks**: The project includes pre-commit hooks that automatically format code, check linting, and run tests before each commit to maintain code quality.
+
+## License
+
+MIT License. See [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
