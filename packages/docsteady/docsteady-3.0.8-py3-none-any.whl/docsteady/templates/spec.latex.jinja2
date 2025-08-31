@@ -1,0 +1,320 @@
+{%- macro curlies(item) -%}
+{{ "{" }}{{ item }}{{ "}" }}
+{%- endmacro -%}
+{# --------------------------------------------------------------------------------#}
+{%- macro href(url, text) -%}
+\href{{ "{" }}{{ url|replace("#", "\\#")|replace("%", "\\%")|replace("_", "\\_") }}{{ "}" }}{{ curlies(text) }}
+{%- endmacro -%}
+{# --------------------------------------------------------------------------------#}
+{%- macro label(text) -%}
+\label{{ "{" }}{{ text }}{{ "}" }}
+{%- endmacro -%}
+{# --------------------------------------------------------------------------------#}
+{%- macro write_step(index, from, content, index2) -%}
+\begin{tabular}{p{4cm}p{12cm}}
+\toprule
+    {% if from != "" %}
+Step {{index2}}-{{ index }}
+{\scriptsize from \hyperref[{{ from.lower() }}]{{ curlies(from) }} }
+    {% else %}
+Step {{ index }}
+    {% endif %}
+& Description \\ \hline
+\end{tabular}
+{\scriptsize
+{{ content.description }}
+}
+    {% if content.test_data %}
+\begin{tabular}{p{3cm}p{13cm}}
+\hline
+            & Test Data \\ \hline
+\end{tabular}
+{\scriptsize
+{{ content.test_data }}
+}
+    {% endif %}
+    {% if content.example_code %}
+\begin{tabular}{p{3cm}p{13cm}}
+\hline
+            & Example Code \\ \hline
+\end{tabular}
+{\scriptsize
+{{ content.example_code }}
+}
+    {% endif %}
+\begin{tabular}{p{3cm}p{13cm}}
+\hline
+            & Expected Result \\ \hline
+\end{tabular}
+    {% if content.expected_result %}
+{\scriptsize
+{{ content.expected_result }}
+}
+    {% endif %}
+{%- endmacro -%}
+{# --------------------------------------------------------------------------------#}
+% generated from JIRA project {{ metadata.project }}
+% using template at {{ metadata.template }}.
+% Collecting ATM data from folder: "{{ metadata.folder }}"
+% using docsteady version {{ metadata.docsteady_version }}
+% Please do not edit -- update information in Jira instead
+
+\section{Test Cases Summary}\label{test-cases-summary}
+
+\begin{longtable}[]{p{2.5cm}p{12cm}p{2cm}}
+\toprule
+Test Id & Test Name\tabularnewline
+\midrule
+\endhead
+{% for tc_status in tc_status_list %}
+{% if tcs_dict[tc_status] %}
+{% for testcase in tcs_dict[tc_status] %}
+    \hyperref[{{ testcase.key.lower() }}]{{ curlies(testcase.key) }} &
+    {{ href(testcase.jira_url, testcase.name) }} &  {{ testcase.status }} \tabularnewline
+{% endfor %}
+{% endif %}
+{% endfor %}
+\bottomrule
+\end{longtable}
+
+\newpage
+
+\section{Active Test Cases}
+
+This section documents all active test cases that have a status in the Jira/ATM system of Draft, Defined or Approved.
+
+{% for tc_status in tc_status_list %}
+  {% if tcs_dict[tc_status] %}
+\subsection{ {{ tc_status }} Test Cases}
+
+    {% for testcase in tcs_dict[tc_status] %}
+\subsubsection{{ '{' }}{{ testcase.key }} - {{ testcase.name }}{{ "}" }}{{ label(testcase.key.lower()) }}
+
+\begin{longtable}[]{llllll}
+\toprule
+Version & Status & Priority & Verification Type & Owner
+\\\midrule
+{{ testcase.version }} & {{ testcase.status }} & {{ testcase.priority }} &
+{{ testcase.verification_type }} & {{ testcase.owner }}
+\\\bottomrule
+\multicolumn{6}{c}{ Open {{ href(testcase.jira_url, testcase.key) }} in Jira } \\
+\end{longtable}
+
+\paragraph{Verification Elements}\mbox{}\\
+
+      {% if testcase.requirements %}
+\begin{itemize}
+        {% for item in testcase.requirements %}
+\item {{ href(item.jira_url, item.key) }} - {{ item.summary }}
+        {% endfor %}
+\end{itemize}
+      {% else %}
+None.
+      {% endif %}
+
+\paragraph{Test Items}\mbox{}\\
+
+      {% if testcase.objective %}
+{{ testcase.objective }}
+      {% endif %}
+
+      {% if testcase.more_objectives %}
+        {% for title, objective in testcase.more_objectives.items() %}
+\subparagraph{ {{ title.replace("_", " ").title() }} }\mbox{}\\
+{{ objective }}
+        {% endfor %}
+      {% endif %}
+
+      {% if testcase.predecessors %}
+\paragraph{Predecessors}\mbox{}\\
+{{ testcase.predecessors }}
+      {% endif %}
+
+      {% if testcase.required_software or testcase.test_equipment %}
+\paragraph{Environment Needs}\mbox{}\\
+      {% endif %}
+
+      {% if testcase.required_software %}
+\subparagraph{Software}\mbox{}\\
+{{ testcase.required_software }}
+      {% endif %}
+
+      {% if testcase.test_equipment %}
+\subparagraph{Hardware}\mbox{}\\
+{{ testcase.test_equipment }}
+      {% endif %}
+
+      {% if testcase.postcondition %}
+\paragraph{Input Specification}\mbox{}\\
+{{ testcase.precondition }}
+      {% endif %}
+
+      {% if testcase.postcondition %}
+\paragraph{Output Specification}\mbox{}\\
+{{ testcase.postcondition }}
+      {% endif %}
+
+\paragraph{Test Procedure}\mbox{}\\
+      {% if testcase.test_script %}
+        {% for step in testcase.test_script %}
+          {% set rowloop = loop %}
+          {% if step.test_case_key %}
+            {% set step_testcase = testcases_map[step.test_case_key] %}
+            {% for substep in step_testcase.test_script %}
+{{ write_step(loop.index, step_testcase.key, substep, rowloop.index) }}
+            {% endfor %}
+          {% else %}
+{{ write_step(loop.index, "", step, "") }}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+{% endfor %}
+
+\newpage
+\section{Reusable Test Cases}
+
+Test cases in this section are made up of commonly encountered steps that have been factored out into modular, reusable scripts.
+These test cases are meant solely for the building of actual tests used for verification, to be inserted in test scripts via the “Call to Test” functionality in Jira/ATM.
+They streamline the process of writing test scripts by providing pre-designed steps, while also ensuring homogeneity throughout the test suite.
+These reusable modules are not themselves verifying requirements.
+Also, these test cases shall not call other reusable test cases in their script.
+
+{% if libtestcases|length > 0 %}
+
+{% for testcase in libtestcases %}
+
+\subsection{{ '{' }}{{ testcase.key }} - {{ testcase.name }}{{ "}" }}{{ label(testcase.key.lower()) }}
+
+\begin{longtable}[]{llllll}
+\toprule
+Version & Status & Priority & Verification Type & Owner
+\\\midrule
+{{ testcase.version }} & {{ testcase.status }} & {{ testcase.priority }} &
+{{ testcase.verification_type }} & {{ testcase.owner }}
+\\\bottomrule
+\multicolumn{6}{c}{ Open {{ href(testcase.jira_url, testcase.key) }} in Jira } \\
+\end{longtable}
+
+\paragraph{Test Items}\mbox{}\\
+{% if testcase.objective %}
+{{ testcase.objective }}
+{% endif %}
+
+{% if testcase.more_objectives %}
+{% for title, objective in testcase.more_objectives.items() %}
+\subparagraph{ {{ title.replace("_", " ").title() }} }\mbox{}\\
+{{ objective }}
+{% endfor %}
+{% endif %}
+
+{% if testcase.predecessors %}
+\paragraph{Predecessors}\mbox{}\\
+{{ testcase.predecessors }}
+{% endif %}
+
+{% if testcase.required_software or testcase.test_equipment %}
+\paragraph{Environment Needs}\mbox{}\\
+{% endif %}
+
+{% if testcase.required_software %}
+\subparagraph{Software}\mbox{}\\
+{{ testcase.required_software }}
+{% endif %}
+
+{% if testcase.test_equipment %}
+\subparagraph{Hardware}\mbox{}\\
+{{ testcase.test_equipment }}
+{% endif %}
+
+{% if testcase.precondition %}
+\paragraph{Input Specification}\mbox{}\\
+{{ testcase.precondition }}
+{% endif %}
+
+{% if testcase.postcondition %}
+\paragraph{Output Specification}\mbox{}\\
+{{ testcase.postcondition }}
+{% endif %}
+
+\paragraph{Test Procedure}\mbox{}\\
+{% if testcase.test_script %}
+    {% for step in testcase.test_script %}
+        {% if step.test_case_key %}
+\begin{tabular}{p{3cm}p{13cm}}
+\toprule
+Step {{ loop.index }} & Substeps Error \\ \hline
+\end{tabular}
+{\footnotesize
+Test Case includes test case {{ step.test_case_key }} in its steps.
+This is not permitted. Please reorganize the test steps in order that reusable test cases
+do not include any other test cases.
+}
+        {% else %}
+{{ write_step(loop.index, "", step, "") }}
+        {% endif %}
+    {% endfor %}
+{% endif %}
+
+{% endfor %}
+
+{% else %}
+  \textit{No reusable test cases found.}
+{% endif %}
+
+
+\newpage
+\section{Deprecated Test Cases}
+
+This section includes all test cases that have been marked as deprecated.
+These test cases will never be executed again, but have been in the past.
+For this reason it is important to keep them in the baseline as a reference.
+
+{% if deprecated|length > 0 %}
+
+{% for testcase in deprecated %}
+
+\subsection{{ '{' }}{{ testcase.key }} - {{ testcase.name }}{{ "}" }}{{ label(testcase.key.lower()) }}
+
+\begin{longtable}[]{llllll}
+\toprule
+Version & Status & Priority & Verification Type & Owner
+\\\midrule
+{{ testcase.version }} & {{ testcase.status }} & {{ testcase.priority }} &
+{{ testcase.verification_type }} & {{ testcase.owner }}
+\\\bottomrule
+\multicolumn{6}{c}{ Open {{ href(testcase.jira_url, testcase.key) }} in Jira } \\
+\end{longtable}
+
+\paragraph{Verification Elements}\mbox{}\\
+{% if testcase.requirements %}
+\begin{itemize}
+{% for item in testcase.requirements %}
+\item {{ href(item.jira_url, item.key) }} - {{ item.summary }}
+{% endfor %}
+\end{itemize}
+{% else %}
+    None.
+{% endif %}
+
+\paragraph{Test Items}\mbox{}\\
+{% if testcase.objective %}
+{{ testcase.objective }}
+{% endif %}
+
+{% if testcase.more_objectives %}
+{% for title, objective in testcase.more_objectives.items() %}
+\paragraph{ {{ title.replace("_", " ").title() }} }\mbox{}\\
+{{ objective }}
+{% endfor %}
+{% endif %}
+
+{% endfor %}
+
+{% else %}
+  \textit{No deprecated test cases found.}
+{% endif %}
+
+\newpage
+\appendix
