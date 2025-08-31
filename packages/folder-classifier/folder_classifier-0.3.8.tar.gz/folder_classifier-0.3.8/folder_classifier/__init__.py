@@ -1,0 +1,1 @@
+from folder_classifier.deploy import build_app
