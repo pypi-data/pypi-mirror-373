@@ -1,0 +1,102 @@
+# api-json-cleaner
+
+APIレスポンス由来の「汚いJSON」をキレイに整えて、安全にパース・保存するためのPythonライブラリです。日本語の文字化けや、二重エスケープ、未クォートキー、末尾カンマ、ベンダー独自フォーマットなど、実務で遭遇しがちな“微妙に壊れたJSON”を可能な範囲で自動修復します。
+
+## 特徴
+- 文字コード自動判定（charset-normalizer）で日本語の文字化けを低減／BOM除去／制御文字の除去
+- API特有の二重エスケープやHTMLエンティティ残骸を正規化（パース後の値に限定）
+- 未クォートキーや末尾カンマなどの軽症を安全に修復
+- 日本語特化の正規化（既定ON）
+  - Unicode正規化（NFKC/NFC）、改行統一（CRLF/CR→LF）
+  - 波ダッシュ（〜）の字形統一、カナ文脈のダッシュ→長音符（ー）
+  - 円記号/バックスラッシュの相互変換（オプション）、軽度の文字化け補修（ftfy・任意）
+- JSON5風の記法（コメント/単一引用符/末尾カンマなど）をフォールバックで許容（既定ON）
+- 代表的なベンダー癖に対応（基本は安全側。必要に応じて有効化）
+  - anti-JSON-hijacking “)]}',” の除去
+  - `for(;;);` / `while(1);` の除去
+  - 長さプレフィックス `123\n{...}` の除去
+  - JSONP `callbackName({...});` の中身抽出
+  - NDJSON（1行1JSON）を配列へフォールバック解釈
+  - トップレベルラップ解除（results/items/data/payload/d）・内部JSON文字列の再パース（既定OFF）
+- Pythonオブジェクトで返却／任意でJSON保存
+- CLI同梱（`apijsonclean`）
+
+## インストール
+```
+pip install .
+```
+Python 3.9+ が必要です。文字化け補修を強めたい場合は任意で `ftfy` の導入も可能です。
+
+## 使い方（Python）
+```python
+from api_json_cleaner import cleanse_and_parse, save_json
+from api_json_cleaner.cleaner import CleanOptions
+
+raw = b'\xef\xbb\xbf{"message":"Hello,\n\"world\"","data":[1,2,3,], unquoted_key: 1}'
+opts = CleanOptions(  # 必要に応じて調整
+    allow_json5=True,
+    ja_mode=True,
+    yen_backslash="preserve",  # "yen-to-backslash" や "backslash-to-yen" も可
+)
+obj = cleanse_and_parse(raw, options=opts)
+print(obj)
+# {'message': 'Hello,\n"world"', 'data': [1, 2, 3], 'unquoted_key': 1}
+
+save_json(obj, 'out.json', ensure_ascii=False, indent=2)
+```
+
+## 使い方（CLI）
+- 標準入力から受け取り整形だけ出力（パースなし）
+```
+apijsonclean --raw < dirty.json > cleaned.json
+```
+- パースして整形保存（日本語を非エスケープで保存）
+```
+apijsonclean dirty.json -o cleaned.json --no-ascii
+```
+- JSON5フォールバックを無効化（厳密モード）
+```
+apijsonclean dirty.json --no-json5
+```
+
+## API
+- `clean_json_text(data: bytes | str, options: CleanOptions | None = None) -> str`
+  - JSON文字列のクレンジングのみ（構文は検証しません）。
+- `parse(data: bytes | str, options: CleanOptions | None = None) -> Any`
+  - クレンジング後に厳密JSON→再試行→JSON5/NDJSONの順でパース。
+- `save_json(obj: Any, path: str, ensure_ascii: bool = True, indent: int = 2)`
+  - PythonデータをJSONで保存。
+- `cleanse_and_parse(data: bytes | str, save_to: str | None = None, options: CleanOptions | None = None) -> Any`
+  - まとめてクレンジング→パース→（任意で保存）。
+
+### 主な`CleanOptions`（抜粋）
+- 日本語: `ja_mode`, `unicode_normalization`, `normalize_newlines`, `unify_wave_tilde`, `unify_prolonged_sound_mark`, `unify_hyphen`, `yen_backslash`, `fix_mojibake`
+- JSON5/拡張: `allow_json5`
+- ベンダー癖: `allow_jsonp`, `allow_js_prefix`, `allow_length_prefix`, `allow_ndjson`, `unwrap_singleton_container`(既定OFF), `prefer_primary_container`(既定OFF), `parse_inner_json_strings`(既定OFF), `inner_json_max_size`
+
+### JSON5互換について
+`CleanOptions(allow_json5=True)` が既定で有効です。厳密なJSONとしての読み込みが失敗した場合に `json5` でのフォールバックを試みます（コメントや単一引用符、末尾カンマを扱えます）。厳密モードを望む場合は `allow_json5=False` または CLI で `--no-json5` を指定してください。
+
+## ベンダー固有フォーマット例
+- JSONP: `callbackName({"a":1, unq:2,})` → `{ "a": 1, "unq": 2 }`
+- NDJSON: `{"id":1}\n{"id":2}\n...` → `[{"id":1},{"id":2},...]`
+- anti-JSON-hijacking: `)]}',\n{...}` → `{...}`
+- `for(;;); { ... }` / `while(1); { ... }` → `{ ... }`
+- `123\n{...}`（長さプレフィックス） → `{...}`
+- `{"results":[...]}` や `{"data":{...}}` を本体へ展開
+- 値がJSON文字列なら安全に再パース（サイズ/深さ制限あり）
+
+## テスト
+本リポジトリにはPytestが含まれます。
+```
+python -m pytest -q -k "not slow"   # 機能テスト
+python -m pytest -q                  # すべて（slow含む）
+```
+
+## 注意
+- 本ライブラリは「完全に壊れたJSON」を魔法のように修復できるわけではありません。安全に推測可能な範囲のみ修正します。
+- 未クォートキーの修正は一般的な英数字とアンダースコア・ハイフンのみを対象としています。
+- JSON5/NDJSON/ベンダー癖対応はフォールバックで行うため、状況により無効化して厳密運用を推奨します。
+
+## ライセンス
+MIT
