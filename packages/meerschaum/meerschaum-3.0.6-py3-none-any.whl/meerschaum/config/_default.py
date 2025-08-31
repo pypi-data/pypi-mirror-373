@@ -1,0 +1,297 @@
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim:fenc=utf-8
+
+"""
+The default configuration values to write to config.yaml.
+"""
+
+import multiprocessing
+from typing import Dict, Any
+
+from meerschaum.config._paths import SQLITE_DB_PATH
+from meerschaum._internal.static import STATIC_CONFIG
+
+CONNECTOR_ATTRIBUTES: Dict[str, Dict[str, Any]] = {
+    'api': {
+        'required': [
+            'host',
+        ],
+        'optional': [
+            'port',
+            'username',
+            'password',
+            'client_id',
+            'client_secret',
+            'api_key',
+        ],
+        'default': {
+            'protocol': 'http',
+        },
+    },
+    'sql': {
+        'flavors': STATIC_CONFIG['sql']['create_engine_flavors'],
+    },
+}
+default_meerschaum_config = {
+    'instance': 'sql:main',
+    'api_instance': 'MRSM{meerschaum:instance}',
+    'repository': 'api:mrsm',
+    'connectors': {
+        'sql': {
+            'default': {},
+            'main': {
+                'username': 'mrsm',
+                'password': 'mrsm',
+                'flavor': 'timescaledb-ha',
+                'host': 'localhost',
+                'database': 'meerschaum',
+                'port': 5432,
+            },
+            'local': {
+                'flavor': 'sqlite',
+                'database': "{SQLITE_DB_PATH}",
+            },
+            'memory': {
+                'flavor': 'sqlite',
+                'database': ':memory:',
+            },
+        },
+        'api': {
+            'default': CONNECTOR_ATTRIBUTES['api']['default'],
+            'main': {
+                'host': 'localhost',
+                'port': 8000,
+            },
+            'local': {
+                'host': 'localhost',
+                'port': 8000,
+            },
+            'mrsm': {
+                'host': 'api.mrsm.io',
+                'port': 443,
+                'protocol': 'https',
+            },
+        },
+        'valkey': {
+            'main': {
+                'host': 'localhost',
+                'username': 'default',
+                'password': 'mrsm',
+                'port': 6379,
+            },
+        },
+    },
+}
+default_system_config = {
+    'connectors': {
+        'all': {
+            'pandas': 'pandas',
+        },
+        'sql': {
+            'bulk_insert': {
+                'postgresql': True,
+                'postgis': True,
+                'citus': True,
+                'timescaledb': True,
+                'timescaledb-ha': True,
+                'mssql': True,
+            },
+            'instance': {
+                'create_metadata_cache_minutes': 14400,
+                'stale_temporary_tables_minutes': 1440,
+                'temporary_target': {
+                    'prefix': '_',
+                    'transaction_id_length': 4,
+                    'separator': '_',
+                },
+            },
+            'chunksize': 100_000,
+            'poolclass': 'sqlalchemy.pool.QueuePool',
+            'create_engine': {
+                'method': 'multi',
+                'pool_size': 8,
+                'max_overflow': 12,
+                'pool_recycle': 3600,
+                'connect_args': {},
+            },
+        },
+        'api': {
+        },
+    },
+    'api': 'MRSM{api}',
+    'webterm': 'MRSM{api:webterm}',
+    'cli': {
+        'max_daemons': (multiprocessing.cpu_count() * 3),
+        'refresh_seconds': 0.1,
+        'allowed_prefixes': ['*'],
+        'disallowed_prefixes': [
+            'edit',
+            'start daemon',
+            'start job',
+            'stop job',
+            'delete job',
+            'stop daemon',
+            'show daemon',
+            'restart daemon',
+            'install',
+            'upgrade',
+            'reload',
+            'start worker',
+            'show log',
+            'python',
+            'login',
+            'executor',
+            'os ',
+            'sh ',
+            'start api',
+            'start webterm',
+            'stack',
+            'instance',
+            'debug',
+            'bootstrap',
+            'daemon',
+            'sql',
+            'register plugin',
+        ],
+    },
+    'experimental': {
+        'fetch': False,
+        'cache': True,
+        'space': False,
+        'join_fetch': False,
+        'inplace_sync': True,
+        'uv_pip': True,
+        'systemd_healthcheck': False,
+        'valkey_session_cache': True,
+        'cli_daemon': True,
+    },
+}
+
+default_api_config = {
+    'uvicorn': {
+        'app': 'meerschaum.api:app',
+        'port': 8000,
+        'host': '0.0.0.0',
+        'workers': max(int(multiprocessing.cpu_count() / 2), 1),
+        'proxy_headers': True,
+        'forwarded_allow_ips': '*',
+    },
+    'cache': {
+        'connector': 'valkey:main',
+        'session_expires_minutes': 43200,
+    },
+    'data': {
+        'max_response_row_limit': 100_000,
+        'chunks': {
+            'ttl_seconds': 1800,
+        },
+    },
+    'endpoints': {
+        'docs_in_production': True,
+    },
+    'tokens': {
+        'valid_refresh_minutes': 60,
+        'default_expiration_days': 366,
+    },
+    'permissions':       {
+        'registration': {
+            'users': True,
+            'pipes': True,
+            'plugins': True,
+        },
+        'actions': {
+            'non_admin': True,
+        },
+        'chaining': {
+            'insecure_parent_instance': False,
+            'child_apis': False,
+        },
+        'instances': {
+            'allow_multiple_instances': True,
+            'allowed_instance_keys': ['*']
+        },
+    },
+    'protocol': default_meerschaum_config['connectors']['api']['default']['protocol'],
+    'webterm': {
+        'tmux': {
+            'enabled': True,
+            'session_suffix': '_mrsm',
+        },
+        'host': '127.0.0.1',
+        'port': 8765,
+    },
+}
+
+default_pipes_config = {
+    'parameters': {
+        'columns': {
+            'datetime': None,
+        },
+        'fetch': {
+            'backtrack_minutes': 1440,
+        },
+        'verify': {
+            'bound_days': 366,
+            'chunk_minutes': 43200,
+        },
+    },
+    'attributes': {
+        'local_cache_timeout_seconds': 600.0,
+    },
+    'sync': {
+        'filter_params_index_limit': 250,
+        'exists_cache_seconds': 60.0,
+    },
+    'verify': {
+        'max_chunks_syncs': 3,
+    },
+    'autotime': {
+        'column_name_if_datetime_missing': 'ts',
+    },
+    'dtypes': {
+        'min_ratio_columns_changed_for_full_astype': 0.5,
+        'columns_types_cache_seconds': 60.0,
+    },
+    'static': {
+        'static_schema_cache_seconds': 3600.0,
+    },
+}
+default_plugins_config = {}
+
+### build default config dictionary
+default_config = {}
+default_config['meerschaum'] = default_meerschaum_config
+default_config['system'] = default_system_config
+default_config['api'] = default_api_config
+from meerschaum.config._formatting import default_formatting_config
+default_config['formatting'] = default_formatting_config
+from meerschaum.config._shell import default_shell_config
+default_config['shell'] = default_shell_config
+default_config['pipes'] = default_pipes_config
+default_config['plugins'] = default_plugins_config
+from meerschaum.config._jobs import default_jobs_config
+default_config['jobs'] = default_jobs_config
+### add configs from other packages
+try:
+    import meerschaum.config.stack
+except ImportError:
+    pass
+finally:
+    from meerschaum.config.stack import default_stack_config
+default_config['stack'] = default_stack_config
+from meerschaum.config._dash import default_dash_config
+default_config['dash'] = default_dash_config
+
+default_header_comment = """
+#####################################################################
+#                                                                   #
+#  Edit or add credentials for connectors.                          #
+#  You can read more about connectors at https://meerschaum.io.     #
+#                                                                   #
+#  Connectors inherit from `default`, and flavor-dependent defaults #
+#  are defined for SQL connectors (e.g. port 5432 for PostgreSQL).  #
+#                                                                   #
+#####################################################################
+
+"""

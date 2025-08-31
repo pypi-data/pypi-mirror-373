@@ -1,0 +1,138 @@
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim:fenc=utf-8
+
+"""
+Functions to handle debug statements
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import meerschaum as mrsm
+from meerschaum.utils.typing import Union, Optional, List
+
+
+_rich_text = None
+def _import_rich_text_for_dprint():
+    """
+    Avoid calling `attempt_import()` on every dprint.
+    """
+    global _rich_text
+    if _rich_text is not None:
+        return _rich_text
+
+    from meerschaum.utils.packages import import_rich, attempt_import
+    _ = import_rich()
+    _rich_text = attempt_import('rich.text', lazy=False)
+    return _rich_text
+
+
+def dprint(
+    msg: str,
+    leader: bool = True,
+    timestamp: bool = True,
+    package: bool = True,
+    color: Optional[Union[str, List[str]]] = None,
+    attrs: Optional[List[str]] = None,
+    nopretty: bool = False,
+    _progress: Optional['rich.progress.Progress'] = None,
+    _task: Optional[int] = None,
+    **kw
+) -> None:
+    """Print a debug message."""
+    if attrs is None:
+        attrs = []
+    if not isinstance(color, bool) and not nopretty:
+        try:
+            from meerschaum.utils.formatting import CHARSET, ANSI, colored
+        except Exception as e:
+            CHARSET, ANSI, colored = 'ascii', False, None
+        from meerschaum.config._paths import CONFIG_DIR_PATH, PERMANENT_PATCH_DIR_PATH
+        from meerschaum.config import _config
+        cf = _config('formatting')
+        _color = color
+    else:
+        CHARSET, ANSI, colored, _color, cf = 'ascii', False, None, None, None
+
+    if timestamp:
+        from meerschaum.utils.dtypes import get_current_timestamp
+        now = get_current_timestamp('ms').replace(tzinfo=None)
+    else:
+        now = None
+
+    import logging, sys, inspect
+    logging.basicConfig(format='%(message)s')
+    log = logging.getLogger(__name__)
+
+    parent_frame = inspect.stack()[1][0]
+    parent_info = inspect.getframeinfo(parent_frame)
+    parent_lineno = parent_info.lineno
+    parent_globals = parent_frame.f_globals
+    parent_package = parent_globals['__name__']
+    msg = str(msg)
+    premsg = ""
+
+    if now:
+        premsg = now.isoformat().split('T', maxsplit=1)[-1][:-3] + (' | ' if package else ':')
+    if package:
+        premsg = premsg + parent_package + ':' + str(parent_lineno)
+    if premsg:
+        premsg += "\n"
+    if leader and cf is not None:
+        try:
+            debug_leader = cf['formatting']['debug'][CHARSET]['icon'] if cf is not None else ''
+        except KeyError:
+            print(
+                "Failed to load config. " +
+                "Please delete the following directories and restart Meerschaum:"
+            )
+            for p in [CONFIG_DIR_PATH, PERMANENT_PATCH_DIR_PATH]:
+                print('  - ' + str(p))
+            debug_leader = ''
+        premsg = ' ' + debug_leader + ' ' + premsg
+
+    if ANSI:
+        if _color is not None:
+            if isinstance(_color, str):
+                _color = [_color]
+        else:
+            if cf is not None and not nopretty:
+                try:
+                    _color = cf['formatting']['debug']['ansi']['rich'] if cf is not None else {}
+                except KeyError:
+                    _color = {}
+            else:
+                _color = {}
+        if colored is not None:
+            premsg = colored(premsg, **_color)
+
+    if _progress is not None:
+        rich_text = _import_rich_text_for_dprint()
+        text = rich_text.Text.from_ansi(premsg + msg)
+        _progress.console.log(text)
+    else:
+        print(premsg + msg)
+
+
+def _checkpoint(
+    _progress: Optional['rich.progress.Progress'] = None,
+    _task: Optional[int] = None,
+    _total: Optional[int] = None,
+    **kw
+) -> None:
+    """If the `_progress` and `_task` objects are provided, increment the task by one step.
+    If `_total` is provided, update the total instead.
+    """
+    if _progress is not None and _task is not None:
+        _kw = {'total': _total} if _total is not None else {'advance': 1}
+        _progress.update(_task, **_kw)
+
+
+def trace(browser: bool = True):
+    """
+    Open a web-based debugger to trace the execution of the program.
+    """
+    from meerschaum.utils.packages import attempt_import
+    heartrate = attempt_import('heartrate')
+    heartrate.trace(files=heartrate.files.all, browser=browser)
