@@ -1,0 +1,572 @@
+.. _release_notes_v2.0.x:
+
+====================
+v2.0.x Release Notes
+====================
+
+Platform Changes
+----------------
+
+
+Platform Backend
+````````````````
+
+The Peek Admin UI now requires a login.
+
+The admin login recovery password can be found in :file:`~/peek-logic-service.home/config.json`.
+ Under the path httpServer.admin.user.
+
+----
+
+The Peek-Client and Peek-Admin services now provide SSL support, see their respective
+:file:`config.json` file, just provide valid files and SSL will be enabled.
+
+----
+
+The Peek-Client and Peek-Server services have combined the Web-App, websocket
+ and Docs HTTP servers into the one HTTP port.
+
+Docs are available at http://peekserver:port/docs
+
+
+Platform Frontend
+`````````````````
+
+This release has upgraded the following major libraries
+
+*   Angular from v6.x to v8.x
+
+*   Typescript from v2.7.x to v3.4.x
+
+*   Other smaller npmjs dependencies, such as rxjs
+
+*   An introduction of ng.ant.design, Bootstrap will be phased out.
+
+
+LDAP Authentication
+```````````````````
+
+LDAP Authentication has been improved, it now support multiple LDAP configs, including
+multiple LDAP servers, or use it just for different combinations of OUs/Groups.
+
+LDAP Configuration settings must be migrated manually
+
+
+Peek Desktop
+````````````
+
+The Peek Desktop has had a face lift, the unsightly side bar has been slimmed down
+and neatened up.
+
+The scroll bars should not appear any longer.
+
+Plugin Changes
+--------------
+
+DocDB Plugin
+`````````````
+
+The DocDB plugin has new information popups:
+
+*   Tooltip
+
+*   Summary
+
+*   Details
+
+These popups are triggered via the DocDB APIs from other plugins.
+
+Search Plugin
+`````````````
+
+The Peek search has been revamped:
+
+*   It now shows as a modal.
+
+*   The search results have been cleaned up
+
+*   The search results now show actions from the DocDB plugin popups
+
+Diagram Generic Menu
+````````````````````
+
+This plugin has been renamed from "peek_plugin_generic_diagram_menu" to
+peek_plugin_docdb_generic_menu" as it now operates on the new DocDB popups.
+
+
+Diagram
+```````
+
+The diagram plugin has the following changes.
+
+VIEW Updates:
+
+*   The top left button now lets users select the Coord Set
+
+*   The draw that used to load on the right hand side is now gone.
+    The diagram instead triggers tooltip
+    and summary popups from DocDB.
+
+
+EDIT Updates:
+
+*   Edit support now highlights a templates as just one object.
+
+*   Edit support now lets you rotate a templates
+
+*   New templates placed on the diagram are no longer invisible.
+
+
+Diagram Positioner
+``````````````````
+
+The old peek_plugin_gis_dms_positioner plugin has been resurected.
+This plugin now uses the DocDB popups, shows locate on actions
+using the coord-set names, and is smart enough to not show
+locate actions for the current coord-set.
+
+This replaces the old method of just using the result sof peek-core-search.
+
+Diagram Loaders
+```````````````
+
+All diagram loaders no longer load positions into the search db.
+
+Deployment Changes
+------------------
+
+Linux Deployment
+````````````````
+
+Nil
+
+
+macOS Deployment
+````````````````
+
+Nil
+
+iOS Deployment
+``````````````
+
+Peek v2.0.x does not have support for iOS, this will be updated in a future release
+
+
+Windows Deployment
+``````````````````
+
+Nil.
+
+.. note:: The windows deployment will change to use Windows Subsystem for Linux in
+            a future release.
+
+Migration Steps
+----------------
+
+Follow the following migration steps to rebuild the data that has changed in this
+update.
+
+Stop Peek
+`````````
+
+Start the migration tasks with Peek stopped.
+
+On Linux this can be done with ::
+
+
+    # Stop Peek
+    sudo true
+    sudo systemctl stop peek_agent_service
+    sudo systemctl stop peek_office_service
+    sudo systemctl stop peek_worker_service
+    sudo systemctl stop peek_logic_service
+
+
+Redis Conf Update
+`````````````````
+
+The Redis Publisher/Subscriber buffer overflows and causes the task to fail, and the
+agent to retry.  (See PEEK-317)
+
+Double the buffer size with the following script ::
+
+    # Prime SUDO
+    sudo true
+
+
+    OLD="client-output-buffer-limit pubsub 32mb 8mb 60"
+    NEW="client-output-buffer-limit pubsub 64mb 16mb 90"
+    F="/etc/redis.conf"
+
+    # Check what it is now
+    grep pubsub $F
+
+    # Increase the size
+    sudo sed -i "s/${OLD}/${NEW}/g" $F
+
+    # Check that the change worked
+    grep pubsub $F
+
+    # Restart Redis
+    sudo systemctl restart redis
+
+
+Enable New Plugins
+``````````````````
+
+Update the peek config.json files.
+
+#. Edit each of C:\Users\peek\peek-XXXX.home\config.json
+
+#. Add :code:`peek_plugin_diagram_positioner` just after :code:`peek_plugin_diagram_trace`
+
+#. Add :code:`peek_plugin_enmac_switching_loader` just after :code:`peek_plugin_enmac_equipment_loader`
+
+#. Rename :code:`peek_plugin_diagram_generic_menu`
+    to :code:`peek_plugin_docdb_generic_menu`
+    or on Linux: ::
+
+        sed -i 's/_diagram_generic_menu/_docdb_generic_menu/g' ~/peek*.home/config.json
+
+
+
+
+
+Truncate Load States
+````````````````````
+
+Due to the changes to the search and diagram plugins, all of the data will need to be
+reloaded.
+
+Run the following SQL, for each applicable plugin that you have installed. ::
+
+        psql <<EOF
+
+        -- Search Plugin
+        DROP SCHEMA core_search CASCADE;
+
+        -- DocDB Plugin
+        DROP SCHEMA pl_docdb CASCADE;
+
+        -- ENMAC Equipment Loader
+        TRUNCATE TABLE pl_enmac_equipment_loader."ChunkLoadState";
+
+        -- ENMAC Diagram Loader
+        DELETE FROM pl_enmac_diagram_loader."PageLoadState"
+        WHERE "scope" = 'normal';
+
+        -- ENMAC Pof GIS Location loader
+        TRUNCATE TABLE pl_enmac_gis_location_loader."ChunkLoadState";
+
+        -- GraphDB
+        TRUNCATE TABLE pl_graphdb."GraphDbChunkQueue";
+        TRUNCATE TABLE pl_graphdb."GraphDbEncodedChunk";
+        TRUNCATE TABLE pl_graphdb."GraphDbSegment";
+
+        TRUNCATE TABLE pl_graphdb."ItemKeyIndexCompilerQueue";
+        TRUNCATE TABLE pl_graphdb."ItemKeyIndexEncodedChunk";
+        TRUNCATE TABLE pl_graphdb."ItemKeyIndex";
+
+        -- ENMAC GraphDB Loader
+        TRUNCATE TABLE pl_enmac_graphdb_loader."GraphSegmentLoadState";
+
+        EOF
+
+----
+
+Start up the Peek Server manually, it will:
+
+ *  Rebuild the admin site
+
+ *  Migrate the database
+
+Open a shell or command prompt and run :code:`run_peek_logic_service`
+
+----
+
+Once the Peek Server has finished loading :
+
+#.  Load up the peek-admin-app screen at http://<peek-logic-service>:port.
+
+#.  Click the "Login" button, this will cause the server to write a recovery
+    user to the :file:`peek-logic-service.home/config.json` file with a random password.
+
+#.  Use this recovery username and password to login to the Peek Admin UI.
+
+----
+
+Once Peek Server has finished running, kill it with CTRL+C
+
+Restart Peek
+````````````
+
+Restart all Peek services.
+
+For windows, restart the :code:`peek-logic-service` service then
+start the :code:`peek-restarter` service,
+the agent, worker and client will now start.
+
+
+Reconfigure LDAP
+````````````````
+
+Reconfigure the new LDAP settings from the Peek-Admin site, under Platform -> Users
+
+#.  Enable the use of LDAP from the **General Settings** tab.
+
+#.  Configure the new LDAP settings using the new LDAP Settings tab.
+
+Reconfigure Search Properties
+`````````````````````````````
+
+Reconfigure the search properties from the Peek-Admin site, under Platform -> Search
+
+.. image:: search_props.png
+
+Reconfigure DocDB Properties
+````````````````````````````
+
+Reconfigure the search properties from the Peek-Admin site, under Plugins -> Document DB
+
+.. image:: docdb_props.png
+
+
+v2.0.5 Issues Log
+-----------------
+
+Improvement
+```````````
+
+*    [PEEK-450] - Diagram Edit - Hide overlays when in edit mode or when viewing branches.
+
+*    [PEEK-451] - Diagram Position - Provide config for default position on zoom level.
+
+*    [PEEK-452] - GraphDB - Upstream / Downstream is not implemented (It is now)
+
+*    [PEEK-453] - Diagram Tracer - Put a limit on the size of the trace
+
+Bug
+```
+
+*    [PEEK-448] - Diagram - Sometimes the diagram loads and is blank
+
+*    [PEEK-449] - Diagram - Performance fix for bounds updating
+
+
+v2.0.4 Issues Log
+-----------------
+
+Improvement
+```````````
+
+*    [PEEK-444] - DocDB Generic Menu - Add generic menu support for condition !=
+
+*    [PEEK-436] - Core Search - Add order to Object Types so the result tabs can be ordered.
+
+*    [PEEK-439] - Diagram Edit - Support undo / redo
+
+Bug
+```
+
+*    [PEEK-434] - ENMAC Diagram Loader - float() argument must be a string or a number, not 'NoneType'
+
+*    [PEEK-435] - Core Search - ujson.loads(objectPropsById[str(objectId)]) : Expected String or Unicode
+
+*    [PEEK-438] - DocDB Menu - Lookahead REXEXP doesn't work on safari
+
+*    [PEEK-440] - Diagram Trace - Only show trace if key is in graphdb
+
+*    [PEEK-447] - Diagram Edit - Saving a branch with a text disp that has no text throws an error
+
+
+v2.0.3 Issues Log
+-----------------
+
+Bug
+```
+
+*    [PEEK-408] - GraphDB / Diagram - Trace complains about colours on slow networks (first load)
+
+*    [PEEK-409] - Desktop - If there are no config links, then don't show the config link button
+
+*    [PEEK-410] - Core Device - If no device id is entered, tell the user to enter one, instead of the exception.
+
+*    [PEEK-411] - VortexPY - If VM is suspended the vortex will timeout and force a restart of Peek
+
+*    [PEEK-412] - GIS Diagram - The diagram doesn't load.
+
+*    [PEEK-413] - DocDB - If there are no properties enabled then don't show the tooltip.
+
+*    [PEEK-414] - GIS/DMS Diagram - Switching between diagrams causes lots of errors and fails.
+
+*    [PEEK-415] - Core User - Update Hooks API so desktop logins don't trigger SOAP logins to PowerOn
+
+*    [PEEK-416] - Core User - "Failed to login : not enough arguments for format string" using Ldap
+
+*    [PEEK-417] - Core Search - "key" is not apart of the search object properties in the results
+
+*    [PEEK-418] - ENMAC Equipment Loader - District Zone field to import
+
+*    [PEEK-420] - DocDB Generic Menu - Add a condition to show the menu or not, use substitutions from the Doc
+
+*    [PEEK-421] - DocDB Generic Menu - Don't show menu option if not all variables are filled.
+
+*    [PEEK-422] - Peek Server - Make recovery password show in config.json with out clicking login on site.
+
+*    [PEEK-423] - Peek Server - Memory issue on agent restart (suspected)
+
+*    [PEEK-424] - DocDB - Admin doc test screen seems not to work.
+
+*    [PEEK-425] - ENMAC Diagram Loader - Feeder colours does not work
+
+*    [PEEK-426] - Plugins have "ENMAC" in their names in the admin screen
+
+*    [PEEK-428] - "View Job" has not icon
+
+*    [PEEK-429] - Core Search - If keyword index fails, then it's never retried
+
+*    [PEEK-430] - Core Search - results with no property display poorly
+
+*    [PEEK-431] - DocDB imports None/'' values
+
+*    [PEEK-432] - ENMAC Diagram Loader - Deleting pages fails
+
+*    [PEEK-433] - Core User - Logic for not filling out an OU or a CN is buggy
+
+Improvement
+```````````
+
+*    [PEEK-427] - Create ENMAC Switching Job Loader
+
+v2.0.1 Issues Log
+-----------------
+
+Bug
+```
+
+*    [PEEK-397] - Diagram Button Menu - missing some tooltips
+
+*    [PEEK-399] - Print DMS Diagram - black sections of the canvas shown
+                    in browser print preview
+
+*    [PEEK-400] - Markup Support View Branch - ANT Theme-ing TODO
+
+*    [PEEK-401] - Markup Support View Branch Items - browser unresponsive
+
+*    [PEEK-402] - DMS Diagram Markup Support - unable to edit existing branch
+
+*    [PEEK-405] - VortexJS - unable to begin transaction (3850 disk I/O error)
+
+*    [PEEK-406] - Core User - Logging into the same browser with two browser
+                    windows causes a logout
+
+Improvement
+```````````
+
+*    [PEEK-404] - DMS Diagram Markup Support - Check Save change before close
+
+*    [PEEK-233] - PERFORMANCE - SearchIndexChunkCompilerTask is slow
+
+v2.0.0 Issues Log
+-----------------
+
+Bug
+```
+
+*    [PEEK-297] - Peek Desktop - Left Panel Appears unfinished
+
+*    [PEEK-298] - DMS Diagram - Remove DMS Diagram landing page
+
+*    [PEEK-299] - Pointer Cursor on Select World screen
+
+*    [PEEK-301] - Core Search / Diagram / ENMAC Diagram Loader - show on other world panel should use descriptions
+
+*    [PEEK-305] - Core Search - Hide panel after select show link
+
+*    [PEEK-306] - Core Search / Diagram / ENMAC Diagram Loader - hide show on link for current world
+
+*    [PEEK-308] - Core Search - Cleanup search results display
+
+*    [PEEK-309] - DocDB - Show Properties incomplete
+
+*    [PEEK-332] - Diagram Edit - Symbols need to rotate after insertion
+
+*    [PEEK-333] - Diagram Edit - Symbols to be selected as a whole
+
+*    [PEEK-334] - Peek to use HTTPS
+
+*    [PEEK-335] - Peek Server - Peek Admin Doesn't Require Authentication
+
+*    [PEEK-336] - Core-User - Restrict Users to a particular AD group
+
+*    [PEEK-347] - GraphDB - Running peek_logic_service causes massive memory leak.
+
+*    [PEEK-348] - Diagram - Add tooltips to view toolbar
+
+*    [PEEK-360] - GraphDB PowerOn Loader - unsupported 'datetime.datetime' and 'NoneType'
+
+*    [PEEK-361] - Diagram - Problem with Disp linked DispLayer not matching DispLayer in LookupService
+
+*    [PEEK-362] - Search - Property and Object Type fields are sometimes blank
+
+*    [PEEK-365] - Diagram Panel - Equipment Panel is just terrible, make it a popover
+
+*    [PEEK-367] - Peek fails to load in MS Edge
+
+*    [PEEK-393] - Diagram fails to position on, in Edge
+
+*    [PEEK-394] - IndexedDB is not open on Edge for diagram
+
+*    [PEEK-368] - Diagram Edit - Hide conductor template button in edit mode
+
+*    [PEEK-369] - Diagram Edit - Clicking on the items in the branch causes the browser to crash
+
+*    [PEEK-371] - Diagram Edit - When creating a new node, show a circle or something before the template is selected
+
+*    [PEEK-372] - Diagram - GridCache is not working.
+
+*    [PEEK-374] - Logged in on another device message
+
+*    [PEEK-379] - Diagram Generic Menu attributes not populating in URL
+
+*    [PEEK-381] - Diagram Panel - reduce the number of properties shown.
+
+*    [PEEK-383] - Diagram Panel - order the buttons shown by name
+
+*    [PEEK-385] - Diagram Panel - Too many properties shown in equipment info
+
+*    [PEEK-387] - All peek text is way to big in Peek Desktop
+
+*    [PEEK-395] - DocDB - New popups secondary menu falls below other modals (such as search)
+
+*    [PEEK-396] - Fix Angular errors preventing ng build --prod, and enable in Peek
+
+Task
+````
+
+
+*    [PEEK-341] - Add support for action delegates in proxy
+
+*    [PEEK-378] - Email NAR - disable send tab before saving
+
+Improvement
+```````````
+
+
+*    [PEEK-326] - Add support for partial keywords in search.
+
+*    [PEEK-351] - Implement websocket upgrades, so two ports are no longer required
+
+*    [PEEK-354] - Add in UI support for ant.design
+
+*    [PEEK-355] - Upgrade to Angular 8, etc
+
+*    [PEEK-366] - Core User - Add support for multiple browser logins
+
+*    [PEEK-389] - Upgrade docdb plugin properties, to reusable popups
+
+*    [PEEK-390] - Make "Show on diagram" item popup buttons dynamic again
+
+*    [PEEK-391] - Make DocDB popup screens configurable
+
+*    [PEEK-392] - Core User - Add alternate login form, suitable for desktops
