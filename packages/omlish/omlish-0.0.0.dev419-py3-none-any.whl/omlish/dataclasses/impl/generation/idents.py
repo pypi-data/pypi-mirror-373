@@ -1,0 +1,6 @@
+IDENT_PREFIX = '__dataclass__'
+
+CLS_IDENT = IDENT_PREFIX + 'cls'
+SELF_IDENT = IDENT_PREFIX + 'self'
+SELF_DICT_IDENT = IDENT_PREFIX + 'self_dict'
+VALUE_IDENT = IDENT_PREFIX + 'value'
