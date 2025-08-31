@@ -1,0 +1,88 @@
+- name: Wait for automatic system updates
+  become: true
+  shell: timeout=300; while [ $timeout -gt 0 ] && sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1; do timeout=$(echo $timeout-1|bc); sleep 1; done;
+- name: Add python setup tools
+  apt:
+    name:
+    - python3-setuptools
+    - python3-pip
+    - pigz
+    - unzip
+    - aria2
+    state: present
+    update_cache: true
+  become: true
+- name: Upgrade pip
+  ansible.builtin.shell:
+    cmd: /usr/bin/python3 -m pip install --upgrade pip setuptools pyopenssl
+  become: true
+- name: Copy scitq source
+  ansible.posix.synchronize:
+    src: "{{ scitq_src }}/"
+    dest: /opt/scitq
+    use_ssh_args: true
+  become: true
+  when: scitq_src is defined
+- name: Install scitq from source
+  ansible.builtin.shell:
+    chdir: /opt/scitq/
+    cmd: /usr/bin/python3 -m pip install .
+  become: true
+  when: scitq_src is defined
+- name: Install scitq from pip
+  ansible.builtin.shell:
+    cmd: pip3 install scitq=="{{ version }}"
+  become: true
+  when: scitq_src is not defined
+- name: Add scitq-worker service template
+  vars:
+    concurrency: 1
+    status: paused
+  template:
+    dest: "/etc/systemd/system/scitq-worker.service"
+    src: add_scitq.j2
+  become: true
+- name: Add scitq-worker configuration file
+  file:
+    path: /etc/scitq-worker.conf
+    state: touch
+  become: true
+- name: Add not permanent worker
+  lineinfile:
+    dest: "/etc/scitq-worker.conf"
+    regexp: "SCITQ_PERMANENT_WORKER"
+    line: "SCITQ_PERMANENT_WORKER=0"
+    state: present
+  become: true
+- name: Add scitq-worker service
+  systemd:
+    name: scitq-worker
+    enabled: yes
+    state: started
+  become: true
+
+- name: Check if scitq-worker service is running
+  command: systemctl is-active scitq-worker
+  register: scitq_status
+  failed_when: false
+  changed_when: false
+  become: true
+
+- name: Remove immutable flag from /scratch if scitq-worker failed
+  command: chattr -i /scratch
+  when: scitq_status.stdout != "active"
+  become: true
+
+- name: Reset permissions on /scratch if scitq-worker failed
+  file:
+    path: /scratch
+    mode: 'a+rwx'
+  when: scitq_status.stdout != "active"
+  become: true
+
+- name: Restart scitq-worker if it failed initially
+  systemd:
+    name: scitq-worker
+    state: restarted
+  when: scitq_status.stdout != "active"
+  become: true
