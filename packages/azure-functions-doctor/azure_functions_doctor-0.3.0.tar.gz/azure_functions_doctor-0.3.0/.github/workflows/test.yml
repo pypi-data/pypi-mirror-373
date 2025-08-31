@@ -1,0 +1,53 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Hatch and Make
+        run: pip install hatch make
+
+      - name: Create Hatch environment & run all checks
+        run: |
+          make install
+          make check
+
+      - name: Generate Coverage Report
+        run: make cov
+
+      - name: Upload Coverage HTML
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-html-${{ matrix.python-version }}
+          path: htmlcov/
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.9'
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          verbose: true
+          fail_ci_if_error: true
+        env:
+          CODECOV_RETRIES: 3
