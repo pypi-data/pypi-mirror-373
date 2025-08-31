@@ -1,0 +1,107 @@
+# AI-Mem Full Stack Docker Compose
+# Cloud-friendly setup with PostgreSQL for production-ready deployment
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: aimem-postgres
+    environment:
+      POSTGRES_DB: aimem
+      POSTGRES_USER: aimem_user
+      POSTGRES_PASSWORD: aimem_password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aimem_user -d aimem"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aimem-network
+    restart: unless-stopped
+
+  # Redis Cache (optional, for future features)
+  redis:
+    image: redis:7-alpine
+    container_name: aimem-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aimem-network
+    restart: unless-stopped
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aimem-backend
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://aimem_user:aimem_password@postgres:5432/aimem
+      - REDIS_URL=redis://redis:6379
+      - DEBUG=false
+      - SECRET_KEY=your-secret-key-change-in-production
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/src:/app/src  # Development hot reload
+    networks:
+      - aimem-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Web App
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: aimem-frontend
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NODE_ENV=production
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - aimem-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  aimem-network:
+    driver: bridge
