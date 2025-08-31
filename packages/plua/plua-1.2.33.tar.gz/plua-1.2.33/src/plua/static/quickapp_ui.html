@@ -1,0 +1,1714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickApp UI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f5f5;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .quickapp-container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin: 4px;
+            overflow: hidden; /* Prevent container from growing */
+        }
+
+        .quickapp-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 8px 8px 0 0;
+            font-weight: 600;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .quickapp-status {
+            font-size: 12px;
+            opacity: 0.9;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .refresh-button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 10px;
+            cursor: pointer;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+
+        .refresh-button:hover {
+            opacity: 1;
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .refresh-button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .quickapp-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            min-height: 0; /* Allow flex child to shrink */
+            overflow: hidden; /* Prevent growing beyond container */
+        }
+
+        /* Tab navigation styles */
+        .tab-navigation {
+            display: flex;
+            border-bottom: 1px solid #e1e5e9;
+            background: #f8f9fa;
+        }
+
+        .tab-button {
+            padding: 12px 20px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            color: #666;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .tab-button:hover {
+            background: #e9ecef;
+            color: #333;
+        }
+
+        .tab-button.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            background: white;
+        }
+
+        /* Tab content styles */
+        .tab-content {
+            flex: 1;
+            display: none;
+            padding: 16px;
+            overflow-y: auto;
+            min-height: 0; /* Allow flex child to shrink below content size */
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .tab-content.ui-tab {
+            padding: 16px;
+        }
+
+        .tab-content.device-tab {
+            padding: 16px;
+            font-family: monospace;
+            font-size: 12px;
+            background: #f8f9fa;
+            overflow-y: auto;
+            min-height: 0; /* Allow flex child to shrink */
+        }
+
+        .tab-content.debug-tab {
+            padding: 12px;
+            font-family: monospace;
+            font-size: 12px;
+            background: #f8f9fa;
+        }
+
+        .ui-element {
+            margin-bottom: 12px;
+            padding: 8px 12px;
+            border: 1px solid #e1e5e9;
+            border-radius: 6px;
+            background: #f8f9fa;
+            font-size: 14px;
+        }
+
+        .ui-element {
+            margin: 6px 0;
+        }
+
+        /* Match main page button styles */
+        .ui-button, .qa-ui-button {
+            background: #667eea;
+            color: #fff;
+            border: none;
+            border-radius: 7px;
+            padding: 6px 14px;
+            font-size: 0.98em;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+            box-shadow: 0 1px 3px rgba(102,126,234,0.08);
+            margin: 2px;
+        }
+
+        .ui-button:hover, .qa-ui-button:hover {
+            background: #5a6fd8;
+        }
+
+        .ui-button:active, .qa-ui-button:active {
+            background: #4c63d2;
+        }
+
+        /* Switch button styles */
+        .qa-ui-switch-btn {
+            min-width: 60px;
+            font-weight: 500;
+        }
+
+        .qa-ui-switch-btn-on {
+            background: #667eea !important;
+            color: #fff !important;
+        }
+
+        .qa-ui-switch-btn-off {
+            background: #e0e0e0 !important;
+            color: #222 !important;
+        }
+
+        .ui-label {
+            background: transparent;
+            border: none;
+            color: #333;
+            font-weight: 500;
+            margin: 6px 0;
+        }
+
+        /* Row layout for buttons */
+        .ui-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 6px 0;
+            align-items: center;
+        }
+
+        .ui-row .ui-button, .ui-row .qa-ui-button {
+            flex: 1 1 auto;
+            margin: 2px;
+        }
+
+        /* Multi-select dropdown styles - matching main page */
+        .qa-ui-multidrop {
+            display: block;
+            margin: 6px 0;
+            position: relative;
+        }
+
+        .qa-ui-multidrop-btn {
+            width: 100%;
+            box-sizing: border-box;
+            height: 36px;
+            padding: 0 32px 0 12px;
+            border-radius: 5px 5px 0 0;
+            border: 1px solid #d1d5da;
+            background: #f6f8fa;
+            font-size: 1em;
+            font-family: inherit;
+            transition: border 0.2s, box-shadow 0.2s;
+            outline: none;
+            color: #222;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            position: relative;
+        }
+
+        .qa-ui-multidrop-btn:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102,126,234,0.15);
+        }
+
+        .qa-ui-multidrop-list {
+            display: none;
+            background: #fff;
+            border: 1px solid #d1d5da;
+            border-top: none;
+            border-radius: 0 0 5px 5px;
+            box-shadow: 0 2px 8px rgba(102,126,234,0.08);
+            padding: 4px 0;
+            width: 100%;
+            box-sizing: border-box;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            z-index: 1000;
+        }
+
+        .qa-ui-multidrop.open .qa-ui-multidrop-list {
+            display: block;
+        }
+
+        .qa-ui-multidrop-list label {
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+            line-height: 1.2;
+            padding: 6px 12px;
+            font-size: 1em;
+            cursor: pointer;
+            white-space: normal;
+            position: relative;
+            z-index: 1;
+            pointer-events: auto;
+        }
+
+        .qa-ui-multidrop-list label:hover {
+            background: #f6f8fa;
+        }
+
+        .qa-ui-multidrop-list input[type="checkbox"] {
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        .ui-slider {
+            margin: 8px 0;
+        }
+
+        .ui-slider label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+
+        .ui-slider input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #ddd;
+            outline: none;
+        }
+
+        /* Slider container styles to match main page */
+        .qa-ui-slider-container {
+            margin: 6px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .qa-ui-slider {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: #ddd;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .qa-slider-value {
+            min-width: 30px;
+            text-align: center;
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .ui-switch {
+            margin: 6px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Switch button styles - single button like main page */
+        .qa-switch {
+            margin: 6px 0;
+        }
+
+        .ui-select {
+            margin: 6px 0;
+        }
+
+        .ui-select label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+
+        .ui-select select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #d1d5da;
+            border-radius: 4px;
+            background: #fff;
+        }
+
+        .debug-panel {
+            border-top: 1px solid #e1e5e9;
+            background: #f8f9fa;
+            padding: 12px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .debug-panel.hidden {
+            display: none;
+        }
+
+        /* Device info styles */
+        .device-info {
+            background: white;
+            border: 1px solid #e1e5e9;
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+
+        .device-info h4 {
+            margin: 0 0 8px 0;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .device-info pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            background: #f8f9fa;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #e9ecef;
+        }
+
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+            color: #666;
+        }
+
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 12px;
+            border-radius: 4px;
+            margin: 8px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="quickapp-container">
+        <div class="quickapp-header">
+            <div class="quickapp-title">QuickApp <span id="qa-id">Loading...</span></div>
+            <div class="quickapp-status" id="status">Connecting...
+                <button class="refresh-button" id="refresh-ui-btn" onclick="window.quickAppUI?.manualRefreshUI()" title="Refresh UI">↻</button>
+            </div>
+        </div>
+        
+        <div class="quickapp-content">
+            <div class="tab-navigation">
+                <button class="tab-button active" data-tab="ui">UI</button>
+                <button class="tab-button" data-tab="device">Device Info</button>
+                <button class="tab-button" data-tab="debug">Debug Log</button>
+            </div>
+            
+            <div class="tab-content active ui-tab" id="ui-content">
+                <div class="loading">Loading QuickApp UI...</div>
+            </div>
+            
+            <div class="tab-content device-tab" id="device-content">
+                <div class="loading">Loading device information...</div>
+            </div>
+            
+            <div class="tab-content debug-tab" id="debug-content">
+                <div style="color: #666; font-style: italic; margin-bottom: 12px;">Debug messages will appear here...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // QuickApp Desktop UI JavaScript
+        class QuickAppDesktopUI {
+            constructor() {
+                this.qaId = this.getQueryParam('qa_id');
+                this.isDesktopMode = this.getQueryParam('desktop') === 'true';
+                this.apiBase = window.location.origin;
+                this.websocket = null;
+                this.elements = {};
+                this.currentTab = 'ui';
+                
+                // Connection health tracking
+                this.lastPongTime = 0;
+                this.lastPingTime = 0;
+                this.pingTimeoutId = null;
+                this.currentStatus = 'Loading...';
+                this.hasLoadedUIBefore = false; // Track if we've loaded UI to preserve state during reconnects
+                
+                // Force cleanup of any existing state when window is reused
+                this.forceCleanup();
+                
+                this.init();
+                this.setupTabs();
+            }
+            
+            forceCleanup() {
+                // Clean up any existing WebSocket connections that might be lingering
+                if (window.previousWebSocket) {
+                    try {
+                        window.previousWebSocket.onclose = null;
+                        window.previousWebSocket.close();
+                    } catch (e) {
+                        // Ignore errors from cleaning up old connections
+                    }
+                    window.previousWebSocket = null;
+                }
+                
+                // Clear any existing intervals
+                if (window.qaHealthCheckInterval) {
+                    clearInterval(window.qaHealthCheckInterval);
+                    window.qaHealthCheckInterval = null;
+                }
+                
+                // Reset connection attempts
+                this.wsConnectionAttempts = 0;
+            }
+            
+            getQueryParam(name) {
+                const urlParams = new URLSearchParams(window.location.search);
+                return urlParams.get(name);
+            }
+            
+            async init() {
+                if (!this.qaId) {
+                    this.showError('No QuickApp ID specified');
+                    return;
+                }
+                
+                document.getElementById('qa-id').textContent = this.qaId;
+                
+                // Apply background color if specified in URL parameters
+                const bgColor = this.getQueryParam('bg_color');
+                if (bgColor) {
+                    this.applyBackgroundColor(decodeURIComponent(bgColor));
+                }
+                
+                try {
+                    // Connect WebSocket FIRST for real-time updates
+                    this.connectWebSocket();
+                    
+                    // Set up window visibility handlers for reconnection
+                    this.setupWindowVisibilityHandlers();
+                    
+                    // Load QuickApp definition
+                    await this.loadQuickApp();
+                    
+                    // Set up desktop event handler
+                    window.handleDesktopEvent = this.handleDesktopEvent.bind(this);
+                    
+                    // Close dropdowns when clicking outside
+                    document.addEventListener('click', (e) => {
+                        if (!e.target.closest('.qa-ui-multidrop')) {
+                            document.querySelectorAll('.qa-ui-multidrop.open').forEach(dropdown => {
+                                dropdown.classList.remove('open');
+                            });
+                        }
+                    });
+                    
+                } catch (error) {
+                    this.showError(`Failed to initialize: ${error.message}`);
+                }
+            }
+            
+            async loadQuickApp() {
+                this.updateStatus('Loading QuickApp...');
+                
+                try {
+                    // Use the REST API endpoint to get QuickApp info directly
+                    const response = await fetch(`${this.apiBase}/plua/quickApp/${this.qaId}/info`, {
+                        method: 'GET',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const quickAppData = await response.json();
+                    
+                    if (quickAppData && quickAppData.device) {
+                        const quickApp = {
+                            id: parseInt(this.qaId),
+                            name: quickAppData.device?.name || `QuickApp ${this.qaId}`,
+                            device: quickAppData.device,
+                            UI: quickAppData.UI || []
+                        };
+                        
+                        this.renderUI(quickApp);
+                        this.updateStatus('Connected');
+                    } else {
+                        // Fallback: QuickApp not found or not loaded
+                        this.showError(`QuickApp ${this.qaId} not found. Make sure the QuickApp is loaded in the emulator.`);
+                    }
+                } catch (error) {
+                    this.showError(`Failed to load QuickApp: ${error.message}`);
+                }
+            }
+            
+            refreshUIDataSafely() {
+                // Only refresh UI if we have a confirmed healthy connection
+                if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+                    this.debug('🔄 Cannot refresh UI: no healthy WebSocket connection');
+                    return;
+                }
+                
+                // Check if server is responsive before trying to load
+                try {
+                    this.websocket.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+                    this.lastPingTime = Date.now();
+                    
+                    // Only load UI if ping is successful
+                    setTimeout(() => {
+                        if (this.lastPongTime >= this.lastPingTime) {
+                            this.debug('🔄 Connection confirmed healthy, refreshing UI data');
+                            this.loadQuickApp().catch(error => {
+                                this.debug('❌ Failed to refresh UI data:', error);
+                                // Don't show error to user, preserve existing UI
+                            });
+                        } else {
+                            this.debug('🔄 Connection ping failed, not refreshing UI');
+                        }
+                    }, 1000);
+                    
+                } catch (error) {
+                    this.debug('🔄 Cannot ping connection, not refreshing UI:', error);
+                }
+            }
+            
+            manualRefreshUI() {
+                this.debug('🔄 Manual UI refresh requested');
+                const refreshButton = document.getElementById('refresh-ui-btn');
+                
+                // Disable button during refresh
+                if (refreshButton) {
+                    refreshButton.disabled = true;
+                    refreshButton.textContent = '⟳';
+                }
+                
+                // Force reconnect if not connected
+                if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+                    this.debug('🔄 No connection, attempting to reconnect...');
+                    this.updateStatus('Reconnecting...');
+                    this.connectWebSocket();
+                } else {
+                    // Force refresh UI data
+                    this.loadQuickApp().then(() => {
+                        this.debug('✅ Manual UI refresh completed');
+                    }).catch(error => {
+                        this.debug('❌ Manual UI refresh failed:', error);
+                        this.showError(`Failed to refresh: ${error.message}`);
+                    });
+                }
+                
+                // Re-enable button after a delay
+                setTimeout(() => {
+                    if (refreshButton) {
+                        refreshButton.disabled = false;
+                        refreshButton.textContent = '↻';
+                    }
+                }, 2000);
+            }
+            
+            renderUI(quickApp) {
+                const content = document.getElementById('ui-content');
+                content.innerHTML = '';
+                
+                // Handle the real Fibaro UI structure
+                if (quickApp.UI && quickApp.UI.length > 0) {
+                    for (const row of quickApp.UI) {
+                        const rowElement = this.createUIRow(row, quickApp.id);
+                        if (rowElement) {
+                            content.appendChild(rowElement);
+                        }
+                    }
+                } else {
+                    // No UI defined
+                    const noUI = document.createElement('div');
+                    noUI.className = 'ui-message';
+                    noUI.textContent = 'No UI elements defined for this QuickApp';
+                    content.appendChild(noUI);
+                }
+            }
+            
+            setupTabs() {
+                const tabButtons = document.querySelectorAll('.tab-button');
+                const tabContents = document.querySelectorAll('.tab-content');
+                
+                tabButtons.forEach(button => {
+                    button.addEventListener('click', () => {
+                        const targetTab = button.getAttribute('data-tab');
+                        
+                        // Update button states
+                        tabButtons.forEach(btn => btn.classList.remove('active'));
+                        button.classList.add('active');
+                        
+                        // Update content visibility
+                        tabContents.forEach(content => content.classList.remove('active'));
+                        document.getElementById(`${targetTab}-content`).classList.add('active');
+                        
+                        this.currentTab = targetTab;
+                        
+                        // Load tab-specific content if needed
+                        if (targetTab === 'device') {
+                            // Always refresh device info when tab is selected
+                            this.loadDeviceInfo();
+                        }
+                    });
+                });
+            }
+            
+            async loadDeviceInfo() {
+                const deviceContent = document.getElementById('device-content');
+                deviceContent.innerHTML = '<div class="loading">Loading device information...</div>';
+                
+                try {
+                    // Get device information from the REST API
+                    const response = await fetch(`${this.apiBase}/plua/quickApp/${this.qaId}/info`, {
+                        method: 'GET',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const quickAppData = await response.json();
+                    
+                    if (quickAppData && quickAppData.device) {
+                        // Format the device data with better structure and key properties first
+                        const device = quickAppData.device;
+                        const timestamp = new Date().toLocaleTimeString();
+                        
+                        // Key properties to show first
+                        const keyProperties = ['id', 'name', 'type', 'baseType', 'visible', 'enabled', 'interfaces', 'properties'];
+                        
+                        let keyPropsHtml = '';
+                        keyProperties.forEach(prop => {
+                            if (device[prop] !== undefined) {
+                                let value = device[prop];
+                                // Format complex objects nicely
+                                if (typeof value === 'object' && value !== null) {
+                                    value = JSON.stringify(value, null, 2);
+                                    keyPropsHtml += `<div style="margin-bottom: 8px;"><strong>${prop}:</strong><pre style="margin: 4px 0; padding: 8px; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; font-size: 11px;">${value}</pre></div>`;
+                                } else {
+                                    keyPropsHtml += `<div style="margin-bottom: 4px;"><strong>${prop}:</strong> ${value}</div>`;
+                                }
+                            }
+                        });
+                        
+                        deviceContent.innerHTML = `
+                            <div style="position: sticky; top: -16px; background: #f8f9fa; padding: 12px 0 8px 0; border-bottom: 1px solid #e1e5e9; margin: -16px -16px 12px -16px; padding-left: 16px; padding-right: 16px;">
+                                <h4 style="margin: 0;">Device Information (Updated: ${timestamp})</h4>
+                            </div>
+                            
+                            <div style="margin-bottom: 16px;">
+                                <h5 style="margin: 0 0 8px 0; color: #333;">Key Properties:</h5>
+                                ${keyPropsHtml}
+                            </div>
+                            
+                            <div>
+                                <h5 style="margin: 0 0 8px 0; color: #333;">Complete Device Structure:</h5>
+                                <pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word; background: white; padding: 12px; border: 1px solid #e9ecef; border-radius: 4px; font-size: 11px; line-height: 1.4;">${JSON.stringify(device, null, 2)}</pre>
+                            </div>
+                        `;
+                    } else {
+                        deviceContent.innerHTML = '<div class="error">Device not found</div>';
+                    }
+                } catch (error) {
+                    deviceContent.innerHTML = `<div class="error">Error loading device info: ${error.message}</div>`;
+                }
+            }
+            
+            createUIRow(row, deviceId) {
+                const rowContainer = document.createElement('div');
+                rowContainer.className = 'ui-row';
+                
+                if (Array.isArray(row)) {
+                    // Row contains multiple elements
+                    for (const element of row) {
+                        const uiElement = this.createFibaroUIElement(element, deviceId);
+                        if (uiElement) {
+                            rowContainer.appendChild(uiElement);
+                        }
+                    }
+                } else {
+                    // Single element
+                    const uiElement = this.createFibaroUIElement(row, deviceId);
+                    if (uiElement) {
+                        rowContainer.appendChild(uiElement);
+                    }
+                }
+                
+                return rowContainer;
+            }
+            
+            createFibaroUIElement(element, deviceId) {
+                if (!element || !element.type) {
+                    this.debug('Invalid element:', element);
+                    return null;
+                }
+                
+                this.debug(`Creating UI element: type=${element.type}, id=${element.id}`);
+                
+                let uiElement = null;
+                
+                switch (element.type) {
+                    case 'label':
+                        uiElement = this.createLabel(element);
+                        break;
+                        
+                    case 'button':
+                        uiElement = this.createButton(element, deviceId);
+                        break;
+                        
+                    case 'slider':
+                        uiElement = this.createSlider(element, deviceId);
+                        break;
+                        
+                    case 'switch':
+                        uiElement = this.createSwitch(element, deviceId);
+                        break;
+                        
+                    case 'select':
+                        uiElement = this.createSelect(element, deviceId);
+                        break;
+                        
+                    case 'multi':
+                        uiElement = this.createMultiSelect(element, deviceId);
+                        break;
+                        
+                    default:
+                        // Unknown element type
+                        uiElement = document.createElement('div');
+                        uiElement.className = 'ui-element unknown';
+                        uiElement.textContent = `Unknown UI element: ${element.type}`;
+                        break;
+                }
+                
+                // Set the required attributes on the actual UI element
+                if (uiElement) {
+                    uiElement.setAttribute('data-element-id', element.id || '');
+                    uiElement.setAttribute('data-element-type', element.type);
+                    this.debug(`Set attributes: data-element-id=${element.id}, data-element-type=${element.type}`);
+                }
+                
+                return uiElement;
+            }
+            
+            createLabel(element) {
+                const label = document.createElement('div');
+                label.className = 'ui-label';
+                label.innerHTML = element.text || '';
+                if (element.id) {
+                    label.setAttribute('data-element-id', element.id);
+                    this.elements[element.id] = label;
+                }
+                return label;
+            }
+            
+            createButton(element, deviceId) {
+                const button = document.createElement('button');
+                button.className = 'qa-ui-button';
+                button.textContent = element.text || 'Button';
+                button.setAttribute('data-element-id', element.id || '');
+                
+                button.onclick = () => {
+                    this.triggerUIAction(deviceId, element.id, 'onReleased');
+                };
+                
+                if (element.id) {
+                    this.elements[element.id] = button;
+                }
+                return button;
+            }
+            
+            createSlider(element, deviceId) {
+                const container = document.createElement('div');
+                container.className = 'qa-ui-slider-container';
+                container.setAttribute('data-element-id', element.id || '');
+                
+                // Only add label if text exists and is not empty
+                if (element.text && element.text.trim() !== '') {
+                    const label = document.createElement('span');
+                    label.textContent = element.text;
+                    label.style.marginRight = '8px';
+                    container.appendChild(label);
+                }
+                
+                const slider = document.createElement('input');
+                slider.type = 'range';
+                slider.className = 'qa-ui-slider qa-slider';
+                slider.min = element.min || 0;
+                slider.max = element.max || 100;
+                slider.step = element.step || 1;
+                slider.value = element.value || element.min || 0;
+                
+                // Add value display
+                const valueDisplay = document.createElement('span');
+                valueDisplay.className = 'qa-slider-value';
+                valueDisplay.textContent = slider.value;
+                container.appendChild(valueDisplay);
+                
+                container.appendChild(slider);
+                
+                slider.oninput = (e) => {
+                    valueDisplay.textContent = e.target.value;
+                    this.triggerUIAction(deviceId, element.id, 'onChanged', [parseInt(e.target.value)]);
+                };
+                
+                if (element.id) {
+                    this.elements[element.id] = container;
+                }
+                return container;
+            }
+            
+            createSwitch(element, deviceId) {
+                const button = document.createElement('button');
+                button.className = 'qa-ui-button qa-ui-switch-btn qa-switch';
+                button.textContent = element.text || 'Switch';
+                
+                const isOn = element.value === 'true' || element.value === true;
+                button.classList.add(isOn ? 'qa-ui-switch-btn-on' : 'qa-ui-switch-btn-off');
+                
+                button.onclick = () => {
+                    // Toggle state visually
+                    button.classList.toggle('qa-ui-switch-btn-on');
+                    button.classList.toggle('qa-ui-switch-btn-off');
+                    
+                    // Trigger action with true/false value
+                    const newValue = button.classList.contains('qa-ui-switch-btn-on');
+                    this.triggerUIAction(deviceId, element.id, 'onReleased', [newValue]);
+                };
+                
+                if (element.id) {
+                    this.elements[element.id] = button;
+                }
+                return button;
+            }
+            
+            createSelect(element, deviceId) {
+                const container = document.createElement('div');
+                container.className = 'ui-select';
+                container.setAttribute('data-element-id', element.id || '');
+                
+                const label = document.createElement('label');
+                label.textContent = element.text || 'Select';
+                
+                const select = document.createElement('select');
+                // Robust option handling for select elements
+                try {
+                    if (element.options && Array.isArray(element.options) && element.options.length > 0) {
+                        element.options.forEach(option => {
+                            const optionElement = document.createElement('option');
+                            optionElement.value = option.value || option;
+                            optionElement.textContent = option.text || option;
+                            if (option.value === element.value || option === element.value) {
+                                optionElement.selected = true;
+                            }
+                            select.appendChild(optionElement);
+                        });
+                    } else {
+                        // Add a placeholder option when no options are available
+                        const placeholderOption = document.createElement('option');
+                        placeholderOption.value = '';
+                        placeholderOption.textContent = 'No options available';
+                        placeholderOption.disabled = true;
+                        select.appendChild(placeholderOption);
+                    }
+                } catch (error) {
+                    console.warn('Error processing select options:', error, element.options);
+                    placeholderOption.textContent = 'No options available';
+                    placeholderOption.disabled = true;
+                    select.appendChild(placeholderOption);
+                }
+                
+                select.onchange = (e) => {
+                    this.triggerUIAction(deviceId, element.id, 'onToggled', [e.target.value]);
+                };
+                
+                container.appendChild(label);
+                container.appendChild(select);
+                
+                if (element.id) {
+                    this.elements[element.id] = container;
+                }
+                return container;
+            }
+            
+            createMultiSelect(element, deviceId) {
+                const container = document.createElement('div');
+                container.className = 'qa-ui-multidrop';
+                container.setAttribute('data-element-id', element.id || '');
+                
+                // Create dropdown button
+                const dropdownBtn = document.createElement('div');
+                dropdownBtn.className = 'qa-ui-multidrop-btn';
+                dropdownBtn.style.justifyContent = 'space-between';
+                
+                const displayText = document.createElement('span');
+                
+                // Set initial display text based on selected values
+                const selectedCount = element.values ? element.values.length : 0;
+                if (selectedCount === 0) {
+                    displayText.textContent = element.text || 'Choose...';
+                } else if (selectedCount === 1) {
+                    displayText.textContent = '1 selected';
+                } else {
+                    displayText.textContent = `${selectedCount} selected`;
+                }
+                
+                const arrow = document.createElement('span');
+                arrow.textContent = '▼';
+                arrow.style.fontSize = '12px';
+                arrow.style.color = '#666';
+                
+                dropdownBtn.appendChild(displayText);
+                dropdownBtn.appendChild(arrow);
+                container.appendChild(dropdownBtn);
+                
+                // Create dropdown list
+                const dropdownList = document.createElement('div');
+                dropdownList.className = 'qa-ui-multidrop-list';
+                
+                // Robust option handling for multi-select elements  
+                try {
+                    if (element.options && Array.isArray(element.options) && element.options.length > 0) {
+                        element.options.forEach(option => {
+                            const optionLabel = document.createElement('label');
+                            
+                            const checkbox = document.createElement('input');
+                            checkbox.type = 'checkbox';
+                            checkbox.value = option.value || option;
+                            
+                            if (element.values && element.values.includes(option.value || option)) {
+                                checkbox.checked = true;
+                            }
+                            
+                            optionLabel.appendChild(checkbox);
+                            optionLabel.appendChild(document.createTextNode(option.text || option));
+                            dropdownList.appendChild(optionLabel);
+                        });
+                    } else {
+                        // Add a placeholder when no options are available
+                        const placeholderLabel = document.createElement('div');
+                        placeholderLabel.style.padding = '8px';
+                        placeholderLabel.style.color = '#666';
+                        placeholderLabel.textContent = 'No options available';
+                        dropdownList.appendChild(placeholderLabel);
+                    }
+                } catch (error) {
+                    console.warn('Error processing multi-select options:', error, element.options);
+                    placeholderLabel.style.color = '#666';
+                    placeholderLabel.textContent = 'No options available';
+                    dropdownList.appendChild(placeholderLabel);
+                }
+                
+                container.appendChild(dropdownList);
+                
+                // Update display text based on selected options
+                const updateDisplayText = () => {
+                    const selectedOptions = Array.from(dropdownList.querySelectorAll('input[type="checkbox"]:checked'));
+                    if (selectedOptions.length === 0) {
+                        displayText.textContent = element.text || 'Choose...';
+                    } else if (selectedOptions.length === 1) {
+                        displayText.textContent = '1 selected';
+                    } else {
+                        displayText.textContent = `${selectedOptions.length} selected`;
+                    }
+                };
+                
+                // Initial display update
+                updateDisplayText();
+                
+                // Toggle dropdown
+                dropdownBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    container.classList.toggle('open');
+                    
+                    // Close other dropdowns
+                    document.querySelectorAll('.qa-ui-multidrop.open').forEach(dropdown => {
+                        if (dropdown !== container) {
+                            dropdown.classList.remove('open');
+                        }
+                    });
+                };
+                
+                // Handle option selection
+                dropdownList.onclick = (e) => {
+                    e.stopPropagation();
+                    
+                    if (e.target.type === 'checkbox') {
+                        updateDisplayText();
+                        
+                        const selectedValues = Array.from(dropdownList.querySelectorAll('input[type="checkbox"]:checked'))
+                            .map(cb => cb.value);
+                        this.triggerUIAction(deviceId, element.id, 'onToggled', [selectedValues]);
+                    }
+                };
+                
+                if (element.id) {
+                    this.elements[element.id] = container;
+                }
+                return container;
+            }
+            
+            async triggerUIAction(deviceId, elementId, eventType, values = []) {
+                this.debug(`UI Action: ${elementId}.${eventType}`, values);
+                
+                try {
+                    // Use the same FastAPI endpoint as the main page
+                    const response = await fetch('/api/plugins/callUIEvent', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            deviceID: deviceId,
+                            elementName: elementId,
+                            eventType: eventType,
+                            values: values
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`UI action failed: ${response.statusText}`);
+                    }
+                    
+                    this.debug(`UI action successful: ${elementId}.${eventType}`);
+                    
+                } catch (error) {
+                    this.debug('UI action error:', error.message);
+                    console.error('Error triggering UI action:', error);
+                }
+            }
+            
+            connectWebSocket() {
+                // Update status to show we're connecting
+                this.updateStatus('Connecting...');
+                
+                // Force close any existing WebSocket connections
+                if (this.websocket) {
+                    this.debug('🔄 Closing existing WebSocket connection');
+                    this.websocket.onopen = null;
+                    this.websocket.onmessage = null;
+                    this.websocket.onclose = null;
+                    this.websocket.onerror = null;
+                    try {
+                        this.websocket.close();
+                    } catch (e) {
+                        this.debug('Error closing WebSocket:', e);
+                    }
+                    this.websocket = null;
+                }
+                
+                // Store reference for cleanup
+                if (window.previousWebSocket) {
+                    try {
+                        window.previousWebSocket.close();
+                    } catch (e) {
+                        // Ignore
+                    }
+                }
+                
+                const wsUrl = this.apiBase.replace('http', 'ws') + '/ws';
+                this.debug(`🔌 Connecting to WebSocket: ${wsUrl} (attempt ${(this.wsConnectionAttempts || 0) + 1})`);
+                
+                this.websocket = new WebSocket(wsUrl);
+                window.previousWebSocket = this.websocket; // Store for cleanup
+                this.wsConnectionAttempts = (this.wsConnectionAttempts || 0) + 1;
+                
+                this.websocket.onopen = () => {
+                    this.debug('✅ WebSocket connected successfully');
+                    this.updateStatus('Connected');
+                    this.wsConnectionAttempts = 0; // Reset on successful connection
+                    
+                    // Only refresh UI data on first connection or if explicitly requested
+                    // This preserves the UI state when reconnecting during development
+                    if (!this.hasLoadedUIBefore) {
+                        this.debug('🔄 First connection: Loading QuickApp UI...');
+                        this.loadQuickApp().catch(error => {
+                            this.debug('❌ Failed to load UI data on first connection:', error);
+                        });
+                        this.hasLoadedUIBefore = true;
+                    } else {
+                        this.debug('🔄 Reconnected: UI state preserved for debugging');
+                    }
+                    
+                    // Immediately test the connection to make sure server is responsive
+                    setTimeout(() => {
+                        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+                            try {
+                                this.websocket.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+                                this.lastPingTime = Date.now();
+                                this.debug('🏓 Connection test ping sent');
+                            } catch (error) {
+                                this.debug('❌ Connection test ping failed:', error);
+                            }
+                        }
+                    }, 500); // Test connection after 500ms
+                };
+                
+                this.websocket.onmessage = (event) => {
+                    try {
+                        const message = JSON.parse(event.data);
+                        this.debug('📨 WebSocket message received:', message);
+                        this.handleWebSocketMessage(message);
+                    } catch (error) {
+                        this.debug('❌ WebSocket message error:', error.message);
+                    }
+                };
+                
+                this.websocket.onclose = (event) => {
+                    this.debug(`❌ WebSocket disconnected (code: ${event.code}, reason: ${event.reason})`);
+                    this.updateStatus('Disconnected');
+                    this.websocket = null;
+                    
+                    // More conservative reconnection for development workflows
+                    // Only auto-reconnect on unexpected disconnections, not when server is intentionally stopped
+                    if (event.code !== 1000 && event.code !== 1001 && this.wsConnectionAttempts < 5) {
+                        this.debug(`🔄 Will attempt reconnection in 10 seconds (attempt ${this.wsConnectionAttempts})`);
+                        this.updateStatus('Reconnecting in 10s...');
+                        setTimeout(() => this.connectWebSocket(), 10000); // Longer delay for less aggressive reconnection
+                    } else {
+                        this.debug('🔄 Not auto-reconnecting: server appears to be intentionally stopped or max attempts reached');
+                        this.updateStatus('Disconnected (use window focus to reconnect)');
+                    }
+                };
+                
+                this.websocket.onerror = (error) => {
+                    this.debug('❌ WebSocket error:', error);
+                    this.updateStatus('Connection Error');
+                };
+            }
+            
+            setupWindowVisibilityHandlers() {
+                // Handle page visibility changes (tab focus/blur)
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden) {
+                        this.debug('🔍 Page became visible, checking WebSocket health');
+                        this.checkWebSocketHealth();
+                    }
+                });
+                
+                // Handle window focus (when Safari window comes to front)
+                window.addEventListener('focus', () => {
+                    this.debug('🔍 Window gained focus, forcing reconnection check');
+                    this.forceReconnectionCheck();
+                });
+                
+                // Handle visibility change (when tab becomes visible)
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden) {
+                        this.debug('👁️ Document became visible, forcing reconnection check');
+                        this.forceReconnectionCheck();
+                    }
+                });
+                
+                // Set up simple ping/pong health check every 5 seconds
+                this.healthCheckInterval = setInterval(() => {
+                    this.simplePingCheck();
+                }, 5000);
+                
+                // Store globally for cleanup
+                window.qaHealthCheckInterval = this.healthCheckInterval;
+                
+                // Clean up on page unload
+                window.addEventListener('beforeunload', () => {
+                    this.cleanup();
+                });
+            }
+            
+            cleanup() {
+                if (this.healthCheckInterval) {
+                    clearInterval(this.healthCheckInterval);
+                    this.healthCheckInterval = null;
+                }
+                
+                if (this.pingTimeoutId) {
+                    clearTimeout(this.pingTimeoutId);
+                    this.pingTimeoutId = null;
+                }
+                
+                // Clear global intervals too
+                if (window.qaHealthCheckInterval) {
+                    clearInterval(window.qaHealthCheckInterval);
+                    window.qaHealthCheckInterval = null;
+                }
+                
+                if (this.websocket) {
+                    this.websocket.onopen = null;
+                    this.websocket.onmessage = null;
+                    this.websocket.onclose = null;
+                    this.websocket.onerror = null;
+                    try {
+                        this.websocket.close();
+                    } catch (e) {
+                        // Ignore close errors
+                    }
+                    this.websocket = null;
+                }
+                
+                // Clean up global reference
+                if (window.previousWebSocket) {
+                    try {
+                        window.previousWebSocket.close();
+                    } catch (e) {
+                        // Ignore
+                    }
+                    window.previousWebSocket = null;
+                }
+            }
+            
+            simplePingCheck() {
+                // If no WebSocket or not open, try to reconnect
+                if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+                    this.debug('🏥 No WebSocket connection, attempting to reconnect');
+                    this.updateStatus('Disconnected');
+                    this.connectWebSocket();
+                    return;
+                }
+                
+                // Send ping and set up timeout for response
+                try {
+                    this.websocket.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+                    this.lastPingTime = Date.now();
+                    this.debug('🏓 Ping sent');
+                    
+                    // If no pong received within 8 seconds, close WebSocket and reconnect
+                    this.pingTimeoutId = setTimeout(() => {
+                        if (this.lastPongTime < this.lastPingTime) {
+                            this.debug('🏥 Ping timeout - closing WebSocket and reconnecting');
+                            if (this.websocket) {
+                                this.websocket.close();
+                            }
+                            this.updateStatus('Disconnected');
+                            this.connectWebSocket();
+                        }
+                    }, 8000);
+                    
+                } catch (error) {
+                    this.debug('🏥 Ping failed, reconnecting:', error);
+                    this.updateStatus('Disconnected');
+                    this.connectWebSocket();
+                }
+            }
+            
+            forceReconnectionCheck() {
+                this.debug('🔄 Force reconnection check triggered');
+                
+                // Only try to refresh UI data if we have a healthy connection
+                if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+                    this.refreshUIDataSafely();
+                } else {
+                    // No connection, try to reconnect
+                    this.debug('🔄 No WebSocket connection, forcing reconnect');
+                    this.updateStatus('Disconnected');
+                    this.connectWebSocket();
+                }
+            }
+            
+            handleWebSocketMessage(message) {
+                // Log if window is not focused to help debug the background update issue
+                const windowFocused = document.hasFocus();
+                const pageVisible = !document.hidden;
+                this.debug(`WebSocket message (focused: ${windowFocused}, visible: ${pageVisible}):`, message);
+                
+                // Handle ping/pong for health checks
+                if (message.type === 'ping') {
+                    // Respond to server ping
+                    this.websocket.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+                    return;
+                }
+                
+                if (message.type === 'pong') {
+                    this.debug('🏓 Pong received - connection healthy');
+                    this.lastPongTime = Date.now();
+                    
+                    // Clear ping timeout since we got a response
+                    if (this.pingTimeoutId) {
+                        clearTimeout(this.pingTimeoutId);
+                        this.pingTimeoutId = null;
+                    }
+                    
+                    return;
+                }
+                
+                if (message.type === 'ui_update' && message.qa_id === parseInt(this.qaId)) {
+                    this.handleUIUpdate(message.data);
+                }
+                
+                // Handle granular view updates
+                if (message.type === 'view_update' && message.qa_id === parseInt(this.qaId)) {
+                    this.handleViewUpdate(message.element_id, message.property_name, message.value);
+                }
+                
+                // Handle window control commands
+                if (message.type === 'ui_update' && message.qa_id === parseInt(this.qaId) && 
+                    message.data && message.data.element_id === 'window_control' && 
+                    message.data.property === 'action' && message.data.value === 'close') {
+                    this.handleWindowClose();
+                }
+            }
+            
+            handleDesktopEvent(eventType, data) {
+                this.debug(`Desktop event: ${eventType}`, data);
+                
+                switch (eventType) {
+                    case 'ui_update':
+                        this.handleUIUpdate(data);
+                        break;
+                    case 'device_event':
+                        this.handleDeviceEvent(data);
+                        break;
+                }
+            }
+            
+            handleUIUpdate(data) {
+                if (data.element_id) {
+                    this.updateElement(data.element_id, data.value);
+                }
+            }
+            
+            handleViewUpdate(elementId, property, value) {
+                this.debug(`View update: ${elementId}.${property} = ${value}`);
+                
+                // Find the UI element by its data-element-id
+                const elementContainer = document.querySelector(`[data-element-id="${elementId}"]`);
+                if (!elementContainer) {
+                    this.debug(`UI element ${elementId} not found`);
+                    return;
+                }
+                
+                // Update the specific property based on element type
+                const elementType = elementContainer.getAttribute('data-element-type');
+                this.updateElementProperty(elementContainer, elementType, property, value);
+            }
+            
+            updateElementProperty(elementContainer, elementType, property, value) {
+                this.debug(`Updating ${elementType} element property ${property} to:`, value);
+                
+                switch (elementType) {
+                    case 'label':
+                        if (property === 'text') {
+                            elementContainer.innerHTML = value;
+                            // Force DOM update for background windows
+                            this.forceDOMUpdate(elementContainer);
+                        }
+                        break;
+                        
+                    case 'button':
+                        if (property === 'text') {
+                            elementContainer.textContent = value;
+                            this.forceDOMUpdate(elementContainer);
+                        }
+                        break;
+                        
+                    case 'slider':
+                        if (property === 'value') {
+                            const slider = elementContainer.querySelector('input[type="range"]');
+                            const valueDisplay = elementContainer.querySelector('.qa-slider-value');
+                            if (slider) {
+                                slider.value = value;
+                                if (valueDisplay) {
+                                    valueDisplay.textContent = value;
+                                    this.forceDOMUpdate(valueDisplay);
+                                }
+                                this.forceDOMUpdate(slider);
+                            }
+                        }
+                        break;
+                        
+                    case 'switch':
+                        if (property === 'value') {
+                            const button = elementContainer;
+                            const isOn = value === true || value === 'true';
+                            if (isOn) {
+                                button.className = 'qa-ui-button qa-ui-switch-btn qa-switch qa-ui-switch-btn-on';
+                            } else {
+                                button.className = 'qa-ui-button qa-ui-switch-btn qa-switch qa-ui-switch-btn-off';
+                            }
+                            this.forceDOMUpdate(button);
+                        }
+                        break;
+                        
+                    case 'select':
+                        if (property === 'selectedItem' || property === 'value') {
+                            const select = elementContainer.querySelector('select');
+                            if (select) {
+                                select.value = value;
+                                this.forceDOMUpdate(select);
+                            }
+                        } else if (property === 'options') {
+                            const select = elementContainer.querySelector('select');
+                            if (select && Array.isArray(value) && value.length > 0) {
+                                select.innerHTML = '';
+                                value.forEach(option => {
+                                    const optionElement = document.createElement('option');
+                                    optionElement.value = option.value || option;
+                                    optionElement.textContent = option.text || option;
+                                    select.appendChild(optionElement);
+                                });
+                                this.forceDOMUpdate(select);
+                            } else if (select) {
+                                // Handle empty options array
+                                select.innerHTML = '';
+                                const placeholderOption = document.createElement('option');
+                                placeholderOption.value = '';
+                                placeholderOption.textContent = 'No options available';
+                                placeholderOption.disabled = true;
+                                select.appendChild(placeholderOption);
+                                this.forceDOMUpdate(select);
+                            }
+                        }
+                        break;
+                        
+                    case 'multi':
+                        if (property === 'selectedItems' || property === 'values') {
+                            const checkboxes = elementContainer.querySelectorAll('input[type="checkbox"]');
+                            const selectedValues = Array.isArray(value) ? value : [];
+                            
+                            checkboxes.forEach(checkbox => {
+                                checkbox.checked = selectedValues.includes(checkbox.value);
+                            });
+                            
+                            // Update display text
+                            const displayText = elementContainer.querySelector('.qa-ui-multidrop-btn span');
+                            if (displayText) {
+                                if (selectedValues.length === 0) {
+                                    displayText.textContent = 'Choose...';
+                                } else if (selectedValues.length === 1) {
+                                    displayText.textContent = '1 selected';
+                                } else {
+                                    displayText.textContent = `${selectedValues.length} selected`;
+                                }
+                                this.forceDOMUpdate(displayText);
+                            }
+                            this.forceDOMUpdate(elementContainer);
+                        } else if (property === 'options') {
+                            const dropdownList = elementContainer.querySelector('.qa-ui-multidrop-list');
+                            if (dropdownList) {
+                                // Robust option handling for dynamic updates
+                                try {
+                                    if (value && Array.isArray(value) && value.length > 0) {
+                                        dropdownList.innerHTML = '';
+                                        value.forEach(option => {
+                                            const optionLabel = document.createElement('label');
+                                            const checkbox = document.createElement('input');
+                                            checkbox.type = 'checkbox';
+                                            checkbox.value = option.value || option;
+                                            optionLabel.appendChild(checkbox);
+                                            optionLabel.appendChild(document.createTextNode(option.text || option));
+                                            dropdownList.appendChild(optionLabel);
+                                        });
+                                        this.forceDOMUpdate(dropdownList);
+                                    } else {
+                                        // Handle empty or invalid options
+                                        dropdownList.innerHTML = '';
+                                        const placeholderLabel = document.createElement('div');
+                                        placeholderLabel.style.padding = '8px';
+                                        placeholderLabel.style.color = '#666';
+                                        placeholderLabel.textContent = 'No options available';
+                                        dropdownList.appendChild(placeholderLabel);
+                                        this.forceDOMUpdate(dropdownList);
+                                    }
+                                } catch (error) {
+                                    console.error('Error updating multi-select options:', error);
+                                    console.error('Value received:', value);
+                                    // Fallback: clear the dropdown and show error message
+                                    dropdownList.innerHTML = '';
+                                    const errorLabel = document.createElement('div');
+                                    errorLabel.style.padding = '8px';
+                                    errorLabel.style.color = '#ff0000';
+                                    errorLabel.textContent = 'Error loading options';
+                                    dropdownList.appendChild(errorLabel);
+                                    this.forceDOMUpdate(dropdownList);
+                                }
+                            }
+                        }
+                        break;
+                        
+                    default:
+                        this.debug(`Unknown element type: ${elementType}`);
+                }
+            }
+            
+            forceDOMUpdate(element) {
+                // Force DOM update for background windows using a simple but effective approach
+                try {
+                    // Force a repaint by briefly changing and restoring the opacity
+                    const originalOpacity = element.style.opacity;
+                    element.style.opacity = '0.999';
+                    // Use setTimeout instead of requestAnimationFrame for better background window support
+                    setTimeout(() => {
+                        element.style.opacity = originalOpacity || '';
+                    }, 1);
+                } catch (error) {
+                    // If forcing DOM update fails, just continue
+                    this.debug('Failed to force DOM update:', error);
+                }
+            }
+            
+            handleWindowClose() {
+                this.debug('Received window close command');
+                this.updateStatus('Closing...');
+                
+                // Show a brief closing message in the UI tab
+                const content = document.getElementById('ui-content');
+                content.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #666;">
+                        <h3>QuickApp Closing</h3>
+                        <p>This window is being closed by plua...</p>
+                    </div>
+                `;
+                
+                // Close the window after a brief delay
+                setTimeout(() => {
+                    // Try multiple methods to close the window
+                    try {
+                        window.close();
+                    } catch (e) {
+                        // If window.close() doesn't work, try other methods
+                        if (window.parent && window.parent !== window) {
+                            window.parent.close();
+                        } else {
+                            // Last resort: navigate away
+                            window.location.href = 'about:blank';
+                        }
+                    }
+                }, 1000);
+            }
+            
+            handleDeviceEvent(data) {
+                this.debug('Device event:', data);
+                // Handle device state changes
+            }
+            
+            updateElement(elementId, value) {
+                const element = this.elements[elementId];
+                if (element) {
+                    // Check if this is a label element and use innerHTML for HTML rendering
+                    if (element.classList && element.classList.contains('ui-label')) {
+                        element.innerHTML = value;
+                    } else {
+                        element.textContent = value;
+                    }
+                }
+            }
+            
+            updateStatus(status) {
+                this.currentStatus = status;
+                document.getElementById('status').textContent = status;
+                this.debug(`📊 Status updated: ${status}`);
+            }
+            
+            applyBackgroundColor(color) {
+                console.log('PLua: Applying background color:', color);
+                
+                // Create or update a style element for dynamic background colors
+                let styleElement = document.getElementById('plua-bg-style');
+                if (!styleElement) {
+                    styleElement = document.createElement('style');
+                    styleElement.id = 'plua-bg-style';
+                    styleElement.type = 'text/css';
+                    document.head.appendChild(styleElement);
+                }
+                
+                // Parse color input
+                let cssColor = color.trim();
+                
+                // If it's an RGB string like "100,100,100", convert to rgb() format
+                if (cssColor.includes(',') && cssColor.replace(/[,\s\d]/g, '') === '') {
+                    const rgbParts = cssColor.split(',').map(part => part.trim());
+                    if (rgbParts.length === 3) {
+                        cssColor = `rgb(${rgbParts[0]}, ${rgbParts[1]}, ${rgbParts[2]})`;
+                    }
+                }
+                
+                // Apply CSS with high specificity to override existing styles
+                styleElement.textContent = `
+                    .tab-content.ui-tab {
+                        background-color: ${cssColor} !important;
+                    }
+                    .ui-element {
+                        background-color: rgba(255,255,255,0.8) !important;
+                        border: 1px solid rgba(0,0,0,0.15) !important;
+                    }
+                    #ui-content {
+                        background-color: ${cssColor} !important;
+                    }
+                `;
+                
+                console.log('PLua: Background color applied successfully');
+            }
+
+            showError(message) {
+                const content = document.getElementById('ui-content');
+                content.innerHTML = `<div class="error">${message}</div>`;
+                this.updateStatus('Error');
+            }
+            
+            debug(message, data = null) {
+                const debugContent = document.getElementById('debug-content');
+                
+                const timestamp = new Date().toLocaleTimeString();
+                const logEntry = document.createElement('div');
+                logEntry.innerHTML = `<strong>${timestamp}</strong>: ${message}`;
+                logEntry.style.marginBottom = '4px';
+                logEntry.style.padding = '4px';
+                logEntry.style.borderBottom = '1px solid #e9ecef';
+                
+                if (data) {
+                    logEntry.innerHTML += ` <em style="color: #666;">${JSON.stringify(data)}</em>`;
+                }
+                
+                // Remove the placeholder message if it exists
+                const placeholder = debugContent.querySelector('[style*="font-style: italic"]');
+                if (placeholder) {
+                    placeholder.remove();
+                }
+                
+                debugContent.appendChild(logEntry);
+                debugContent.scrollTop = debugContent.scrollHeight;
+                
+                console.log(`[QuickApp ${this.qaId}]`, message, data);
+            }
+        }
+        
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            window.quickAppUI = new QuickAppDesktopUI();
+        });
+    </script>
+</body>
+</html>
