@@ -1,0 +1,2 @@
+class LoadConfigurationException(Exception):
+    pass
