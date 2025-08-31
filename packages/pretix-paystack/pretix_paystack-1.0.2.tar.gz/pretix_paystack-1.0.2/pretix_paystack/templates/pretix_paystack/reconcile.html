@@ -1,0 +1,98 @@
+{% extends "pretixcontrol/event/base.html" %}
+{% load i18n %}
+{% load bootstrap3 %}
+
+{% block title %}{% trans "Paystack Reconciliation" %}{% endblock %}
+
+{% block content %}
+    <h1>{% trans "Paystack Payment Reconciliation" %}</h1>
+    
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <h3 class="panel-title">{% trans "Pending Payments" %}</h3>
+        </div>
+        <div class="panel-body">
+            <p>{% trans "This page shows payments that are pending verification with Paystack. You can manually trigger reconciliation for all payments or individual payments." %}</p>
+            
+            <form method="post" class="form-inline">
+                {% csrf_token %}
+                <button type="submit" name="reconcile_all" class="btn btn-primary">
+                    <i class="fa fa-refresh"></i> {% trans "Reconcile All Pending Payments" %}
+                </button>
+            </form>
+            
+            <hr>
+            
+            {% if pending_payments %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>{% trans "Order" %}</th>
+                                <th>{% trans "Payment ID" %}</th>
+                                <th>{% trans "Amount" %}</th>
+                                <th>{% trans "Created" %}</th>
+                                <th>{% trans "Paystack Reference" %}</th>
+                                <th>{% trans "Status" %}</th>
+                                <th>{% trans "Actions" %}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for payment in pending_payments %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url "control:event.order" organizer=event.organizer.slug event=event.slug code=payment.order.code %}">
+                                            {{ payment.order.code }}
+                                        </a>
+                                    </td>
+                                    <td>{{ payment.local_id }}</td>
+                                    <td>{{ payment.amount|floatformat:2 }} {{ event.currency }}</td>
+                                    <td>{{ payment.created|date:"Y-m-d H:i" }}</td>
+                                    <td>
+                                        {% if payment.info_data.paystack_reference %}
+                                            <code>{{ payment.info_data.paystack_reference }}</code>
+                                        {% else %}
+                                            <em>{% trans "No reference" %}</em>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="label {% if payment.state == 'created' %}label-warning{% elif payment.state == 'pending' %}label-info{% else %}label-default{% endif %}">
+                                            {{ payment.get_state_display }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <form method="post" style="display: inline;">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="payment_id" value="{{ payment.pk }}">
+                                            <button type="submit" name="reconcile_payment" class="btn btn-sm btn-default">
+                                                <i class="fa fa-refresh"></i> {% trans "Reconcile" %}
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="alert alert-success">
+                    <i class="fa fa-check"></i> {% trans "No pending payments found. All payments are up to date!" %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="panel panel-info">
+        <div class="panel-heading">
+            <h3 class="panel-title">{% trans "Webhook Configuration" %}</h3>
+        </div>
+        <div class="panel-body">
+            <p>{% trans "Make sure your Paystack webhook is configured with the following URL:" %}</p>
+            <code>{{ request.build_absolute_uri }}{% url "plugins:pretix_paystack:webhook" organizer=event.organizer.slug event=event.slug %}</code>
+            
+            <p class="help-block">
+                {% trans "Configure this URL in your Paystack dashboard under Settings → Webhooks. Make sure to set the webhook secret in the plugin settings." %}
+            </p>
+        </div>
+    </div>
+{% endblock %}
