@@ -1,0 +1,110 @@
+Metadata-Version: 2.4
+Name: landlab-triangle
+Version: 0.0.2
+Summary: Create unstructured Landlab grids using Jonathan Shewchuk's Triangle mesh generation software
+Author-email: Ethan <ethan.g.pierce@dartmouth.edu>
+License-Expression: MIT
+License-File: LICENSE
+Keywords: grid,landlab,mesh,triangle,unstructured
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Requires-Python: >=3.13
+Requires-Dist: geopandas>=1.1.1
+Requires-Dist: landlab>=2.10.1
+Requires-Dist: shapely>=2.1.1
+Requires-Dist: triangle
+Description-Content-Type: text/markdown
+
+# landlab-triangle
+
+[**View Landlab Documentation**](https://landlab.readthedocs.io/)
+
+[**View triangle Documentation**](https://www.cs.cmu.edu/~quake/triangle.html)
+
+This repository adds `TriangleModelGrid`, a new Landlab grid type that enables unstructured triangular meshes. Unlike Landlab's standard structured grids, `TriangleModelGrid` allows for complex geometries with irregular boundaries, interior holes, and variable grid resolution.
+
+Uses Jonathan Shewchuk's Triangle software.
+
+## Installation
+
+### Installing from PyPI
+
+```bash
+pip install triangle landlab-triangle
+```
+
+## Usage
+
+### Option 1: direct initialization
+
+```python
+from landlab_triangle import TriangleModelGrid
+import numpy as np
+
+# Create a grid directly with exterior coordinates and optional holes
+exterior_y = [-1.0, -1.0, 11.0, 11.0]
+exterior_x = [0.0, 10.0, 10.0, 0.0]
+
+holes = np.array([[5.0, 5.0]])  # Optional: define interior holes
+
+grid = TriangleModelGrid(
+    exterior_y_and_x=(exterior_y, exterior_x),
+    holes=holes,
+    triangle_opts="pqa1Devjz"
+)
+
+print(f"Number of nodes: {grid.number_of_nodes}")
+print(f"Number of cells: {grid.number_of_cells}")
+print(f"Number of holes: {len(grid._holes)}")
+```
+
+### Option 2: from a dictionary
+
+```python
+from landlab_triangle import TriangleModelGrid
+
+# Create a grid from a dictionary with "x" and "y" keys
+grid_params = {
+    "x": [0.0, 10.0, 10.0, 0.0],
+    "y": [0.0, 0.0, 10.0, 10.0],
+    "triangle_opts": "pqDevjz"
+}
+
+grid = TriangleModelGrid.from_dict(grid_params)
+```
+
+### Option 3: from a shapefile
+
+```python
+from landlab_triangle import TriangleModelGrid
+
+# Create a grid from a shapefile, GeoJSON, or other supported format
+grid = TriangleModelGrid.from_shapefile(
+    "path/to/polygon.geojson",
+    triangle_opts="pqDevjz",
+    timeout=10
+)
+
+# The grid automatically handles holes defined in the input file
+print(f"Number of holes: {len(grid._holes)}")
+```
+
+## Triangle options
+
+The `triangle_opts` parameter controls the behavior of the Triangle meshing software. Common options include:
+
+- **q**: Quality mesh generation - ensures no angles smaller than N degrees (defaults to 20)
+- **a**: Area constraint - limits the maximum area of triangles
+
+**Timeout**: The `timeout` parameter (in seconds) prevents the meshing process from running indefinitely if Triangle encounters complex geometries.
+
+### Example with area constraint
+
+```python
+# Create a grid with maximum triangle area of 0.1
+grid = TriangleModelGrid(
+    exterior_y_and_x=(exterior_y, exterior_x),
+    triangle_opts="pqa0.1Devjz"  # 'a0.1' sets max area to 0.1
+)
+```
