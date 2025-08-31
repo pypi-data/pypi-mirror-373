@@ -1,0 +1,460 @@
+{% extends "pagetemplate.j2.html" %}
+
+{% set traceback = imp0rt('traceback') %}
+{% set json = imp0rt('json') %}
+{% set os = imp0rt('os') %}
+{% set unitsofmeasure = imp0rt('kaithem.src.unitsofmeasure') %}
+{% set tagpoints = imp0rt('kaithem.src.tagpoints') %}
+{% set modules_state = imp0rt('kaithem.src.modules_state') %}
+{% set auth = imp0rt('kaithem.src.auth') %}
+{% set pages = imp0rt('kaithem.src.pages') %}
+{% set devices = imp0rt('kaithem.src.devices') %}
+{% set devices_interface = imp0rt('kaithem.src.devices_interface') %}
+
+{% block body %}
+
+<style>
+    .inputtable {
+        width: 100%;
+    }
+
+    .tagbox {
+        text-align: center;
+    }
+    .je-textarea {
+        height: 8rem;
+    }
+</style>
+<script type="module" src="/static/js/widget.mjs?cache_version=c6d0887e-af6b-11ef-af85-5fc2044b2ae0"></script>
+<script src="/static/js/thirdparty/mpegts.js"></script>
+
+<link href="/static/js/thirdparty/croppr/croppr.css" rel="stylesheet">
+<script src="/static/js/thirdparty/croppr/croppr.js"></script>
+
+
+<script src="/static/js/thirdparty/jquery3.js"></script>
+<script src="/static/js/thirdparty/editTable/editTable.min.js"></script>
+<script src="/static/js/thirdparty/showdown.min.js"></script>
+
+
+
+<script src="/static/js/thirdparty/evm/jsfeat.js"></script>
+<script src="/static/js/thirdparty/evm/compat.js"></script>
+<script src="/static/js/thirdparty/evm/color.js"></script>
+
+<link rel="stylesheet" href="/static/js/thirdparty/editTable/editTable.min.css">
+
+<datalist id="k_bindtype">
+    <option>auto</option>
+    <option>numeric</option>
+    <option>string</option>
+    <option value="object">JSON-like</option>
+</datalist>
+
+<datalist id="k_tags">
+    <option value="=1+2*5">Simple expression</option>
+    <option value="=tv('/exampleNumericTag')+5">Expression with tag val</option>
+    <option value="=stv('/exampleStringTag')">Expression with string tag val</option>
+
+    {% for i in tagpoints.allTagsAtomic %}
+    <option>{{ i| escape }}</option>
+    {% endfor %}
+</datalist>
+
+<datalist id="k_tags_writable">
+    {% for i in tagpoints.allTagsAtomic %}
+    {% if tagpoints.allTagsAtomic[i]().writable %}
+    <option>{{ i| escape }}</option>
+    {% endif %}
+    {% endfor %}
+</datalist>
+
+
+<datalist id="k_tlocal">
+    {% for i in obj.tagPoints %}
+    <option>{{ i| escape }}</option>
+    {% endfor %}
+</datalist>
+
+
+<datalist id="k_modules">
+    {% for i in modules_state.ActiveModules %}
+    <option>{{ i| escape }}</option>
+    {% endfor %}
+</datalist>
+
+<datalist id="k_perms">
+    <option>write_devices</option>
+    <option>view_devices</option>
+
+    {% for i in pages.sorted(auth.Permissions.keys()) %}
+    <option>{{ i| escape }}</option>
+    {% endfor %}
+</datalist>
+
+<h1 style="text-align: center;">Device Inspector: {{ obj.title }}
+</h1>
+
+
+<main>
+    <div style="flex-basis: 20%; text-align: center;">
+        <div class="decorative-image-settings decorative-image"
+            style="height: 22em; min-width: 22em; max-width: 45vw; margin: auto;"></div>
+    </div>
+
+    <section class="window padding w-full">
+
+        {% if not hasattr(obj,'_kaithem_is_subdevice') %}
+        <form method="post" action="/devices/discoveryStep/{{ url(data.get('type','')) }}/{{ url(name) }}">
+            <button type="submit">Search for auto-setup configurations</button>
+        </form>
+        {% endif %}
+        <form method="POST" action="/devices/updateDevice/{{ url(name) }}" id="mainform">
+            <details>
+                <summary>
+                    <b>Save Location</b>
+                </summary>
+
+                <table border="1" class="w-full">
+
+                    <tr>
+                        <td>Store settings in Module</td>
+                        <td><input type="text" required list="k_modules" name="temp.kaithem.store_in_module"
+                                value="{{ obj.parent_module or '' | escape }}"></td>
+                    </tr>
+                    <tr>
+                        <td>Resource Name(blank=use device name)</td>
+                        <td><input type="text" name="temp.kaithem.store_in_resource"
+                                value="{{ obj.parent_resource or ''| escape }}">
+                        </td>
+                    </tr>
+                </table>
+            </details>
+
+
+            {% if hasattr(obj,"device_type") and obj.device_type == "ESPHomeDevice" %}
+            <details>
+                <summary><b>ESPHome Web UI</b></summary>
+                Only works if this page is loaded over plain HTTP, due to browser restrictions.
+                Use the <a href="http://{{ data.get('device.hostname','') }}">Direct link</a> if the
+                embedded viewer fails.
+                <iframe src="http://{{ data.get('device.hostname','') }}" class="embedpage"
+                    style="width: 98%; height: 30em;"></iframe>
+            </details>
+            {% endif %}
+
+
+            <input type="hidden" name="type" value="{{ data.get('type','') }}">
+
+            <details>
+                <summary>
+                    <b><i class="mdi mdi-help-circle-outline"></i>Help</b>
+                </summary>
+                {% if hasattr(obj,'description') and obj.description %}
+
+                <p id="desc">{{ pages.str(obj.description)[:8192]| escape }}</p>
+
+                <script>
+                    showdown.setFlavor('github');
+                    var c = document.querySelector("#desc").innerHTML;
+                    var converter = new showdown.Converter();
+                    document.querySelector("#desc").innerHTML = converter.makeHtml(c);
+                </script>
+
+                {% endif %}
+
+                {% if hasattr(obj,'readme') and obj.readme %}
+                <h3>Readme</h3>
+
+                <div class="max-h-12rem scroll border" id='readme'>
+                    {{ obj.readme| escape }}
+                </div>
+
+                <script>
+                    showdown.setFlavor('github');
+                    var c = document.querySelector("#readme").innerHTML;
+                    var converter = new showdown.Converter();
+                    document.querySelector("#readme").innerHTML = converter.makeHtml(c);
+                </script>
+                {% endif %}
+            </details>
+
+
+            <title>{{ name| escape }}</title>
+
+            <details>
+
+                <summary>
+                    <b><i class="mdi mdi-cog-outline"></i>Settings</b>
+                </summary>
+
+
+
+                <input id="jsoninput" type="hidden" name="json">
+                <script src="/static/js/thirdparty/jsoneditor.min.js"></script>
+                <div id="editor-container"></div>
+
+               <script>
+                const config = {
+                    schema: {{obj.get_full_schema()|tojson}},
+                    disable_array_delete_all_rows: true,
+                    array_controls_top: true,
+                    disable_array_delete_last_row: true,
+                    disable_edit_json: true,
+                    ajax: true,
+                    theme: "barebones",
+               }
+                var editor = new JSONEditor(document.querySelector('#editor-container'), config)
+                window.editor = editor
+
+                const v= async () => {
+                    await editor.promise
+                    editor.setValue({{data|tojson}})
+                }
+                v()
+              </script>
+            </details>
+
+
+            {% if obj.alerts %}
+
+            <details open>
+                <summary>
+                    <b><i class="mdi mdi-text-chat"></i>Alerts</b>
+                </summary>
+
+
+                <table border="1" style="width:100%">
+                    <tr>
+                        <th>Name</th>
+                        <th>Priority</th>
+                        <th>Status</th>
+                    </tr>
+
+                    {% for i in obj.alerts %}
+                    {% if obj.alerts[i].sm.state=='normal' %}
+                    <tr class="success">
+                    {% else %}
+                    <tr class="error">
+                    {% endif %}
+                        <td>{{ i| escape }}</td>
+                        <td>
+                            {% if hasattr(obj,'_noset_alarmPriority') %}
+                            {{ obj.alerts[i].priority }}
+                            {% else %}
+                            <select name="alerts.{{ i }}.priority">
+                                <option value="debug" {{ "selected" if obj.alerts[i].priority=="debug" else "" }}>
+                                    Debug</option>
+                                <option value="info" {{ "selected" if obj.alerts[i].priority=="info" else "" }}>
+                                    Info</option>
+                                <option value="warning" {{ "selected" if obj.alerts[i].priority=="warning" else "" }}>
+                                    Warning</option>
+                                <option value="error" {{ "selected" if obj.alerts[i].priority=="error" else "" }}>
+                                    Error</option>
+                                <option value="critical" {{ "selected" if obj.alerts[i].priority=="critical" else "" }}>
+                                    Critical</option>
+                            </select>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if obj.alerts[i].sm.state=='normal' %}
+
+                            <i class="mdi mdi-check"></i>{{obj.alerts[i].sm.state }}
+
+                            {% else %}
+
+                            <i class="mdi mdi-alert"></i>{{obj.alerts[i].sm.state }}
+                            {% endif %}
+
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </table>
+
+                {% endif %}
+            </details>
+
+            {% if obj.get_config_folder(create=False) %}
+            <details>
+                <summary>
+                    <b><i class="mdi mdi-file-alt"></i>Config Folder</b>
+                </summary>
+                <a class="button" href="/settings/files/{{ url(obj.get_config_folder()) }}"><i
+                        class="mdi mdi-folder"></i>Browse</a>
+            </details>
+            {% endif %}
+
+
+            {% if hasattr(obj,'metadata') and obj.metadata %}
+            <details>
+                <summary>
+                    <b><i class="mdi mdi-text-chat"></i>Metadata</b>
+                </summary>
+                <table border="1" style="width:100%">
+                    <tr>
+                        <th>Name</th>
+                        <th>Value</th>
+                    </tr>
+
+                    {% for i in obj.metadata %}
+                    <tr>
+                        <td>
+                            {{ i| escape }}
+                        </td>
+                        <td>
+                            {{ obj.metadata[i]| escape }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </table>
+
+                {% endif %}
+            </details>
+
+            <b><i class="mdi mdi-chart-flow-2"></i>Tag Points</b>
+
+            <script>
+
+                triggerCounters = {}
+            </script>
+            <div class="flex-row gaps">
+                {% for i in obj.tagPoints %}
+                {{devices_interface.render_device_tag(obj,i) | safe}}
+                {% endfor %}
+            </div>
+
+
+            <h2>Messages</h2>
+            {% if hasattr(obj,'logWindow') %}
+            {{ obj.logWindow.render() }}
+            {% endif %}
+
+
+
+            <hr>
+            <input type="submit" value="Save settings">
+
+        </form>
+
+
+
+    </section>
+
+
+
+
+    <div style="flex-basis: 20%; min-width: 12em;"></div>
+</main>
+
+<script type="module">
+    import { APIWidget } from '/static/js/widget.mjs?cache_version=c6d0887e-af6b-11ef-af85-5fc2044b2ae0'
+
+    let _generic_ws_channel = new APIWidget("{{obj._generic_ws_channel.uuid}}")
+    let _admin_ws_channel = new APIWidget("{{obj._admin_ws_channel.uuid}}")
+
+    globalThis._generic_ws_channel = _generic_ws_channel
+
+    var fakesOn = false;
+    function setFake(k, v) {
+        if (!fakesOn) {
+            fakesOn = confirm("Enable faking input values?");
+        }
+        if (fakesOn) {
+            _generic_ws_channel.send(['fake', k, v])
+        }
+
+    }
+
+    globalThis.setFake = setFake
+
+    function send_ui_message(m) {
+        _admin_ws_channel.send(m)
+    }
+
+    function set_ui_message_handler(f) {
+        _admin_ws_channel.upd = f
+    }
+
+    globalThis.send_ui_message = send_ui_message
+    globalThis.set_ui_message_handler = set_ui_message_handler
+
+</script>
+
+
+
+
+<script type="text/javascript">
+    // lets do some fun
+
+
+    function startEVM(video, canvas) {
+
+        canvas.style.display = "block"
+
+        var alpha = 10,
+            lambda_c = 16,
+            r1 = 0.4,
+            r2 = 0.05,
+            chromAttenuation = 1;
+
+        var exaggeration_factor = 2;
+
+        try {
+            var attempts = 0;
+            var readyListener = function (event) {
+                findVideoSize();
+            };
+            var findVideoSize = function () {
+                // demo_app(width, height);
+                var s = Math.min(640 / video.videoWidth, 480 / video.videoHeight)
+
+                var w = Math.floor(video.videoWidth * s >> 3) << 3,
+                    h = Math.floor(video.videoHeight * s >> 3) << 3;
+                // video.style.width = w + 'px'
+                // demo_app(Math.max(480, w), Math.max(480, h))
+                // demo_app(640, 480)
+                demo_app(Math.max(480, w), h)
+                canvas.width = w
+                canvas.height = h
+
+                compatibility.requestAnimationFrame(tick);
+            };
+
+            setTimeout(readyListener, 300);
+        } catch (error) {
+            console.log(error)
+        }
+
+        var current_frame = 0;
+        var frames_processed = 0;
+
+        function tick() {
+            compatibility.requestAnimationFrame(tick);
+            // stat.new_frame();
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                // ctx.drawImage(video, 0, 0, 640, 480);
+                ctx.fillRect(0, 0, 640, 480)
+                var s = Math.min(640 / video.videoWidth, 480 / video.videoHeight)
+                // var s = 0.01 // call this number for fun times
+                ctx.drawImage(video, 0, 0, video.videoWidth * s, video.videoHeight * s)
+
+                evm()
+                if (frames_processed == 0) {
+                    lowpass1.iirFilter(img_pyr, 1);
+                    lowpass2.iirFilter(img_pyr, 1);
+                }
+                frames_processed++
+
+            }
+        }
+    }
+</script>
+
+<script>
+    let mainform = document.querySelector("#mainform")
+    mainform.addEventListener("submit", function (e) {
+        document.querySelector('#jsoninput').value = JSON.stringify(globalThis.editor.getValue())
+    })
+</script>
+
+{% endblock %}

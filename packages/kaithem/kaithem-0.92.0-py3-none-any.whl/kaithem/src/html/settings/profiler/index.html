@@ -1,0 +1,103 @@
+<%include file="/pageheader.html"/>
+<%
+import sys
+from kaithem.src import unitsofmeasure
+%>
+<style>
+    main {
+        max-width: 100vw;
+        width: max-content;
+    }
+</style>
+<h2>Profiler</h2>
+<div class="window paper">
+<dl>
+<%
+try:
+    import yappi
+    _yappi = True
+except:
+    _yappi = False
+%>
+
+%if _yappi:
+    <dl>
+    %if not yappi.is_running():
+        <dt><form method="post" action="/settings/profiler/start">
+        <button type="submit">Start</button>
+        </form></dt>
+        <dd>Start the profiler</dd>
+    %else:
+        <dt><form method="post" action="/settings/profiler/stop">
+        <button type="submit">Stop</button>
+        </form></dt>
+        <dd>Stop the profiler</dd>
+    %endif
+        <dt><form method="post" action="/settings/profiler/clear">
+        <button type="submit">Clear</button>
+        </form></dt>
+        <dd>Clear Profile Data</dd>
+    </dl>
+
+     %if  yappi.is_running():
+    <%
+    if sort == 'total':
+        sorter = lambda x: x.ttot
+    else:
+        sorter = lambda x: x.tsub
+
+    #yappi have two api's in different versions
+    if hasattr(yappi,"get_stats"):
+        stats = yappi.get_stats().func_stats
+        gn = lambda x: x.name
+    else:
+        gn = lambda x: x.full_name
+        stats= yappi.get_func_stats()
+    %>
+    <h2>Statistics</h2>
+    <table border=1 style="font-size:85%;">
+    <tr>
+    <th>Module</th>
+    <th>Name</th>
+
+    <th>Line</th>
+    <th>Call Count</th>
+    <th><a href="/settings/profiler">Total Subtime</a></th>
+    <th>Average Time</th>
+    <th><a href="/settings/profiler/bytotal">Total Time</a></th>
+    %for i in sorted(stats, key=sorter, reverse=True):
+    <tr>
+    %if not hasattr(i,"module"):
+    <td>${0}</td>
+    <td>${i.name}</td>
+    <td>${0}</td>
+
+    <td>${unitsofmeasure.si_format_number(i.ncall)}</td>
+    <td>${unitsofmeasure.si_format_number(i.tsub)}s</td>
+    <td>${unitsofmeasure.si_format_number(i.tavg)}s</td>
+    <td>${unitsofmeasure.si_format_number(i.ttot)}s</td>
+    %else:
+    <td>${i.module}</td>
+    <td>${i.name}</td>
+    <td>${i.lineno}</td>
+
+    <td>${unitsofmeasure.si_format_number(i.ncall)}</td>
+    <td>${unitsofmeasure.si_format_number(i.tsub)}s</td>
+    <td>${unitsofmeasure.si_format_number(i.tavg)}s</td>
+    <td>${unitsofmeasure.si_format_number(i.ttot)}s</td>
+    %endif
+
+    </tr>
+    %endfor
+    </table>
+    %endif
+
+
+
+%else:
+<p class="danger">Profiler disabled. Is the python package "yappi" missing?</p>
+%endif
+
+
+</div>
+<%include file="/pagefooter.html"/>
