@@ -1,0 +1,52 @@
+name: Release::Prepare
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: bump
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check branch
+        if: ${{ github.ref != 'refs/heads/main' }}
+        run: echo "This action can only be run on the main branch." && exit 1
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          show-progress: false
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+      - name: Bump version
+        run: |
+          echo ">>> Current version: $(uv version --short)"
+          uv version --bump ${{ inputs.bump }}
+          echo ">>> New version: $(uv version --short)"
+      - name: Commit change and tag
+        run: |
+          git config --global --add safe.directory ${{github.workspace}}
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
+          git config pull.rebase false
+          git commit -am "Release $(uv version --short)"
+          git tag "v$(uv version --short)"
+          GIT_PAGER=cat git log --pretty="format:%s" -3
+          git push origin main --tags
+      - name: Trigger release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run release-publish.yaml -r "v$(uv version --short)"
