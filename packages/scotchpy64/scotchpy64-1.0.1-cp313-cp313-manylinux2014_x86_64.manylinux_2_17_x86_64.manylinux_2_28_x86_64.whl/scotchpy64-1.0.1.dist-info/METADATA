@@ -1,0 +1,173 @@
+Metadata-Version: 2.4
+Name: scotchpy64
+Version: 1.0.1
+Summary: The official Python interface to the Scotch and PT-Scotch graph partitioning libraries
+Keywords: graph,partitioning,mapping,reordering,sparse matrix
+Author: Pierre PAVIA
+Author-Email: Aymen ALI YAHIA <aymenali.aay@gmail.com>, Marc FUENTES <marc.fuentes@inria.fr>, Francois PELLEGRINI <francois.pellegrini@u-bordeaux.fr>
+Maintainer-Email: Marc Fuentes <marc.fuentes@inria.fr>
+License-Expression: BSD-2-Clause
+License-File: LICENSE.txt
+Classifier: Intended Audience :: Science/Research
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: C
+Classifier: Programming Language :: Python
+Classifier: Topic :: Software Development
+Classifier: Topic :: Scientific/Engineering
+Classifier: Development Status :: 4 - Beta
+Classifier: Operating System :: POSIX
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+
+# `ScotchPy`
+
+This project provides a `Python3` interface for the [Scotch graph partitioning library](https://gitlab.inria.fr/scotch/scotch)
+
+[![pipeline status](https://gitlab.inria.fr/ppavia/scotchpy/badges/main/pipeline.svg)](https://gitlab.inria.fr/ppavia/scotchpy/-/commits/main)
+[![Developer documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://ppavia.gitlabpages.inria.fr/scotchpy/html)
+
+## Requirements
+
+- `Python >= 3.10`
+- `NumPy`, to handle integer arrays
+- `pytest`, to test the `ScotchPy` module
+- Optional :
+ - `mpi4py`, to use the features of PT-ScotchPy
+ - `Sphinx`, to build the documentation
+ - `networkx` and `matplotlib`, to view some examples
+ - A recent *DYNAMIC/SHARED* `Scotch` library (>=`v7.0.9`), if you do not have access to the Internet
+
+## Configuring, compiling and testing `ScotchPy`
+
+### Configure
+Before using `pip` you need to generate the `pyproject.toml` and select which version of the package you need:
+- integer size (32/64) -> `export INTSIZE=64,` for instance
+- ptscotch -> `export PTSCOTCH=ON`
+```bash
+./configure
+```
+At the time being, the scotchpy package supports 4 configurations:
+
+  | config     | INTSIZE=32 | INTSIZE=64   |
+  |------------|------------|--------------|
+  | sequential | scotchpy   | scotchpy64   |
+  | parallel   | ptscotchpy | ptscotchpy64 |
+
+Before using `pip` you need to generate the `pyproject.toml` and select which version of the package you need:
+- integer size (32/64) -> `export INTSIZE=64,` for instance
+- ptscotch -> `export PTSCOTCH=1`
+```bash
+./configure
+```
+We *strongly* recommand to have the same integer size for scotch than the `numpy.dtype`.
+
+### If you already have a Scotch library >= 7.0.8 installed on your system
+
+```bash
+virtualenv /some/path
+SCOTCHPY_SCOTCH="dir/containing/the/lib" /some/path/bin/pip -v  install .
+export SCOTCHPY_ERR=${$(find /some/path/lib/ -name "*scotchpy_err*.so"):h}
+SCOTCHPY_SCOTCH="dir/containing/the/lib" /some/path/bin/python -m pytest
+```
+
+### Scotch library older than 7.0.9 or not available
+
+The building system (`scikit-build-core`) will download sources from the Internet and compile it for you.
+```bash
+virtualenv /some/path
+/some/path/bin/pip -v  install .  # This step uses scikit-build-core
+/some/path/bin/python -m pytest
+```
+
+## Using a binary wheel from the Internet (*experimental*, only for Linux and sequential version at the time being)
+```bash
+virtualenv /tmp/test_sotchpy
+/tmp/test_sotchpy/bin/pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple scotchpy64==1.0.1
+/tmp/test_sotchpy/bin/python -c 'import scotchpy; print(scotchpy.num_sizeof())'
+```
+
+## Testing `ScotchPy`
+
+To use `ScotchPy` locally, you can run some examples like `load_part.py` provided below:
+```python
+import scotchpy
+import scotchpy 
+from scotchpy.common import proper_int as scotch_num
+import importlib.resources as resources
+import os
+
+# Allocate a graph
+
+graf = scotchpy.Graph()
+
+# Read a graph from the scotchpy/data dir
+
+data_dir = resources.files("scotchpy").joinpath("data")
+graf.load(os.path.join(data_dir, "m4x4.grf"))
+
+# Partition a graph into 4 parts
+
+parttab = np.zeros(graf.vertnbr, dtype=scotch_num)
+graf.part(partnbr = 4, parttab = parttab)
+
+# Export the graph to the dot format
+
+if scotchpy.graph._nx_found:
+    import networkx as nx
+    graf_nx = graf.tonx()
+    color = { 0:"red" , 1:"blue", 2:"green", 3:"black"}
+    for i in graf_nx.nodes:
+         graf_nx.nodes[i]["color"] = color[parttab[i]]
+    try:
+       nx.nx_pydot.to_pydot(graf_nx).write_dot("m4x4.dot")
+    except ModuleNotFoundError:
+       pass
+```
+from a `Python` prompt.
+
+
+## Generating the documentation
+
+```bash
+sphinx-build -b html doc/source build/doc
+```
+The HTML pages will be in `build/doc`.
+
+## Testing
+
+To run all `ScotchPy` tests, type:
+```bash
+tmpdir=$(mktemp -d)
+cp -R path/to/scotchpy/sources/tests $tmpdir
+cd $tmpdir
+/path/to/an/installed/scotchpy/bin/python -m pytest
+```
+For parallel tests (e.g. those involving `mpi4py` and the submodule `scotchpy.dgraph`), we use the plugin `pytest-isolate-mpi` that you can find on 
+[pypi.org](https://pypi.org/project/pytest-isolate-mpi/)
+
+
+## Contributing
+
+Contributions are welcome!
+
+To apply the `pylint` syntax checking tool, type:
+```bash
+pylint --disable=R0902,R0903,R0904,R0912,R0913,C0114,C0116 scotchpy
+```
+
+
+## Authors
+
+- Pierre PAVIA: initial core development, while intern at Inria Bordeaux-Sud Ouest (2020-2021)
+- Aymen ALI YAHIA (aymenali.aay@gmail.com): final core development, while intern at Inria Bordeaux-Sud Ouest (2024)
+- Marc FUENTES (marc.fuentes@inria.fr): support and packaging
+- François PELLEGRINI (francois.pellegrini@u-bordeaux.fr): project architect and syntax nitpicker
+
+## License
+
+This project is distributed under the 2-clause BSD License.
