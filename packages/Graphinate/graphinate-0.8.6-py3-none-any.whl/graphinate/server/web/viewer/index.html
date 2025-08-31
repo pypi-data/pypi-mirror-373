@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="">
+<head>
+    <title>Graphinate Viewer</title>
+    <link rel="modulepreload"
+          href="https://cdn.jsdelivr.net/npm/tweakpane@4.0.5/dist/tweakpane.min.js"
+          integrity="sha256-DN53dubYps0y0SjSHj8gO34VKtxaXqipuG/3jAJ2aWw="
+          crossorigin="anonymous">
+    <link rel="modulepreload"
+          href="https://cdn.jsdelivr.net/npm/@tweakpane/plugin-essentials@0.2.1/dist/tweakpane-plugin-essentials.min.js"
+          integrity="sha256-VYrWNKBoz1vsS026wJe4Zvb5/r8kGOSTfIBcmLdOA1g="
+          crossorigin="anonymous">
+    <script type="module">
+        // Import ES module
+        import * as Tweakpane from 'https://cdn.jsdelivr.net/npm/tweakpane@4.0.5/dist/tweakpane.min.js';
+        import * as TweakpaneEssentialsPlugin
+            from 'https://cdn.jsdelivr.net/npm/@tweakpane/plugin-essentials@0.2.1/dist/tweakpane-plugin-essentials.min.js';
+        // Export it as a global variable
+        window.Tweakpane = Tweakpane;
+        window.TweakpaneEssentialsPlugin = TweakpaneEssentialsPlugin;
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/3d-force-graph@1.76.2/dist/3d-force-graph.min.js"
+            integrity="sha384-zSKZ615fogcuRjUjE+0YstAo3N/t7PzUvtQu5KGA1iqkmHXsTRst7zP+6573D+hK"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/murmurhash-js@1.0.0/murmurhash3_gc.min.js"
+            integrity="sha384-RTcg9S2mr/vVW+vsvQZB7G2cYWnhkBdsMvqKzHxL41KG4zTgrMSzGfm7mzw0aYU2"
+            crossorigin="anonymous"></script>
+    <!-- Append this element into the head element to apply the theme -->
+    <style>
+        body {
+            margin: 0;
+        }
+
+        .tp-dfwv {
+            height: 95vh;
+            min-width: 272px;
+            overflow-y: auto;
+        }
+
+        :root {
+            --tp-base-background-color: hsla(40, 3%, 90%, 1.00);
+            --tp-base-shadow-color: hsla(0, 0%, 0%, 0.30);
+            --tp-button-background-color: hsla(40, 3%, 70%, 1.00);
+            --tp-button-background-color-active: hsla(40, 3%, 55%, 1.00);
+            --tp-button-background-color-focus: hsla(40, 3%, 60%, 1.00);
+            --tp-button-background-color-hover: hsla(40, 3%, 65%, 1.00);
+            --tp-button-foreground-color: hsla(40, 3%, 20%, 1.00);
+            --tp-container-background-color: hsla(40, 3%, 70%, 1.00);
+            --tp-container-background-color-active: hsla(40, 3%, 55%, 1.00);
+            --tp-container-background-color-focus: hsla(40, 3%, 60%, 1.00);
+            --tp-container-background-color-hover: hsla(40, 3%, 65%, 1.00);
+            --tp-container-foreground-color: hsla(40, 3%, 20%, 1.00);
+            --tp-groove-foreground-color: hsla(40, 3%, 40%, 1.00);
+            --tp-input-background-color: hsla(120, 3%, 20%, 1.00);
+            --tp-input-background-color-active: hsla(120, 3%, 35%, 1.00);
+            --tp-input-background-color-focus: hsla(120, 3%, 30%, 1.00);
+            --tp-input-background-color-hover: hsla(120, 3%, 25%, 1.00);
+            --tp-input-foreground-color: hsla(120, 40%, 60%, 1.00);
+            --tp-label-foreground-color: hsla(40, 3%, 50%, 1.00);
+            --tp-monitor-background-color: hsla(120, 3%, 20%, 1.00);
+            --tp-monitor-foreground-color: hsla(120, 40%, 60%, 0.80);
+        }
+    </style>
+</head>
+<body>
+<div id="3d-graph"></div>
+<script type="module">
+    import * as THREE from 'https://esm.sh/three';
+    import {scaleLinear, interpolateRgb, color as d3Color} from 'https://esm.sh/d3';
+
+    // region FloatingIFramePanel
+    let highestZIndex = 0;
+    let lastPanelPosition = {top: 50, left: 50};
+
+    function createFloatingIFramePanel(url, title) {
+        // Create the panel container
+        const panel = document.createElement('div');
+        panel.className = 'floating-panel';
+        panel.style.position = 'absolute';
+        panel.style.top = `${lastPanelPosition.top}px`;
+        panel.style.left = `${lastPanelPosition.left}px`;
+        panel.style.width = '800px';
+        panel.style.height = '600px';
+        panel.style.border = '4px solid #b5b3b0';
+        panel.style.borderBottom = 'none'; // Remove bottom border
+        panel.style.borderRadius = '5px'; // Smaller rounded corners
+        panel.style.backgroundColor = '#fff';
+        panel.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
+        panel.style.resize = 'both';
+        panel.style.overflow = 'hidden'; // Prevent panel from scrolling
+        panel.style.zIndex = ++highestZIndex; // Set zIndex to one higher than the highest
+
+        // Update the last panel position
+        lastPanelPosition.top += 10;
+        lastPanelPosition.left += 10;
+
+        function lowerZIndexForHigherPanels(panel) {
+            const panels = document.querySelectorAll('.floating-panel');
+            panels.forEach(p => {
+                const zIndex = parseInt(window.getComputedStyle(p).zIndex, 10);
+                if (zIndex > parseInt(panel.style.zIndex, 10)) {
+                    p.style.zIndex = zIndex - 1;
+                }
+            });
+        }
+
+        // Function to bring the panel to the front
+        function bringToFront() {
+            lowerZIndexForHigherPanels(panel);
+            // Set the current panel's zIndex to the highest
+            panel.style.zIndex = highestZIndex;
+        }
+
+        // Add event listener to bring the panel to the front on click
+        panel.addEventListener('mousedown', (e) => {
+            if (e.target !== closeButton && e.target !== maximizeToggleButton) {
+                bringToFront();
+            }
+        });
+
+        // Create the panel header
+        const header = document.createElement('div');
+        header.className = 'floating-panel-header';
+        header.style.width = '100%';
+        header.style.height = '20px'; // Set height to 20px
+        header.style.backgroundColor = '#b5b3b0'; // Updated background color
+        header.style.borderBottom = '1px solid #b5b3b0';
+        header.style.cursor = 'move';
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between'; // Align items to the sides
+        header.style.alignItems = 'center';
+        header.style.padding = '0 5px'; // Adjust padding to fit buttons
+        header.style.boxSizing = 'border-box'; // Include padding in width calculation
+        header.style.position = 'relative';
+        header.style.zIndex = '1'; // Ensure header is above iframe
+
+        // Create the title element
+        const titleElement = document.createElement('div');
+        titleElement.className = 'floating-panel-title';
+        titleElement.innerHTML = title; // Support HTML syntax
+        titleElement.style.flexGrow = '1';
+        titleElement.style.textAlign = 'left'; // Justify title to the left
+        titleElement.style.fontFamily = 'monospace'; // Monospace font
+        titleElement.style.userSelect = 'none'; // Prevent text selection
+
+        // Create the loading ticker
+        const loadingTicker = document.createElement('div');
+        loadingTicker.innerHTML = 'Loading...';
+        loadingTicker.style.marginLeft = '10px';
+        loadingTicker.style.marginTop = '10px';
+        loadingTicker.style.display = 'none'; // Hide by default
+
+        // Create the button container
+        const buttonContainer = document.createElement('div');
+        buttonContainer.className = 'floating-panel-buttons';
+        buttonContainer.style.display = 'flex';
+        buttonContainer.style.gap = '5px';
+        buttonContainer.style.margin = '0'; // Remove margin to fit buttons
+
+        // Create the close button
+        const closeButton = document.createElement('button');
+        closeButton.className = 'floating-panel-close';
+        closeButton.innerHTML = '✖';
+        closeButton.style.border = 'none';
+        closeButton.style.background = 'none';
+        closeButton.style.cursor = 'pointer';
+        closeButton.style.fontSize = '12px';
+        closeButton.style.color = '#333';
+        closeButton.style.padding = '0 5px'; // Add padding to the button
+        closeButton.addEventListener('click', () => {
+            lowerZIndexForHigherPanels(panel);
+            highestZIndex--;
+            document.body.removeChild(panel);
+        });
+
+        // Create the maximize toggle button
+        const maximizeToggleButton = document.createElement('button');
+        maximizeToggleButton.className = 'floating-panel-maximize';
+        maximizeToggleButton.innerHTML = '🗖';
+        maximizeToggleButton.style.border = 'none';
+        maximizeToggleButton.style.background = 'none';
+        maximizeToggleButton.style.cursor = 'pointer';
+        maximizeToggleButton.style.fontSize = '12px';
+        maximizeToggleButton.style.color = '#333';
+        maximizeToggleButton.style.padding = '0 5px'; // Add padding to the button
+        let isMaximized = false;
+        let lastSize = {
+            width: panel.style.width,
+            height: panel.style.height,
+            top: panel.style.top,
+            left: panel.style.left
+        };
+
+        function toggleMaximize() {
+            bringToFront();
+            if (isMaximized) {
+                panel.style.width = lastSize.width;
+                panel.style.height = lastSize.height;
+                panel.style.top = lastSize.top;
+                panel.style.left = lastSize.left;
+                header.style.cursor = 'move';
+                maximizeToggleButton.innerHTML = '🗖';
+            } else {
+                lastSize = {
+                    width: panel.style.width,
+                    height: panel.style.height,
+                    top: panel.style.top,
+                    left: panel.style.left
+                };
+                panel.style.width = 'calc(100% - 10px - 8px)'; // padding + border
+                panel.style.height = 'calc(100% - 10px)';
+                panel.style.top = '5px';
+                panel.style.left = '5px';
+                header.style.cursor = 'default';
+                maximizeToggleButton.innerHTML = '❐';
+            }
+            isMaximized = !isMaximized;
+        }
+
+        // Add double-click event listener to the header to toggle maximize
+        header.addEventListener('dblclick', toggleMaximize);
+        maximizeToggleButton.addEventListener('click', toggleMaximize);
+
+        // Append buttons to the button container
+        buttonContainer.appendChild(maximizeToggleButton);
+        buttonContainer.appendChild(closeButton);
+
+        // Append the title element, loading ticker, and button container to the header
+        header.appendChild(titleElement);
+        header.appendChild(loadingTicker);
+        header.appendChild(buttonContainer);
+
+        // Create the iframe to load the URL
+        const iframe = document.createElement('iframe');
+        iframe.className = 'floating-panel-iframe';
+        iframe.src = url;
+        iframe.style.width = 'calc(100% - 8px)'; // Adjust width to match border
+        iframe.style.height = 'calc(100% - 20px)'; // Adjust height to match header
+        iframe.style.border = '4px solid #e6e6e5';
+        iframe.style.overflow = 'auto'; // Allow iframe to scroll
+
+        // Show loading ticker when iframe is loading
+        iframe.addEventListener('load', () => {
+            loadingTicker.style.display = 'none';
+        });
+        iframe.addEventListener('beforeunload', () => {
+            loadingTicker.style.display = 'block';
+        });
+
+        // Append the header and iframe to the panel
+        panel.appendChild(header);
+        panel.appendChild(iframe);
+
+        // Make the panel draggable
+        let isDragging = false;
+        let offsetX, offsetY;
+
+        function onMouseMove(e) {
+            if (isDragging) {
+                panel.style.left = `${e.clientX - offsetX}px`;
+                panel.style.top = `${e.clientY - offsetY}px`;
+            }
+        }
+
+        function onMouseUp() {
+            isDragging = false;
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        }
+
+        header.addEventListener('mousedown', (e) => {
+            if (!isMaximized) {
+                isDragging = true;
+                offsetX = e.clientX - panel.getBoundingClientRect().left;
+                offsetY = e.clientY - panel.getBoundingClientRect().top;
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            }
+        });
+
+        // Append the panel to the body
+        document.body.appendChild(panel);
+    }
+
+    // endregion FloatingIFramePanel
+
+    // region GraphQL
+
+    const graphQuery = `query GenericGraph{nodes{...Details} links: edges{source{...Details} target{...Details} ...Details}} fragment Details on GraphElement {id label type color}`;
+    const nodeTypesQuery = `query GraphTypes{graph{name nodeTypes: nodeTypeCounts{name count: value} edgeTypes: edgeTypeCounts{name count: value}}}`;
+
+    function fetchGraphQL(payload) {
+        return fetch(
+            '/graphql',
+            {
+                method: 'post',
+                headers: {Accept: 'application/json', 'Content-Type': 'application/json'},
+                body: JSON.stringify(payload),
+                credentials: 'include',
+            }).then((response) => response.json());
+    }
+
+    // endregion GraphQL
+
+    // region ForceGraph3D
+    const nodeTypeColor = {}
+    const nodeTypeVisibility = {};
+    let graphParams = {
+        nodeVal: 2,
+        linkWidth: 0,
+        useLinkColorGradient: false,
+        linkCurvature: 0,
+        linkCurveRotation: 0,
+        linkDirectionalArrowLength: 0, // 0 hides
+        linkDirectionalArrowRelPos: 1, // value between 0 [source] and 1 [target]
+        linkDirectionalParticles: 0,
+        linkDirectionalParticleSpeed: 0.002,
+        linkDirectionalParticleWidth: 1.5,
+        linkDirectionalParticleColor: '#ffff00',
+    }
+
+    function createLabel(gEl) {
+        return `<div style="color: ${gEl.color}; font-family: 'Consolas', 'Menlo', 'DejaVu Sans Mono', 'Bitstream Vera Sans Mono', monospace; outline-color: ${gEl.color}">${gEl.type}<br>'${gEl.label}'</div>`
+    }
+
+    const Graph = new ForceGraph3D(document.getElementById('3d-graph'))
+        .nodeColor('color')
+        .nodeVal(node => graphParams.nodeVal)
+        .nodeLabel(node => createLabel(node))
+        .linkWidth(link => graphParams.linkWidth)
+        .linkColor('color')
+        .linkLabel(link => createLabel(link))
+        .linkCurvature(link => graphParams.linkCurvature)
+        .linkCurveRotation(link => graphParams.linkCurveRotation)
+        .linkDirectionalArrowLength(link => graphParams.linkDirectionalArrowLength)
+        .linkDirectionalArrowRelPos(link => graphParams.linkDirectionalArrowRelPos)
+        .linkDirectionalParticles(link => graphParams.linkDirectionalParticles)
+        .linkDirectionalParticleSpeed(link => graphParams.linkDirectionalParticleSpeed / 10000.0)
+        .linkDirectionalParticleWidth(link => graphParams.linkDirectionalParticleWidth)
+        .linkDirectionalParticleColor(link => graphParams.linkDirectionalParticleColor)
+        .cooldownTicks(100);
+
+
+    if (graphParams.useLinkColorGradient) {
+        Graph
+            .linkThreeObject(link => {
+                // 2 (nodes) x 3 (r+g+b) bytes between [0, 1]
+                // For example:
+                // new Float32Array([
+                //   1, 0, 0,  // source node: red
+                //   0, 1, 0   // target node: green
+                // ]);
+                const nodeColorScale = scaleLinear()
+                    .domain([0, 1]) //Define the domain of the scale
+                    .interpolate(interpolateRgb) // Use interpolateRgb to create a color scale
+                    .range([link.colors.source, link.colors.target]); // Define the range of colors
+
+                const colors = new Float32Array([].concat(
+                    ...[0, 1]
+                        .map(nodeColorScale)
+                        .map(d3Color)
+                        .map(({r, g, b}) => [r, g, b].map(v => v / 255)
+                        )));
+
+                const material = new THREE.LineBasicMaterial({vertexColors: true});
+                const geometry = new THREE.BufferGeometry();
+                geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(2 * 3), 3));
+                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+                return new THREE.Line(geometry, material);
+            })
+            .linkPositionUpdate((line, {start, end}) => {
+                const startR = Graph.nodeRelSize();
+                const endR = Graph.nodeRelSize();
+                const lineLen = Math.sqrt(['x', 'y', 'z'].map(dim => Math.pow((end[dim] || 0) - (start[dim] || 0), 2)).reduce((acc, v) => acc + v, 0));
+
+                const linePos = line.geometry.getAttribute('position');
+
+                // calculate coordinate on the node's surface instead of center
+                linePos.set([startR / lineLen, 1 - endR / lineLen].map(t =>
+                    ['x', 'y', 'z'].map(dim => start[dim] + (end[dim] - start[dim]) * t)
+                ).flat());
+                linePos.needsUpdate = true;
+                return true;
+            });
+    }
+
+
+    function updateGraph(gData) {
+        Graph.graphData(gData).zoomToFit(400);
+    }
+
+    function getVisible(gData) {
+        const visibleNodes = []
+        gData.nodes.forEach((node) => {
+            if (node.type in nodeTypeVisibility && nodeTypeVisibility[node.type]) {
+                visibleNodes.push(node);
+            }
+        });
+        const visibleLinks = [];
+        gData.links.forEach((link) => {
+            if (visibleNodes.find((node) => node.id === link.source.id) && visibleNodes.find((node) => node.id === link.target.id)) {
+                visibleLinks.push(link);
+            }
+        });
+
+        return {nodes: visibleNodes, links: visibleLinks};
+    }
+
+    function setAllNodeTypeVisibility(value) {
+        Object.keys(nodeTypeVisibility).forEach(key => {
+            nodeTypeVisibility[key] = value;
+        });
+    }
+
+    function updateNodeTypeColorMapping(nodes) {
+        nodes.forEach(node => {
+            if (!nodeTypeColor[node.type]) {
+                nodeTypeColor[node.type] = node.color;
+            }
+        });
+    }
+
+    function refreshGraph(gData) {
+        const visibleGData = getVisible(gData);
+        updateGraph(visibleGData);
+    }
+
+    function createGraphControlPanel(graph, gData) {
+        updateNodeTypeColorMapping(gData.nodes);
+
+
+        const pane = new Tweakpane.Pane({
+            title: 'Control Panel',
+            expanded: true
+        });
+        pane.registerPlugin(TweakpaneEssentialsPlugin);
+
+
+        pane.addButton({title: 'Zoom to Fit'}).on('click', () => Graph.zoomToFit(400));
+
+
+        pane.addBlade({
+            view: 'buttongrid',
+            size: [2, 1],
+            cells: (x, y) => ({
+                title: [
+                    ['All On', 'All Off'],
+                ][y][x],
+            }),
+            label: 'Visibility',
+        }).on('click', (ev) => {
+            switch (ev.cell.title) {
+                case 'All On':
+                    setAllNodeTypeVisibility(true);
+                    updateGraph(gData);
+                    pane.refresh();
+                    break;
+                case 'All Off':
+                    setAllNodeTypeVisibility(false);
+                    const visibleGData = getVisible(gData);
+                    updateGraph(visibleGData);
+                    pane.refresh();
+                    break;
+                default:
+                    console.log('Unknown action');
+            }
+        });
+        // pane.addButton({title: 'Visibility - All On'}).on('click', () => {
+        //     setAllNodeTypeVisibility(true);
+        //     updateGraph(gData);
+        //     pane.refresh();
+        // });
+        // pane.addButton({title: 'Visibility - All Off'}).on('click', () => {
+        //     setAllNodeTypeVisibility(false);
+        //     const visibleGData = getVisible(gData);
+        //     updateGraph(visibleGData);
+        //     pane.refresh();
+        // });
+
+        pane.addBlade({view: 'separator'});
+
+        const tab = pane.addTab({
+            pages: [
+                {title: 'Legend'},
+                {title: 'Advanced'},
+                {title: 'Tools'}
+            ],
+        });
+
+        // Legend tab
+        const legendTab = tab.pages[0];
+
+        graph.nodeTypes.forEach(nodeType => {
+            let info = `V: ${nodeType.count}`
+            const edgeType = graph.edgeTypes.find((t) => t.name === nodeType.name);
+            if (edgeType) {
+                info += `, E: ${edgeType.count}`;
+            }
+
+            const nodeTypeFolder = legendTab.addFolder({title: `${nodeType.name} [${info}]`});
+
+            nodeTypeFolder.addBinding(nodeTypeColor, nodeType.name, {label: 'Color'})
+                .on('change', (ev) => {
+                    gData.nodes.forEach(node => {
+                        if (node.type === nodeType.name) {
+                            node.color = ev.value;
+                        }
+                    });
+                    refreshGraph(gData);
+                });
+
+            nodeTypeVisibility[nodeType.name] = true;
+            nodeTypeFolder.addBinding(nodeTypeVisibility, nodeType.name, {label: 'Visible'})
+                .on('change', (ev) => {
+                    refreshGraph(gData);
+                });
+        });
+
+
+        // Advanced tab
+
+        const advancedTab = tab.pages[1];
+
+        // const presets = () => JSON.parse(localStorage.getItem('graphPresets')) || {};
+        //
+        // function savePreset(name, settings) {
+        //     presets[name] = settings;
+        //     localStorage.setItem('graphPresets', JSON.stringify(presets()));
+        // }
+        //
+        //
+        // const presetFolder = advancedTab.addFolder({title: 'Presets'});
+        //
+        // presetFolder.addBlade({
+        //     view: 'buttongrid',
+        //     size: [2, 1],
+        //     cells: (x, y) => ({
+        //         title: [
+        //             ['Save', 'Delete'],
+        //         ][y][x],
+        //     }),
+        //     label: 'Preset',
+        // }).on('click', (ev) => {
+        //     switch (ev.cell.title) {
+        //         case 'Save':
+        //             const presetName = prompt('Enter preset name:');
+        //             if (presetName) {
+        //                 savePreset(presetName, {...graphParams});
+        //                 updatePresetDropdown();
+        //             }
+        //             break;
+        //         case 'Delete':
+        //             const selectedPresetName = presetDropdown.text;
+        //             if (selectedPresetName && presets()[selectedPresetName]) {
+        //                 const newPresets = presets()
+        //                 delete newPresets[selectedPresetName];
+        //                 localStorage.setItem('graphPresets', JSON.stringify(newPresets));
+        //                 updatePresetDropdown();
+        //             }
+        //             break;
+        //         default:
+        //             console.log('Unknown action');
+        //     }
+        // });
+        //
+        //
+        // presetFolder.addButton({title: 'Save Preset'}).on('click', () => {
+        //     const presetName = prompt('Enter preset name:');
+        //     if (presetName) {
+        //         savePreset(presetName, {...graphParams});
+        //         updatePresetDropdown();
+        //     }
+        // });
+        //
+        // const presetDropdown = presetFolder.addBlade({
+        //     view: 'list',
+        //     label: 'Presets',
+        //     options: Object.entries(presets()).map(([k, v]) => {
+        //             return {text: k, value: v};
+        //         }
+        //     ),
+        //     value: ''
+        // }).on('change', (ev) => {
+        //     Object.assign(graphParams, ev.value);
+        //     pane.refresh();
+        //     Graph.refresh();
+        // });
+        //
+        // function updatePresetDropdown() {
+        //     presetDropdown.options = Object.entries(presets()).map(([k, v]) => {
+        //             return {text: k, value: v};
+        //         }
+        //     );
+        //     pane.refresh();
+        // }
+        //
+        // // Call updatePresetDropdown initially to populate the dropdown
+        // updatePresetDropdown();
+
+        const nodesFolder = advancedTab.addFolder({title: 'Nodes'});
+
+        nodesFolder.addBinding(graphParams, 'nodeVal', {label: 'Volume', step: 1, min: 0, max: 30})
+            .on('change', (ev) => {
+                Graph.refresh();
+            });
+
+        const edgesFolder = advancedTab.addFolder({title: 'Edges'});
+
+        edgesFolder.addBinding(graphParams, 'linkDirectionalArrowLength', {label: 'Arrow Length', min: 0, max: 5})
+            .on('change', (ev) => {
+                Graph.refresh();
+            });
+
+        edgesFolder.addBinding(graphParams, 'linkDirectionalArrowRelPos', {
+            label: 'Arrow Position',
+            options: {
+                beginning: 0,
+                middle: 0.5,
+                end: 1,
+            }
+        })
+            .on('change', (ev) => {
+                Graph.refresh();
+            });
+
+        edgesFolder.addBlade({view: 'separator'});
+
+        edgesFolder.addBinding(graphParams, 'linkCurvature', {label: 'Curvature', min: -5, max: 5})
+            .on('change', (ev) => {
+                Graph.refresh();
+                // refreshGraph(gData);
+            });
+
+        edgesFolder.addBinding(graphParams, 'linkCurveRotation', {label: 'Curve Rotation'})
+            .on('change', (ev) => {
+                Graph.refresh();
+            });
+
+        edgesFolder.addBlade({view: 'separator'});
+
+        edgesFolder.addBinding(graphParams, 'linkDirectionalParticles', {
+            label: 'Particles',
+            format: (v) => v.toFixed(0),
+            step: 1,
+            min: 0,
+            max: 10
+        })
+            .on('change', (ev) => {
+                Graph.refresh();
+            });
+
+        edgesFolder.addBinding(graphParams, 'linkDirectionalParticleWidth', {label: 'Particles Width', min: 0, max: 10})
+            .on('change', (ev) => {
+                Graph.refresh();
+            });
+
+        edgesFolder.addBinding(
+            graphParams,
+            'linkDirectionalParticleSpeed',
+            {
+                label: 'Particles Speed',
+                format: (v) => v.toFixed(0),
+                step: 1,
+                min: 0,
+                max: 300,
+            })
+            .on('change', (ev) => {
+                Graph.refresh();
+            });
+
+        edgesFolder.addBinding(graphParams, 'linkDirectionalParticleColor', {label: 'Particles Color'})
+            .on('change', (ev) => {
+                Graph.refresh();
+            });
+
+
+        // Tools tab
+        const toolsTab = tab.pages[2];
+
+        toolsTab.addButton({title: 'GraphiQL'}).on('click', () => createFloatingIFramePanel('/graphql', 'Graph<i>i</i>QL'));
+        toolsTab.addButton({title: 'GraphQL Voyager'}).on('click', () => createFloatingIFramePanel('/voyager', 'GraphQL Voyager'));
+        toolsTab.addButton({title: 'RapiDoc'}).on('click', () => createFloatingIFramePanel('/rapidoc', 'RapiDoc'));
+        toolsTab.addButton({title: 'Metrics'}).on('click', () => createFloatingIFramePanel('/metrics', 'Metrics'));
+    }
+
+    fetchGraphQL({query: graphQuery})
+        .then((responseJson) => responseJson.data)
+        .then((gData) => {
+            gData.nodes = gData.nodes.map((node) => {
+                node.id = murmurhash3_32_gc(node.id, 1);
+                return node;
+            });
+            gData.links = gData.links.map((link) => {
+                return {
+                    source: murmurhash3_32_gc(link.source.id, 1),
+                    target: murmurhash3_32_gc(link.target.id, 1),
+                    color: link.color ? link.color : link.source.color,
+                    colors: {source: link.source.color, target: link.target.color},
+                    label: link.label,
+                    type: link.type
+                };
+            });
+
+            fetchGraphQL({query: nodeTypesQuery})
+                .then((responseJson) => responseJson.data)
+                .then((data) => createGraphControlPanel(data.graph, gData));
+
+            updateGraph(gData);
+        });
+
+    // endregion ForceGraph3D
+</script>
+</body>
+</html>
