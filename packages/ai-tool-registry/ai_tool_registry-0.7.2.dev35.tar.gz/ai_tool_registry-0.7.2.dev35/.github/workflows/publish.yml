@@ -1,0 +1,75 @@
+name: Publish to PyPI
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+
+jobs:
+  publish-dev:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: 
+      name: pypi
+      url: https://pypi.org/p/ai-tool-registry
+    permissions:
+      id-token: write
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+    
+    - name: Set dev version
+      run: |
+        # Get commit count since last tag, or total commits if no tags
+        DEV_VERSION=$(git rev-list --count HEAD)
+        BASE_VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+        NEW_VERSION="${BASE_VERSION}.dev${DEV_VERSION}"
+        sed -i "s/version = \".*\"/version = \"${NEW_VERSION}\"/" pyproject.toml
+        echo "Publishing dev version: ${NEW_VERSION}"
+    
+    - name: Build package
+      run: uv build
+    
+    - name: Publish dev to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-release:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    environment: 
+      name: pypi
+      url: https://pypi.org/p/ai-tool-registry
+    permissions:
+      id-token: write
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+    
+    - name: Build package
+      run: uv build
+    
+    - name: Publish release to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
