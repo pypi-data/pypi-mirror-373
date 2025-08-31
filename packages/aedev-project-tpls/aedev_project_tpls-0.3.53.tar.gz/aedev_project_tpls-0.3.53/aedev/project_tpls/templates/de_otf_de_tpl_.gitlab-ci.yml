@@ -1,0 +1,62 @@
+image: python:{MIN_PYTHON_VERSION}
+
+{TEMPLATE_PLACEHOLDER_ID_PREFIX}{TEMPLATE_INCLUDE_FILE_PLACEHOLDER_ID}{TEMPLATE_PLACEHOLDER_ID_SUFFIX}
+  .gitlab-ci_include_service.yml
+{TEMPLATE_PLACEHOLDER_ARGS_SUFFIX}
+
+{TEMPLATE_PLACEHOLDER_ID_PREFIX}{TEMPLATE_INCLUDE_FILE_PLACEHOLDER_ID}{TEMPLATE_PLACEHOLDER_ID_SUFFIX}
+  .gitlab-ci_include_variables.yml
+{TEMPLATE_PLACEHOLDER_ARGS_SUFFIX}
+
+before_script:
+  - python --version
+  - pip install --upgrade setuptools pip
+  - pip install --upgrade -r {REQ_FILE_NAME} -r {TESTS_FOLDER}/{REQ_FILE_NAME}
+
+
+integrity:
+  script:
+    - grm -v check-integrity
+  artifacts:
+    paths:
+      - mypy_report/
+      - .pylint/
+      - htmlcov/
+      - .pytest_cache
+
+
+pages:
+  stage: deploy
+  dependencies:
+    - integrity
+  script:
+    - ls -l -R
+    - mkdir -p public/coverage
+    - mv -f -v htmlcov/* public/coverage
+    - mv -f -v .pytest_cache/coverage.txt public/
+    - mv -f -v .pytest_cache/coverage.svg public/
+    - mv -f -v mypy_report/lineprecision.txt public/
+    - mv -f -v mypy_report/mypy.svg public/
+    - mv -f -v .pylint/pylint.svg public/
+    - mv -f -v .pylint/pylint.log public/
+  artifacts:
+    paths:
+      - public
+
+
+pypi_deploy:
+  stage: deploy
+  rules:
+    # - if: $CI_COMMIT_TAG =~ /^v?[0-9]+[.][0-9]+([.][0-9]+)?$/
+    # CI_COMMIT_TAG is only set if the push does contain a new tag (and no new commit); separate push and rules are
+    # additionally creating duplicate jobs on gitlab CI - finally using release branch to trigger deploy.
+    - if: $CI_COMMIT_BRANCH =~ /^release/
+  variables:
+    # the pushed branch has to be a protected branch in order to get the CI variables for the twine/PyPI authentication.
+    TWINE_USERNAME: $PYPI_USERNAME
+    TWINE_PASSWORD: $PYPI_PASSWORD
+  before_script:
+     - pip install --upgrade pip build twine
+     - python -m build
+  script:
+    - twine upload {"--repository testpypi " if project_name.startswith('aetst') else ""}--verbose dist/*
