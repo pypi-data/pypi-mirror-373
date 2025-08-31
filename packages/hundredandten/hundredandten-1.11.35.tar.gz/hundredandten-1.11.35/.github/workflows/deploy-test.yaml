@@ -1,0 +1,28 @@
+name: Publish (Test)
+
+on:
+  push:
+    branches:
+      - test/*
+
+jobs:
+  get-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.retrieve-tag.outputs.latest_tag }}
+    steps:
+      - id: checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: retrieve-tag
+        run: echo "latest_tag=$(git describe --tags --abbrev=0)" >> $GITHUB_OUTPUT
+
+  publish:
+    needs: get-tag
+    uses: seamuslowry/workflows/.github/workflows/publish_python.yml@main
+    with:
+      repo: testpypi
+      release-version: "${{ needs.get-tag.outputs.tag }}-${{ github.run_number }}"
+    secrets:
+      py_pi_token: ${{ secrets.TEST_PYPI_API_TOKEN }}
