@@ -1,0 +1,17 @@
+dict_of_parts = {
+    "rpi3bp": "",
+    "dc-motor-12-VDC-45W": "type 1, 2 x rear + steering",
+    "SLA-Battery": "",
+    "XL4015": "",
+    "BTS7960": "rear drive (2 motors) & steering drive (1 motor)",
+    "470-mF": "",
+    "Polyfuse": "optional",
+    "TVS-diode": "",
+    "resistor": "3 x 330-470 Ω",
+    "LED": "green + red + yellow",
+    "rpi-camera": "",
+    "PCB-single-14x9_5": "2 x",
+    "PCB-double-9x7": "",
+    "pushbutton": "",
+    "wheel": "4 x ",
+}
