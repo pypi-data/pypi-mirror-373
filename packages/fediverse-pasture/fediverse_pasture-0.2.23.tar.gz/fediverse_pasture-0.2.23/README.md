@@ -1,0 +1,100 @@
+<!--
+SPDX-FileCopyrightText: 2023 Helge
+
+SPDX-License-Identifier: MIT
+-->
+
+# Fediverse Pasture
+
+This python package contains tools to test Fediverse applications. This
+package uses [bovine](https://bovine.readthedocs.io/en/latest/) for a lot
+of the Fediverse related logic. It should also be noted that the aim here
+is to debug issues caused by federation, thus everything involves starting
+a webserver and running requests against it.
+
+## Usage
+
+For usage information, see the [documentation](https://funfedi.dev/python_package/).
+
+### With docker container
+
+One can start the one actor server via
+
+```bash
+docker run --rm --name pasture\
+    --hostname pasture-one-actor --network fediverse-pasture\
+    helgekr/pasture one_actor
+```
+
+and then use the send tool via
+
+```bash
+docker exec pasture ./send acct:user@domain
+```
+
+## Development
+
+Install the necessary dependencies via
+
+```bash
+poetry install --with test,dev --all-extras
+```
+
+To lint and check code formatting run
+
+```bash
+poetry run ruff check .
+poetry run ruff format .
+```
+
+To test the code run
+
+```bash
+poetry run pytest
+```
+
+### With docker
+
+To start the local environment in docker run
+
+```bash
+docker run --detach --rm --name pasture-dev\
+    --hostname pasture-one-actor\
+    --network fediverse-pasture\
+    -v .:/data --workdir /data\
+    -e UV_PROJECT_ENVIRONMENT=/tmp/venv\
+    ghcr.io/astral-sh/uv:python3.11-alpine\
+    uv run python -mfediverse_pasture.one_actor --port 80
+```
+
+and then
+
+```bash
+docker exec -ti -e UV_PROJECT_ENVIRONMENT=/tmp/venv pasture-dev \
+    uv run python -mfediverse_pasture.send acct:user@domain
+
+```
+
+to send a message.
+
+## Releasing
+
+Releasing is done automatically on merge to the main branch.
+For this to happen, the following has to be true
+
+- There exists a milestone with the version number
+- All issues in the milestone are closed
+- There exists an entry in CHANGES.md
+- The package version has the same version number
+
+See <https://codeberg.org/helge/release_helper>
+
+## Funding
+
+This code was created as part of [Fediverse Test Framework](https://nlnet.nl/project/FediverseTestFramework/).
+
+A project funded through the [NGI0 Core](https://nlnet.nl/core) Fund,
+a fund established by [NLnet](https://nlnet.nl/) with financial support from
+the European Commission's [Next Generation Internet](https://ngi.eu/) programme,
+under the aegis of DG Communications Networks, Content and Technology
+under grant agreement No 101092990.
