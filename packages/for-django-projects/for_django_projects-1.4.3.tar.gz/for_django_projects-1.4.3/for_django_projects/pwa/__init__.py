@@ -1,0 +1,1 @@
+default_app_config = 'for_django_projects.pwa.apps.PwaConfig'
