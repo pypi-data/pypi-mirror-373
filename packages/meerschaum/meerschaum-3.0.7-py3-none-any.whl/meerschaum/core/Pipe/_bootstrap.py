@@ -1,0 +1,264 @@
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim:fenc=utf-8
+
+"""
+Attempt to create a pipe's requirements in one method.
+"""
+
+from __future__ import annotations
+
+import meerschaum as mrsm
+from meerschaum.utils.typing import SuccessTuple, Dict, Any
+
+
+def bootstrap(
+    self,
+    debug: bool = False,
+    yes: bool = False,
+    force: bool = False,
+    noask: bool = False,
+    shell: bool = False,
+    **kw
+) -> SuccessTuple:
+    """
+    Prompt the user to create a pipe's requirements all from one method.
+    This method shouldn't be used in any automated scripts because it interactively
+    prompts the user and therefore may hang.
+
+    Parameters
+    ----------
+    debug: bool, default False:
+        Verbosity toggle.
+
+    yes: bool, default False:
+        Print the questions and automatically agree.
+
+    force: bool, default False:
+        Skip the questions and agree anyway.
+
+    noask: bool, default False:
+        Print the questions but go with the default answer.
+
+    shell: bool, default False:
+        Used to determine if we are in the interactive shell.
+        
+    Returns
+    -------
+    A `SuccessTuple` corresponding to the success of this procedure.
+
+    """
+
+    from meerschaum.utils.warnings import info
+    from meerschaum.utils.prompt import prompt, yes_no
+    from meerschaum.utils.formatting import pprint
+    from meerschaum.config import get_config
+    from meerschaum.utils.formatting._shell import clear_screen
+    from meerschaum.utils.formatting import print_tuple
+    from meerschaum.actions import actions
+    from meerschaum.utils.venv import Venv
+    from meerschaum.connectors import get_connector_plugin
+
+    _clear = get_config('shell', 'clear_screen', patch=True)
+
+    if self.get_id(debug=debug) is not None:
+        delete_tuple = self.delete(debug=debug)
+        if not delete_tuple[0]:
+            return delete_tuple
+
+    if _clear:
+        clear_screen(debug=debug)
+
+    _parameters = _get_parameters(self, debug=debug)
+    self.parameters = _parameters
+    pprint(self.parameters)
+    try:
+        prompt(
+            f"\n    Press [Enter] to register {self} with the above configuration:",
+            icon = False
+        )
+    except KeyboardInterrupt:
+        return False, f"Aborted bootstrapping {self}."
+
+    with Venv(get_connector_plugin(self.instance_connector)):
+        register_tuple = self.instance_connector.register_pipe(self, debug=debug)
+
+    if not register_tuple[0]:
+        return register_tuple
+
+    if _clear:
+        clear_screen(debug=debug)
+
+    try:
+        if yes_no(
+            f"Would you like to edit the definition for {self}?",
+            yes=yes,
+            noask=noask,
+            default='n',
+        ):
+            edit_tuple = self.edit_definition(debug=debug)
+            if not edit_tuple[0]:
+                return edit_tuple
+
+        if yes_no(
+            f"Would you like to try syncing {self} now?",
+            yes=yes,
+            noask=noask,
+            default='n',
+        ):
+            sync_tuple = actions['sync'](
+                ['pipes'],
+                connector_keys=[self.connector_keys],
+                metric_keys=[self.metric_key],
+                location_keys=[self.location_key],
+                mrsm_instance=str(self.instance_connector),
+                debug=debug,
+                shell=shell,
+            )
+            if not sync_tuple[0]:
+                return sync_tuple
+    except Exception as e:
+        return False, f"Failed to bootstrap {self}:\n" + str(e)
+
+    print_tuple((True, f"Finished bootstrapping {self}!"))
+    info(
+        "You can edit this pipe later with `edit pipes` "
+        + "or set the definition with `edit pipes definition`.\n"
+        + "    To sync data into your pipe, run `sync pipes`."
+    )
+
+    return True, "Success"
+
+
+def _get_parameters(pipe, debug: bool = False) -> Dict[str, Any]:
+    from meerschaum.utils.prompt import prompt
+    from meerschaum.utils.warnings import warn, info
+    from meerschaum.config import get_config
+    from meerschaum.config._patch import apply_patch_to_config
+    from meerschaum.utils.formatting._shell import clear_screen
+    from meerschaum.utils.venv import Venv
+    from meerschaum.connectors import get_connector_plugin
+    _clear = get_config('shell', 'clear_screen', patch=True)
+    _types_defaults = {
+        'sql': {
+            'fetch': {
+                'backtrack_minutes': get_config(
+                    'pipes', 'parameters', 'fetch', 'backtrack_minutes'
+                ),
+                'definition': None,
+            },
+            'verify': {
+                'chunk_minutes': get_config('pipes', 'parameters', 'verify', 'chunk_minutes'),
+            },
+        },
+        'api': {
+            'fetch': {},
+        },
+    }
+    try:
+        conn_type = pipe.connector.type
+    except Exception:
+        conn_type = None
+    _parameters = _types_defaults.get(conn_type, {})
+
+    if conn_type == 'plugin':
+        if pipe.connector.register is not None:
+            with Venv(get_connector_plugin(pipe.connector)):
+                _params = pipe.connector.register(pipe)
+            if not isinstance(_params, dict):
+                warn(
+                    f"Plugin '{pipe.connector_keys[len('plugin:'):]}' "
+                    + "did not return a dictionary of attributes.", stack=False
+                )
+            else:
+                _parameters = apply_patch_to_config(_parameters, _params)
+     
+    ### If the plugin's `register()` function returns columns, skip asking for columns.
+    ask_for_cols = _parameters.get('columns', {}).get('datetime', None) is None
+    if ask_for_cols:
+        _parameters['columns'] = _ask_for_columns(pipe, debug=debug)
+
+    ### Ask to change the target.
+    if _clear:
+        clear_screen(debug=debug)
+    info(
+        f"You have the option to change the target table name for {pipe}.\n    "
+        + "To keep the default, press [Enter].\n"
+    )
+    _parameters['target'] = prompt(f"Target table name for {pipe}:", default=pipe.target)
+
+    if _clear:
+        clear_screen(debug=debug)
+
+    ### Ask for tags.
+    try:
+        info(
+            "In addition to the key flags (-c, -m, -l), you can select pipes with `--tags` (-t).\n"
+            + "    Separate tags with commas (e.g. tag1,tag2).\n"
+        )
+        _parameters['tags'] = [
+            t.strip() for t in prompt(f"Tags for {pipe} (empty to omit):").split(',') if t
+        ]
+    except Exception:
+        _parameters['tags'] = []
+
+    return _parameters
+
+
+def _ask_for_columns(pipe, debug: bool=False) -> Dict[str, str]:
+    """
+    Prompt the user for the column names.
+    """
+    import json
+    from meerschaum.utils.warnings import info
+    from meerschaum.utils.prompt import prompt, yes_no
+    from meerschaum.utils.formatting import get_console
+    from meerschaum.utils.formatting._shell import clear_screen
+    from meerschaum.utils.misc import to_snake_case
+    from meerschaum.config import get_config
+    rich_json = mrsm.attempt_import('rich.json')
+
+    do_clear = get_config('shell', 'clear_screen')
+
+    cols = {}
+
+    info(f"Please enter index columns for {pipe}:")
+    try:
+        datetime_name = prompt("Datetime column (empty to omit):", icon=False)
+    except KeyboardInterrupt:
+        datetime_name = None
+
+    if datetime_name:
+        cols['datetime'] = datetime_name
+
+    try:
+        id_name = prompt("ID column (empty to omit):", icon=False)
+    except KeyboardInterrupt:
+        id_name = None
+
+    if id_name:
+        cols['id'] = id_name
+
+    if yes_no("Add more columns?"):
+        while True:
+            if do_clear:
+                clear_screen(debug=debug)
+
+            cols_text = json.dumps(cols, indent=4)
+            info("Current index columns:")
+            get_console().print(rich_json.JSON(cols_text))
+
+            col_name = prompt("Enter index column (empty to stop):")
+            if not col_name:
+                break
+
+            if col_name in cols.values():
+                continue
+
+            col_ix = to_snake_case(col_name)
+            if col_ix in cols:
+                col_ix = col_ix + '_'
+
+            cols[col_ix] = col_name
+
+    return cols
