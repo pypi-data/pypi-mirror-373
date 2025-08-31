@@ -1,0 +1,61 @@
+kind: pipeline
+type: docker
+name: Deploy
+
+platform:
+  os: linux
+  arch: amd64
+
+steps:
+
+- name: Fix drone limitation
+  image: drone/git
+  commands:
+  - |
+      if [ "$(git symbolic-ref --short HEAD)" != "master" ]; then
+        git fetch origin master:master
+      fi      
+
+  - git fetch --tags
+  - chown -R 1000:1000 .
+
+- name: Lint
+  image: python:3.10
+  commands:
+  - pip install --upgrade pip
+  - pip install -r requirements.txt
+  - pip install isort black flake8 pylint mypy pytype
+  - isort --check src
+  - black --line-length=80 --check src
+  - flake8 src
+  - pylint src
+  - mypy src
+  - PYTHONPATH=src pytype src
+
+- name: Build
+  image: python:3.10
+  commands:
+  - pip install --upgrade pip
+  - pip install build
+  - python -m build
+
+- name: Test
+  image: python:3.10
+  commands:
+  - pip install --upgrade pip
+  - pip install -r requirements.txt
+  - ./main.py --version
+
+- name: Publish to PyPI
+  image: python:3.10
+  environment:
+    username:
+      from_secret: pypi_username
+    password:
+      from_secret: pypi_password
+  when:
+    event: tag
+  commands:
+  - python -m pip install --upgrade build twine
+  - python -m build
+  - python -m twine upload dist/* --username="${username}" --password="${password}" --skip-existing --verbose
