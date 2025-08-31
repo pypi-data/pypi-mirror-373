@@ -1,0 +1,30 @@
+from typing import Union
+
+from twisted.internet.defer import Deferred, inlineCallbacks
+
+from peek_abstract_chunked_index._private.client.controller.ChunkedIndexCacheController import \
+    ChunkedIndexCacheController
+from peek_abstract_chunked_index._private.tuples.ChunkedIndexUpdateDateTuple import \
+    ChunkedIndexUpdateDateTuple
+from vortex.Payload import Payload
+from vortex.TupleSelector import TupleSelector
+from vortex.handler.TupleDataObservableHandler import TuplesProviderABC
+
+
+
+class ChunkedIndexUpdateDateTupleProvider(TuplesProviderABC):
+    def __init__(self, cacheHandler: ChunkedIndexCacheController):
+        self._cacheHandler = cacheHandler
+
+    @inlineCallbacks
+    def makeVortexMsg(self, filt: dict,
+                      tupleSelector: TupleSelector) -> Union[Deferred, bytes]:
+        tuple_ = ChunkedIndexUpdateDateTuple()
+        tuple_.updateDateByChunkKey = {
+            key:self._cacheHandler.encodedChunk(key).lastUpdate
+            for key in self._cacheHandler.encodedChunkKeys()
+        }
+        payload = Payload(filt, tuples=[tuple_])
+        payloadEnvelope = yield payload.makePayloadEnvelopeDefer()
+        vortexMsg = yield payloadEnvelope.toVortexMsg()
+        return vortexMsg
