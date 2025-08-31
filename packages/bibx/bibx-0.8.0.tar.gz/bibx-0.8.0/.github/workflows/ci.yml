@@ -1,0 +1,42 @@
+---
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: CI for ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    env:
+      USING_COVERAGE: "3.11,3.13"
+
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v2
+        with:
+          enable-cache: true
+          version: "0.8.13"
+
+      - name: Run tests for ${{ matrix.python-version }}
+        run: |
+          uv sync
+          uv run pre-commit run --all
+          uv run pytest ./tests
+          uv run mypy ./src
+          uv run ruff check
+          uv run ruff format --check
