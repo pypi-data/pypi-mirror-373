@@ -1,0 +1,219 @@
+{% extends base %}
+
+{% block head %}
+<style type="text/css">
+#canvas {
+    max-width: 100%;
+}
+</style>
+{% end %}
+
+{% block body %}
+
+{% include common/script/load_vue.html %}
+
+<div class="card">
+    {% set title = "图片拆分" %}
+    {% include "common/title/base_title.html" %}
+    <p>点击画布可以选择图片进行分割,设置列数和行数都为1可以用来调整图片大小,点击图片区域选取</p>
+</div>
+
+
+<div id="app" class="card">
+    <input type="file" name="file" id="file" value="选择图片" onchange="handleFiles(this.files)" class="hide" multiple="multiple">
+    <div class="col-md-12">
+        <div>
+            <label class="label">列数</label>
+            <input type="text" id="cols" value="4">
+        </div>
+        <div>
+            <label class="label">行数</label>
+            <input type="text" id="rows" value="4">
+        </div>
+        <!--
+        <div>
+            <label class="label">选择第</label>
+            <input type="text" id="selectedPart" value="1">张
+        </div>
+        -->
+        <div>
+            <button id="selectFile">选择文件</button>
+            <button id="splitBtn">分割</button>
+            <button id="extractBtn">提取</button>
+        </div>
+    </div>
+
+    <div id="inputImageDiv" class="col-md-12">
+    </div>
+    <div id="canvasContainer" class="col-md-12 top-offset-1">
+        <canvas id="canvas"></canvas>
+    </div>
+</div>
+
+<div class="card">
+    {% set title = "输出图片" %}
+    {% include common/base_title.html %}
+    <canvas id="extractCanvas" class="hide"></canvas>
+</div>
+
+<script type="text/javascript">
+
+function handleFiles(files) {
+    if(files.length) {  
+        var handled = 0;
+        var fileLength = files.length;
+        var images = [];
+        
+        for (var i = 0; i < files.length; i++) {
+            var file = files[i];  
+            var reader = new FileReader();  
+            var img = $("<img>");
+            var url = window.URL.createObjectURL(file)
+            console.log(url);
+            (function (url, index) {            
+                var img = new Image();
+                img.src = url;
+                img.onload = function(event)  {  
+                    // document.getElementById("filecontent").innerHTML = this.result;  
+                    var img = event.target;
+                    console.log(event);
+                    console.log(img);
+                    window.selectedImg = img;
+                    var canvas = $('#canvas')[0];
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    var ctx = canvas.getContext('2d');
+
+                    splitImage(img);
+
+                };  
+            })(url, i);
+            // reader.readAsDataURL();
+        }
+    }
+  }  
+
+function getFrameWidth () {
+    return parseInt($("#width").val());
+}
+
+function getFrameHeight () {
+    return parseInt($("#height").val());
+}
+
+function getCols() {
+    return parseInt($("#cols").val());
+}
+
+function getRows() {
+    return parseInt($("#rows").val());
+}
+
+function alignFloor(value, alignment) {
+    return parseInt(value / alignment) * alignment;
+}
+
+function splitImage (selectedImg) {
+    var cols = getCols();
+    var rows = getRows();
+
+    var canvas = $('#canvas')[0];
+    var width = canvas.width / cols;
+    var height = canvas.height / rows;
+
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = "#ccf";
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 绘制图片
+    if (selectedImg) {
+        var img = selectedImg;
+        ctx.drawImage(img, 0, 0, img.width, img.height);
+    }
+
+    ctx.beginPath();
+    for (var i = 1; i < cols; i++) {
+        ctx.fillStyle = "#cf8";
+        ctx.moveTo(width*i, 0);
+        ctx.lineTo(width*i, canvas.height);
+        ctx.stroke();
+    }
+
+    for (var i = 1; i < rows; i++) {
+        ctx.fillStyle = "#cf8";
+        ctx.moveTo(0, height * i);
+        ctx.lineTo(canvas.width, height*i);
+        ctx.stroke();
+    }
+    ctx.closePath();
+
+    window.ctx = ctx;
+};
+
+$("#splitBtn").on("click", function (event) {
+    splitImage(window.selectedImg);
+});
+
+$("#selectFile").on("click", function (event) {
+    console.log(event);
+    $("#file").click();
+});
+
+$("#canvas").on("click", function (event) {
+    if (!window.selectedImg) {
+        return;
+    }
+    var cols = getCols();
+    var rows = getRows();
+
+    var x = event.offsetX;
+    var y = event.offsetY;
+
+    console.log(x, y);
+    var cssWidth = $("#canvas").width() / cols;
+    var cssHeight = $("#canvas").height() / rows;
+
+    var realWidth = $("#canvas")[0].width / cols;
+    var realHeight = $("#canvas")[0].height / rows;
+
+    x = parseInt(x / cssWidth) * realWidth;
+    y = parseInt(y / cssHeight) * realHeight;
+
+    $("#extractCanvas").removeClass('hide');
+    var canvas = $("#extractCanvas")[0];
+    var ctx = $("#extractCanvas")[0].getContext('2d');
+    canvas.width = realWidth;
+    canvas.height = realHeight;
+    ctx.drawImage(window.selectedImg, x, y, realWidth, realHeight, 0, 0, realWidth, realHeight);
+});
+
+$("#extractBtn").on("click", function (event) {
+    $("#extractCanvas").removeClass("hide");
+
+    var cols = getCols();
+    var rows = getRows();
+
+    if (window.selectedImg) {
+        var width = window.selectedImg.width / cols;
+        var height = window.selectedImg.height / rows;
+        var canvas = $("#extractCanvas")[0];
+        canvas.width = width;
+        canvas.height = height;
+
+        var index = parseInt($("#selectedPart").val());
+        var colIndex = (index-1) % cols;
+        var rowIndex = parseInt((index-1) / cols);
+
+        var ctx = canvas.getContext('2d');
+        console.log(window.selectedImg, colIndex*width, rowIndex*height, width, height, 0, 0, width, height);
+        ctx.drawImage(window.selectedImg, colIndex*width, rowIndex*height, width, height, 0, 0, width, height);
+    }
+});
+
+$(function() {
+    splitImage();
+})
+</script>
+
+{% end %}

@@ -1,0 +1,130 @@
+{% extends base %}
+<!--
+@author xupingmao
+@since 2020/01/06
+@modified 2021/07/31 10:38:21
+-->
+
+{% block body_left %}
+
+{% init show_note_path = True %}
+
+{% include common/script/load_vue.html %}
+{% include note/component/script/group_select_script.html %}
+{% include note/component/script/tag_script.html %}
+
+<div id="vueApp">
+    <div class="card note-list">
+        <!-- header -->
+        <div class="row card-title btn-line-height">
+            <span>批量操作</span>
+            <div class="float-right">
+                {% if parent_id != "0" %}
+                    <button class="btn reverse-select-btn">反选</button>
+                    <button class="btn move-btn" onclick="batchMoveNotes(this)">移动</button>
+                    {% include common/button/back_button.html %}
+                {% else %}
+                    <!-- 根目录 -->
+                    <!-- <button class="btn btn-default batch-move-btn">移动</button> -->
+                    {% include common/button/back_button.html %}
+                {% end %}
+            </div>
+        </div>
+    </div>
+
+    {% if show_note_path %}
+    <div class="card">
+        {% include note/component/note_path.html %}
+    </div>
+    {% end %}
+
+    {% include note/component/script/tag_manage_script.html %}
+
+    <div class="card">
+        {% if len(files) == 0 %}
+            {% include common/text/empty_text.html %}
+        {% end %}
+
+        {% for item in files %}
+            <div class="book-item">
+                <div class="row">
+                    {% if item.priority>0 %}
+                        <span class="tag orange">置顶</span>
+                    {% end %}
+    
+                    <i class="fa {{item.icon}} fa-{{item.icon}} black"></i>
+                    <a class="link2" href="{{_server_home}}{{item.url}}">{{item.name}}</a>
+                    
+                    <span class="float-right">
+                        <a class="item-option" data-id="{{item.id}}" data-name="{{item.name}}" 
+                            onclick="renameNoteByAttr(this);" href="javascript:void(0);">重命名</a>
+                        <input type="checkbox" data-id="{{item.id}}" data-name="{{item.name}}"/>
+                    </span>
+                </div>
+                <div class="row">
+                    <span>标签</span>
+                    {% for tag in item.tag_info_list %}
+                        <a class="tag lightgray">{{tag.tag_name}}</a>
+                    {% end %}
+                    <button class="btn-default bind-tag-btn" 
+                        data-parent-id="{{item.parent_id}}"
+                        data-id="{{item.id}}"
+                        data-tags="{{item.tags_json}}"
+                        onclick="xnote.action.note.editNoteTag(this);">+标签</button>
+                </div>
+            </div>
+        {% end %}
+    </div>
+</div>
+
+{% include note/component/script/rename_script.html %}
+
+<script type="text/javascript">
+    // 标签管理
+    xnote.api["note.tag.manage.init"]({
+        tagType: "note",
+        groupId: xnote.getUrlParam("parent_id"),
+        selectedTags: JSON.parse(xnote.getUrlParam("tags", "[]")),
+        linkOfTagAll: "/note/manage?parent_id=" + xnote.getUrlParam("parent_id")
+    });
+    xnote.note.groupId = xnote.getUrlParam("parent_id");
+</script>
+
+<script type="text/javascript">
+
+function batchMoveNotes(target) {
+    xnote.note.openDialogToBatchMove(":checked");
+}
+
+$(function () {
+    $(".reverse-select-btn").click(function () {
+        $("input[type=checkbox]").each(function (index, element) {
+            var value = $(element).prop("checked");
+            $(element).prop("checked", !value);
+        });
+    });
+
+    $(".rename-btn").click(function(event) {
+        console.log("rename");
+        var checked = $(":checked");
+        if (checked.length == 0) {
+            alert("请选择笔记");
+            return;
+        }
+
+        if (checked.length != 1) {
+            alert("不支持批量重命名");
+            return;
+        }
+
+        renameNote(checked.attr("data-id"), checked.attr("data-name"));
+    });
+
+});
+</script>
+
+{% end %}
+
+{% block body_right %}
+    {% include common/sidebar/app_index.html %}
+{% end %}

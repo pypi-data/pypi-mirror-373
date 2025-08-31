@@ -1,0 +1,60 @@
+<script type="text/javascript">
+$(function () {
+    var dialogIndex = 0;
+    // xnote.showDialog(title, html);
+
+    function onSelectTopicBtnClicked() {
+        function createTopicText(topic) {
+            if (topic.Get(0) == '#' && topic.Get(-1) == '#') {
+                return topic;
+            }
+
+            if (topic.Get(0) == '《' && topic.Get(-1) == '》') {
+                return topic;
+            }
+            
+            return '#' + topic + '#';
+        }
+
+        function touchTopic(topic) {
+            var params = {"key": topic};
+            xnote.http.post("/message/touch", params, function (resp) {
+                console.log(resp);
+            });
+        }
+
+        window.topic_dialog_tag_click = function (target) {
+            var topic = $(target).text();
+
+            // 将话题置顶
+            touchTopic(topic);
+
+            var topicText = createTopicText(topic);
+
+            // 发布选择消息的事件
+            xnote.fire("message.topic.selected", topicText);
+
+            layer.close(dialogIndex);
+        };
+
+        xnote.http.get("/message/list?pagesize=100&page=1&key=&tag=key", function (resp) {
+            if (resp.code == "success") {
+                var data = resp.data;
+                var html = $("<div>").addClass("card");
+                for (var i = 0; i < data.length; i++) {
+                    var content = data[i].content;
+                    var tagRow = $("<span>").addClass("tag-span")
+                        .text(content).attr("onclick", "topic_dialog_tag_click(this);");
+                    html.append(tagRow);
+                }
+                dialogIndex = xnote.showDialog("选择标签", html.html(), ["确认", "取消"]);
+            }
+        });
+    }
+
+    $(".select-topic-btn").click(function () {
+        // 打开iframe选择标签
+        var dialogId = xnote.showIframeDialog("选择标签", "/message?tag=key&op=select");
+    });
+});
+</script>

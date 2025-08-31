@@ -1,0 +1,97 @@
+
+{% import xutils.textutil as textutil %}
+{% init parent_path = None %}
+
+{% include note/component/css/gallery_css.html %}
+
+<div class="card">
+    {% include note/component/view_header.html %}
+</div>
+
+<div class="card">
+    {% include note/component/note_path.html %}
+</div>
+
+<div class="card btn-line-height">
+    {% include note/component/view_header_tag.html %}
+</div>
+
+<style id="gallery-css" type="text/css"></style>
+
+<script type="text/javascript">
+xnote.execute(function () {
+    $("#noteIdInput").val("{{file.id}}");
+    function updateSize() { 
+        console.log("updateSize");
+        var listWidth = xnote.device.contentLeftWidth - 10;
+        var photoWidth = 150; // PC的默认值
+
+        if (xnote.device.isMobile) {
+            photoWidth = 100;
+            listWidth = listWidth - 20; // 移动端有一个padding
+        }
+
+        var cols = parseInt(listWidth / photoWidth);
+        photoWidth = parseInt(listWidth / cols);
+
+        console.log("photoWidth:", photoWidth);
+
+        var cssText = ".gallery-item{ width: ${width}px; height:${width}px;}";
+        cssText = xnote.renderTemplate(cssText, {width: photoWidth});
+
+        $("#gallery-css").html(cssText);
+        // 采用读写分离的方式，阅读和编辑使用两个不同的视图
+    }
+
+    xnote.events.onUploadPrepareEvent(function (event) {
+        console.log("onUploadPrepareEvent", event);
+        if (event.target.uploadType == "fs") {
+            xnote.http.post("/note/touch", {id: "{{file.id}}", resp_type: "json"}, function (resp) {
+                console.log(resp);
+            });
+        }
+    });
+
+    updateSize();
+    $(window).on("resize", updateSize);
+});
+</script>
+
+<div class="card">
+    <!-- 上传文件组件 -->
+    {% if file.creator == _user_name %} 
+        {% include fs/mod_fs_upload.html %}
+    {% end %}
+
+
+    <div class="file-list">
+        {% for item in filelist %}
+            {# 隐藏文件 #}
+            {% if item.name == "" %}
+                {% continue %}
+            {% end %}
+            
+            {% if xconfig.FS_HIDE_FILES and (item.name[0] == "." or item.name.endswith((".pyc", ".class"))) %}
+                {% continue %}
+            {% end %}
+
+            {% if not item.name.startswith("._") %}
+                <div class="gallery-item context-menu-one">
+                    <div class="icon-box">
+                        {% if item.type == "dir" %}
+                            <img class="fs-icon" src="/static/image/folder2.png">
+                        {% elif xutils.is_img_file(item.path) %}
+                            <img class="x-photo" src="{{_server_home}}/data/files/{{quote(item.path)}}?mode=thumbnail" 
+                                data-src="/data/files/{{quote(item.path)}}" loading="lazy">
+                        {% elif xutils.is_text_file(item.path) %}
+                            <img class="fs-icon" src="/static/image/icon_txt.png">
+                        {% else %}
+                            <img class="fs-icon" src="/static/image/file2.png">
+                        {% end %}
+                    </div>
+                </div>
+            {% end %}
+        {% end %}
+    </div>
+</div>
+

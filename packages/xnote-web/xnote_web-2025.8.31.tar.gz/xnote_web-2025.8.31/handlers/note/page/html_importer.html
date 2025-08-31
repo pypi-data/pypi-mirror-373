@@ -1,0 +1,165 @@
+{% extends base %}
+
+{% block head %}
+
+<style type="text/css">
+    .content {
+        width: 100%;
+        float: none;
+    }
+
+    label {
+        float: left;
+        width: 100px;
+    }
+
+    .url-input {
+        width: 50rem;
+        max-width: 100%;
+    }
+
+    .file-input {
+        border: none;
+    }
+
+    .confirm-dialog-body input, .confirm-dialog-body select {
+        width: 100%;
+    }
+
+</style>
+{% end %}
+
+{% block body %}
+
+{% init url = "" %}
+{% init error = "" %}
+{% init address = "" %}
+{% init images = [] %}
+{% init scripts = [] %}
+{% init texts = [] %}
+{% init article_title = "" %}
+
+<div class="col-md-12 card">
+    {% set title = "导入网页" %}
+    {% include common/base_title.html %}
+</div>
+
+<div class="card">
+    <form method="POST" enctype="multipart/form-data">
+        <p>
+            <label>上传文件</label>
+            <input type="file" name="file" class="file-input"/>
+        </p>
+        <p>
+            <label>网址</label>
+            <input type="text" name="url" class="url-input" value="{{url}}" />
+        </p>
+        <div>
+            <input type="submit" class="btn" value="抓取网页"/>
+            <input type="button" id="saveToDbBtn" class="btn" value="保存到资料库">
+        </div>
+    </form>
+</div>
+
+<div style="color:red;">{{error}}</div>
+
+<input type="hidden" id="articleTitle" value="{{article_title}}"/>
+<div class="card">
+    <h2 class="card-title">Markdown 文本</h2>
+    <textarea rows="30" class="content" id="content">
+    {% for text in texts%}{{text}}
+    {% end %}
+    </textarea>
+</div>
+
+<div class="card">
+    <h2 class="card-title">纯文本</h2>
+    <textarea rows="30" class="content" id="plainText">{{?plain_text}}</textarea>
+    <div><button id="readText">阅读</button></div>
+</div>
+
+<div class="card">
+    <h2 class="card-title">Images</h2>
+    <textarea rows={{len(images)+2}} class="content">
+    {% for image in images %}{{image}}
+    {% end %}
+    </textarea>
+</div>
+
+<div class="card">
+    <h2 class="card-title">Scripts</h2>
+    <textarea rows="{{len(scripts)+2}}" class="content">
+    {% for script in scripts%}{{script}}
+    {% end %}
+    </textarea>
+</div>
+
+<div class="confirm-dialog hide">
+    <div class="confirm-dialog-body card">
+        <div class="row input-group-row">
+            <label>笔记名称</label>
+            <input type="text" name="name" value="${name}">
+        </div>
+    
+        <div class="row top-offset-1 input-group-row">
+            <label>{{T("笔记本")}}</label>
+            <select name="parent_id">
+                {%for item in groups %}
+                    <option value="{{item.id}}">{{item.name}}</option>
+                {% end %}
+            </select>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">
+$("#saveToDbBtn").on("click", function () {
+    var articleTitle = $("#articleTitle").val();
+
+    var options = {
+        area: ["300px", "300px"],
+        title: "输入资料名称",
+        template: ".confirm-dialog",
+        defaultValues: {
+            name: articleTitle,
+        },
+        shadeClose: false,
+        buttons: ["确定", "取消"],
+        functions: function (index, layero, dialogInfo) {
+            var dialogId = dialogInfo.id;
+            var name = $("#" + dialogId).find("[name=name]").val();
+            var parentId = $("#" + dialogId).find("[name=parent_id]").val();
+            var content = $("#content").val();
+            var params = {"_format": "json", "name": name, "content": content, "type": "md", "tags": "来自网络"};
+
+            params.parent_id = parentId;
+
+            xnote.http.post("/note/create", 
+                params,
+                function (responseText) {
+                    console.log(responseText);
+                    var data = responseText;
+                    if (data.success) {
+                        location.href = data.url;
+                    } else {
+                        layer.alert(data.message);
+                    }
+            });
+        }
+    }
+
+    xnote.openDialogEx(options);
+});
+
+$("#readText").click(function () {
+    $.post("/api/tts", {content: $("#plainText").text()}, function (resp) {
+
+    });
+})
+</script>
+
+{% end %}
+
+{% block body_right %}
+    {% include common/sidebar/default.html %}
+{% end %}

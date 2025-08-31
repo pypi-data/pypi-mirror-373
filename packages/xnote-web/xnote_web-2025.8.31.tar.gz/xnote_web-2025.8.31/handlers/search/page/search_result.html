@@ -1,0 +1,170 @@
+{% extends base.html %}
+<!--
+@author xupingmao
+@since 2017/11/29
+@modified 2022/03/12 11:04:23
+-->
+
+{% block body_left %}
+
+{% init recent = [] %}
+{% init tools  = [] %}
+{% init page_max  = 0 %}
+{% init show_path = False %}
+
+<div id="executeResult">
+</div>
+
+{% if show_path %}
+    <div class="card">
+        <h3 class="card-title">
+            <a href="{{parent.url}}" class="link2">{{parent.name}}</a> / 
+            <a href="{{current.url}}" class="link2">{{current.name}}</a>
+        </h3>
+    </div>
+{% end %}
+
+<div class="col-md-12 result-list">
+
+    <div class="card">
+        <div class="card-title">
+            <span>综合搜索</span>
+            <div class="float-right">
+                <a class="btn btn-default" href="{{_server_home}}/system/settings?category=search">设置</a>
+                <a class="btn btn-default" href="{{_server_home}}/search/history">搜索历史</a>
+                {% include common/button/back_button.html %}
+            </div>
+        </div>
+    </div>
+
+    {% include search/component/search_tab.html %}
+
+    {% if len(tools) > 0 %}
+        <div class="card">
+            <h3 class="card-title">脚本</h3>
+            {% for tool in tools %}
+                <a class="tag-span" href="{{tool.url}}">{{tool.name}}</a>
+            {% end %}
+        </div>
+    {% end %}
+
+    {% for i, file in enumerate(files) %}
+    <div class="card"> 
+        <div class="note-body">
+            {# 右侧操作选项 #}
+            <div class="note-visited-cnt">
+                {# 快捷命令 #}
+                {% if file.command != None and file.command != "" %}
+                    <input type="button" class="btn execute-btn float-right" value="执行" href="{{file.command}}"/>
+                {% end %}
+
+                {% if file.show_move == True %}
+                    <a class="item-option move-btn" data-id="{{file.id}}">移动</a>
+                {% end %}
+
+                {# 插件 #}
+                {% if file.category == "plugin" %}
+                    <a class="item-option" href="{{file.edit_url}}">编辑</a>
+                {% end %}
+                
+                {% if file.get("show_more_link") %}
+                    <!-- 分类导航 -->
+                    <a href="{{file.url}}">查看全部</a>
+                {% end %}
+            </div>
+
+            <div class="note-name">
+                {% if file.type == "group" %}
+                    <i class="fa fa-folder orange"></i>
+                {% else %}
+                    <i class="fa {{file.icon}}"></i>
+                {% end %}
+
+                {% if file.category == "note" %}
+                    <a class="dialog-link" href="{{file.url}}">{{file.name}}</a>
+                {% else %}
+                    <a href="{{file.url}}">{{file.name}}</a>
+                {% end %}
+            </div>
+            
+            {% if "raw" in file and file.raw != None %}
+                <pre>{{ file.raw }}</pre>
+            {% end %}
+
+            {% if "html" in file and file.html != None %}
+                {% raw file.html %}
+            {% end %}
+
+            {# 知识库 #}
+            {% if file.category == "note" %}
+                <div class="item-ext-info">
+                    {% if file.priority is not None and file.priority > 0 %}
+                        <span class="tag orange-tag">置顶</span>
+                    {% end %}
+
+                    {% if file.creator != None %}
+                        <span class="tag lightgray">{{file.creator}}</span>
+                    {% end %}
+
+                    {% if file.parent_name not in (None, "") %}
+                        <span class="tag lightgray">
+                            <a class="link" href="{{_server_home}}/note/view?id={{file.parent_id}}">{{file.parent_name}}</a>
+                        </span>
+                    {% end %}
+
+                    {% if file.is_public %}
+                        <span class="tag green-tag">公开</span>
+                    {% end %}
+
+                    <div class="float-right">
+                        {% if file.badge_info %}
+                            <span class="search-badge-info">{{file.badge_info}}</span>
+                        {% end %}
+                    </div>
+                </div>
+            {% end %}
+        </div>
+    </div>
+    {% end %}
+</div>
+
+{% include note/component/script/group_select_script.html %}
+{% include search/component/search_pagination.html %}
+
+<script>
+    $(".execute-btn").on("click", function (e) {
+        console.log(e);
+        var href = $(e.target).attr("href");
+        $.get(href, function (responseText) {
+            var obj = responseText;
+            console.log(obj);
+            if (obj.data) {
+                $("#executeResult").text(JSON.stringify(obj.data));
+            }
+        });
+    });
+
+    // 移动笔记
+    $(".move-btn").click(function (e) {
+        var req = {};
+        var noteId = $(e.target).attr("data-id");
+
+        req.callback = function (parentId) {
+            if (parentId === undefined || parentId == "") {
+                xnote.alert("parentId is undefined");
+                return;
+            }
+            xnote.http.post("/note/move", { id: noteId, parent_id: parentId }, function (resp) {
+                console.log(resp);
+                window.location.reload();
+            });
+        };
+        xnote.api["note.move.dialog"](req);
+    });
+</script>
+
+{% end %}
+
+{% block body_right %}
+    {% include search/component/search_sidebar.html %}
+{% end %}

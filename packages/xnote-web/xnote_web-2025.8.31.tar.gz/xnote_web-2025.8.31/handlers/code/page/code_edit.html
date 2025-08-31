@@ -1,0 +1,189 @@
+{% extends wide_base %}
+
+{% block head %}
+
+{% include common/script/load_codemirror.html %}
+
+    {% if path.endswith(".py") %}
+        <script type="text/javascript" src="{{_server_home}}/_static/lib/codemirror/mode/python.js"></script>
+    {% end %}
+    {% if path.endswith(".js") %}
+        <script type="text/javascript" src="{{_server_home}}/_static/lib/codemirror/mode/javascript.js"></script>
+    {% end %}
+    {% if path.endswith(".php") %}
+        <script type="text/javascript" src="{{_server_home}}/_static/lib/codemirror/mode/php.js"></script>
+    {% end %}
+    {% if path.endswith(".css") %}
+        <script type="text/javascript" src="{{_server_home}}/_static/lib/codemirror/mode/css.min.js"></script>
+    {% end %}
+
+    <style type="text/css">
+        .search-key {
+            background-color: #FF8000;
+            color: #000;
+        }
+
+        #result {
+            border: 1px solid #ccc;
+            padding: 4px;
+            background-color: #eee;
+        }
+
+        #editorArea {
+            border: 1px solid #ccc;
+        }
+
+        #editor {
+            width: 100%;
+            height: 100%;
+        }
+
+        .CodeMirror-search-match {
+          background: gold;
+          border-top: 1px solid orange;
+          border-bottom: 1px solid orange;
+          -moz-box-sizing: border-box;
+          box-sizing: border-box;
+          opacity: .5;
+        }
+
+        .CodeMirror {
+            font-family: Fira Code,Menlo,Monaco,Consolas,Liberation Mono,Courier New,Courier,monospace;
+        }
+
+        .global-warn {
+            display: none;
+        }
+    </style>
+{% end %}
+
+{% block body_left %}
+{% import os %}
+{% init readonly = False %}
+{% init warn = "" %}
+{% init error = "" %}
+{% init pathlist = [] %}
+{% init show_preview = False %}
+{% init embed = False %}
+{% init file_too_large = False %}
+
+<div class="card editor-title">
+    <h3 class="card-title btn-line-height">
+        <span>文本编辑</span>
+        <div class="float-right">
+            {% if show_preview %}
+                <a class="btn" href="{{_server_home}}/code/wiki/{{path}}?embed={{embed}}">{{T("Preview")}}</a>
+            {% end %}
+            <a class="btn btn-default" href="javascript:history.back();">返回</a>
+        </div>
+    </h3>
+</div>
+
+<div class="card">
+
+    {% include "mod_fs_path.html" %}
+
+    {% if error != "" %}
+        <div class="col-md-12 error">
+            {{?error}}
+        </div>
+    {% end %}
+
+    {% if warn != "" and warn != None %}
+        <pre class="col-md-12 warn">
+            {{warn}}
+        </pre>
+    {% end %}
+
+    {% if file_too_large %}
+    <div class="row warn">
+        <span>文件过大，只显示部分内容</span>
+        {% for link in part_links %}
+            {% render link %}
+        {% end %}
+    </div>
+    {% end %}
+
+    <form method="POST" action="/code/update">
+        <input name="path" class="hide" value="{{path}}"/>
+        <input name="basename" class="hide" value="{{os.path.basename(path)}}"/>
+        <input name="dirname" class="hide" value="{{os.path.dirname(path)}}"/>
+        <div id="editorArea" class="col-md-12">
+            <textarea name="content" id="editor">{{content}}</textarea>
+        </div>
+
+        <div class="row top-offset-1">
+            {% if not readonly %}
+                <input type="button" value="保存" class="btn save-btn">
+                <input type="button" id="rename" class="btn rename-btn" value="重命名"/>
+            {% end %}
+            <input id="execute" type="button" class="btn hide" value="执行"/>
+            {% if show_preview %}
+                <a class="btn" href="{{_server_home}}/code/wiki/{{path}}?embed={{embed}}">{{T("Preview")}}</a>
+            {% end %}
+            {% if path.find("/plugins/") >= 0 or path.find("\\plugins\\") >= 0 %}
+                <input type="button" class="btn link-btn" href="{{_server_home}}/plugins/{{plugin_name}}?embed={{embed}}&_reload=true" value="预览"/>
+            {% end %}
+            <span>注意不会自动保存</span>
+        </div>
+
+        <div id="resultDiv" class="col-md-12 hide">
+            <div class="output-title">结果</div>
+            <pre id="result" class="col-md-12 output-body">
+            </pre>
+        </div>
+    </form>
+</div>
+
+{# TODO 需要处理下搜索的高亮 #}
+
+<script type="text/javascript">
+    if (xnote.getUrlParam("embed") == "true") {
+        $("body").css("overflow-y", "hidden");
+        $(".editor-title").hide();
+    }
+
+
+    $(function () {
+        var editorHeight = adjustHeight("#editorArea", 50);
+        $("#editorArea").css("overflow-y", "hidden");
+        var editor = initCodeMirror("#editor", {
+            filename: getUrlParams().path,
+            height: editorHeight
+        });
+        window.codeEditor = editor;
+
+        // 重命名
+        $(".rename-btn").click(function (event) {
+            var name     = $("[name=basename]").val();
+            var dirname  = $("[name=dirname]").val();
+            xnote.prompt("重命名为", name, function (new_name) {
+                var request =  {dirname: dirname, old_name: name, new_name: new_name};
+                xnote.http.post("/fs_api/rename", request,
+                    function (resp) {
+                        if (resp.code == "success") {
+                            var location = resp.location;
+                            window.location.href = "/code/edit?path=" + dirname + "/" + new_name;
+                        } else {
+                            showErrorMessage("重命名失败, %s".format(resp.message));
+                        }
+                });
+            });
+        });
+
+        // 保存
+        $(".save-btn").click(function (e) {
+            var params = {};
+            params.path = $("[name=path]").val();
+            params.content = $("[name=content]").val();
+            xnote.http.post("/code/update", params, function (resp) {
+                if (resp.code == "success") {
+                    xnote.toast("保存成功");
+                } else {
+                    xnote.toast("保存失败: " + resp.message);
+                }
+            })
+        });
+    });
+</script>
+{% end %}

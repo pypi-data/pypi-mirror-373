@@ -1,0 +1,95 @@
+<!-- 笔记的下拉选项 -->
+<script type="text/javascript" src="{{_server_home}}/_static/lib/clipboard/clipboard-2.0.4.min.js"></script>
+
+{% if file != None and _user_name == file.creator and op == "view" %}
+
+{% if file.type == "gallery" %}
+    <a class="btn btn-default" href="{{_server_home}}/note/management?parent_id={{file.id}}">管理文件</a>
+{% elif file.show_edit == False %}
+    <!-- nothing here -->
+{% else %}
+    <a class="btn" href="{{_server_home}}/note/edit?id={{file.id}}&is_iframe={{is_iframe}}">编辑</a>
+{% end %}
+
+<script type="text/javascript">
+xnote.state.note = {
+    id: "{{file.id}}",
+    name: "{{file.name}}",
+    parentId: "{{file.parentId}}"
+};
+</script>
+
+<div class="dropdown">
+    <span class="dropdown-btn btn btn-default">更多▾</span>
+    <div class="dropdown-mask"></div>
+    <div class="dropdown-content {%if _is_mobile%}mobile{% end %}">
+        <a class="dropdown-option link" href="javascript:rename('{{item.id}}', '{{item.name}}')">重命名</a>
+        <a class="dropdown-option link" href="{{_server_home}}/note/alias/edit?parent_id={{file.id}}">管理别名</a>
+        <a class="dropdown-option link" href="{{_server_home}}/note/share/edit?note_id={{file.id}}">分享</a>
+
+        <a class="dropdown-option link" onclick="xnote.note.openDialogToMoveByElement(this)" data-id="{{file.id}}">移动</a>
+        <a class="dropdown-option copy-btn link">复制</a>
+
+        {% if file.level > 0 %}
+            <a class="dropdown-option link" href="{{_server_home}}/note/stick?id={{file.id}}&level=0">取消置顶</a>
+        {% else %}
+            <a class="dropdown-option link" href="{{_server_home}}/note/stick?id={{file.id}}&level=1">置顶</a>
+        {% end %}
+
+        {% if file.archived %}
+            <a class="dropdown-option link" href="{{_server_home}}/note/unarchive?id={{file.id}}">取消归档</a>
+        {% end %}
+
+        {% if _is_admin and file.type == "gallery" %}
+            <a class="dropdown-option link" href="{{_server_home}}/fs/{{file.path}}">管理文件</a>
+        {% end %}
+
+        <a class="dropdown-option link" href="{{_server_home}}/note/history?id={{file_id}}">{{T("历史")}}</a>
+        <a class="dropdown-option link" href="{{_server_home}}/note/print?id={{file.id}}" target="_blank">打印</a>
+        {% if _is_admin and xutils.call("note.has_external_image", file) %}
+            <a class="dropdown-option cache-external-option link">缓存外部资源</a>
+        {% end %}
+
+        {% if item.is_deleted %}
+            <a class="dropdown-option-red recover-option" data-id="{{item.id}}">恢复笔记</a>
+        {% else %}
+            <a class="dropdown-option-red" href="javascript:remove('{{item.id}}', '{{item.name}}', '{{item.parent_id}}')">删除</a>
+        {% end %}
+    </div>
+</div>
+{% end %}
+
+<script type="text/javascript">
+$(function () {
+
+    // 缓存外部资源
+    $(".cache-external-option").click(function (event) {
+        var params = {
+            note_id: "{{file.id}}"
+        };
+        var loadIndex = layer.load(2);
+
+        xnote.http.post("/note/cache_external", params, function (resp) {
+            layer.close(loadIndex);
+            if (resp.code == "success") {
+                window.location.reload();
+            } else {
+                xnote.alert(resp.message);
+            }
+        }).fail(function (err) {
+            layer.close(loadIndex);
+            xnote.alert("调用接口失败: " + err);
+        })
+    });
+
+    // 恢复笔记
+    $(".recover-option").click(function (e) {
+        var noteId = $(e.target).attr("data-id");
+        xnote.note.recover(noteId, function() {
+            window.location.reload();
+        });
+    })
+})
+</script>
+
+{% include note/component/script/note_option_script.html %}

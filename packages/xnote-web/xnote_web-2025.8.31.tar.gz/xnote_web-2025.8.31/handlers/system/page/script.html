@@ -1,0 +1,180 @@
+{% extends base.html %}
+
+{% block head %}
+
+<link rel="stylesheet" href="{{_server_home}}/static/lib/codemirror/codemirror.min.css">
+<link rel="stylesheet" type="text/css" href="{{_server_home}}/static/lib/codemirror/theme/monokai.min.css">
+<script type="text/javascript" src="/static/lib/codemirror/codemirror.min.js"></script>
+<script type="text/javascript" src="/static/lib/codemirror/mode/clike/clike.js"></script>
+<script type="text/javascript" src="/static/lib/codemirror/mode/shell.js"></script>
+<script type="text/javascript" src="/static/lib/codemirror/mode/python.js"></script>
+<script type="text/javascript" src="/static/lib/codemirror/keymap/sublime.js"></script>
+<script type="text/javascript" src="/static/js/editor.js"></script>
+
+<style type="text/css">
+    .CodeMirror {
+        border: 1px solid #ccc;
+    }
+
+    #result {
+        border: 1px solid #ccc;
+        padding: 4px;
+        background-color: #eee;
+        box-sizing: border-box;
+    }
+    #scriptName {
+        width: 200px;
+    }
+    #resultDiv {
+        display: none;
+    }
+
+    tr:hover td {
+        background: none;
+    }
+
+    tr:hover {
+        background-color: #eee;
+    }
+
+    .option-td {
+        width: 120px;
+    }
+</style>
+
+{% end %}
+
+{% block body %}
+
+{% init error = "" %}
+{% init shell_list = [] %}
+{% set  index = 1 %}
+{% init op = "list" %}
+
+{% if error != "" and error != None %}
+<div class="col-md-12 error">{{error}}</div>
+{% end %}
+
+{% if op != "edit" %}
+    <div class="card">
+        <div class="card-title">
+            <span>脚本管理</span>
+            <div class="float-right">
+                <form action="/system/script/search" method="GET">
+                    <input type="button" value="添加" id="addBtn"/>
+                </form>
+            </div>
+        </div>
+    </div>
+{% end %}
+
+{% if op == "edit" %}
+    <div class="card">
+        <!-- <h3>{{name}}</h3> -->
+        {% set title = name %}
+        {% include "common/title/base_title.html" %}
+        {# 编辑 #}
+        <form method="POST" action="/system/script_admin/save">
+            <div id="editorArea" class="col-md-12">
+                <input type="text" name="name" value="{{name}}" class="hide">
+                <textarea id="editor" class="col-md-12" name="content" rows=10>{{content}}</textarea>
+            </div>
+            <div class="col-md-12">
+                <input type="submit" id="save" class="btn" value="保存"/>
+                <input type="button" id="rename" class="btn renameScript" value="重命名"/>
+                <input type="button" scriptName="{{name}}" class="executeScript btn" value="执行"/>
+            </div>
+        </form>
+
+        <div id="resultDiv" class="col-md-12">
+            <div class="output-title">结果</div>
+            <pre id="result" class="output-body col-md-12">
+            </pre>
+        </div>
+    </div>
+
+    <script>
+        $(function () {
+            initCodeMirror("#editor", {
+                filename: $("input[name=name]").val()
+            })
+        });
+    </script>
+
+{% else %}
+    {% comment 列表 %}
+    <div class="card">
+        <table class="table col-md-12 top-offset-1">
+            {% for index, script in enumerate(shell_list) %}
+                <tr>
+                    <td class="index-td">{{index+1}}</td>
+                    <td>
+                        <a href="{{_server_home}}/system/script/edit?name={{script}}">{{script}}</a>
+                    </td>
+                    <td class="option-td">
+                        <input type="button" value="删除" class="deleteScript btn btn-danger" scriptName="{{script}}"/>
+                        <input type="button" value="执行" class="executeScript btn" scriptName="{{script}}"/> 
+                    </td>
+                </tr>
+            {% end %}
+        </table>
+    </div>
+{% end %}
+
+<script type="text/javascript">
+    $(".executeScript").on("click", function(event) {
+        var scriptName = $(event.target).attr("scriptName")
+        var content = $("[name=content]").val();
+        var path = getUrlParams().path;
+        // console.log(event);
+        // console.log($(event.target).attr("scriptName"))
+        $.post("/system/script_admin/execute?name=" + scriptName, 
+            {   
+                content: content, 
+                path: path
+            } ,
+            function (responseText) {
+                var data = responseText;
+                $("#resultDiv").show();
+                $("#result").show().text(data.data);
+            });
+    })
+
+    $(".deleteScript").on("click", function(event) {
+        var scriptName = $(event.target).attr("scriptName")
+        var check = confirm("确认删除 " + scriptName + " ?")
+        if (check) {        
+            $.post("/system/script_admin/delete?name=" + scriptName, function (data) {
+                location.reload();
+            });
+        }
+    });
+
+    $(".renameScript").click(function (event) {
+        var scriptName = $("input[name=name]").val();
+        var newName = prompt("重命名为", scriptName);
+        if (newName && newName != scriptName) {
+            $.post("/system/script/rename?oldname="+scriptName+"&newname="+newName, function (data) {
+                var code = data.code;
+                if (code != "success") {
+                    alert(data.message);
+                } else {
+                    window.location.href = "/system/script/edit?name=" + newName;
+                }
+            })
+        }
+    })
+
+    $("#addBtn").click(function () {
+        // var name = $("#scriptName").val();
+        var name = prompt("脚本名称");
+        if (name) {        
+            xnote.http.get("/system/script_admin?op=add&name=" + name, function () {
+                location.reload();
+            });
+        }
+    })
+</script>
+
+{% end %}
+

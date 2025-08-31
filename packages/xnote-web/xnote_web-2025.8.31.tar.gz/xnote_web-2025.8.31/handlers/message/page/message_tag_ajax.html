@@ -1,0 +1,90 @@
+{% init show_marked_tag = True %}
+{% init top_keywords = [] %}
+{% init recent_keywords = [] %}
+{% init show_sub_link = True %}
+
+{% if len(recent_keywords) > 0 %}
+    <div class="card">
+        <h3 class="card-title">最近</h3>
+        {% for item in recent_keywords %}
+            <span class="tag-span">
+                <span>{% raw item.html %}</span>
+                <span class="black">{{item.badge_info}}</span>
+            </span>
+        {% end %}
+    </div>
+{% end %}
+
+<div class="card">
+    {% include message/component/tag/orderby_tab.html %}
+</div>
+
+
+<div class="card">
+    {% if len(item_list) == 0 %}
+        {% include common/text/empty_text.html %}
+    {% end %}
+    {% for item in item_list %}
+        <div class="list-item">
+            
+            {% if show_marked_tag and item.is_marked %}
+                <span class="task-tag">置顶</span>
+            {% end %}
+
+            <span>{% raw item.html %}</span>
+
+            <div class="float-right">
+                <span class="msg-amount-text">{{item.badge_info}}</span>
+                <a class="todo-delete-btn btn btn-default" data-id="{{item.tag_id}}" data-content="{{item.content}}">删除</a>
+            </div>
+        </div>
+    {% end %}
+</div>
+
+
+<script type="text/javascript">
+$(function () {
+
+    // 编辑弹窗
+    $(".todo-edit-btn").click(function (e) {
+        var url = $(e.target).attr("data-url");
+        var layerId = xnote.showIframeDialog("编辑", url);
+        // 更新后会调用 postMessage 发送消息
+    });
+
+    $(".update-tag-btn").click(function (e) {
+        var id = $(e.target).attr("data-id");
+        var tag = $(e.target).attr("data-tag");
+        console.log(id, tag);
+
+        xnote.http.post("/message/update_first_tag", {id: id, tag: tag}, function (resp) {
+            if (resp.code == "success") {
+                xnote.fire("message.refresh");
+            } else {
+                xnote.alert(data.message);
+            }
+        });
+    });
+
+    $(".todo-delete-btn").click(function (e) {
+        var id = $(e.target).attr("data-id");
+        var content = $(e.target).attr("data-content");
+
+        xnote.confirm("确认删除[" + content + "]吗?", function (result) {
+            xnote.http.post("/message/tag/delete", {tag_id: id}, function (resp) {
+                if (resp.success) {
+                    var msg = {type: "message.updated"};
+                    xnote.fire("message.updated", true);
+                } else {
+                    xnote.alert(data.message);
+                }
+            });
+        });
+    })
+    
+});
+</script>
+
+<div class="card">
+    {% include common/pagination.html %}
+</div>

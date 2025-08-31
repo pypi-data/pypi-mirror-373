@@ -1,0 +1,103 @@
+{% extends base.html %}
+
+{% block head %}
+<style type="text/css">
+    .plugin {
+        margin-top: 5px;
+    }
+
+    .nav-path {
+        padding: 5px;
+        background-color: #eee;
+    }
+
+    .root {
+        padding-left: 0px;
+    }
+
+    .x-body {
+        left: 0px;
+    }
+</style>
+{% end %}
+
+{% block body %}
+{% import os %}
+
+
+<div class="col-md-12 card">
+    <input class="hide" id="path" value="{{path}}">
+    <input class="col-md-12" id="searchName" placeholder="执行命令">
+    
+    {% for name in scripts %}
+        <button class="plugin" data-name="{{name}}">{{get_display_name(name)}}</button>
+    {% end %}
+</div>
+
+<div id="resultDiv" class="col-md-12 card">
+    <div class="output-title">
+        结果
+        <a id="pluginEditLink" target="_blank" class="hide link float-right" href="#">编辑脚本</a>
+    </div>
+    <div id="result" class="col-md-12 output-body">
+    </div>
+</div>
+
+<script type="text/javascript">
+
+    function showResult(text) {
+        $("#resultDiv").show();
+        $("#result").html(text);
+    }
+
+    $(".plugin").click(function (event) {
+        var name = $(event.target).attr("data-name");
+        var path = $("#path").val();
+        showResult("开始执行 " + name);
+        runPlugin(name, false);
+    });
+
+    function runPlugin(name, confirmed) {
+        if (name == "") {
+            return;
+        }
+        var path = $("#path").val();
+        var inputText = $("#inputText").val();
+        showResult("开始执行 " + name + " ...");
+        $.post("/fs_api/run_plugin", 
+            {
+                name: name,
+                path: path,
+                confirmed: confirmed,
+                input: inputText
+            },
+            function (result) {
+                showResult(result.data);
+                $("#pluginEditLink").removeClass("hide")
+                    .attr("href", "/code/edit?type=script&path=commands/" + result.name);
+            });
+    };
+
+    $("#searchName").keyup(function (event) {
+        var keyCode = event.keyCode || event.which;
+        if (keyCode == 13) {
+            // 回车
+            runPlugin($(this).val(), false);
+            return;
+        }
+        var name = $(this).val();
+        if (name == "") {
+            $(".plugin").show();
+            return;
+        }
+        $(".plugin").each(function (index, element) {
+            var $e = $(element);
+            if ($e.text().indexOf(name) >= 0) {
+                $e.show();
+            } else {
+                $e.hide();
+            }
+        })
+    })
+</script>
+{% end %}

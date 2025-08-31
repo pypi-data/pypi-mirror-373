@@ -1,0 +1,208 @@
+{% extends base %}
+
+<!-- 
+@since 2017/12/02
+@modified 2021/02/13 20:56:18
+@version 2.0.0
+-->
+
+{% block head %}
+<style>
+    .contents-item .current {
+        color: red;
+    }
+</style>
+{% end %}
+
+{% block body %}
+
+{% init embed = False %}
+{% set path = xutils.get_argument("path") %}
+
+{% if not embed %}
+<div class="card">
+    {% init fs_title = "文本阅读" %}
+    <h3 class="card-title btn-line-height">
+        <span>{{fs_title}}</span>
+        
+        <div class="float-right">
+            <a class="btn btn-default contents-btn">目录</a>
+            <a class="btn btn-default" href="{{_server_home}}/code/edit?path={{path}}">编辑</a>
+            {% include common/button/back_button.html %}
+        </div>
+    </h3>
+</div>
+{% end %}
+
+<div class="card">
+    <!-- header -->
+    {% if not embed %}
+    {% include mod_fs_path.html %}
+    {% end %}
+
+    <!-- 目录 -->
+    <div class="book-contents">
+    </div>
+
+    <!-- 文本内容 -->
+    <div class="book-text"></div>
+
+    <!-- footer -->
+    <div class="reader-footer align-center">
+        <button class="btn backward-btn">上一页</button>
+        <button class="btn contents-btn">目录</button>
+        <button class="btn" onclick="xnoteRefreshTxtInfo()">刷新</button>
+        <button class="btn forward-btn">下一页</button>
+    </div>
+</div>
+
+<script type="text/template" id="book-contents-tpl">
+{{!each contents item}}
+    <div class="contents-item">
+        <a data-offset="{{!item.offset}}" data-page="{{!$index+1}}" 
+            class="contents-link {{!if currentOffset == item.offset }}current{{!/if}}">
+            [{{!$index+1}}] {{! item.title }}
+        </a>
+    </div>
+{{!/each}}
+</script>
+
+<script type="text/javascript">
+$(function () {
+    var path = xnote.getUrlParam("path");
+    var params = {
+        method: "contents",
+        path: path
+    };
+    var state = {
+        currentPage: 1,
+        offsetMap: {},
+    };
+
+    function hideContents() {
+        $(".book-contents").hide();
+        $(".book-text").show();
+    }
+
+    function showContents() {
+        $(".book-contents").show();
+        $(".book-text").hide();
+        readContents();
+    }
+
+    function escapeText(text) {
+        text = text.replace(/\</gi, "&lt;");
+        text = text.replace(/\>/gi, "&gt;");
+        text = text.replace(/ /gi, "&nbsp;");
+        text = text.replace(/\n/gi, "<br>");
+        return text
+    }
+
+    function readPage(page) {
+        var offset = state.offsetMap[page];
+        if (offset == undefined) {
+            xnote.alert("没有更多内容了!");
+            return;
+        }
+        var params = {
+            method: "read_page",
+            offset: offset,
+            path: xnote.getUrlParam("path"),
+        };
+        xnote.http.get("/fs_text", params, function (resp) {
+            if (resp.code != "success") {
+                xnote.alert(resp.message);
+            } else {
+                var text = resp.data;
+                text = escapeText(text);
+                $(".book-text").html(text);
+                hideContents();
+                state.currentPage = page - 0;
+                // 滚动到顶部
+                window.scroll(0, 0);
+            }
+        });
+    }
+
+    // 读取目录
+    function readContents() {
+        xnote.http.get("/fs_text", params, function (resp) {
+            console.log(resp);
+            if (resp.code != "success") {
+                xnote.alert(resp.message);
+            } else {
+                var bookmark = resp.data;
+                var html = $("#book-contents-tpl").renderTemplate({
+                    contents: bookmark.contents,
+                    currentOffset: bookmark.current_offset,
+                });
+
+                var contents = bookmark.contents;
+                // console.log("html", html);
+                for (var i = 0; i < contents.length; i++) {
+                    var item = contents[i];
+                    state.offsetMap[i+1] = item.offset;
+                }
+
+                $(".book-contents").html(html);
+            }
+        });
+    }
+
+    // 点击目录链接
+    $("body").on("click", ".contents-link", function (e) {
+        readPage($(e.target).attr("data-page"));
+    });
+
+    // 点击目录
+    $(".contents-btn").click(function (e) {
+        showContents();
+    })
+
+    // 点击下一页
+    $(".forward-btn").click(function (e) {
+        readPage(state.currentPage+1);
+    });
+
+    // 点击上一页
+    $(".backward-btn").click(function (e) {
+        if (state.currentPage == 1) {
+            xnote.alert("已经是第一页了!");
+            return;
+        }
+        readPage(state.currentPage-1);
+    });
+
+    // 快捷键
+    $(window).on("keyup", function (event) {
+        var keyCode = event.keyCode;
+        console.log(keyCode);
+        switch (keyCode) {
+          // shift
+          case 16: return;
+          case 39: readPage(state.currentPage+1); break;
+          case 37: readPage(state.currentPage-1); break;
+          case 27: showContents(); break; // ESC
+        }
+    });
+
+    // 初始化
+    showContents();
+});
+
+window.xnoteRefreshTxtInfo = function () {
+    var path = xnote.getUrlParam("path");
+    var request = {};
+    request.path = path;
+    xnote.http.get("?method=refresh", request, function (resp) {
+        if (resp.success) {
+            xnote.toast("刷新成功");
+            window.location.reload();
+        } else {
+            xnote.toast(resp.message);
+        }
+    });
+}
+</script>
+
+{% end %}

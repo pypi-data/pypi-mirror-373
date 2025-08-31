@@ -1,0 +1,119 @@
+{% extends base %}
+
+{% block head %}
+
+<style type="text/css">
+    .line {
+        color: #fff;
+    }
+</style>
+{% include common/script/load_vue.html %}
+
+{% end %}
+
+{% block body %}
+
+<h3>语音识别</h3>
+<div id="app" class="col-md-12">
+    <div id="log" class="col-md-12">
+        <p v-for="log, index in logList">
+            <span>{{! log.time }}</span>
+            <span>{{! log.message }}</span>
+        </p>
+    </div>
+</div>
+
+<script type="text/javascript">
+
+Date.prototype.format = function(fmt) {         
+    var o = {         
+    "M+" : this.getMonth()+1, //月份         
+    "d+" : this.getDate(), //日         
+    "h+" : this.getHours()%12 == 0 ? 12 : this.getHours()%12, //小时         
+    "H+" : this.getHours(), //小时         
+    "m+" : this.getMinutes(), //分         
+    "s+" : this.getSeconds(), //秒         
+    "q+" : Math.floor((this.getMonth()+3)/3), //季度         
+    "S" : this.getMilliseconds() //毫秒         
+    };         
+    var week = {         
+    "0" : "/u65e5",         
+    "1" : "/u4e00",         
+    "2" : "/u4e8c",         
+    "3" : "/u4e09",         
+    "4" : "/u56db",         
+    "5" : "/u4e94",         
+    "6" : "/u516d"        
+    };         
+    if(/(y+)/.test(fmt)){         
+        fmt=fmt.replace(RegExp.$1, (this.getFullYear()+"").substr(4 - RegExp.$1.length));         
+    }         
+    if(/(E+)/.test(fmt)){         
+        fmt=fmt.replace(RegExp.$1, ((RegExp.$1.length>1) ? (RegExp.$1.length>2 ? "/u661f/u671f" : "/u5468") : "")+week[this.getDay()+""]);         
+    }         
+    for(var k in o){         
+        if(new RegExp("("+ k +")").test(fmt)){         
+            fmt = fmt.replace(RegExp.$1, (RegExp.$1.length==1) ? (o[k]) : (("00"+ o[k]).substr((""+ o[k]).length)));         
+        }         
+    }         
+    return fmt;         
+}   
+
+if (typeof webkitSpeechRecognition == "function") {
+    window.SpeechRecognition = webkitSpeechRecognition;
+    window.SpeechGrammarList = webkitSpeechGrammarList;
+}
+if (typeof SpeechRecognition == "function") {
+    var grammar = '#JSGF V1.0; grammar colors; public <color> = aqua | azure | beige | bisque | black | blue | brown | chocolate | coral | crimson | cyan | fuchsia | ghostwhite | gold | goldenrod | gray | green | indigo | ivory | khaki | lavender | lime | linen | magenta | maroon | moccasin | navy | olive | orange | orchid | peru | pink | plum | purple | red | salmon | sienna | silver | snow | tan | teal | thistle | tomato | turquoise | violet | white | yellow ;'
+    var recognition = new SpeechRecognition();
+    var speechRecognitionList = new SpeechGrammarList();
+    speechRecognitionList.addFromString(grammar, 1);
+    recognition.grammars = speechRecognitionList;
+    //recognition.continuous = false;
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.start();
+    console.log("started");
+
+    function restart() {
+        recognition.start();
+    }
+    recognition.onresult = function (event) {
+        console.log(event);
+        var results = event.results;
+        if (results.length > 0) {
+            var word = results[0][0].transcript;
+            console.log("[Speak] " + word);
+            app.logList.splice(0, 0, newMessage(word));
+
+            if (app.logList.length > 20) {
+                app.logList.pop();
+            }
+        }
+        // recognition.start();
+        // event.target.start();
+        // setTimeout(restart, 500);
+    }
+
+    recognition.onend = function (event) {
+        console.log(event);
+        setTimeout(restart, 500);
+    }
+} else {
+    alert("不支持语音识别 SpeechRecognition ")
+}
+
+var app = new Vue({
+    el: "#app",
+    data : {
+        logList: []
+    }
+});
+
+function newMessage(word) {
+    return {time: new Date().format("HH:mm:ss"), message: word};
+}
+</script>
+{% end %}

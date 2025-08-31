@@ -1,0 +1,110 @@
+{% extends base %}
+
+{% block body_left %}
+
+{% init action = "" %}
+{% init path = "" %}
+{% init index_size = 0 %}
+{% init show_index_dirs = True %}
+{% init files = [] %}
+{% init page = 1 %}
+{% init page_max = 1 %}
+{% init page_url = "" %}
+
+<div class="card">
+    <div class="card-title">
+        <span>文件索引</span>
+
+        <div class="float-right">
+            {% include common/button/back_button.html %}
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <p>索引数量: {{index_size}}</p>
+
+    {% if action == "reindex" %}
+        <p>重建索引耗时: {{"%.2f"%cost}}秒</p>
+    {% end %}
+    
+    <div class="row">
+        <input type="hidden" name="action" value="reindex">
+        {% if path != "" %}
+        <div class="row">
+            <label>文件路径</label>
+            <input type="path" name="path" value="{{path}}">
+        </div>
+        {% end %}
+        <div class="row">
+            <button class="rebuild-index-btn">重建索引</button>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <table class="table">
+        <tr>
+            <th>文件编号</th>
+            <th>文件路径</th>
+            <th>用户</th>
+            <th>上传时间</th>
+            <th>文件大小</th>
+        </tr>
+        {% for file_info in files %}
+        <tr class="hover-tr">
+            <td>{{file_info.id}}</td>
+            <td>{{file_info.fpath}}</td>
+            <td>{{file_info.user_id}}</td>
+            <td>{{file_info.ctime}}</td>
+            <td>{{file_info.fsize_str}}</td>
+        </tr>
+        {% end %}
+    </table>
+</div>
+
+<div class="card">
+    {% include common/pagination.html %}
+</div>
+
+
+<script type="text/javascript">
+
+$(".rebuild-index-btn").click(function () {
+    var rebuildParams = {
+        action: "reindex",
+        path: xnote.getUrlParam("path"),
+        is_ajax: true
+    };
+    xnote.http.post("/fs_index", rebuildParams, function (resp) {
+        if (resp.code == "success") {
+            xnote.toast("重建中...");
+        } else {
+            xnote.alert(resp.message);
+        }
+    });
+});
+
+$(function () {
+    $("body").on("click", ".update-index-dirs", function (e) {
+        var index_config = $("[name=index_config]").val();
+        var params = {"index_config": index_config};
+        xnote.http.post("?action=config", params, function (e) {
+            xnote.toast("更新成功");
+            setTimeout(function () {
+                window.location.reload();                    
+            }, 500);
+        });
+    });
+
+    $(".rebuild-index-btn").click(function (e) {
+
+    });
+});
+</script>
+{% end %}
+
+
+{% block body_right %}
+    {% include fs/component/fs_sidebar.html %}
+{% end %}

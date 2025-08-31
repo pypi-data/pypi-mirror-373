@@ -1,0 +1,163 @@
+
+<div class="share-tpl hide">
+    <p>分享链接: <span class="note-share-link-text"></span></p>
+    <div class="row">
+        <button class="note-share-link-btn btn" data-clipboard-text="">复制</button>
+    </div>
+</div>
+
+{% include note/component/script/group_select_script.html %}
+{% include note/component/script/note_copy_script.html %}
+
+
+<script type="text/javascript">
+    // 移动笔记的回调函数
+    window.moveNoteCallback = function (parentId) {
+        var selfId = "{{file.id}}";
+        xnote.http.post("/note/move", {id:selfId, parent_id: parentId}, function (resp){
+              console.log(resp);
+              window.location.reload();
+        });
+    }
+
+    window.visitAndRefresh = function (el) {
+        var url = $(el).attr("data-href");
+        xnote.http.get(url, function () {
+            window.location.reload();
+        });
+    }
+
+    function renameNote(id, oldName) {
+        xnote.prompt("新名称", oldName, function (newName) {
+            console.log(newName);
+            if (newName != "" && newName != null) {
+                xnote.http.post("/note/rename", {id:id, name:newName}, function (resp) {
+                    var code = resp.code;
+                    if (code != "success") {
+                        alert(resp.message);
+                    } else {
+                        // $("#file-"+id).text(newName);
+                        window.location.reload();
+                    }
+                })
+            }
+        });
+    }
+
+    function renameNoteByAttr(target) {
+        var id = $(target).attr("data-id");
+        var oldName = $(target).attr("data-name");
+        if (id == undefined || id == "") {
+            xnote.alert("data-id为空");
+            return;
+        }
+
+        if (oldName == undefined || oldName == "") {
+            xnote.alert("data-name为空");
+            return;
+        }
+
+        renameNote(id, oldName);
+    }
+
+    function checkNotEmpty(object, message) {
+        if (object === undefined || object === null || object === "") {
+            xnote.alert(message);
+            throw new Error(message);
+        }
+    }
+
+    function call_xnote_api(api, params) {
+        $.post(api, params, function (resp) {
+            if (resp.code != "success") {
+                xnote.alert(resp.message);
+            } else {
+                xnote.toast(resp.message);
+                window.location.reload();
+            }
+        }).fail(function (error) {
+            console.error(error);
+            xnote.alert("接口调用失败:" + error.status + "," + error.statusText);
+        })
+    }
+
+    $(function () {
+
+        function onNoteRenameEvent(event) {
+            console.log("rename");
+            var target = event.target;
+            renameNoteByAttr(target);
+        }
+        
+        $(".rename-btn").click(function(event) {
+            onNoteRenameEvent(event);
+        });
+
+        $(".note-rename-btn").click(function(event) {
+            onNoteRenameEvent(event);
+        });
+
+        $(".status-btn").each(function (index, element) {
+            var status = $(element).attr("data-status");
+            if (status == "{{file.priority}}") {
+                $(element).addClass("x-tab-btn-active");
+            }
+        });
+
+        $(".status-btn").click(function(event) {
+            var id = $(event.target).attr("data-id");
+            var status = $(event.target).attr("data-status");
+
+            checkNotEmpty(id, "data-id为空");
+            checkNotEmpty(status, "data-status为空");
+
+            xnote.http.post("/note/status", {id: id, status: status}, function (resp) {
+                var code = resp.code;
+                if (code != "success") {
+                    xnote.alert(resp.message);
+                } else {
+                    xnote.toast(resp.message);
+                    window.location.reload();
+                }
+            })
+        });
+
+        $(".orderby-btn").each(function (index, element) {
+            var orderby = $(element).attr("data-orderby");
+            if (orderby == "{{file.orderby}}") {
+                $(element).addClass("x-tab-btn-active");
+            }
+        });
+
+        $(".orderby-btn").click(function (event) {
+            var id = $(event.target).attr("data-id");
+            var orderby = $(event.target).attr("data-orderby");
+
+            checkNotEmpty(id, "data-id为空");
+            checkNotEmpty(orderby, "data-orderby为空");
+
+            xnote.http.post("/note/orderby", {id: id, orderby: orderby}, function (resp) {
+                var code = resp.code;
+                if (code != "success") {
+                    xnote.alert(resp.message);
+                } else {
+                    xnote.toast(resp.message);
+                    window.location.reload();
+                }
+            })
+        });
+
+        // 显示目录弹窗
+        $(".note-contents-btn").click(function (e) {
+            var parentId = $(e.target).attr("data-parent");
+            xnote.showAjaxDialog("选择笔记", "/note/" + parentId + "?dialog=true");
+        });
+
+        // 移动笔记
+        $(".move-btn").click(function (e) {
+            xnote.note.openDialogToMoveByElement(e.target);
+        });
+    })
+</script>
+
+{% include note/component/script/delete_script.html %}

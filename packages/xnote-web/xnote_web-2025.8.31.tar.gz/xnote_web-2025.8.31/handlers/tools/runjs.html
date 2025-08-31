@@ -1,0 +1,160 @@
+{% extends base %}
+
+{% block head %}
+<script src="/static/lib/codemirror/codemirror.min.js"></script>
+<link rel="stylesheet" type="text/css" href="{{_server_home}}/static/lib/codemirror/codemirror.min.css">
+<link rel="stylesheet" type="text/css" href="{{_server_home}}/static/lib/codemirror/theme/monokai.min.css">
+<script type="text/javascript" src="/static/lib/codemirror/mode/javascript.js"></script>
+<style>
+.CodeMirror {
+    width: 100%;
+    font-size:16px;
+    height: auto;
+    border: 1px solid #ccc;
+}
+
+#markdown-input {
+    position: relative;
+    font-family: monospace;
+}
+
+#input {
+    height: 400px;
+}
+
+#output {
+    margin: 0px;
+    padding: 5px;
+    background-color: #eee;
+    height: 400px;
+    overflow-y: auto;
+}
+
+</style>
+{% end %}
+
+
+{% block body %}
+
+<div class="card">
+    {% set title = "RunJS - 运行JavaScript" %}
+    {% include common/base_title.html %}
+</div>
+
+<div class="card">
+    <div class="col-md-6">
+        <textarea id="input" class="col-md-12" rows="20"></textarea>
+        <button onclick="run()">Run</button>
+    </div>
+    <div class="col-md-6">
+        <pre id="output" class="col-md-12"></pre>
+        <div id="error" class="col-md-12" style="color: red;"></div>
+    </div>
+</div>
+
+<div class="card">
+    <h1 class="card-title">函数说明</h1>
+    <pre>
+print(msg)   输出结果
+println(msg) 输出换行结果,也可以使用console.log
+dir(obj)     查看对象属性
+    </pre>
+</div>
+
+<script type="text/javascript">
+    var _console = console;
+
+    $(function () {
+        var editor = $("#input")[0];
+        var codeMirror = CodeMirror.fromTextArea(editor, {
+            lineNumbers:true,
+            mode: { name: "text/javascript", fencedCodeBlocks: true},
+            lineWrapping: true,
+            fixedGutter: true
+        });
+        codeMirror.on("update", function (codeMirror, changeObj) {
+            console.log("update");
+            $("#input").val(codeMirror.doc.getValue());
+        })
+        window.codeMirror = codeMirror;
+        codeMirror.setSize("auto", 20 * 20);
+    })
+
+    function isBasicType(obj) {
+        var typeName = typeof(obj);
+        // 不能随便换行
+        return typeName == "string" || typeName == "number" || typeName == "boolean"
+    }
+
+    function print(msg, color) {
+        color = color || "black";
+        $("#output").text($("#output").text() + msg);
+    }
+
+    function println() {
+        for (var i = 0; i < arguments.length; i++) {
+            var arg = arguments[i];
+            print(arg);
+        }
+        print("\n");
+    }
+
+    function console_clear() {
+        $("#error").text("");
+        $("#output").text("");
+    }
+
+    function dir(obj) {
+        println("type:" + typeof(obj));
+        println("toString:" + obj.toString());
+
+        if (isBasicType(obj)) {
+            println();
+            return;
+        }
+
+        println("--------------------");
+        println("[");
+        for (var key in obj) {
+            var value = obj[key];
+            println("  " + key + ":" + typeof(value));
+        }
+        println("]");
+        println();
+    }
+
+    function run() {
+        var input = $("#input").val();
+        // eval接受一个参数string,eval会改变window对象
+        // eval(string)
+        try {
+            console_clear();
+
+            window.console = {
+                "log": println,
+                "info": println,
+                "warn": println,
+                "error": println,
+                "clear": console_clear,
+                "assert": _console.assert,
+                "count": _console.count,
+                "group": _console.group,
+                "groupCollapsed": _console.groupCollapsed,
+                "groupEnd": _console.groupEnd,
+                "table": _console.table,
+                "time": _console.time,
+                "timeEnd": _console.timeEnd,
+                "trace": _console.trace
+            };
+
+            var output = eval(input);
+            // $("#output").text(output);
+        } catch (e) {
+            $("#error").text(e);
+        } finally {
+            window.console = _console;
+        }
+    }
+</script>
+
+{% end %}

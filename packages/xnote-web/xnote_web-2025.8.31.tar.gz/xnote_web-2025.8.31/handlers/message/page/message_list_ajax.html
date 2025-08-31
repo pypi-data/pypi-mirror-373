@@ -1,0 +1,115 @@
+{% init item_list = [] %}
+{% init show_todo_check = False %}
+{% init show_edit_btn = True %}
+{% init show_to_log_btn = False %}
+
+{% if len(item_list) == 0 %}
+<div class="card">
+    {% include common/text/empty_text.html %}
+</div>
+{% end %}
+
+{% for item in item_list %}
+<div class="card">
+    <div class="todo-row">
+        <!-- <div class="todo-user">${user}</div> -->
+        <div class="col-md-12">
+            <div class="todo-time">{{item.time_info}} {{item.weekday}}</div>
+
+            {% if item.tag == "task" %}
+            <span class="task-tag">{{item.tag_text}}</span>
+            {% else %}
+            <span class="todo-tag">{{item.tag_text}}</span>
+            {% end %}
+            <div class="float-right">
+                {% if item.tag == "task" %}
+                    <button class="btn-default" data-id="{{item.id}}" onclick="onMessageDone(this)">完成</button>
+                {% end %}
+
+                {% if item.tag == "done" %}
+                    <button class="btn-default" data-id="{{item.id}}" onclick="xnote.action.message.reopen(this)">重做</button>
+                {% end %}
+            </div>
+        </div>
+        <div class="todo-content">{% raw item.html %}</div>
+        <div class="todo-foot">
+            {% if show_edit_btn %}
+            <a class="todo-edit-btn btn btn-default" data-id="{{item.id}}" 
+                onclick="xnote.action.message.edit(this);">编辑</a>
+            {% end %}
+
+            <a class="btn btn-default" data-id="{{item.id}}" onclick="xnote.action.message.createComment(this)">备注</a>
+            <a class="todo-delete-btn btn btn-default" data-id="{{item.int_id}}" data-content="{{item.content}}" onclick="xnote.action.message.deleteMessage(this)">删除</a>
+        </div>
+        {% if item.comments != None and len(item.comments) > 0 %}
+        <div class="todo-comment">
+            <span>备注:</span><span class="last-comment">{{item.comments[-1].get("content")}}</span>
+            <a data-id="{{item.id}}" onclick="xnote.action.message.showAllComments(this, '#msgCommentListTpl')">查看全部</a>
+        </div>
+        {% end %}
+    </div>
+</div>
+
+{% end %}
+
+<div class="hide edit-option-dialog">
+    <div class="list-item">
+        <span>完成任务</span>
+        <div class="float-right">
+            <i class="fa fa-chevron-right"></i>
+        </div>
+    </div>
+
+    <div class="list-item">
+        <span class="red">删除任务</span>
+        <div class="float-right">
+            <i class="fa fa-chevron-right"></i>
+        </div>
+    </div>
+</div>
+
+<script id="msgCommentListTpl" type="text/template">
+    {{!each commentList }}
+    <div class="todo-comment-row">
+        <div class="content">{{!$value.content}}</div>
+        <div class="comment-second">
+            <span class="time">{{!$value.time}}</span>
+            <a data-id="{{!msgId}}" data-time="{{!$value.time}}" 
+                onclick="xnote.action.message.deleteComment(this)">删除</a>
+        </div>
+    </div>
+    {{!/each}}
+</script>
+
+<script type="text/javascript">
+    $(function () {
+        function updateMessageTag(id, tag) {
+            return xnote.action.message.updateMessageTag(id, tag);
+        }
+
+        $(".update-tag-btn").click(function (e) {
+            var id = $(e.target).attr("data-id");
+            var tag = $(e.target).attr("data-tag");
+            console.log(id, tag);
+
+            updateMessageTag(id, tag);
+        });
+
+        window.onMessageDone = function (target) {
+            // todo完成的声音
+            xnote.playAudio("todo_done");
+            xnote.toast("更新任务状态成功");
+            // 标记为完成
+            var id = $(target).attr("data-id");
+
+            updateMessageTag(id, "done");
+        };
+
+        // 加载音频文件
+        xnote.loadAudio("todo_done", "/static/audio/todo_done.mp3");
+    });
+</script>
+
+<div class="card">
+    {% include common/pagination.html %}
+</div>

@@ -1,0 +1,218 @@
+{% extends base %}
+
+{% block head %}
+
+<link rel="stylesheet" type="text/css" href="{{_server_home}}/static/lib/webuploader/webuploader.css">
+<script type="text/javascript" src="/static/lib/webuploader/webuploader.nolog.min.js"></script>
+<script type="text/javascript" src="/static/lib/layer/layer.js"></script>
+
+<style type="text/css">
+    .fs-image {
+        width: 180px;
+    }
+
+    .fs-path {
+        padding: 5px;
+        background-color: #eee;
+    }
+
+    .content-left {
+        width: 100%;
+    }
+
+    .content-right {
+        display: none;
+    }
+
+    .left {
+        float: left;
+    }
+
+    .right {
+        float: right;
+    }
+
+    .checkboxTd {
+        width: 20px;
+    }
+
+    tr:hover td {
+        background: none;
+    }
+
+    tr:hover {
+        background-color: #eee;
+    }
+
+    #uploadFileArea {
+        display: none;
+    }
+
+    .size-td {
+        width: 100px;
+    }
+
+    .options-td {
+        width: 100px;
+    }
+
+    #controlArea {
+        margin-top: 5px;
+        margin-bottom: 5px;
+    }
+
+    #result {
+        border: 1px solid #ccc;
+        padding: 4px;
+        background-color: #eee;
+        margin: 0px;
+        border-top: none;
+        font-family: consolas, monospace;
+    }
+
+    .panel-title {
+        width: 100%;
+        border: 1px solid #ccc;
+        padding-left: 5px;
+        margin-top: 5px;
+    }
+
+    .plugin {
+        margin-top: 5px;
+    }
+
+    .nav-path {
+        padding: 5px;
+        background-color: #eee;
+    }
+
+    .fs-main {
+        background-color: white;
+    }
+
+    .fs-left {
+        float: left;
+        width: 20%;
+        height: 500px;
+        z-index: 100;
+        overflow: auto;
+    }
+
+    .fs-preview {
+        border-left: 1px solid #ccc;
+        float: left;
+        width: 80%;
+        height: 500px;
+        background-color: white;
+    }
+
+    #previewIframe {
+        border: none;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+    }
+
+    .error {
+        display: block;
+    }
+
+    .footer, .sql-info {
+        display: none;
+    }
+
+    .fs-file.active {
+        color: red;
+    }
+</style>
+
+{% set search_action = '/fs_find' %}
+{% set search_placeholder = '搜索文件' %}
+{% end %}
+
+{% block search_form %}
+    {% init path = "" %}
+    <input type="text" name="path" class="hide" value="{{path}}" />
+{% end %}
+
+{% block body %}
+
+{% init error = "" %}
+{% if error != "" %}
+<div class="error col-md-12">{{error}}</div>
+{% end %}
+
+<div class="card">
+    {% include fs/component/fs_title.html %}
+    {% include mod_fs_path.html %}
+
+    <div class="fs-left">
+        <table class="col-md-12 no-border-table fs-table">
+            {% for item in filelist %}
+            {# 隐藏文件 #}
+            {% if xconfig.FS_HIDE_FILES and (item.name[0] == "." or item.name.endswith((".pyc", ".class"))) %}
+            {% continue %}
+            {% end %}
+            <tr>
+                <td class="checkboxTd"><input type="checkbox" data-path="{{item.path}}" data-name="{{item.name}}">
+                </td>
+                <td>
+                    {% if item.type == "dir" %}
+                    <img src="{{_server_home}}/_static/image/folder.gif" />
+                    <a href="{{item.url}}?mode=sidebar" class="fs-folder">{{item.name}}</a>
+                    {% else %}
+                    <a data-path="{{item.path_b64}}" class="fs-file">{{item.name}}</a>
+                    {% end %}
+                </td>
+            </tr>
+            {% end %}
+        </table>
+    </div>
+    <div class="fs-preview">
+        <iframe id="previewIframe" src=""></iframe>
+    </div>
+</div>
+
+<script type="text/javascript">
+    var globalPath = "{{path}}";
+
+    function showErrorMessage(message) {
+        $(".error").text(message).fadeIn(200).delay(3000).fadeOut(300);
+    }
+
+    $(".command-btn").on("click", function () {
+        var command = $(this).attr("data-command");
+        xnote.http.get("/system/command", { command: command, path: globalPath });
+    })
+
+    $(function () {
+        adjustHeight(".fs-left", 20);
+        adjustHeight(".fs-preview", 20, { overflow: "hidden" });
+        $(".fs-file").click(function (e) {
+            $(".fs-file").removeClass("active");
+            $(e.target).addClass("active");
+            var path = $(e.target).attr("data-path");
+            window.location.hash = path;
+            var previewURL = "{{_server_home}}/fs_preview?b64=1&path=" + path;
+            $("#previewIframe").attr("src", previewURL);
+        })
+    });
+
+    $(function () {
+        var path = window.location.hash;
+        if (path) {
+            path = path.substring(1);
+            var previewURL = "/fs_preview?b64=1&path=" + path;
+            console.log("previewURL", previewURL);
+            $("#previewIframe").attr("src", previewURL);
+            $(".fs-file[data-path=" + path + "]").addClass("active");
+        }
+    })
+
+</script>
+
+{% end %}
+
+{% block aside %}
+{% include fs/mod_aside.html %}
+{% end %}
