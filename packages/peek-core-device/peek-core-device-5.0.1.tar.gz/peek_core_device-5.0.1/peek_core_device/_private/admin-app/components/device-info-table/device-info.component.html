@@ -1,0 +1,193 @@
+<nz-card>
+    <nz-table
+        #basicTable
+        [nzData]="items$ | async"
+        [nzLoading]="!(items$ | async)?.length"
+        [nzShowSizeChanger]="true"
+    >
+        <thead>
+            <tr>
+                <th nzWidth="100px">Type</th>
+                <th>
+                    Description
+                    <nz-filter-trigger
+                        [nzVisible]="deviceSearchVisible$ | async"
+                        (nzVisibleChange)="deviceSearchVisible$.next($event)"
+                        [nzActive]="(deviceSearchValue$ | async)?.length > 0"
+                        [nzDropdownMenu]="deviceSearchMenu"
+                    >
+                        <i nz-icon nzType="search"></i>
+                    </nz-filter-trigger>
+                </th>
+                <th>
+                    Logged In User
+                    <nz-filter-trigger
+                        [nzVisible]="userSearchVisible$ | async"
+                        (nzVisibleChange)="userSearchVisible$.next($event)"
+                        [nzActive]="(userSearchValue$ | async)?.length > 0"
+                        [nzDropdownMenu]="userSearchMenu"
+                    >
+                        <i nz-icon nzType="search"></i>
+                    </nz-filter-trigger>
+                </th>
+                <th nzWidth="150px">Last Online</th>
+                <th nzWidth="120px">Last Device IP</th>
+                <th nzWidth="100px">Enrollment</th>
+                <th nzWidth="120px">Offline Cache</th>
+                <th nzWidth="150px">Last Cache Check</th>
+                <th
+                    nzWidth="120px"
+                    nz-tooltip
+                    nzTooltipTitle="The round trip time in milliseconds for the device to request and download 100kb from Peek services."
+                >
+                    Bandwidth Metric
+                </th>
+                <th nzWidth="180px">Current Location</th>
+                <th nzWidth="60px"></th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr *ngFor="let item of basicTable.data">
+                <td>{{ item.deviceType }}</td>
+                <td>
+                    <div class="description-cell">
+                        {{ item.description }}
+                        <nz-divider
+                            *ngIf="hasDeviceInfoFromMdm(item)"
+                        ></nz-divider>
+                        <div
+                            *ngIf="hasDeviceInfoFromMdm(item)"
+                            class="mdm-info"
+                        >
+                            <nz-tag>MDM Details</nz-tag>
+                            {{ displayDeviceInfoFromMdm(item) }}
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    <span>{{ item.loggedInUser }}</span>
+                </td>
+                <td>
+                    <span
+                        [class.online]="deviceStatus(item).includes('Online')"
+                    >
+                        {{ deviceStatus(item) }}
+                    </span>
+                </td>
+                <td>{{ item.lastDeviceIp }}</td>
+                <td>
+                    <nz-switch
+                        [ngModel]="item.isEnrolled"
+                        (ngModelChange)="handleToggleEnroll(item)"
+                        [nzCheckedChildren]="'Yes'"
+                        [nzUnCheckedChildren]="'No'"
+                    ></nz-switch>
+                </td>
+                <td>
+                    <div class="offline-cache-cell">
+                        <nz-switch
+                            [ngModel]="item.isOfflineCacheEnabled"
+                            (ngModelChange)="
+                                handleToggleOfflineCacheEnabled(item)
+                            "
+                            [nzCheckedChildren]="'On'"
+                            [nzUnCheckedChildren]="'Off'"
+                        ></nz-switch>
+                        <button
+                            nz-button
+                            nzType="link"
+                            nz-tooltip
+                            nzTooltipTitle="Show Cache Status"
+                            (click)="handleShowOfflineCacheStatus(item)"
+                        >
+                            <i nz-icon nzType="dashboard" nzTheme="outline"></i>
+                        </button>
+                    </div>
+                </td>
+                <td>
+                    <span *ngIf="item.lastCacheCheck">
+                        {{ item.lastCacheCheck | date: "medium" }}
+                    </span>
+                </td>
+                <td>
+                    <span *ngIf="item.lastBandwidthMetric !== null">
+                        {{ item.lastBandwidthMetric }}
+                    </span>
+                </td>
+                <td>
+                    <div
+                        *ngIf="item.hasCurrentLocation()"
+                        class="location-cell"
+                    >
+                        <span>
+                            {{ item.currentLocation.latitude }},
+                            {{ item.currentLocation.longitude }}
+                        </span>
+                        <a
+                            target="_blank"
+                            [href]="item.googleMapLink"
+                            nz-button
+                            nzType="link"
+                        >
+                            <i
+                                nz-icon
+                                nzType="environment"
+                                nzTheme="outline"
+                            ></i>
+                            View on Maps
+                        </a>
+                    </div>
+                </td>
+                <td>
+                    <button
+                        nz-button
+                        nzType="text"
+                        nzDanger
+                        (click)="handleDeleteDevice(item)"
+                        nz-tooltip
+                        nzTooltipTitle="Delete Device"
+                    >
+                        <i nz-icon nzType="delete" nzTheme="outline"></i>
+                    </button>
+                </td>
+            </tr>
+        </tbody>
+    </nz-table>
+</nz-card>
+
+<nz-dropdown-menu #deviceSearchMenu="nzDropdownMenu">
+    <div class="search-box">
+        <input
+            type="text"
+            nz-input
+            placeholder="Search device name"
+            [ngModel]="deviceSearchValue$ | async"
+            (ngModelChange)="setDeviceSearchValue($event)"
+        />
+    </div>
+</nz-dropdown-menu>
+
+<nz-dropdown-menu #userSearchMenu="nzDropdownMenu">
+    <div class="search-box">
+        <input
+            type="text"
+            nz-input
+            placeholder="Search user name"
+            [ngModel]="userSearchValue$ | async"
+            (ngModelChange)="setUserSearchValue($event)"
+        />
+    </div>
+</nz-dropdown-menu>
+
+<nz-modal
+    [nzVisible]="isOfflineCacheModalShown$ | async"
+    (nzVisibleChange)="setOfflineCacheModalShown($event)"
+    [nzFooter]="null"
+    (nzOnCancel)="setOfflineCacheModalShown(false)"
+    nzTitle="Offline Cache Status"
+>
+    <ng-container *nzModalContent>
+        <core-device-device-cache-status [deviceToken$]="deviceToken$">
+        </core-device-device-cache-status>
+    </ng-container>
+</nz-modal>
