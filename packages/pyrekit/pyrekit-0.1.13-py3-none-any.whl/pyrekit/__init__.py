@@ -1,0 +1,1 @@
+import pyrekit.cli
