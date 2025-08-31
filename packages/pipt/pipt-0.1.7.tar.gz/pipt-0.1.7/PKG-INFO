@@ -1,0 +1,177 @@
+Metadata-Version: 2.4
+Name: pipt
+Version: 0.1.7
+Summary: A time machine for your Python environment. Install packages as they existed on a given date.
+Author: pipt contributors
+License: MIT
+Project-URL: Homepage, https://github.com/OsamaS99/pipt
+Project-URL: Repository, https://github.com/OsamaS99/pipt
+Project-URL: Issues, https://github.com/OsamaS99/pipt/issues
+Keywords: pip,reproducibility,dependencies,packages,PyPI,time travel
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Software Development :: Build Tools
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: httpx>=0.27
+Requires-Dist: packaging>=24.1
+Requires-Dist: rich>=13.7
+Requires-Dist: diskcache>=5.6
+Requires-Dist: typer>=0.12
+Provides-Extra: dev
+Requires-Dist: pytest>=8; extra == "dev"
+Requires-Dist: pytest-vcr>=1.0; extra == "dev"
+Requires-Dist: pytest-mock>=3.12; extra == "dev"
+Requires-Dist: ruff>=0.5; extra == "dev"
+Requires-Dist: mypy>=1.10; extra == "dev"
+Dynamic: license-file
+
+<div align="center">
+  <img src="https://cdn.jsdelivr.net/gh/OsamaS99/pipt@main/assets/logo.png" alt="pipt Logo" width="640"/>
+  <p align="center">
+    The Python Package Time Machine
+  </p>
+  <p align="center">
+    <strong>Install dependencies as they existed on any given date.</strong>
+  </p>
+  <p align="center">
+    <a href="https://github.com/OsamaS99/pipt/actions"><img alt="CI" src="https://github.com/OsamaS99/pipt/actions/workflows/ci.yml/badge.svg"></a>
+    <a href="https://pypi.org/project/pipt"><img alt="PyPI" src="https://img.shields.io/pypi/v/pipt"></a>
+  </p>
+</div>
+
+---
+
+`pipt` is a command-line tool that acts as a time machine for your Python environment. It lets you install packages and their dependencies exactly as they were on a specific date, making past environments reproducible without hunting down historical versions by hand.
+
+It's not a new package manager. It wraps `pip`, using its resolver to do the heavy lifting while `pipt` finds the right time-appropriate releases for you.
+
+## Quickstart
+
+- See what you’d get as of a date:
+
+```bash
+pipt resolve "pandas<2.0" --date 2023-01-01
+```
+
+- Install with a cutoff date:
+
+```bash
+pipt install "pandas<2.0" --date 2023-01-01
+```
+
+- Create a lockfile you can install with pip later:
+
+```bash
+pipt lock django --date 2021-03-15 > requirements.lock
+pip install -r requirements.lock
+```
+
+- No date? Behaves like pip:
+
+```bash
+pipt install requests  # passes through to pip install
+```
+
+## Key Features
+
+- Reproducible builds tied to a specific date
+- Optional cutoff: without `--date`, pipt behaves like pip
+- Date strategies: `--date-mode before` (default) or `--date-mode nearest`
+- Intelligent failure analysis with actionable messages
+- Preflight environment checks (Requires-Python, wheel tags) with Python version suggestions
+- Lockfile generation compatible with `pip`
+- Works with your existing workflows (constraints, pre-releases, yanked handling)
+- Polished CLI powered by `rich`
+
+## Installation
+
+```bash
+pip install pipt
+```
+
+Or with pipx (recommended for global CLI tools):
+
+```bash
+pipx install pipt
+```
+
+## How It Works
+
+`pipt` iteratively refines version constraints. It starts from your requested requirements, selects the latest releases that existed on the cutoff date, and runs `pip`'s resolver in a dry run. If transitive dependencies are too new, `pipt` tightens constraints and repeats until a historically accurate plan is found.
+
+It also performs a lightweight preflight check to surface environment incompatibilities early (e.g., no wheels for your Python/platform for the cutoff-era release) and will suggest the minimum Python version inferred from wheel filenames or Requires-Python.
+
+## Usage
+
+### Install a package as of a date
+
+```bash
+# Install pandas as it was on New Year's Day 2023
+pipt install "pandas<2.0" --date 2023-01-01
+```
+
+### Resolve (dry run) without installing
+
+```bash
+# See the dependency plan for flask on June 1st, 2022
+pipt resolve flask --date 2022-06-01
+```
+
+Add JSON output if you want to script around the result:
+
+```bash
+pipt resolve flask --date 2022-06-01 --json
+```
+
+### Create a pip-compatible lockfile
+
+```bash
+# Lock Django and its dependencies to their state on March 15th, 2021
+pipt lock django --date 2021-03-15 > requirements.lock
+
+# Include hashes for extra integrity
+pipt lock django --date 2021-03-15 --include-hashes > requirements.lock
+```
+
+### List available versions before a date
+
+```bash
+# List all versions of requests published before 2020
+pipt list requests --before 2020-01-01
+```
+
+### Diagnose without installing
+
+```bash
+# See environment summary, latest allowed by cutoff, and wheel/Requires-Python info
+pipt diagnose numpy --date 2021-01-01
+```
+
+### Handy options
+
+- `--pre`: allow pre-releases when needed
+- `--allow-yanked`: include yanked releases
+- `--python-version X.Y`: resolve as if running on Python X.Y (respects Requires-Python)
+- `-c constraints.txt`: layer your own constraints
+- `--allow-source`: in historical mode, permit building from source (disables binary-only)
+- `--date-mode nearest`: pick the version closest to the cutoff (experimental)
+- Global `-v`: show the exact pip command and raw output
+
+## Compatibility
+
+- Python: 3.9–3.12
+- Platforms: Linux, macOS, Windows
+
+## Contributing
+
+Contributions are welcome! See the [Contributing Guide](CONTRIBUTING.md).
+
+## License
+
+`pipt` is licensed under the [MIT License](LICENSE).
