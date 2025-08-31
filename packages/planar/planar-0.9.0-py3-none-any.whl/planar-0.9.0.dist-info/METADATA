@@ -1,0 +1,314 @@
+Metadata-Version: 2.4
+Name: planar
+Version: 0.9.0
+Summary: Add your description here
+License-Expression: LicenseRef-Proprietary
+Requires-Python: >=3.12
+Requires-Dist: aiofiles>=24.1.0
+Requires-Dist: aiosqlite>=0.21.0
+Requires-Dist: alembic>=1.14.1
+Requires-Dist: anthropic>=0.49.0
+Requires-Dist: asyncpg
+Requires-Dist: boto3>=1.39.15
+Requires-Dist: cedarpy>=4.1.0
+Requires-Dist: fastapi[standard]>=0.115.7
+Requires-Dist: inflection>=0.5.1
+Requires-Dist: openai>=1.75
+Requires-Dist: pydantic-ai-slim[anthropic,bedrock,google,openai]>=0.7.5
+Requires-Dist: pygments>=2.19.1
+Requires-Dist: pyjwt[crypto]
+Requires-Dist: python-multipart>=0.0.20
+Requires-Dist: sqlalchemy[asyncio]>=2.0.37
+Requires-Dist: sqlmodel>=0.0.22
+Requires-Dist: typer>=0.15.2
+Requires-Dist: typing-extensions>=4.12.2
+Requires-Dist: zen-engine>=0.40.0
+Provides-Extra: azure
+Requires-Dist: aiohttp>=3.8.0; extra == 'azure'
+Requires-Dist: azure-identity>=1.15.0; extra == 'azure'
+Requires-Dist: azure-storage-blob>=12.19.0; extra == 'azure'
+Provides-Extra: data
+Requires-Dist: ducklake>=0.1.1; extra == 'data'
+Requires-Dist: ibis-framework[duckdb]>=10.8.0; extra == 'data'
+Requires-Dist: polars>=1.31.0; extra == 'data'
+Provides-Extra: otel
+Requires-Dist: opentelemetry-api>=1.34.1; extra == 'otel'
+Requires-Dist: opentelemetry-exporter-otlp>=1.34.1; extra == 'otel'
+Requires-Dist: opentelemetry-instrumentation-logging>=0.55b1; extra == 'otel'
+Requires-Dist: opentelemetry-sdk>=1.34.1; extra == 'otel'
+Description-Content-Type: text/markdown
+
+# Planar
+
+Planar is a Python framework built on FastAPI and SQLModel that lets you build web services with advanced workflow capabilities. Its core features
+  include:
+  1. Automatic CRUD API generation for your entities
+  2. A workflow orchestration system for building complex, resumable business processes
+  3. File attachment handling with flexible storage options
+  4. Database integration with migration support via Alembic
+  The framework is designed for building services that need both standard REST API endpoints and more complex stateful workflows. The examples show it
+  being used for services that manage entities with status transitions and attached files, like invoice processing systems.
+
+## Workflow System
+The workflow system in Planar is a sophisticated orchestration framework that enables defining, executing, and managing long-running workflows with
+  persistence. Here's what it does:
+  1. Core Concept: Implements a durable workflow system that can survive process restarts by storing workflow state in a database. It allows workflows to
+   be suspended and resumed.
+  2. Key Features:
+    - Persistent Steps: Each step in a workflow is tracked in the database
+    - Automatic Retries: Failed steps can be retried automatically
+    - Suspendable Workflows: Workflows can be suspended and resumed later
+    - Concurrency Control: Uses a locking mechanism to prevent multiple executions
+    - Recovery: Can recover from crashes by detecting stalled workflows
+  3. Main Components:
+    - @workflow decorator: Marks a function as a workflow with persistence
+    - @step decorator: Wraps function calls inside a workflow to make them resumable
+    - Suspend class: Allows pausing workflow execution
+    - workflow_orchestrator: Background task that finds and resumes suspended workflows
+  4. REST API Integration:
+    - Automatically creates API endpoints for starting workflows
+    - Provides status endpoints to check workflow progress
+  This is essentially a state machine for managing long-running business processes that need to be resilient to failures and can span multiple
+  requests/processes.
+
+### Coroutines and the suspension mechanism
+  Coroutines are the heart of Planar's workflow system. Here's how they work:
+
+  #### Coroutine Usage
+
+  Planar builds on Python's async/await system but adds durability. When you create a workflow:
+
+  @workflow
+  async def process_order(order_id: str):
+      # workflow steps
+
+  The system:
+
+  1. Enforces that all workflows and steps must be coroutines (async def)
+  2. Accesses the underlying generator of the coroutine via coro.__await__()
+  3. Manually drives this generator by calling next(gen) and gen.send(result)
+  4. Intercepts any values yielded from the coroutine to implement suspension
+
+  The execute() function (lines 278-335) is the core that drives coroutine execution. It:
+  - Takes control of the coroutine's generator
+  - Processes each yielded value
+  - Handles regular awaits vs. suspensions differently
+  - Persists workflow state at suspension points
+
+  Suspend Mechanism
+
+  The Suspend class (lines 55-72) enables pausing workflows:
+
+  class Suspend:
+      def __init__(self, *, wakeup_at=None, interval=None):
+          # Set when to wake up
+
+      def __await__(self):
+          result = yield self
+          return result
+
+  When you call:
+  await suspend(interval=timedelta(minutes=5))
+
+  What happens:
+  1. The suspend() function uses the @step() decorator to mark it as resumable
+  2. Inside it creates and awaits a Suspend object
+  3. The __await__ method yields self (the Suspend instance) to the executor
+  4. The execute() function detects this is a Suspend object (lines 303-307)
+  5. It sets the workflow status to SUSPENDED and persists the wake-up time
+  6. Later, the orchestrator finds workflows ready to resume based on wakeup_at
+  7. When resumed, execution continues right after the suspension point
+
+  YieldWrapper
+
+  The YieldWrapper class (lines 48-53) is crucial for handling regular async operations:
+
+  class YieldWrapper:
+      def __init__(self, value):
+          self.value = value
+      def __await__(self):
+          return (yield self.value)
+
+  For non-Suspend yields (regular awaits), the system:
+  1. Wraps the yielded value in YieldWrapper
+  2. Awaits it to get the result from asyncio
+  3. Sends the result back to the workflow's generator
+
+  This allows you to use normal async functions inside workflows:
+
+  @workflow
+  async def my_workflow():
+      # This works because YieldWrapper passes through regular awaits
+      data = await fetch_data_from_api()
+      # This suspends the workflow
+      await suspend(interval=timedelta(hours=1))
+      # When resumed days later, continues here
+      return process_result(data)
+
+  The magic is that the workflow appears to be a normal async function, but the state is persisted across suspensions, allowing workflows to survive
+  process restarts or even server reboots.
+
+
+## Getting started
+
+Install dependencies: `uv sync --extra otel`
+
+## Using the Planar CLI
+
+Planar includes a command-line interface (CLI) for running applications with environment-specific configurations:
+
+### Creating a New Project
+
+```bash
+planar scaffold [OPTIONS]
+```
+
+Options:
+- `--name TEXT`: Name of the new project (will prompt if not provided)
+- `--directory PATH`: Target directory for the project (default: current directory)
+
+The scaffold command creates a new Planar project with:
+- Basic project structure with `app/` directory
+- Example invoice processing workflow with AI agent integration
+- Database entity definitions
+- Development and production configuration files
+- Ready-to-use pyproject.toml with Planar dependency
+
+### Running in Development Mode
+
+```bash
+planar dev [PATH] [OPTIONS]
+```
+
+Arguments:
+- `[PATH]`: Optional path to the Python file containing the Planar app instance. Defaults to searching for `app.py` or `main.py` in the current directory.
+
+Options:
+- `--port INTEGER`: Port to run on (default: 8000)
+- `--host TEXT`: Host to run on (default: 127.0.0.1)
+- `--config PATH`: Path to config file. If set, overrides default config file lookup.
+- `--app TEXT`: Name of the PlanarApp instance variable within the file (default: 'app').
+
+Development mode enables:
+- Hot reloading on code changes
+- Defaults to development-friendly CORS settings (allows localhost origins)
+- Sets `PLANAR_ENV=dev`
+
+### Running in Production Mode
+
+```bash
+planar prod [PATH] [OPTIONS]
+```
+
+Arguments & Options:
+- Same as `dev` mode, but with production defaults.
+- Default host is 0.0.0.0 (accessible externally)
+- Defaults to stricter CORS settings for production use
+- Hot reloading disabled for better performance
+- Sets `PLANAR_ENV=prod`
+
+### Configuration Loading Logic
+
+When the Planar application starts (typically via the `planar dev` or `planar prod` CLI commands), it determines the configuration settings using the following process:
+
+1.  **Determine Base Configuration:** Based on the environment (`dev` or `prod`, controlled by `PLANAR_ENV` or the CLI command used), Planar establishes a set of built-in default settings (e.g., default database path, CORS settings, debug flags).
+2.  **Configuration Override File:** Planar searches for a single YAML configuration file to use for overriding the defaults, checking in this specific order:
+    *   **a. Explicit Path:** Checks if the `--config PATH` option was used or if the `PLANAR_CONFIG` environment variable is set. If either is present and points to an existing file, that file is selected as the config override file.
+    *   **b. Environment-Specific File:** If no explicit path was provided, it looks for `planar.{env}.yaml` (e.g., `planar.dev.yaml` for the `dev` environment) in both the app directory and the current directory. If found, this file is selected.
+    *   **c. Generic File:** If neither an explicit path nor an environment-specific file was found, it looks for `planar.yaml` in the current directory. If found, this file is selected.
+
+**Important Note:** This configuration loading logic is bypassed entirely if you initialize the `PlanarApp` instance in your Python code by directly passing a `PlanarConfig` object to its `config` parameter.
+
+Example override file (`planar.dev.yaml` or `planar.yaml`):
+This file only needs to contain the settings you wish to override from the defaults.
+
+```yaml
+# Example: Only override AI provider keys and SQLAlchemy debug setting
+
+# Settings not specified here (like db_connections, app config, cors)
+# will retain their default values for the 'dev' environment after merging.
+
+ai_providers:
+  openai:
+    api_key: ${OPENAI_API_KEY} # Read API key from environment variable
+
+# Optional: Override a specific nested value
+# storage:
+#   directory: .custom_dev_files
+
+
+# Optional: setup logging config
+logging:
+  planar:
+    level: INFO  # enable INFO level logging for all modules in the "planar" package.
+  planar.workflows:
+    level: DEBUG  # enable DEBUG level logging for all modules in the "planar.workflows" package.
+```
+
+## To run the examples
+
+- `uv run planar dev examples/expense_approval_workflow/main.py`
+- `uv run planar dev examples/event_based_workflow/main.py`
+- `uv run planar dev examples/simple_service/main.py`
+
+The API docs can then be accessed on http://127.0.0.1:8000/docs
+
+
+## Planar Development
+
+### Testing
+We use pytest for testing Planar:
+
+- To run the tests: `uv run pytest`
+- By default, tests only run on SQLite using temporary databases
+- In CI/CD we also test PostgreSQL
+
+### Testing with PostgreSQL locally
+
+To test with PostgreSQL locally, you'll need a PostgreSQL container running:
+
+```bash
+docker run --restart=always --name planar-postgres -e POSTGRES_PASSWORD=123 -p 127.0.0.1:5432:5432 -d docker.io/library/postgres
+```
+
+Ensure the container name is `planar-postgres`.
+
+To run tests with PostgreSQL:
+
+```bash
+PLANAR_TEST_POSTGRESQL=1 PLANAR_TEST_POSTGRESQL_CONTAINER=planar-postgres uv run pytest -s
+```
+
+To disable SQLite testing:
+
+```bash
+PLANAR_TEST_SQLITE=0 uv run pytest
+```
+
+### Pre-commit hooks
+
+We use [pre-commit](https://pre-commit.com/) to manage pre-commit hooks. To install the pre-commit hooks, run the following command:
+
+```bash
+uv tool install pre-commit
+uv tool run pre-commit install
+```
+
+### Cairo SVG
+
+For some tests we use Cairo SVG to PNG conversion. This is done using the [cairosvg](https://cairosvg.org/) library, but requires the core Cairo libraries to be installed in the system.
+
+#### Linux
+
+Cairo dependencies should already be installed.
+
+#### MacOS
+
+To install cairo, run the following command:
+
+```bash
+brew install cairo libffi pkg-config
+export DYLD_FALLBACK_LIBRARY_PATH="/opt/homebrew/lib:${DYLD_FALLBACK_LIBRARY_PATH}"
+```
+
+
