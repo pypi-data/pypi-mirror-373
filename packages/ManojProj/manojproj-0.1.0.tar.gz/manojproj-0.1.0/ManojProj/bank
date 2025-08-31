@@ -1,0 +1,201 @@
+import traceback
+import datetime
+class deposit_exception(Exception):
+    def __init__(self, message, amount,balance):
+        self.amount = amount
+        self.balance = balance
+        super().__init__(message)
+class withdrawal_exception(Exception):
+    def __init__(self, message, amount, balance):
+        self.amount = amount
+        self.balance = balance
+        super().__init__(message)
+
+class cashback_exception(Exception):
+    def __init__(self, message,cashback):
+        self.cashback = cashback
+        super().__init__(message)
+
+class lowbalance_fee_exception(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        
+class fixed_deposit_exception(Exception):
+    def __init__(self, message, term_months):
+        self.term_months = term_months
+        super().__init__(message)
+
+
+
+class account:
+    def __init__(self, name, balance=0):
+        self.name = name
+        self.balance = balance
+        self.transactions = []
+
+    def deposit(self, amount):
+        if amount > 0:
+            self.balance += amount
+            self.transactions.append(f"Deposited: {amount}")
+        else:
+            raise deposit_exception("Deposit amount must be positive",amount,self.balance)
+    def withdraw(self, amount):
+        if 0 < amount <= self.balance:
+            self.balance -= amount
+            self.transactions.append(f"Withdrew: {amount}")
+        else:
+            raise withdrawal_exception("Withdrawal amount must be positive and less than or equal to the balance",amount,self.balance)
+        
+    def get_balance(self):
+        return self.balance
+    def get_transactions(self):
+        return self.transactions
+
+class savings_account(account):
+    def __init__(self, name, balance=0, interest_rate=0.01):
+        super().__init__(name, balance)
+        self.interest_rate = interest_rate
+    def apply_interest(self):
+        interest = self.balance * self.interest_rate
+        self.deposit(interest)
+        self.transactions.append(f"Applied interest: {interest}")
+    def apply_promotion_cashback(self, cashback):
+        try:
+            self.deposit(cashback[datetime.datetime.now().month])
+            self.transactions.append(f"Applied promotion cashback: {cashback}")
+        except deposit_exception as e:
+            raise cashback_exception("Cashback amount must be positive",cashback) from e
+    def apply_low_balance_fee(self, fee):
+        if self.balance < 100:
+            try:
+                self.withdraw(fee)
+                self.transactions.append(f"Applied low balance fee: {fee}")
+            except withdrawal_exception as e:
+                raise lowbalance_fee_exception("Low balance fee cannot be withdrawn") from e
+        else:
+            raise ValueError("Balance is sufficient, no fee applied")    
+    def get_interest_rate(self):
+        return self.interest_rate
+    def set_interest_rate(self, new_rate):
+        if new_rate >= 0:
+            self.interest_rate = new_rate
+        else:
+            raise ValueError("Interest rate must be non-negative")
+class fixed_deposit_account(savings_account):
+    def __init__(self, name, balance=0, interest_rate=0.05, term_months=12):
+        super().__init__(name, balance, interest_rate)
+        self.term_months = term_months
+        self.is_active = True
+    def withdraw(self, amount):
+        if self.is_active: 
+            raise ValueError("Cannot withdraw from a fixed deposit account until the term ends")
+        else:
+            super().withdraw(amount)
+    def mature(self):
+        if self.is_active:
+            self.apply_interest()
+            self.is_active = False
+            self.transactions.append("Account matured")
+        else:
+            raise ValueError("Account has already matured")
+    def get_term_months(self):
+        return self.term_months
+    def set_term_months(self, months):
+        if months > 0:
+            self.term_months = months
+        else:
+            raise ValueError("Term months must be positive")
+    def is_account_active(self):
+        return self.is_active
+    def close_account(self):
+        if not self.is_active:
+            self.transactions.append("Account closed")
+            return True
+        else:
+            raise ValueError("Cannot close an active fixed deposit account")
+    def get_account_details(self):
+        return {
+            "name": self.name,
+            "balance": self.balance,
+            "interest_rate": self.interest_rate,
+            "term_months": self.term_months,
+            "is_active": self.is_active
+        }
+class checking_account(account):
+    def __init__(self, name, balance=0, overdraft_limit=0):
+        super().__init__(name, balance)
+        self.overdraft_limit = overdraft_limit
+    def withdraw(self, amount):
+        if amount > 0 and (self.balance + self.overdraft_limit) >= amount:
+            self.balance -= amount
+            self.transactions.append(f"Withdrew: {amount}")
+        else:
+            raise ValueError("Withdrawal amount exceeds balance and overdraft limit")
+    def apply_interest(self):
+        raise NotImplementedError("Checking accounts do not earn interest")
+    def get_overdraft_limit(self):
+        return self.overdraft_limit
+    def set_overdraft_limit(self, new_limit):
+        if new_limit >= 0:
+            self.overdraft_limit = new_limit
+        else:
+            raise ValueError("Overdraft limit must be non-negative")
+        
+
+
+sb_account = savings_account("Jane Doe", 500, 0.03)
+chk_account=checking_account("Alice Smith", 200, 100)
+def run_account_operations(accobj):
+    try:
+        accobj.deposit(200)
+        print(accobj.__class__.__name__, 'blanace is',accobj.get_balance())
+        accobj.withdraw(100)
+        print(accobj.__class__.__name__, 'blanace is',accobj.get_balance())
+        try:
+            accobj.apply_interest()
+        except NotImplementedError as e:
+            print(f"{accobj.__class__.__name__} does not support interest application")
+            print('Thrown error when balance was', e.args[0])
+            
+        print(accobj.__class__.__name__, 'blanace is',accobj.get_balance())
+        
+        print(accobj.__class__.__name__, 'transactions are',accobj.get_transactions())
+    except ValueError as e:
+        print(f"Error: {e}")
+
+
+run_account_operations(sb_account)
+run_account_operations(chk_account)
+cashback={1:1,2:2,3:3,4:4,5:5,6:6,7:7,8:-50,9:9,10:10,11:11,12:12}
+
+try:
+    sb_account.apply_promotion_cashback(cashback)
+    print(sb_account.__class__.__name__, 'blanace after cashback is',sb_account.get_balance())
+except cashback_exception as e:
+    print(f"Error: {e}", "but passed cashback amount was", e.cashback)
+    print("cause of error was - ", e.__cause__)
+    traceback.print_exc()
+
+try:
+    sb_account.apply_low_balance_fee(10)
+    print(sb_account.__class__.__name__, 'blanace is',sb_account.get_balance())
+except lowbalance_fee_exception as e:
+    print(f"Error: {e}")
+    print("cause of error was", e.__cause__)
+    traceback.print_exc()
+except ValueError as e:
+    print(f"Error: {e}")        
+
+def run_fixed_deposit_operations():
+    try:
+        fd_account = fixed_deposit_account("John Doe", 1000, 0.05, 12)
+        fd_account.deposit(500)
+        print(fd_account.__class__.__name__, 'blanace is',fd_account.get_balance())
+        fd_account.mature()
+        print(fd_account.__class__.__name__, 'transactions are',fd_account.get_transactions())
+        fd_account.close_account()
+        print(fd_account.__class__.__name__, 'details are',fd_account.get_account_details())
+    except ValueError as e:
+        print(f"Error: {e}")
+
+run_fixed_deposit_operations()
