@@ -1,0 +1,1 @@
+from .openai_compatible_embedding_model import OpenAICompatibleEmbeddingModel
