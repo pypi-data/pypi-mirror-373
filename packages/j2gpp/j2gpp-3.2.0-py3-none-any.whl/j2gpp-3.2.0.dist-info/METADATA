@@ -1,0 +1,1333 @@
+Metadata-Version: 2.4
+Name: j2gpp
+Version: 3.2.0
+Summary: A Jinja2-based General Purpose Preprocessor
+Author-email: Louis Duret-Robert <louisduret@gmail.com>
+License: MIT
+Project-URL: Homepage, https://github.com/Louis-DR/j2gpp
+Keywords: j2gpp,jinja2,preprocessor
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: jinja2
+Requires-Dist: ruamel.yaml
+Requires-Dist: xmltodict
+Requires-Dist: toml
+Requires-Dist: configparser
+Requires-Dist: hjson
+Requires-Dist: colour
+Dynamic: license-file
+
+# J2GPP - Jinja2-based General Purpose Preprocessor
+
+`j2gpp` is a command-line tool for rendering templates using the Jinja2 syntax. It's intended purpose is to serve as a preprocessor for any programming or markup language with a unified syntax and flow across languages.
+
+- [J2GPP - Jinja2-based General Purpose Preprocessor](#j2gpp---jinja2-based-general-purpose-preprocessor)
+  - [Installation](#installation)
+  - [Basic usage](#basic-usage)
+    - [J2GPP CLI quick start](#j2gpp-cli-quick-start)
+    - [J2GPP API quick start](#j2gpp-api-quick-start)
+  - [Additional template features](#additional-template-features)
+    - [Context variables](#context-variables)
+    - [Additional built-in filters](#additional-built-in-filters)
+    - [Additional built-in tests](#additional-built-in-tests)
+    - [Additional built-in globals](#additional-built-in-globals)
+  - [CLI reference](#cli-reference)
+    - [Command line arguments](#command-line-arguments)
+    - [Exception handling and errors](#exception-handling-and-errors)
+  - [API reference](#api-reference)
+    - [Rendering methods](#rendering-methods)
+    - [Variable management](#variable-management)
+    - [Configuration methods](#configuration-methods)
+    - [Advanced configuration](#advanced-configuration)
+    - [Configuration inspection](#configuration-inspection)
+    - [Template validation](#template-validation)
+    - [Template discovery \& analysis](#template-discovery--analysis)
+    - [Result objects](#result-objects)
+  - [Advanced usage](#advanced-usage)
+    - [Specify output directory](#specify-output-directory)
+    - [Specifying output file](#specifying-output-file)
+    - [Include search directory](#include-search-directory)
+    - [Passing global variables in command line](#passing-global-variables-in-command-line)
+    - [Loading global variables from files](#loading-global-variables-from-files)
+    - [Loading global variables from environment](#loading-global-variables-from-environment)
+    - [Loading custom Jinja2 filters](#loading-custom-jinja2-filters)
+    - [Loading custom Jinja2 tests](#loading-custom-jinja2-tests)
+    - [Loading custom Jinja2 globals](#loading-custom-jinja2-globals)
+    - [Processing variables before rendering](#processing-variables-before-rendering)
+    - [Process directories](#process-directories)
+  - [Supported formats for variables](#supported-formats-for-variables)
+    - [CLI define](#cli-define)
+    - [API define](#api-define)
+    - [YAML](#yaml)
+    - [JSON](#json)
+    - [HJSON](#hjson)
+    - [XML](#xml)
+    - [TOML](#toml)
+    - [INI/CFG](#inicfg)
+    - [ENV](#env)
+    - [CSV/TSV](#csvtsv)
+    - [PLIST](#plist)
+  - [Scripting in J2GPP templates](#scripting-in-j2gpp-templates)
+    - [Conditional and do extension](#conditional-and-do-extension)
+    - [Conditional and filters](#conditional-and-filters)
+    - [Throw errors and warnings from template](#throw-errors-and-warnings-from-template)
+    - [Writing files](#writing-files)
+      - [Write example](#write-example)
+      - [Append example](#append-example)
+      - [Path argument](#path-argument)
+      - [Writing to both files](#writing-to-both-files)
+      - [Skipping the parent file](#skipping-the-parent-file)
+
+
+## Installation
+
+With `Python >= 3.7`, Install from Pypi :
+
+``` shell
+pip install j2gpp
+```
+
+## Basic usage
+
+### J2GPP CLI quick start
+
+`j2gpp` requires at least one source be provided. The source paths can be files or directories, relative or absolute, and can use UNIX-style patterns such as wildcards. Template file names must end with the `.j2` extension which will be stripped at render.
+
+For more information about the Jinja2 syntax, see the documentation at [jinja.palletsprojects.com](https://jinja.palletsprojects.com/).
+
+For example, suppose we have a templatized source file `foo.c.j2` :
+
+``` c
+#include <stdio.h>
+
+{% set message = "Hello, world!" %}
+
+int main() {
+  printf("{{message}}");
+  return 0;
+}
+```
+
+We can render the template using `j2gpp` :
+
+``` shell
+j2gpp ./foo.c.j2
+```
+
+The output is written to `foo.c` next to the source template :
+
+``` c
+#include <stdio.h>
+
+int main() {
+  printf("Hello, world!");
+  return 0;
+}
+```
+
+### J2GPP API quick start
+
+J2GPP can also be called from another Python script using the API view. To perform the same action as the example above, the following Python script can be used.
+
+``` python
+from j2gpp import J2GPP
+j2gpp = J2GPP()
+j2gpp.render_file("./foo.c.j2")
+```
+
+Options that can be passed to the CLI can also be passed to the instance of the class `J2GPP` using methods that are chainable for fluent configuration.
+
+The rendering methods `J2GPP.render_file()` and `J2GPP.render_directory()` return a `FileRenderResult` and `RenderResult` object containing information about the render, such as success, error message, and output path. The API can also render strings using `J2GPP.render_string()`.
+
+``` python
+from j2gpp import J2GPP
+
+# Complex configuration example
+result = (J2GPP()
+  .add_include_directory("./includes/")
+  .load_variables_from_file("./config.yml")
+  .define_variable("debug", True)
+  .set_option("trim_whitespace", True)
+  .load_filters_from_file("./custom_filters.py")
+  .render_file("./template.j2", output_path="./output.txt")
+)
+
+if result.success:
+  print(f"Template rendered successfully to: {result.output_path}")
+else:
+  print(f"Error: {result.error_message}")
+```
+
+## Additional template features
+
+J2GPP adds a bunch of features to Jinja2 to be used inside templates.
+
+### Context variables
+
+Useful context variables are added before any other variable is loaded. Some are global for all templates rendered, and some are template-specific.
+
+| Variable                | Scope    | Description                                   |
+| ----------------------- | -------- | --------------------------------------------- |
+| `__python_version__`    | Global   | Python version                                |
+| `__jinja2_version__`    | Global   | Jinja2 version                                |
+| `__j2gpp_version__`     | Global   | J2GPP version                                 |
+| `__user__`              | Global   | Name of the current user                      |
+| `__pid__`               | Global   | Process ID of the current process             |
+| `__ppid__`              | Global   | Process ID of the parent process              |
+| `__date__`              | Global   | Date in the format `DD-MM-YYYY`               |
+| `__date_inv__`          | Global   | Date in the format `YYYY-MM-DD`               |
+| `__time__`              | Global   | Time in the format `hh:mm:ss`                 |
+| `__datetime__`          | Global   | Timestamp in the format `YYYY-MM-DD hh:mm:ss` |
+| `__working_directory__` | Global   | Working directory                             |
+| `__output_directory__`  | Global   | Output directory                              |
+| `__source_path__`       | Template | Path of the source template file              |
+| `__output_path__`       | Template | Path where the template is rendered           |
+
+### Additional built-in filters
+
+In addition to the [Jinja2 built-in filters](https://jinja.palletsprojects.com/en/latest/templates/#builtin-filters), J2GPP also defines many useful filter functions.
+
+|               |              |              |                     |                                         |
+| ------------- | ------------ | ------------ | ------------------- | --------------------------------------- |
+| `warning()`   | `sha224()`   | `rjust()`    | `reindent()`        | `product()`                             |
+| `error()`     | `sha256()`   | `center()`   | `autoindent()`      | `permutations()`                        |
+| `list_add()`  | `sha384()`   | `strip()`    | `align()`           | `combinations()`                        |
+| `list_sub()`  | `sha512()`   | `lstrip()`   | `restructure()`     | `combinations_with_replacement()`       |
+| `list_mult()` | `sha3_224()` | `rstrip()`   | `el_of_max_attr()`  | `permutations_range()`                  |
+| `list_div()`  | `sha3_256()` | `title()`    | `el_of_min_attr()`  | `combinations_range()`                  |
+| `list_mod()`  | `sha3_384()` | `swapcase()` | `key_of_max_attr()` | `combinations_with_replacement_range()` |
+| `list_rem()`  | `sha3_512()` | `camel()`    | `key_of_min_attr()` | `write()`                               |
+| `list_exp()`  | `blake2b()`  | `pascal()`   | `accumulate()`      | `append()`                              |
+| `md5()`       | `blake2s()`  | `snake()`    | `count()`           | `type()`                                |
+| `sha1()`      | `ljust()`    | `kebab()`    | `pairwise()`        |                                         |
+
+All functions from the Python libraries [`math`](https://docs.python.org/3/library/math.html) and [`statistics`](https://docs.python.org/3/library/statistics.html) are made available as filters. This includes useful functions such as `sqrt`, `pow`, `log`, `sin`, `cos`, `floor`, `ceil`, `mean`, `median`, `variance`, `stdev`, ...
+
+The `warning` and `error` filters can be used to throw warnings and errors from the template that will be displayed in the J2GPP logs. The filter is applied to a block, replaces the block with nothing and throws the warning or error with the content of the block as comment. The filter works with conditional blocks if the version of Jinja2 installed supports the `@render_time_only` decorator.
+
+An operation can be applied to all elements of a list with the filters `list_add`, `list_sub`, `list_mult`, `list_div`, `list_mod`, `list_rem` and `list_exp` respectively for the Python operators `+`, `-`, `*`, `/`, `%`, `//` and `**`.
+
+Representation of integers in different bases are available with the filters `bin`, `ter`, `oct`, `doz`, `hex` and their aliases `binary`, `ternary`, `octal`, `duodecimal`, and `hexadecimal` respectively. If the integer is negative, the representation will be that of the absolute value. An optional length can be provided and the output will be padded with zeros. No prefix such as `0b` or `0x` are added. For duodecimal, arguments `ten='a'` and `eleven='b'` can be used to overwrite the characters for 10 and 11.
+
+All hash algorithms provided by the `hashlib` library are provided as filters. The input value or string will be sanitized into JSON and encoded into UTF-8, then hashed and digested in hexadecimal. The number of symbols returned depends on the hash algorithm. The algorithms supported are : `md5`, `sha1`, `sha224`, `sha256`, `sha384`, `sha512`, `sha3_224`, `sha3_256`, `sha3_384`, `sha3_512`, `blake2b`, `blake2s`. The hash functions `adler32` and `crc32` from `zlib` are also provided.
+
+Text alignment can be controlled with the Python functions `ljust`, `rjust` and `center`.
+
+Stripping whitespaces or other characters from the start or end of strings can be done with the Python functions `strip`, `lstrip`, and `rstrip`.
+
+Case and formatting can be controlled with the Python functions `title` and `swapcase`, or the added functions `camel`, `pascal`, `snake` and `kebab`. `camel` and `pascal` will remove the underscores and hyphens by default but leave the dots ; that behaviour can be changed by providing the filter arguments `remove_underscore`, `remove_hyphen` and `remove_dot` as `True` or `False`. `snake` and `kebab` will group capitalized letters and preserve capitalization by default ; that behaviour can be changed by providing the filter arguments `preserve_caps` and `group_caps` as `True` or `False`.
+
+Paragraph formatting is facilitated by multiple filters that should be used on a `filter` block. `reindent` removes pre-existing indentation and sets new one. `autoindent` removes pre-existing indentation and sets new indent by incrementing and decrementing the depth based on start and end delimiters of blocks provided by the `starts` and `ends` lists of strings provided by argument (culry braces by default). `align` aligns every line of the paragraph by columns, left before `§`, right before `§§`.
+
+Restructuring of large blocks is facilitated by the filter `restructure` that should be used on a `filter` block. The block will be parsed for structure tags, which is an addition to the Jinja2 syntax and uses the `{§...§}` syntax. The only structure tag currently implemented is `spacing`. It takes a single parameter representing a number of line. When the restructuring filter processes the tag, it will strip all line breaks before and after the tag and replace them with the number of line breaks specified. This is useful to add spacing to the template for readability while keeping the spacing of the generate file clean.
+
+When using a list of dictionaries with a key in common, you can get the list element with the minimum or maximum value of that attribute using the filters `el_of_max_attr` or `el_of_min_attr`.
+
+When using two-level dictionaries, the key corresponding to the minimum or maximum with regards to a specified attribute using the filters `key_of_max_attr` or `key_of_min_attr`.
+
+The sum of elements in a list or other iterable object can be computed using the function `accumulate`.
+
+You can count the number of occurrences of a value in a list using the `count` filter.
+
+To perform combinatorics on a list, the following functions from the Python library [`itertools`](https://docs.python.org/3/library/itertools.html) are provided : `pairwise`, `product` (catersian product), `permutations`, `combinations`, and `combinations_with_replacement`. They all work on lists and may take an additional parameter for the length of the permutations or combinations. In addition, the following functions are used to generate permutations and combinations of a range : `permutations_range`, `combinations_range`, and `combinations_with_replacement_range`. They all work in lists and take two additional parameters : the start and stop index of the range of lengths.
+
+The `write` and `append` filters can be used to export the content of a filter to another file whose path is provided as argument to the filter. The path can be absolute or relative to the output rendered base template. By default, the content of the filter is not written to the base rendered template ; this behaviour can be changed by providing the filter argument `preserve` as `True`. The source template can also be prevented from resulting in a generated file by providing the filter argument `write_source` as `False`, and only the content of `write` and `append` blocks will generate files.
+
+To get the name of the type of a variable as a string, use the `type` filter.
+
+### Additional built-in tests
+
+In addition to the [Jinja2 built-in tests](https://jinja.palletsprojects.com/en/latest/templates/#builtin-tests), J2GPP also defines many useful test functions.
+
+|             |                |               |                       |                    |
+| ----------- | -------------- | ------------- | --------------------- | ------------------ |
+| `decimal()` | `identifier()` | `printable()` | `defined_and_true()`  | `defined_and_le()` |
+| `digit()`   | `space()`      | `empty()`     | `defined_and_false()` | `defined_and_gt()` |
+| `numeric()` | `lower()`      | `singleton()` | `defined_and_eq()`    | `defined_and_ge()` |
+| `alpha()`   | `upper()`      | `list()`      | `defined_and_ne()`    |                    |
+| `alnum()`   | `title()`      | `dict()`      | `defined_and_lt()`    |                    |
+
+The Python test functions `str.isdecimal()`, `str.isdigit()`, `str.isnumeric()`, `str.isalpha()`, `str.isalnum()`, `str.isidentifier()`, `str.isspace()`, `str.islower()`, `str.isupper()`, `str.istitle()`, and `str.isprintable()` are made available as tests `decimal`, `digit`, `numeric`, `alpha`, `alnum`, `identifier`, `space`, `lower`, `upper`, `title`, and `printable`. They automatically cast the input value to a string.
+
+For lists, the tests `empty` and `singleton` returns whether the list is empty or contains a single item respectively.
+
+Jinja2 provides tests for type testing integers, floats, and strings. J2GPP adds type testing for lists and dictionaries with the tests `list` and `dict` respectively.
+
+Jinja2 provides the `defined` test. To facilitate testing if a variable is defined and an additional condition on its value, J2GPP adds the tests `defined_and_true`, `defined_and_false`, `defined_and_eq` (equal, `==`), `defined_and_ne` (not equal, `!=`), `defined_and_lt` (less than, `<`), `defined_and_le` (less than or equal to, `<=`), `defined_and_gt` (greater than, `>`), and `defined_and_ge` (greater than or equal to, `>=`).
+
+### Additional built-in globals
+
+The global [context variables](#context-variables) are defined inside J2GPP as global variables.
+
+Some useful mathematical constants are provided: `nan`, `inf`, `pi`, `tau`, `e`, `phi`, `sqrt2`, `sqrt3`, `cbrt2`, `cbrt3`, and `ln2`.
+
+The `Accumulator` class represents a variable that can be mutated with many operator that return the current value of the accumulator. The mutator methods are `reset()`, `clear()`, `set(value)`, `get()`, `increment()`, `decrement()`, `add(value)`, `subtract(value)`, `multiply(value)`, `divide(value)`, `modulo(value)`, `floor_divide(value)`, `square()`, `cube()`, `square_root()`, `cube_root()`, `exponentiate(value=2)`, `logarithm(value=2)`. There are additional `*_after()` methods that return the value before the operation (it performs the operation after the return, hence the name). The accumulator can be instantiated with an initial value. The `clear()` method sets the value of the accumulator to zero, while the `reset()` method sets it back to the initial value (or zero if none provided).
+
+The `Cycler` class can be used to cycle through a list of items. The method `next()` returns the next item in the cycle, and `reset()` restarts the cycle from the beginning. The cycler is instantiated with a list of items.
+
+Multiple standard and third party libraries are provided: `math`, `statistics`, `itertools`, `random`, `secrets`, `ospath` (os.path), `datetime`, `calendar`, `pprint`, `colorsys`, `colour` (https://pypi.org/project/colour/).
+
+## CLI reference
+
+### Command line arguments
+
+The following arguments can be added to the command for additional features. The details of each options are explained in the sections below.
+
+| Argument                   | Description                                                             |
+| -------------------------- | ----------------------------------------------------------------------- |
+| `-O/--outdir`              | Output directory for all rendered templates                             |
+| `-o/--output`              | Output file for single template                                         |
+| `-I/--incdir`              | Include search directory for include and import statements              |
+| `-D/--define`              | Inline global variables for all templates                               |
+| `-V/--varfile`             | Global variables files for all templates                                |
+| `--envvar`                 | Loads environment variables as global variables                         |
+| `--filters`                | Load extra Jinja2 filters from a Python file                            |
+| `--tests`                  | Load extra Jinja2 tests from a Python file                              |
+| `--globals`                | Load extra Jinja2 globals from a Python file                            |
+| `--file-vars-adapter`      | Load a Python function to process variables after loading from a file   |
+| `--global-vars-adapter`    | Load a Python function to process all variables before rendering        |
+| `--overwrite-outdir`       | Overwrite output directory                                              |
+| `--warn-overwrite`         | Warn when overwriting files                                             |
+| `--no-overwrite`           | Prevent overwriting files                                               |
+| `--no-strict-undefined`    | Disable error with undefined variable in template                       |
+| `--no-check-identifier`    | Disable warning when attributes are not valid identifiers               |
+| `--fix-identifiers`        | Replace invalid characters from identifiers with underscore             |
+| `--chdir-src`              | Change working directory to source before rendering instead of output   |
+| `--no-chdir`               | Disable changing working directory to output directory before rendering |
+| `--trim-whitespace`        | Trim trailing whitespace in generated files                             |
+| `--csv-delimiter`          | CSV delimiter (default: '`,`')                                          |
+| `--csv-escape-char`        | CSV escape character (default: None)                                    |
+| `--csv-dont-strip`         | Disable stripping whitespace of CSV values                              |
+| `--xml-convert-attributes` | Convert XML attributes to normal element without the '@' prefix         |
+| `--xml-remove-namespaces`  | Remove XML namespace prefixes from tags                                 |
+| `--render-non-template`    | Process also source files that are not recognized as templates          |
+| `--copy-non-template`      | Copy source files that are not templates to output directory            |
+| `--force-glob`             | Glob UNIX-like patterns in path even when quoted                        |
+| `--debug-vars`             | Display available variables at the top of rendered templates            |
+| `--stdout-errors`          | Display errors on stdout instead of stderr                              |
+| `--perf`                   | Measure the execution time for performance testing                      |
+| `--version`                | Print J2GPP version and quits                                           |
+| `--license`                | Print J2GPP license and quits                                           |
+
+### Exception handling and errors
+
+When exceptions are encountered during the execution of J2GPP - either in the template, the variables file loaders, or the variable adapter functions - it will display the errors gracefully including, if possible, an error message explaining the issue, and the traceback information to locate the issue in the template.
+
+The errors and warnings can occur in different steps of the execution of J2GPP. They are collected and displayed again at the end of the execution alongside an error and warning counter. Warnings are printed on the standard output `stdout` of the shell, while errors are printed on the error stream `stderr`. If errors occured, the J2GPP process will also return an error status.
+
+## API reference
+
+The `J2GPP` class provides a comprehensive API for programmatic template rendering. All configuration methods are chainable, allowing for fluent configuration. The details of each methods are explained in the sections below.
+
+### Rendering methods
+
+``` python
+J2GPP.render_file(source_path, output_path=None, output_dir=None, variables=None)
+```
+
+Renders a single template file. Returns `FileRenderResult` with information about the operation.
+
+``` python
+J2GPP.render_directory(source_dir, output_dir=None, variables=None)
+```
+
+Renders all templates in a directory tree. Returns `RenderResult` containing information about all processed files.
+
+``` python
+J2GPP.render_string(template_string, variables=None)
+```
+
+Renders a template string directly. Returns the rendered string.
+
+### Variable management
+
+``` python
+J2GPP.define_variable("key", "value")        # Define single variable with auto-casting of strings and support for dot noration
+J2GPP.define_variables({"key": "value"})     # Add dictionary of variables
+J2GPP.load_variables_from_file("./vars.yml") # Load from variables file
+J2GPP.load_variables_from_env()              # Load environment variables
+J2GPP.load_variables_from_env("ENV")         # Load environment variables under "ENV" prefix
+J2GPP.clear_variables()                      # Clear all variables
+J2GPP.remove_variable("key")                 # Remove variable (supports dot notation)
+```
+
+### Configuration methods
+
+``` python
+J2GPP.set_output_directory("./output/")                 # Set default output directory for all rendering
+J2GPP.add_include_directory("./includes/")              # Add include directory for Jinja2 imports
+J2GPP.set_include_directories(["./inc1/", "./inc2/"])   # Set multiple include directories
+J2GPP.add_filter("my_filter", my_filter_function)       # Add single filter function directly
+J2GPP.add_test("my_test", my_test_function)             # Add single test function directly
+J2GPP.add_global("my_global", my_global_function)       # Add single global function directly
+J2GPP.add_filters({"filter1": func1, "filter2": func2}) # Add multiple filter functions
+J2GPP.add_tests({"test1": func1, "test2": func2})       # Add multiple test functions
+J2GPP.add_globals({"global1": var1, "global2": class1}) # Add multiple global functions
+J2GPP.load_filters_from_file("./filters.py")            # Load custom Jinja2 filters from Python file
+J2GPP.load_tests_from_file("./tests.py")                # Load custom Jinja2 tests from Python file
+J2GPP.load_globals_from_file("./globals.py")            # Load custom Jinja2 globals from Python file
+J2GPP.set_option("trim_whitespace", True)               # Set rendering options
+```
+
+### Advanced configuration
+
+``` python
+J2GPP.set_file_vars_adapter(my_function)   # Process variables after loading from files
+J2GPP.set_global_vars_adapter(my_function) # Process all variables before rendering
+```
+
+### Configuration inspection
+
+``` python
+# Get current configuration state
+J2GPP.get_variables()           # Return copy of current variables dictionary
+J2GPP.get_options()             # Return copy of current options dictionary
+J2GPP.get_filters()             # Return copy of available filters dictionary
+J2GPP.get_tests()               # Return copy of available tests dictionary
+J2GPP.get_globals()             # Return copy of available globals dictionary
+J2GPP.get_include_directories() # Return copy of include directories list
+J2GPP.get_output_directory()    # Return current output directory (None if not set)
+
+# Check configuration state
+J2GPP.has_variable("key")                  # Check if variable exists (supports dot notation)
+J2GPP.has_filter("my_filter")              # Check if filter is loaded
+J2GPP.has_test("my_test")                  # Check if test is loaded
+J2GPP.has_global("my_global")              # Check if global is loaded
+J2GPP.has_include_directory("./includes/") # Check if include directory is configured
+```
+
+### Template validation
+
+``` python
+# Validate template syntax without rendering
+J2GPP.validate_template_string(template_str)    # Validate template string syntax
+J2GPP.validate_template_file("template.j2")     # Validate template file syntax
+J2GPP.validate_directory("./templates/")        # Validate all templates in directory (recursive by default)
+J2GPP.validate_directory("./templates/", False) # Validate templates in directory (non-recursive)
+```
+
+### Template discovery & analysis
+
+``` python
+# Find template files
+J2GPP.find_templates("./templates/")         # Find all .j2 files (recursive by default)
+J2GPP.find_templates("./templates/", False)  # Find .j2 files (non-recursive)
+
+# Analyze template dependencies and structure
+J2GPP.find_template_dependencies("main.j2") # Find included/imported templates
+J2GPP.analyze_template_variables("main.j2") # Extract variables used in template
+```
+
+### Result objects
+
+``` python
+FileRenderResult               # Returned by J2GPP.render_file()
+FileRenderResult.success       # Boolean indicating success
+FileRenderResult.output_path   # Path where file was written
+FileRenderResult.error_message # Error description if failed
+FileRenderResult.source_path   # Original template path
+
+RenderResult               # Returned by J2GPP.render_directory()
+RenderResult.success       # Boolean indicating overall success
+RenderResult.file_results  # List of `FileRenderResult` objects for each processed file
+RenderResult.error_message # Error description if failed
+
+ValidationResult               # Returned by template validation methods
+ValidationResult.is_valid      # Boolean indicating if template syntax is valid
+ValidationResult.template_path # Path to template file (None for string validation)
+ValidationResult.error_message # Error description if validation failed
+ValidationResult.error_line    # Line number where error occurred (if available)
+ValidationResult.error_column  # Column number where error occurred (if available)
+
+DirectoryValidationResult                   # Returned by J2GPP.validate_directory()
+DirectoryValidationResult.is_valid          # Boolean indicating if all templates are valid
+DirectoryValidationResult.directory_path    # Path to validated directory
+DirectoryValidationResult.total_templates   # Total number of templates found
+DirectoryValidationResult.valid_templates   # Number of valid templates
+DirectoryValidationResult.invalid_templates # Number of invalid templates
+DirectoryValidationResult.template_results  # List of `ValidationResult` objects for each template
+```
+
+## Advanced usage
+
+### Specify output directory
+
+By default the rendered files are saved next to the source templates. You can provide an output directory with the `-O/--outdir` argument. The output directory path can be relative or absolute. If the directory doesn't exist, it will be created.
+
+For instance the following command or script will write the rendered file to `./bar/foo.c`.
+
+``` shell
+j2gpp ./foo.c.j2 --outdir ./bar/
+```
+
+```python
+from j2gpp import J2GPP
+j2gpp = J2GPP()
+j2gpp.render_file("./foo.c.j2", output_dir="./bar/")
+```
+
+In API mode, you can also set the default output directory for all rendering operations using the `set_output_directory()` method. This new default directory is overwritten by the `output_path` and `output_dir` parameters of the render methods.
+
+```python
+from j2gpp import J2GPP
+j2gpp = J2GPP()
+j2gpp.set_output_directory("./bar/")
+j2gpp.render_file("./foo.c.j2")
+```
+
+### Specifying output file
+
+By default the rendered files are saved next to the source templates. If a single source template is provided, you can specify the output file directory and name with the `-o/--output` argument. The output file path can be relative or absolute. If the directory doesn't exist, it will be created.
+
+For instance the following command or script will write the rendered file to `./bar.c`.
+
+``` shell
+j2gpp ./foo.c.j2 --output ./bar.c
+```
+
+```python
+from j2gpp import J2GPP
+j2gpp = J2GPP()
+j2gpp.render_file("./foo.c.j2", output_path="./bar.c")
+```
+
+### Include search directory
+
+The `include` and `import` Jinja2 statements require specifying the directory in which the renderer will search. That is provided using the `-I/--incidr` argument.
+
+For instance, with the following command or script, the files in the directory `./includes/` will be available to `include` and `import` statements when rendering the template `foo.c.j2`.
+
+``` shell
+j2gpp ./foo.c.j2 --incdir ./includes/
+```
+
+```python
+from j2gpp import J2GPP
+j2gpp = J2GPP()
+j2gpp.add_include_directory("./includes/").render_file("./foo.c.j2")
+```
+
+### Passing global variables in command line
+
+You can pass global variables to all templates rendered using the `-D/--define` argument with a list of variables in the format `name=value`. Values are parsed to cast to the correct Python type as explained [later](#command-line-define). Dictionary attributes to any depth can be assigned using dots "`.`" to separate the keys. Global variables defined in the command line overwrite the global variables set by loading files.
+
+For instance, with the following command or script, the variable `bar` will have the value `42` when rendering the template `foo.c.j2`.
+
+``` shell
+j2gpp ./foo.c.j2 --define bar=42
+```
+
+```python
+from j2gpp import J2GPP
+j2gpp = J2GPP()
+j2gpp.define_variable("bar", 42).render_file("./foo.c.j2")
+```
+
+### Loading global variables from files
+
+You can load global variables from files using the `-V/--varfile` argument with a list of files. The file paths can be relative or absolute, and can use UNIX-style patterns such as wildcards. Variables file types supported right now are YAML, JSON, HJSON, XML, TOML, INI/CFG, ENV, CSV, TSV and PLIST. Global variables loaded from files are overwritten by variables defined in the command line.
+
+For instance, with the following command or script, the variable `bar` will have the value `42` when rendering the template `foo.c.j2`.
+
+``` shell
+j2gpp ./foo.c.j2 --varfile ./qux.yml
+```
+
+```python
+from j2gpp import J2GPP
+j2gpp = J2GPP()
+j2gpp.load_variables_from_file("./qux.yml").render_file("./foo.c.j2")
+```
+
+With the variables file `qux.yml` :
+
+``` yml
+bar: 42
+```
+
+### Loading global variables from environment
+
+You can import the environment variables of the shell as global variables using the `--envvar` argument. The name of the variables will be that of the environment variable and the value will be cast automatically to the proper Python/Jinja2 type.
+
+For instance, with the following command or script, the variable `BAR` will have the value `42` when rendering the template `foo.c.j2`.
+
+``` shell
+export BAR=42
+j2gpp ./foo.c.j2 --envvar
+```
+
+```python
+import os
+from j2gpp import J2GPP
+os.environ["BAR"] = "42"
+j2gpp = J2GPP()
+j2gpp.load_variables_from_env().render_file("./foo.c.j2")
+```
+
+If a string is provided after the `--envvar` argument, the environment variables will be stored in an object of the name provided instead of at the root.
+
+For instance, with the following command or script, the variable `ENV.BAR` will have the value `42` when rendering the template `foo.c.j2`.
+
+``` shell
+export BAR=42
+j2gpp ./foo.c.j2 --envvar ENV
+```
+
+```python
+import os
+from j2gpp import J2GPP
+os.environ["BAR"] = "42"
+j2gpp = J2GPP()
+j2gpp.load_variables_from_env("ENV").render_file("./foo.c.j2")
+```
+
+### Loading custom Jinja2 filters
+
+You can import custom Jinja2 filters by providing Python files with the `--filters` argument. All functions defined in the python files will be available as Jinja2 filters in the templates.
+
+For instance, with the following command or script and python file, the filter `right_ajust` will be available when rendering the template `foo.c.j2`.
+
+``` shell
+j2gpp ./foo.c.j2 --filters ./bar.py
+```
+
+```python
+from j2gpp import J2GPP
+j2gpp = J2GPP()
+j2gpp.load_filters_from_file("./bar.py").render_file("./foo.c.j2")
+```
+
+Or add filter functions directly:
+
+```python
+from j2gpp import J2GPP
+
+def right_ajust(s, length=0):
+  return s.rjust(length)
+
+j2gpp = J2GPP()
+j2gpp.add_filter("right_ajust", right_ajust).render_file("./foo.c.j2")
+```
+
+With the filter script `bar.py` :
+
+``` python
+def right_ajust(s, length=0):
+  return s.rjust(length)
+```
+
+### Loading custom Jinja2 tests
+
+You can import custom Jinja2 tests by providing Python files with the `--tests` argument. All functions defined in the python files will be available as Jinja2 tests in the templates.
+
+For instance, with the following command or script and python file, the test `prime` will be available when rendering the template `foo.c.j2`.
+
+``` shell
+j2gpp ./foo.c.j2 --tests ./bar.py
+```
+
+```python
+from j2gpp import J2GPP
+j2gpp = J2GPP()
+j2gpp.load_tests_from_file("./bar.py").render_file("./foo.c.j2")
+```
+
+Or add test functions directly:
+
+```python
+import math
+from j2gpp import J2GPP
+
+def prime(x):
+  if x<=1: return False
+  for i in range(2,int(math.sqrt(x))+1):
+    if (x%i) == 0:
+      return False
+  return True
+
+j2gpp = J2GPP()
+j2gpp.add_test("prime", prime).render_file("./foo.c.j2")
+```
+
+With the test script `bar.py` :
+
+``` python
+import math
+def prime(x):
+  if x<=1: return False
+  for i in range(2,int(math.sqrt(x))+1):
+    if (x%i) == 0:
+      return False
+  return True
+```
+
+### Loading custom Jinja2 globals
+
+You can import custom Jinja2 global objects (variables, functions, classes) by providing Python files with the `--globals` argument. All objects defined in the python files will be available as Jinja2 globals in the templates.
+
+For instance, with the following command or script and python file, the global `prime` will be available when rendering the template `foo.c.j2`.
+
+``` shell
+j2gpp ./foo.c.j2 --globals ./bar.py
+```
+
+```python
+from j2gpp import J2GPP
+j2gpp = J2GPP()
+j2gpp.load_globals_from_file("./bar.py").render_file("./foo.c.j2")
+```
+
+Or add global functions directly:
+
+```python
+from j2gpp import J2GPP
+
+class AddAccumulator:
+  def __init__(self):
+    self.accumulation = 0
+  def add_accumulate(self, value):
+    self.accumulation += value
+    return self.accumulation
+
+j2gpp = J2GPP()
+j2gpp.add_global("AddAccumulator", AddAccumulator).render_file("./foo.c.j2")
+```
+
+With the global script `bar.py` :
+
+``` python
+class AddAccumulator:
+  def __init__(self):
+    self.accumulation = 0
+  def add_accumulate(self, value):
+    self.accumulation += value
+    return self.accumulation
+```
+
+### Processing variables before rendering
+
+You can perform transformations on the dictionary storing the variables before rendering templates by providing a Python function with the argument `--global-vars-adapter`. It takes two arguments, the first is the path to the Python script, and the second is the name of the function to use. The function must take in a single argument, the variables dictionary, and modify it as a reference (not return the modified dictionary). You can also provide an adapter function to be run on the variables loaded from each file before they are written to the global variables object by providing a function with the argument `--file-vars-adapter`.
+
+For instance, with the following command or script and python file, the variable dictionary loaded from the file `qux.yml` will be processed by the function `shout_values()` before rendering the template `foo.c.j2`.
+
+``` shell
+j2gpp ./foo.c.j2 --varfile ./qux.yml --file-vars-adapter ./bar.py shout_values
+```
+
+```python
+from j2gpp import J2GPP
+
+def shout_values(var_dict):
+  for key, val in var_dict.items():
+    if isinstance(val, str):
+      var_dict[key] = val.upper()
+
+j2gpp = J2GPP()
+j2gpp.set_file_vars_adapter(shout_values).load_variables_from_file("./qux.yml").render_file("./foo.c.j2")
+```
+
+With the processing script `bar.py` :
+
+``` python
+def shout_values(var_dict):
+  for key,val in var_dict.items():
+    if isinstance(val, str):
+      var_dict[key] = val.upper()
+```
+
+### Process directories
+
+When the source path provided corresponds to a directory, J2GPP will look for any template files in the source directory tree. If no output directory argument is provided, the rendered files will be written next to the source templates. If an output directory is provided, the source directory tree structure will be copied to the output directory with only the rendered files.
+
+For instance, suppose we have the following directory structure :
+
+``` txt
+.
+└── test_dir
+    ├── sub_dir_1
+    │   ├── deep_dir
+    │   │   └── template_1.txt.j2
+    │   └── non_template_1.txt
+    ├── sub_dir_2
+    │   └── non_template_2.txt
+    └── template_2.txt.j2
+```
+
+When we execute the command `j2gpp ./test_dir/` or the script `J2GPP().render_directory("./test_dir/")`, we will get :
+
+``` txt
+.
+└── test_dir
+    ├── sub_dir_1
+    │   ├── deep_dir
+    │   │   ├── template_1.txt
+    │   │   └── template_1.txt.j2
+    │   └── non_template_1.txt
+    ├── sub_dir_2
+    │   └── non_template_2.txt
+    ├── template_2.txt
+    └── template_2.txt.j2
+```
+
+But if we provide an output directory with the command `j2gpp ./test_dir/ --outdir ./out_dir/` or the script `J2GPP().render_directory("./test_dir/", "./out_dir/")`, we will get :
+
+``` txt
+.
+├── test_dir
+│   ├── sub_dir_1
+│   │   ├── deep_dir
+│   │   │   └── template_1.txt.j2
+│   │   └── non_template_1.txt
+│   ├── sub_dir_2
+│   │   └── non_template_2.txt
+│   └── template_2.txt.j2
+└── out_dir
+    ├── sub_dir_1
+    │   └── deep_dir
+    │       └── template_1.txt
+    └── template_2.txt
+```
+
+We can also tell J2GPP to copy the non-template files with the command `j2gpp ./test_dir/ --outdir ./out_dir/ --copy-non-template` or the script `J2GPP().set_option("copy_non_template", True).render_directory("./test_dir/", "./out_dir/")`, then we will get :
+
+``` txt
+.
+├── test_dir
+│   ├── sub_dir_1
+│   │   ├── deep_dir
+│   │   │   └── template_1.txt.j2
+│   │   └── non_template_1.txt
+│   ├── sub_dir_2
+│   │   └── non_template_2.txt
+│   └── template_2.txt.j2
+└── out_dir
+    ├── sub_dir_1
+    │   ├── deep_dir
+    │   │   └── template_1.txt
+    │   └── non_template_1.txt
+    ├── sub_dir_2
+    │   └── non_template_2.txt
+    └── template_2.txt
+```
+
+Or even to process non-templates files as templates anyway with the command `j2gpp ./test_dir/ --outdir ./out_dir/ --render-non-template` or the script `J2GPP().set_option("render_non_template", True).render_directory("./test_dir/", "./out_dir/")`, then we will get :
+
+``` txt
+.
+├── test_dir
+│   ├── sub_dir_1
+│   │   ├── deep_dir
+│   │   │   └── template_1.txt.j2
+│   │   └── non_template_1.txt
+│   ├── sub_dir_2
+│   │   └── non_template_2.txt
+│   └── template_2.txt.j2
+└── out_dir
+    ├── sub_dir_1
+    │   ├── deep_dir
+    │   │   └── template_1.txt
+    │   └── non_template_1_j2gpp.txt
+    ├── sub_dir_2
+    │   └── non_template_2_j2gpp.txt
+    └── template_2.txt
+```
+
+## Supported formats for variables
+
+Jinja2 supports variables types from python. The main types are None, Boolean, Integer, Float, String, Tuple, List and Dictionary. J2GPP provides many ways to set variables and not all types are supported by each format.
+
+### CLI define
+
+Defines passed by the command line are interpreted by the Python [ast.literal_eval()](https://docs.python.org/3/library/ast.html#ast.literal_eval) function which supports Python syntax and some additional types such as `set()`.
+
+``` shell
+j2gpp ./foo.c.j2 --define test_none=None             \
+                 --define test_bool=True             \
+                 --define test_int=42                \
+                 --define test_float=3.141592        \
+                 --define test_string1=lorem         \
+                 --define test_string2="lorem ipsum" \
+                 --define test_tuple="(1,2,3)"       \
+                 --define test_list="[1,2,3]"        \
+                 --define test_dict="{'key1': value1, 'key2': value2}" \
+                 --define test_dict.key3=value3
+```
+
+### API define
+
+Variables can be defined programmatically using the J2GPP API. The `define_variable()` method supports dot notation for nested dictionary keys, while `add_variables()` accepts a complete dictionary.
+
+``` python
+from j2gpp import J2GPP
+j2gpp = J2GPP()
+
+# Define individual variables
+j2gpp.define_variable("test_none", None)
+j2gpp.define_variable("test_bool", True)
+j2gpp.define_variable("test_int", 42)
+j2gpp.define_variable("test_float", 3.141592)
+j2gpp.define_variable("test_string1", "lorem")
+j2gpp.define_variable("test_string2", "lorem ipsum")
+j2gpp.define_variable("test_tuple", (1, 2, 3))
+j2gpp.define_variable("test_list", [1, 2, 3])
+j2gpp.define_variable("test_dict", {"key1": "value1", "key2": "value2"})
+j2gpp.define_variable("test_dict.key3", "value3")
+
+# Or define all variables at once
+j2gpp.add_variables({
+  "test_none": None,
+  "test_bool": True,
+  "test_int": 42,
+  "test_float": 3.141592,
+  "test_string1": "lorem",
+  "test_string2": "lorem ipsum",
+  "test_tuple": (1, 2, 3),
+  "test_list": [1, 2, 3],
+  "test_dict": {
+    "key1": "value1",
+    "key2": "value2",
+    "key3": "value3"
+  }
+})
+
+j2gpp.render_file("./foo.c.j2")
+```
+
+### YAML
+
+``` yml
+test_none1:
+test_none2: null
+
+test_bool1: true
+test_bool2: false
+
+test_int: 42
+test_float: 3.141592
+
+test_string1: lorem ipsum
+test_string2:
+  single
+  line
+  text
+test_string3: |
+  multi
+  line
+  text
+
+test_list1: [1,2,3]
+test_list2:
+  - 1
+  - 2
+  - 3
+
+test_dict:
+  key1: value1
+  key2: value2
+  key3: value3
+```
+
+### JSON
+
+``` json
+{
+  "test_none": null,
+
+  "test_bool1": true,
+  "test_bool2": false,
+
+  "test_int": 42,
+  "test_float": 3.141592,
+
+  "test_string": "lorem ipsum",
+
+  "test_list": [1,2,3],
+
+  "test_dict": {
+    "key1": "value1",
+    "key2": "value2",
+    "key3": "value3"
+  }
+}
+```
+
+### HJSON
+
+``` hjson
+{
+  # None
+  test_none: null,
+
+  # Boolean
+  test_bool1: true,
+  test_bool2: false,
+
+  # Numbers
+  test_int: 42,
+  test_float: 3.141592,
+
+  # String
+  test_string1: "lorem ipsum",
+  test_string2: lorem ipsum,
+  test_string3: '''
+                multi
+                line
+                string
+                '''
+
+  # List
+  test_list: [1,2,3],
+
+  # Dictionary
+  test_dict: {
+    key1: value1,
+    key2: value2,
+    key3: value3
+  }
+}
+```
+
+### XML
+
+Note that XML expects a single root element. To avoid having to specify the root element when using the variables in a template, J2GPP automatically removes the root element level if it is named "`_`".
+
+XML attributes are converted to children with the attribute being prefixed by '`@`'. This prefix can be removed by setting the option `--xml-convert-attributes`.
+
+By default, XML tag prefixes and namespaces are kept, but they can be stripped by setting the option `--xml-remove-namespaces`.
+
+``` xml
+<_>
+  <test_none></test_none>
+
+  <test_bool1>true</test_bool1>
+  <test_bool2>false</test_bool2>
+
+  <test_int>42</test_int>
+  <test_float>3.141592</test_float>
+
+  <test_string>lorem ipsum</test_string>
+
+  <test_list>1</test_list>
+  <test_list>2</test_list>
+  <test_list>3</test_list>
+
+  <test_dict>
+    <key1>value1</key1>
+    <key2>value2</key2>
+    <key3>value3</key3>
+  </test_dict>
+</_>
+```
+
+### TOML
+
+``` toml
+test_bool1 = true
+test_bool2 = false
+
+test_int = 42
+test_float = 3.141592
+
+test_string1 = "lorem ipsum"
+test_string2 = """
+multi
+line
+text"""
+
+test_list = [1,2,3]
+
+[test_dict]
+key1 = "value1"
+key2 = "value2"
+key3 = "value3"
+```
+
+### INI/CFG
+
+Note that INI file expects data to be divided in sections with a header in square brackets. To avoid having to specify the root element when using the variables in a template, J2GPP automatically flattens the section whose header is "`_`".
+
+``` ini
+[_]
+test_bool1 = True
+test_bool2 = False
+
+test_int = 42
+test_float = 3.141592
+
+test_string = "lorem ipsum"
+
+test_list = [1,2,3]
+
+[test_dict]
+key1 = value1
+key2 = value2
+key3 = value3
+```
+
+### ENV
+
+``` env
+test_bool1 = True
+test_bool2 = False
+
+test_int = 42
+test_float = 3.141592
+
+test_string = lorem ipsum
+
+test_list = [1,2,3]
+
+test_dict = {'key1':'value1','key2':'value2','key3':'value3'}
+```
+
+### CSV/TSV
+
+CSV and TSV are interpreted as a list of objects with the same attributes. They are converted to a list of dictionaries whose name is the first cell of each line and the keys are the headers of each column.
+
+CSV and TSV use the same loader, just with different delimiters. A different delimiter can be provided with the argument `--csv-delimiter`. To use the delimiter in a value, it can be escaped by defining an escape character with the argument `--csv-escapechar`, for instance the backslash "`\`".
+
+By default, the whitespace around the keys and values in the CSV is stripped. This behaviour can be disabled with the argument `--csv-dontstrip`.
+
+``` csv
+keys,key1,key2,key3
+test_dict1,1,2,3
+test_dict2,11,12,13
+test_dict3,21,22,23
+```
+
+``` tsv
+keys  key1  key2  key3
+test_dict1  1  2  3
+test_dict2  11  12  13
+test_dict3  21  22  23
+```
+
+### PLIST
+
+Apple's Property List (PLIST) files are supported.
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>test_bool1</key>
+	<true/>
+	<key>test_bool2</key>
+	<false/>
+	<key>test_int</key>
+	<integer>42</integer>
+	<key>test_float</key>
+	<real>3.141592</real>
+	<key>test_string</key>
+	<string>lorem ipsum</string>
+	<key>test_list</key>
+	<array>
+		<integer>1</integer>
+		<integer>2</integer>
+		<integer>3</integer>
+	</array>
+	<key>test_dict</key>
+	<dict>
+		<key>key1</key>
+		<string>value1</string>
+		<key>key2</key>
+		<string>value2</string>
+		<key>key3</key>
+		<string>value3</string>
+	</dict>
+</dict>
+</plist>
+```
+
+## Scripting in J2GPP templates
+
+An advanced use of the template feature and filters of Jinja2 and J2GPP allow this tool to do some amount of scripting. The main features allowing this usage are explained in this section.
+
+### Conditional and do extension
+
+The basic Jinja2 feature of conditional blocks `if`/`elif`/`else` can be used alongside the `do` extension to more easily manipulate variables and complex objects such as Python dictionaries.
+
+Note that, if possible, it is preferable to process the variables after loading and before rendering by providing a Python function with the `--vars-post-processor` command line argument.
+
+### Conditional and filters
+
+As filters are Python functions, they can be very powerful, especially when coupled with the use of conditional blocks. However, Jinja2 optimizes processing by running some filters during the compilation phase, while conditional blocks are resolved at render time.
+
+To fix this, you can use the `@render_time_only` decorator to force a filter or test to execute at render time only. This decorator is [currently](https://github.com/pallets/jinja/pull/1759) only available by installing a custom fork of Jinja2 :
+
+``` shell
+git clone https://github.com/Louis-DR/jinja.git
+cd jinja
+pip3 install ./
+```
+
+### Throw errors and warnings from template
+
+If the version of Jinja2 installed supports the `@render_time_only` decorator, then the `warning` and `error` filters allow to throw warnings and erros from the template and display them in the J2GPP logs. This is useful with conditionals to perform data sanity checks for instance.
+
+### Writing files
+
+The J2GPP filters `write` and `append` allow exporting the content of a block to another file. This can be used for a file combining elements contributed by multiple templates, for alternative versions of a file from a single template, for generating small annex files to a large template, for generating a files for each element in a list, etc. When coupled with the `include` or `macro` statements with nested temlates, it allows for even more complex outputs.
+
+Note that if the installed Jinja2 version doesn't support the `@render_time_only` decorator, using the `write` and `append` filters in conditional blocks may results in unwnated behaviour.
+
+#### Write example
+
+For example, with the parent template `parent.txt.j2`:
+
+``` jinja2
+This will be rendered to the parent output file
+{% filter write("child.txt") %}
+This will be rendered to the child output file
+{% endfilter %}
+```
+
+``` shell
+>>> tree
+.
+└── parent.txt.j2
+
+>>> j2gpp ./parent.txt.j2
+[...]
+
+>>> tree
+.
+├── child.txt
+├── parent.txt
+└── parent.txt.j2
+
+>>> cat parent.txt
+This will be rendered to the parent output file
+
+>>> cat child.txt
+This will be rendered to the child output file
+```
+
+#### Append example
+
+If the file doesn't exists, the `append` filter will create it and be equivalent to `write`. However, if the file already exists, `write` will override it while `append` will append to the end of it. For example, with the parent template `parent.txt.j2`:
+
+``` jinja2
+This will be rendered to the parent output file
+{% filter append("child.txt") %}
+This will be rendered to the child output file
+{% endfilter %}
+```
+
+``` shell
+>>> tree
+.
+└── parent.txt.j2
+
+>>> j2gpp ./parent.txt.j2
+[...]
+
+>>> tree
+.
+├── child.txt
+├── parent.txt
+└── parent.txt.j2
+
+>>> cat parent.txt
+This will be rendered to the parent output file
+
+>>> cat child.txt
+This will be rendered to the child output file
+
+>>> j2gpp ./parent.txt.j2
+[...]
+
+>>> cat child.txt
+This will be rendered to the child output file
+This will be rendered to the child output file
+
+>>> j2gpp ./parent.txt.j2
+[...]
+
+>>> cat child.txt
+This will be rendered to the child output file
+This will be rendered to the child output file
+This will be rendered to the child output file
+```
+
+#### Path argument
+
+The `write` and `append` filters require at least one argument, the name or path of the second file to generate. The path can be absolute, or relative to the generated file of the parent template. Non-existing directories will be created. For example, with the parent template `parent.txt.j2`:
+
+``` jinja2
+{% filter write("foo/child.txt") %}
+This will be rendered to the child output file
+{% endfilter %}
+```
+
+``` shell
+>>> tree
+.
+└── src
+    └── parent.txt.j2
+
+>>> j2gpp ./src/parent.txt.j2 --outdir ./gen/
+[...]
+
+>>> tree
+.
+├── src
+│   └── parent.txt.j2
+└── gen
+    ├── foo
+    │   └── child.txt
+    └── parent.txt
+```
+
+#### Writing to both files
+
+By default, the content of the block is only written to the child file, and is not written to the parent rendered template. This behaviour can be changed by providing the filter argument `preserve` as `True`. For example, with the parent template `parent.txt.j2`:
+
+``` jinja2
+{% filter write("child.txt", preserve=True) %}
+This will be rendered to both parent and child output files
+{% endfilter %}
+```
+
+``` shell
+>>> j2gpp ./parent.txt.j2 --outdir ./gen/
+[...]
+
+>>> cat ./parent.txt
+This will be rendered to both parent and child output files
+
+>>> cat ./child.txt
+This will be rendered to both parent and child output files
+```
+
+#### Skipping the parent file
+
+The source template can also be prevented from resulting in a generated file by providing the filter argument `write_source` as `False`, and only the content of `write` and `append` blocks will generate files. For example, with the parent template `parent.txt.j2`:
+
+``` jinja2
+This will not be written to any file
+{% filter write("child.txt") %}
+This will be rendered to the child output file
+{% endfilter %}
+```
+
+``` shell
+>>> tree
+.
+└── parent.txt.j2
+
+>>> j2gpp ./parent.txt.j2
+[...]
+
+>>> tree
+.
+├── child.txt
+└── parent.txt.j2
+
+>>> cat child.txt
+This will be rendered to the child output file
+```
