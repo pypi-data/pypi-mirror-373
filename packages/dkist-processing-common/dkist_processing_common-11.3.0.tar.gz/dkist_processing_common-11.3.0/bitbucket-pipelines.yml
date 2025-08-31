@@ -1,0 +1,90 @@
+image: python:3.11
+definitions:
+  services:
+    redis:
+      image: redis
+    broker:
+      image: rabbitmq:3
+      ports:
+        - 5672:5672
+  steps:
+    - step: &download_execute_script
+        name: Download Script Execute Script
+        script:
+          - echo "Retrieving Script Execution Script"
+          - curl -fL https://getcli.jfrog.io | sh
+          - ./jfrog rt dl --url $ARTIFACTORY_URL --user $ARTIFACTORY_USER --password $ARTIFACTORY_PASSWORD generic-packages/ci_scripts/latest/execute_script.sh
+          - cat ci_scripts/latest/execute_script.sh
+          - chmod 755 ci_scripts/latest/execute_script.sh
+        artifacts:
+          - ci_scripts/latest/execute_script.sh
+
+    - step: &lint
+        caches:
+          - pip
+        name: Lint
+        script:
+          - ./ci_scripts/latest/execute_script.sh lint_python.sh
+
+    - step: &changelog
+        caches:
+          - pip
+        name: Changelog
+        script:
+          - ./ci_scripts/latest/execute_script.sh check_changelog.sh
+
+    - step: &scan
+        caches:
+          - pip
+        name: Scan
+        script:
+          - ./ci_scripts/latest/execute_script.sh scan_python.sh
+
+    - step: &test
+        caches:
+          - pip
+        name: Test
+        script:
+          - pip install -U pip wheel build setuptools_scm setuptools
+          - pip install .[test]
+          - pytest -v -n auto -m "not development" --cov dkist_processing_common --cov-report=xml --cov-report=term-missing
+          - ./ci_scripts/latest/execute_script.sh upload_coverage.sh
+
+        services:
+          - redis
+          - broker
+        size: 2x
+    - step: &push
+        caches:
+          - pip
+        name: Push
+        script:
+          - ./ci_scripts/latest/execute_script.sh push_python.sh
+    - step: &docs
+        name: Test Docs
+        caches:
+          - pip
+        script:
+          - ./ci_scripts/latest/execute_script.sh test_sphinx.sh
+
+pipelines:
+  default:
+    - step: *download_execute_script
+    - parallel:
+      - step: *lint
+      - step: *changelog
+    - parallel:
+      - step: *scan
+      - step: *test
+      - step: *docs
+  tags:
+    'v*':
+      - step: *download_execute_script
+      - parallel:
+        - step: *changelog
+        - step: *lint
+      - parallel:
+        - step: *scan
+        - step: *test
+        - step: *docs
+      - step: *push
