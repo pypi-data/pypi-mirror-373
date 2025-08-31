@@ -1,0 +1,105 @@
+- name: Add /scratch dir
+  file:
+    path: /scratch
+    state: directory
+  become: yes
+- name: Find NVMe devices
+  shell: ls /dev/nvme*n1|wc -l
+  register: nvme_devices
+- name: Assemble 4xNVMe RAID if needed
+  include_role:
+    name: rolehippie.mdadm
+    apply:
+      become: yes
+  vars:
+    mdadm_arrays:
+    - number: 0
+      level: 0
+      filesystem: 'xfs'
+      mountpoint: '/scratch'
+      devices:
+        - '/dev/nvme0n1'
+        - '/dev/nvme1n1'
+        - '/dev/nvme2n1'
+        - '/dev/nvme3n1'
+    nvme: true
+  when: 
+    - nvme_devices|int >= 4
+- name: Assemble 2xNVMe RAID if needed
+  include_role:
+    name: rolehippie.mdadm
+    apply:
+      become: yes
+  vars:
+    mdadm_arrays:
+    - number: 0
+      level: 0
+      filesystem: 'xfs'
+      mountpoint: '/scratch'
+      devices:
+        - '/dev/nvme0n1'
+        - '/dev/nvme1n1'
+        - '/dev/nvme2n1'
+    nvme: true
+  when: 
+    - nvme_devices|int == 3
+- name: Assemble 2xNVMe RAID if needed
+  include_role:
+    name: rolehippie.mdadm
+    apply:
+      become: yes
+  vars:
+    mdadm_arrays:
+    - number: 0
+      level: 0
+      filesystem: 'xfs'
+      mountpoint: '/scratch'
+      devices:
+        - '/dev/nvme0n1'
+        - '/dev/nvme1n1'
+    nvme: true
+  when: 
+    - nvme_devices|int == 2
+- name: Add FS on extradisk if needed
+  community.general.filesystem:
+    fstype: xfs
+    state: present
+    dev: /dev/nvme0n1
+  become: yes
+  when: 
+    - nvme_devices|int == 1
+- name: Mount extradisk if needed
+  ansible.posix.mount:
+    path: /scratch
+    src: /dev/nvme0n1
+    fstype: xfs
+    opts: defaults
+    state: mounted
+  vars:
+    nvme: true
+  become: yes
+  when: 
+    - nvme_devices|int == 1
+- name: Mnt bigger than root
+  shell: echo $([ $(df -k --output=size /mnt|sed '1 d') -gt $(df -k --output=size /|sed '1 d') ] && echo true)
+  register: mnt_big
+  when:
+    - nvme is undefined
+    - hostvars[nodename].provider == 'azure'
+- name: Mount bind /mnt for Azure VMs
+  ansible.posix.mount:
+    path: /scratch
+    src: /mnt
+    opts: bind
+    state: mounted
+    fstype: none
+  become: yes
+  when: 
+    - mnt_big is defined
+    - mnt_big.stdout is defined
+    - mnt_big.stdout   
+- name: Set mode a+rwx on /scratch
+  become: yes
+  file:
+    path: /scratch
+    mode: 'a+rwx'
