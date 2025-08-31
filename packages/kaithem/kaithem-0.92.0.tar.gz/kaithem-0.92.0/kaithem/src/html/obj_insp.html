@@ -1,0 +1,179 @@
+<%!
+from kaithem.src.util import url
+from kaithem.src import pages,unitsofmeasure,util,widgets
+import json,re,inspect,weakref,collections,gc,traceback
+%>
+<%
+try:
+    from dill.source import getsource
+except:
+    getsource = None
+%>
+
+<style>
+    h3{
+        text-align: left !important\;
+    }
+</style>
+<%include file="/pageheader.html"/>
+<title>Object Inspector</title>
+
+<h2>Inspecting ${objname|h}</h2>
+${obj.__class__|h}
+<pre>${util.saferepr(obj)|h}</pre>
+<article>
+
+%if isinstance(obj, (weakref.ref)):
+<h3>Weak Reference</h3>
+<section class="window paper">
+<form method="post" action="?objname=${objname}()&objpath=${objpath},c"><button>Referrent</button></form>
+</section>
+%endif
+
+%if hasattr(obj,'__dict__'):
+<h3>Object Attributes</h3>
+<section class="window paper">
+<dl>
+%for i in sorted(obj.__dict__.keys(), key=str):
+<dt><form method="post" action="?objname=${objname}.${i}&objpath=${objpath},a${i}"><button>${i|h}</button></form></dt>
+<dd>${util.saferepr(obj.__dict__[i])|h}<br>
+    %if hasattr(obj.__dict__[i],'__doc__'):
+    <pre>${obj.__dict__[i].__doc__}</pre>
+    %endif
+</dd>
+%endfor
+
+%for i in['__class__','__getattr__','__setattr__', '__getattribute__',"__del__","__init__","__str__","__repr__"]:
+%if hasattr(obj,i):
+<dt><form method="post" action="?objname=${objname}.${i}&objpath=${objpath},a${i}"><button>${i|h}</button></form></dt>
+<dd>${util.saferepr(getattr(obj,i))|h}</dd>
+%endif
+%endfor
+</section>
+%endif
+
+
+<h3>Objects Referring to this Object</h3>
+<div class="window paper">
+<form method="post" action="?objname=${objname}&objpath=${objpath}&gcinfo=1"><button>Get Info</button></form>
+%if getGC:
+<details class="help"><summary><i class="mdi mdi-help-circle-outline"></i></summary>Greyed entries may be less interesting and more likely the rendering of this page itself.</details>
+<dl>
+%for i in gc.get_referrers(obj):
+<dt><form method="post" action="?objname=${objname}&objpath=${objpath},r${id(i)}&gcinfo=1"><button>${id(i)}</button></form></dt
+    >
+<dd
+%if 'getGC' in util.saferepr(i) or 'objpath' in util.saferepr(i):
+style="color:grey;"
+%endif
+>${util.saferepr(i)|h}
+</dd>
+
+%endfor
+</dl>
+%endif
+
+</div>
+
+
+
+%try:
+
+%if hasattr(obj,'__slots__') and obj.__slots__:
+
+%try:
+
+<h3>Object Attributes</h3>
+<div class="window paper">
+<dl>
+%for i in obj.__slots__:
+<dt><form method="post" action="?objname=${objname}.${i}&objpath=${objpath},a${i}"><button>${i|h}</button></form></dt>
+<dd>${util.saferepr(getattr(obj,i))|h}<br>
+    %if hasattr(getattr(obj,i),'__doc__'):
+    <pre>${getattr(obj,i).__doc__}</pre>
+    %endif
+</dd>
+%endfor
+
+
+%except:
+${traceback.format_exc()|h}
+</div>
+%endtry
+
+
+%for i in['__class__','__getattr__','__setattr__', '__getattribute__',"__del__","__init__","__str__","__repr__"]:
+%if hasattr(obj,i):
+<dt><form method="post" action="?objname=${objname}.${i}&objpath=${objpath},a${i}"><button>${i|h}</button></form></dt>
+<dd>${util.saferepr(getattr(obj,i))|h}</dd>
+%endif
+%endfor
+</div>
+%endif
+
+
+
+%if hasattr(obj,'__doc__'):
+<h3>Documentation String</h3>
+<div class="window paper">
+<pre>${obj.__doc__}</pre>
+</div>
+%endif
+
+<h3>Source Code</h3>
+<pre>
+%if hasattr(obj,"__globals__") and 'txt' in obj.__globals__:
+${util.saferepr(obj.__globals__['txt'])|h}
+%elif not getsource:
+%try:
+${inspect.getsource(obj)|h}
+%except Exception as e:
+<p>Inspect: No Source Code Found: ${e}</p>
+%endtry
+%else:
+%try:
+${getsource(obj)|h}
+%except Exception as e:
+<p>Dill: No Source Code Found: ${e}</p>
+%endtry
+%endif
+</pre>
+
+%if isinstance(obj, (list, collections.deque,set)):
+<h3>List Contents (${len(obj)} items)</h3>
+<ol start=0>
+%for n, i in enumerate(obj):
+<li><form method="post" action="?objname=${objname}[${n}]&objpath=${objpath|h},i${n}"><button>${util.saferepr(i)|h}</button></form></li>
+%endfor
+</ol>
+%endif
+
+%if isinstance(obj, (dict,weakref.WeakValueDictionary, weakref.WeakKeyDictionary)):
+<h3>Dict Contents (${len(obj)} items)</h3>
+<div class="window paper">
+<dl>
+%for i in sorted(obj.keys(),key=str):
+%if isinstance(i,str):
+<dt><form method="post" action="?objname=${objname}['${i}']&objpath=${objpath|u},s${i.replace(",","\\,")|u}"><button>${i|h}</button></form></dt>
+%elif isinstance(i,tuple):
+<dt><form method="post" action="?objname=${objname}['${i}']&objpath=${objpath|u},t${util.url(json.dumps(i).replace(",","\\,"))}"><button>${i|h}</button></form></dt>
+%elif isinstance(i,(int,float)):
+<dt><form method="post" action="?objname=${objname}['${i}']&objpath=${objpath|u},f${i}"><button>${i|h}</button></form></dt>
+%elif isinstance(i,int):
+<dt><form method="post" action="?objname=${objname}['${i}']&objpath=${objpath|u},i${i}"><button>${i|h}</button></form></dt>
+%endif
+<dd>${util.saferepr(obj[i])|h}</dd>
+%endfor
+</div>
+%endif
+
+%except:
+${traceback.format_exc()|h}
+</div>
+%endtry
+
+
+
+
+
+</article>

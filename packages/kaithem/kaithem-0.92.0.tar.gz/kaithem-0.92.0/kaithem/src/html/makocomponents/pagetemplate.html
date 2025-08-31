@@ -1,0 +1,164 @@
+<%!
+from kaithem.src.config import config
+from kaithem.src import auth,util,notifications,pages,modules,modules_state,theming,devices, settings_overrides
+import quart,socket,base64
+%>
+
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title><%block name="title">${socket.gethostname()|h}</%block></title>
+
+  <meta content="text/html; charset=ISO-8859-1" http-equiv="content-type">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/static/css/barrel.css?cache_version=c6d0887e-af6b-11ef-af85-5fc2044b2ae0">
+  <link rel="stylesheet" type="text/css" href="/static/css/kaithem.css?cache_version=c6d0887e-af6b-11ef-af85-5fc2044b2ae0">
+  <link rel="stylesheet" type="text/css" href="/dynamic.css/${theming.theme_ver}">
+  <link rel="stylesheet" type="text/css" href="${_k_usr_page_theme or theming.getCSSTheme() or config['theme-url']}">
+  <script type="module" src="/static/js/widget.mjs?cache_version=c6d0887e-af6b-11ef-af85-5fc2044b2ae0"></script>
+
+
+      <script type="module">
+        import { APIWidget } from '/static/js/widget.mjs?cache_version=c6d0887e-af6b-11ef-af85-5fc2044b2ae0'
+        let wsapi = new APIWidget("{{notifications.toolbarapi.uuid}}")
+
+        var totalNotifications = 0;
+
+        function getCookie(c_name) {
+          var c_value = document.cookie;
+          var c_start = c_value.indexOf(" " + c_name + "=");
+          if (c_start == -1) {
+            c_start = c_value.indexOf(c_name + "=");
+          }
+          if (c_start == -1) {
+            c_value = null;
+          }
+          else {
+            c_start = c_value.indexOf("=", c_start) + 1;
+            var c_end = c_value.indexOf(";", c_start);
+            if (c_end == -1) {
+              c_end = c_value.length;
+            }
+            c_value = unescape(c_value.substring(c_start, c_end));
+          }
+          return c_value;
+        }
+
+
+        var y = 0
+    if (getCookie("LastSawMainPage")) {
+      y = getCookie("LastSawMainPage");
+    }
+
+
+        wsapi.upd = function (e) {
+          try {
+            var k = e;
+
+            if (k[0] == 'newmsg') {
+              totalNotifications += 1
+              document.getElementById("notifications_toolbar_item").innerHTML = "(" + totalNotifications + ")";
+            }
+            else if (k[0] > 0) {
+              document.getElementById("notifications_toolbar_item").innerHTML = "M(" + k[0] + ")";
+              totalNotifications = k[0]
+
+              if (k[2] > 0) {
+                document.getElementById("notifications_toolbar_item").className = "warning";
+              }
+
+              if (k[3] > 0) {
+                document.getElementById("notifications_toolbar_item").className = "error";
+              }
+
+            }
+            else {
+              document.getElementById("notifications_toolbar_item").innerHTML = '(0)';
+            }
+          }
+          catch (err) {
+            console.log("JSON Parse Error in websocket response:\n" + e.data);
+          }
+        }
+
+        wsapi.send(["countsince", parseFloat(y)])
+
+      </script>
+</head>
+
+<body id="pagebody">
+
+  %if not quart.request.args.get("kaithem_disable_header",0):
+  <header class="undecorated">
+
+
+  <div id="kaithem-main-dropdown-panel" class="window paper window w-sm-double" style="z-index: 5; display:none; position: absolute; left:2em; top:3em;width: 35wv;">
+    <div class="tool-bar">
+      <button onclick="document.getElementById('kaithem-main-dropdown-panel').style.display='none'"><i class="mdi mdi-close"></i>Close</button>
+    </div>
+  <iframe  id="kaithem-main-dropdown-iframe" style="height: 80vh; width: 100%; max-height: 80vh;" height="80%"></iframe>
+  </div>
+
+
+
+    <div class="tool-bar" style="position: relative;">
+      %if pages.canUserDoThis("view_status"):
+      <button style="flex-grow: 0" onclick="document.getElementById('kaithem-main-dropdown-panel').style.display='block';document.getElementById('kaithem-main-dropdown-iframe').src='/dropdownpanel'">
+        <i class="mdi mdi-menu-down"></i></button>
+
+    <a href="/index"><b>${socket.gethostname()|h}</b>
+
+    <span id="notifications_toolbar_item"  title="New Notifications">
+
+    </span>
+  </a>
+    %endif
+
+
+
+
+      %for i in pages.get_bar_plugins():
+      ${i}
+      %endfor
+
+
+      <a href="/modules"><i class="mdi mdi-briefcase-variant-outline"></i>
+        Modules</a>
+
+        <a  href="/devices"><i class="mdi mdi-chip"></i>
+          Devices</a>
+
+
+
+          <a href="/tagpoints"><i class="mdi mdi-chart-bar-stacked"></i>Tags</a>
+
+
+        <a href="/settings" >
+          <i class="mdi mdi-cog-outline"></i>
+
+Tools</a>
+
+        %if "kaithem_auth" in quart.request.cookies:
+        %if quart.request.cookies['kaithem_auth'] in auth.Tokens:
+        <form style="flex-grow: 0.05;" method="POST" action="/login/logout">
+        <button href="/login/logout"><i class="mdi mdi-key"></i>Logout(${pages.getAcessingUser()[:10]|h})</button>
+        </form>
+
+        %else:
+        <a  style="flex-grow: 0.05;" href="/login?go=${base64.b64encode(quart.request.url.encode()).decode()}"><i class="mdi mdi-key"></i>Login</a>
+        %endif
+
+
+        %else:
+        <a  style="flex-grow: 0.05;" href="/login?go=${base64.b64encode(quart.request.url.encode()).decode()}"><i class="mdi mdi-key"></i>Login</a>
+        %endif
+
+
+
+    </div>
+    %endif
+    </header>
+    ${self.body()}
+</body>
+</html>

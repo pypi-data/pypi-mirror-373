@@ -1,0 +1,136 @@
+<%!
+from kaithem.src import notifications,auth,unitsofmeasure,pages,alerts,theming
+import time
+from kaithem.src.config import config
+from kaithem.src.unitsofmeasure import format_time_interval
+
+
+pcolor={
+    "critical": "pink",
+    "error": 'red',
+    "warning": 'orange',
+    "info": 'lightgreen'
+}
+iclass={
+    "critical": "critical-icon",
+    "error": 'error-icon',
+    "warning": 'warning-icon',
+    "info": 'info-icon'
+}
+scolor={
+    'active':'yellow',
+    'acknowledged':'orange',
+    "cleared":'blue'
+}
+
+
+%>
+<head>
+<link rel="stylesheet" type="text/css" href="/dynamic.css/${theming.theme_ver}">
+<link rel="stylesheet" type="text/css" href="${theming.getCSSTheme() or config['theme-url']}">
+</head>
+<script src="/static/js/thirdparty/vue2.js"></script>
+<script src="/static/js/thirdparty/strftime-min.js"></script>
+
+
+<style>
+
+
+.notificationstg-move, /* apply transition to moving elements */
+.notificationstg-enter-active,
+.notificationstg-leave-active {
+  transition: all 0.6s ease;
+}
+
+.notificationstg-enter-from,
+.notificationstg-leave-to {
+  opacity: 0%;
+  transform: translateX(30px) !important;
+}
+
+/* ensure leaving items are taken out of layout flow so that moving
+   animations can be calculated correctly. */
+.notificationstg-leave-active {
+  position: absolute;
+}
+
+.invisible{
+    display: none;
+}
+
+body{
+    color: var(--fg);
+}
+</style>
+
+
+<div id="app" class="w-full">
+
+        <transition-group name="notificationstg" tag="div">
+                <div v-for="i in notifications.slice().reverse()" :key="i[0]">
+                    <div v-bind:class="getClass(i)" style="border-radius: 12px; padding: 4px; margin: 8px;">
+                        <b>{{formatTime(i[0])}}</b>
+                        <p>{{i[2]}}</p>
+                    </div>
+                </div>
+        </transition-group>
+</div>
+</main>
+
+
+
+<script type="module">
+    import {APIWidget} from "/static/js/widget.mjs?cache_version=c6d0887e-af6b-11ef-af85-5fc2044b2ae0"
+    let api = new APIWidget("${api.uuid}");
+
+    var app = new Vue({
+        el: '#app',
+        data: {
+            notifications: [],
+            getClass: function(i) {
+
+                if (i[1].includes("errors")) {
+                    return 'error notification'
+                }
+                 if (i[1].includes("important")) {
+                    return 'highlight notification'
+                }
+                 if (i[1].includes("warning")) {
+                    return 'warning notification'
+                }
+                if (i[2].includes("Alarm") && i[2].includes("is active")) {
+                    return 'notification warning'
+                }
+                if (i[2].includes("Alarm")) {
+                    return 'notification'
+                }
+
+                if( window.location.search.indexOf('summary')>-1)
+                {
+                    return 'invisible'
+                }
+
+                else{
+                    return "notification"
+                }
+            },
+
+            formatTime: function(t) {
+                var date = new Date(t * 1000);
+                return date.strftime("%b %m %Y  %I:%M:%S%p %Z")
+            }
+        }
+    });
+
+    api.upd = function(msg) {
+        if (msg[0] == "all") {
+            app.$data.notifications = msg[1]
+        }
+        if (msg[0] == 'notification') {
+            app.$data.notifications.push(msg[1])
+            app.$data.notifications = app.$data.notifications.slice(-100)
+        }
+    }
+
+
+</script>
