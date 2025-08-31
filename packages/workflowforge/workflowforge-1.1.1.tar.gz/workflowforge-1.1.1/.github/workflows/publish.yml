@@ -1,0 +1,142 @@
+# Do not modify - Generated with WorkflowForge
+name: Publish WorkflowForge to PyPI
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Publish target (testpypi|pypi)
+        required: true
+        default: testpypi
+        type: choice
+        options:
+          - testpypi
+          - pypi
+jobs:
+  test:
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout code
+      - uses: actions/setup-python@v5
+        name: Set up Python ${{ matrix.python_version }}
+        with:
+          python-version: ${{ matrix.python_version }}
+      - run: python -m pip install --upgrade pip
+        name: Install pip
+      - run: pip install -e .[dev]
+        name: Install dependencies
+      - run: black --check src/ tests/
+        name: Check code formatting
+      - run: isort --check-only src/ tests/
+        name: Check import sorting
+      - run: flake8 src/ tests/ examples/
+        name: Lint with flake8
+      - run: mypy --install-types --non-interactive src/
+        name: Type check with mypy
+      - run: pytest tests/ --cov=workflowforge --cov-report=xml
+        name: Run tests with coverage
+    strategy:
+      matrix:
+        python_version:
+          - '3.11'
+          - '3.12'
+          - '3.13'
+    runs-on: ubuntu-latest
+  security:
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout code
+      - uses: actions/setup-python@v5
+        name: Set up Python
+        with:
+          python-version: '3.11'
+      - run: pip install bandit safety
+        name: Install security tools
+      - run: bandit -r src/
+        name: Security scan with Bandit
+      - run: safety check --ignore-unpinned || echo 'Safety check completed with warnings'
+        name: Check dependencies for vulnerabilities
+    runs-on: ubuntu-latest
+  build:
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout code
+      - uses: actions/setup-python@v5
+        name: Set up Python
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --upgrade pip build twine
+        name: Install build tools
+      - run: python -m build
+        name: Build package
+      - run: "echo \"Verifying tag matches pyproject version for release runs...\"\nPYPROJECT_VERSION=$(python - <<'PY'\n\
+          import tomllib\nwith open('pyproject.toml', 'rb') as f:\n    data = tomllib.load(f)\nprint(data['project']['version'])\n\
+          PY\n)\nTAG_NAME=${GITHUB_REF_NAME#v}\necho \"pyproject version: ${PYPROJECT_VERSION}\"\necho \"tag version     :
+          ${TAG_NAME}\"\nif [ \"${{ github.event_name }}\" = \"release\" ] &&  [ \"$PYPROJECT_VERSION\" != \"$TAG_NAME\" ];
+          then\n  echo \"ERROR: Version mismatch  (pyproject=$PYPROJECT_VERSION tag=$TAG_NAME). Aborting.\" >&2\n  exit 1\n\
+          fi\n"
+        name: Verify tag and project version match
+      - run: twine check dist/*
+        name: Verify package metadata
+      - uses: actions/upload-artifact@v4
+        name: Upload build artifacts
+        with:
+          name: dist
+          path: dist/
+    needs:
+      - test
+      - security
+    runs-on: ubuntu-latest
+  publish-testpypi:
+    steps:
+      - uses: actions/download-artifact@v4
+        name: Download build artifacts
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        name: Publish to TestPyPI
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: 'true'
+          verify-metadata: 'true'
+          print-hash: 'true'
+    needs: build
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/workflowforge
+    permissions:
+      id-token: write
+    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.target == 'testpypi')
+    runs-on: ubuntu-latest
+  publish-pypi:
+    steps:
+      - uses: actions/download-artifact@v4
+        name: Download build artifacts
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        name: Publish to PyPI
+        with:
+          skip-existing: 'true'
+          verify-metadata: 'true'
+          print-hash: 'true'
+    needs: build
+    environment:
+      name: pypi
+      url: https://pypi.org/p/workflowforge
+    permissions:
+      id-token: write
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target ==
+      'pypi')
+    runs-on: ubuntu-latest
