@@ -1,0 +1,44 @@
+name: CI
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  build:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+        python-version: ['3.10', '3.11', '3.12', '3.13', pypy-3.10]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        with:
+          key: ${{ matrix.os }}
+      # https://github.com/Swatinem/rust-cache/issues/93#issuecomment-1321064841
+      - run: cargo update
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - run: uv venv -p ${{ matrix.python-version }}
+      - run: uv pip install .[dev,test]
+      - if: matrix.os == 'windows-latest'
+        name: Run tests
+        run: |
+          cargo test
+          uv run pytest -W error
+      - if: matrix.os != 'windows-latest'
+        name: Run tests
+        run: |
+          eval $(cargo llvm-cov show-env --export-prefix)
+          cargo test
+          uv run maturin develop --uv
+          uv run coverage run --source=ocdsmerge_rs -m pytest -W error
+          cargo llvm-cov report --lcov --output-path .coverage
+      - if: matrix.os != 'windows-latest'
+        uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
