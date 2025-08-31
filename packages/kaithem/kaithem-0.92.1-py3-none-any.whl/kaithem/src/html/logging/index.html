@@ -1,0 +1,89 @@
+<%include file="/pageheader.html"/>
+<%!
+from kaithem.src import messagelogging
+from kaithem.src import messagebus
+from kaithem.src.unitsofmeasure import format_time_interval,strftime
+import time
+import quart
+from kaithem.src.util import url,saferepr
+from kaithem.src.config import config
+
+def dump(j):
+    return saferepr(j)
+%>
+
+<script type="text/javascript">
+function f(element)
+    {
+        if (element.id.indexOf(document.getElementById("filter").value) == -1)
+            {
+                element.hidden = true;
+            }
+        else
+            {
+                element.hidden = false;
+            }
+    }
+
+    function hideshow()
+    {
+    for (var i=0; i<document.getElementById('ListOfTopics').children.length; i++) {
+        f(document.getElementById('ListOfTopics').children[i]);
+    }
+    }
+</script>
+
+<h2>Recently active topics</h2>
+<div class="window paper">
+    <details class="help"><summary><i class="mdi mdi-help-circle-outline"></i></summary>Topics that have been posted to recently are shown here.
+    Only topics marked with (logging) will be saved when data is dumped.
+    only the ${config['non_logged_topic_limit']} most recent entries will be saved.
+    You can change this in the configuration..
+    To log a topic, edit the text list at the bottom or click start logging.
+    Log files will be dumped after a certain number of messages, or when the server state is explicitly saved.
+    </details>
+    <p class="menubar">
+        | Show only topics containing:<input type="text" id="filter"
+        onchange="hideshow()" onkeyup="hideshow()"/>
+    </p>
+
+    <div id="ListOfTopics">
+    <%
+        rev = False
+        if 'sort' in quart.request.args:
+            if quart.request.args['sort'] == 'time':
+                sortkey = lambda x: messagelogging.log[x][-1][0]
+                rev = True
+            else:
+                sortkey = lambda x: x
+        else:
+            sortkey = lambda x: x
+     %>
+
+
+    There are ${len(messagelogging.log)|h} recent topics. Sorting:[<a href="/logs?sort=topic">Alphabetical</a>|<a href="/logs?sort=time">Most Recently Active</a>]<br>
+    %if messagelogging.log:
+        %for i in sorted(messagelogging.log.keys(),key=sortkey,reverse = rev):
+            <div id="f_${i}" class="card w-sm-double">
+                <header><h3>${i}</h3></header>
+
+                    <table border=1>
+                    <tr>
+                    <td>Latest Value</td><td><pre style="margin:2px;">${dump(messagelogging.log[i][-1][1])|h}</pre></td>
+                    </tr>
+                    <tr>
+                    <td>Most Recent Message Posted at:</td> <td>${strftime(messagelogging.log[i][-1][0])}
+                    (${format_time_interval(time.time()-messagelogging.log[i][-1][0],1)} ago)</td>
+                    </tr>
+                    <tr>
+                    <td>Total Messages Available: </td><td>${len(messagelogging.log[i])}<a href="/logs/viewall/${url(i)}">View History</a></td>
+                    </tr>
+                    </table>
+            </div>
+        %endfor
+    </div>
+    %endif
+</div>
+
+</div>
+<%include file="/pagefooter.html"/>

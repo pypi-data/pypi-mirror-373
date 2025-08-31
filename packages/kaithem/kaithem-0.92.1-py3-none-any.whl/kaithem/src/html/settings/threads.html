@@ -1,0 +1,71 @@
+<%include file="/pageheader.html"/>
+<%!import threading,sys,inspect,traceback%>
+<%!
+from kaithem.src import util
+%>
+<style>
+    main{
+        width: 100vw;
+    }
+    pre{
+        max-width: 100vw !important;
+    }
+</style>
+<h1>Running Proceses</h1>
+<div class="window paper">
+<h2>Running Threads</h2>
+<title>Running Threads</title>
+
+<dl>
+<%
+info = sys._current_frames()
+%>
+%for i in sorted(threading.enumerate(),key=lambda d:(d.name, d.name.startswith('CP Server Thread'))):
+
+
+%if "Main" in i.name:
+<dt class="specialentry">
+%else:
+<dt>
+%endif
+<b>${i.name|h} ${i.ident|h}</b>(${i.__class__|h})
+%if i.daemon:
+<i>(daemon)</i>
+%endif
+<form action="/settings/killThread/${str(id(i))|u}" method="POST" onsubmit="return confirm('Are you sure? This uses ugly hacks, you maybe should not')" >
+<button class="warning" title="Kill using SystemExit">Kill</button>
+</form>
+
+</dt>
+<dd>
+
+%try:
+running function ${i._original_target_function.__name__ if hasattr(i,'_original_target_function')  else i.target.__name__ if hasattr(i,'_target') else  "<unknown>"|h}
+defined in ${i._original_target_function.__module__ if hasattr(i,'_original_target_function') and i._original_target_function else i.__module__}
+%except:
+running a function defined in <b>${i._target.__module__ if hasattr(i,'_target') and i._target else i.__module__}</b></dt><dd>
+
+%try:
+<pre>
+${"\n".join(traceback.format_stack(info[i.ident]))}
+</pre>
+<b>Locals</b>
+<pre>
+${info[i.ident].f_locals|h}
+</pre>
+%except Exception as e1:
+    ${e1}
+    %try:
+    Current Frame Info: ${inspect.getframeinfo(info[i.ident])|h}
+    %except Exception as e:
+    ${e}
+    %endtry
+%endtry
+
+
+</dd>
+%endtry
+%endfor
+</ul>
+</div>
+<%include file="/pagefooter.html"/>

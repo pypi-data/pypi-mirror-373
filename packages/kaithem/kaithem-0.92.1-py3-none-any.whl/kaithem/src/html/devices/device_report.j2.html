@@ -1,0 +1,171 @@
+{% extends "pagetemplate.j2.html" %}
+
+{% set traceback = imp0rt('traceback') %}
+{% set json = imp0rt('json') %}
+{% set os = imp0rt('os') %}
+{% set unitsofmeasure = imp0rt('kaithem.src.unitsofmeasure') %}
+{% set tagpoints = imp0rt('kaithem.src.tagpoints') %}
+{% set modules_state = imp0rt('kaithem.src.modules_state') %}
+{% set auth = imp0rt('kaithem.src.auth') %}
+{% set pages = imp0rt('kaithem.src.pages') %}
+{% set devices = imp0rt('kaithem.src.devices') %}
+{% block body %}
+<style>
+    img,
+    dd {
+        max-width: min(50vw, 100%);
+        width: 28rem;
+    }
+
+    .card {
+        max-width: min(50vw, 100%);
+        min-width: 12rem !important;
+    }
+
+    .param {
+        min-width: 6rem;
+        max-width: 12rem;
+        border: 1px solid;
+        padding: 4px;
+    }
+    .param-box {
+        row-gap: 0.5rem;
+    }
+    h4{
+        padding: 0px;
+    }
+
+</style>
+<script src="/static/js/thirdparty/qrcode.min.js"></script>
+
+<div class="window">
+    <div class="flex-row gaps">
+
+        {% for dev in sorted(devs.keys()) %}
+        <div class="card col-6">
+            <header>
+                <h3>{{ dev }} <small>{{devs[dev]().config['type']}}</small> </h3>
+            </header>
+            <div class="nopadding nomargin flex-row param-box">
+                {% for i in sorted(devs[dev]().config.keys()) %}
+                {% if (not devs[dev]().json_schema.get("properties", {}).get(i,{}).get("format",False) == "password") %}
+
+                {% if devs[dev]().config[i] and not len(str(devs[dev]().config[i])) > 512 and not i in ('subclass','notes', 'description', 'name', 'type')  %}
+                <div class="param">
+                    <h4 class="nomargin"><small>
+                            {% if i.startswith('device.') %}
+                            {{i[7:]|escape}}
+                            {% elif i.startswith('kaithem.') %}
+                            {{i[8:]|escape}}
+                            {% else %}
+                            {{i|escape}}
+                            {% endif %}
+                        </small>
+                    </h4>
+
+                    <p class="nomargin margin-indent">{{devs[dev]().config[i]|escape}}</p>
+                </div>
+
+                {% endif %}
+                {% endif %}
+                {% endfor %}
+
+                {% if devs[dev]().metadata %}
+                {% for i in devs[dev]().metadata %}
+                {% if devs[dev]().metadata[i] and not len(str(devs[dev]().metadata[i])) > 128 %}
+                <div class="param">
+                    <h4 class="nomargin"><small>
+                            {% if i.startswith('device.') %}
+                            {{i[7:]|escape}}
+                            {% elif i.startswith('kaithem.') %}
+                            {{i[8:]|escape}}
+                            {% else %}
+                            {{i|escape}}
+                            {% endif %}
+                        </small>
+                    </h4>
+
+                    <p class="nomargin margin-indent">{{devs[dev]().metadata[i]|escape}}</p>
+                </div>
+
+
+                {% endif %}
+                {% endfor %}
+                </dl>
+                {% endif %}
+
+
+            </div>
+            {% if devs[dev]().config.get('description','') or  devs[dev]().config.get('notes','') %}
+            <hr>
+            {% endif %}
+
+
+            {% if devs[dev]().config.get('description','') %}
+            <div>
+                <p>{{devs[dev]().config.get('description','')}}</p>
+            </div>
+            {% endif %}
+
+            {% if devs[dev]().config.get('notes','') %}
+            <div>
+                <p>{{devs[dev]().config.get('notes','')}}</p>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+        <div class="margin"></div>
+    </div>
+</div>
+
+<details>
+
+    <summary>
+        <h2>Secrets</h2>
+    </summary>
+    <div class="window">
+        <div class="flex-row gaps">
+
+            {% for dev in sorted(devs.keys()) %}
+            {% if has_secrets(devs[dev]())%}
+
+            <div class="card col-6">
+                <header>
+                    <h3>{{ dev }} <small>{{devs[dev]().config['type']}}</small> </h3>
+                </header>
+                <div class="two-columns balance-columns">
+                    <dl class="nopadding nomargin">
+                        {% for i in sorted(devs[dev]().config.keys()) %}
+                        {% if devs[dev]().json_schema.get("properties", {}).get(i,{}).get("format",False) == "password" %}
+
+                        {% if devs[dev]().config[i] and not len(str(devs[dev]().config[i])) > 512 and not i in ('subclass','notes', 'description', 'name', 'type')  %}
+                        <dt class="nomargin"><small>
+                                {% if i.startswith('device.') %}
+                                {{i[7:]|escape}}
+                                {% elif i.startswith('kaithem.') %}
+                                {{i[8:]|escape}}
+                                {% else %}
+                                {{i|escape}}
+                                {% endif %}
+                            </small>
+                        </dt>
+
+                        <dd class="nomargin" style="word-wrap: break-word;">
+                            <p class="nomargin margin-indent">{{devs[dev]().config[i]|escape}}</p>
+                        </dd>
+
+                        {% endif %}
+                        {% endif %}
+                        {% endfor %}
+                    </dl>
+                </div>
+            </div>
+            {% endif %}
+
+            {% endfor %}
+            <div class="margin"></div>
+
+        </div>
+    </div>
+</details>
+{% endblock %}

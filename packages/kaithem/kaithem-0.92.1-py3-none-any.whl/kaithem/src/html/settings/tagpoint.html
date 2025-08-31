@@ -1,0 +1,205 @@
+<%include file="/pageheader.html"/>
+
+<%!
+from kaithem.src import tagpoints,unitsofmeasure,util,pages
+import time
+import gc
+import collections
+import dateutil
+import quart
+%>
+<%
+    pageGCListIgnoreFlag = True
+
+    if tagName in tagpoints.allTags:
+        tag=tagpoints.allTags[tagName]()
+    else:
+        raise RuntimeError("Nonexistant Tag")
+
+    #normalize
+    normalizednormalizedTagName=tag.name
+
+%>
+
+
+<%
+if quart.request.args.get("kaithem_disable_header",0):
+    extraUrlStuff= "?kaithem_disable_header=true"
+else:
+    extraUrlStuff =''
+%>
+<title>${normalizednormalizedTagName|h}</title>
+<script type="module" src="/static/js/widget.mjs?cache_version=c6d0887e-af6b-11ef-af85-5fc2044b2ae0"></script>
+
+<script type="module" src="/static/js/picodash.mjs?cache_version=c6d0887e-af6b-11ef-af85-5fc2044b2ae0"></script>
+
+<h2><a href="/tagpoints/${extraUrlStuff}">(back)</a><a href="/tagpoints/${normalizednormalizedTagName|u}?show_advanced=y">(Advanced View)</a> Tag Point: <small>${normalizednormalizedTagName}</small></h2>
+<div class="window paper">
+
+<form method="POST" action="/tagpoints/${normalizednormalizedTagName|u}">
+    <h3>Description</h3>
+    ${tag.description or "No description set"}
+<div>
+
+<h3>Value(source at page load: ${tag.active_claim.name})</h3>
+<p>
+%if tag and isinstance(tag,tagpoints.NumericTagPointClass):
+<ds-span source="tag:${tag.name}"></ds-span>
+
+
+%elif tag and isinstance(tag,(tagpoints.StringTagPointClass, tagpoints.ObjectTagPointClass)):
+<ds-span source="tag:${tag.name}"></ds-span>
+
+%elif tag and isinstance(tag,(tagpoints.BinaryTagPointClass)):
+${len(tag.value)} bytes at page load
+%else:
+No live preview
+%endif
+
+%if tag==None:
+DELETED
+%endif
+</p>
+
+<h3>Info</h3>
+<table border="1" class="w-full">
+    <tr>
+        <td>Time Since Update</td>
+        <td>${((unitsofmeasure.format_time_interval(time.time()-tag.timestamp,3)+" ago") if int(tag.timestamp) else 'never')}</td>
+    </tr>
+    <tr>
+        <td>Timestamp</td>
+        <td>${tag.timestamp}</td>
+    </tr>
+    <tr>
+        <td>Annotation</td>
+        <td>${tag.annotation|h}</td>
+    </tr>
+    <tr>
+        <td>Active Claim</td>
+        <td>${tag.active_claim.name}(P${tag.active_claim.priority})</td>
+    </tr>
+    <tr>
+        <td>Value at page load</td>
+        <td>${(str(tag.value)[:128]) if not isinstance(tag.value,bytes) else str(len(tag.value)) +" bytes of binary"}</td>
+    </tr>
+    <tr>
+        <td>Owner</td>
+        <td>${tag.owner}</td>
+    </tr>
+    <tr>
+        <td>Subscriber count</td>
+        <td>${len(tag.subscribers)}</td>
+    </tr>
+
+    <tr>
+        <td>WebAPI read perms</td>
+        <td>${tag.get_effective_permissions(
+)[0]}</td>
+    </tr>
+
+    <tr>
+        <td>WebAPI write perms</td>
+        <td>${tag.get_effective_permissions(
+)[1]}</td>
+    </tr>
+
+    <tr>
+        <td>WebAPI priority</td>
+        <td>${tag.get_effective_permissions(
+)[2]}</td>
+    </tr>
+
+    <tr>
+        <td>Python3 Object ID</td>
+        <td>${id(tag)|h}</td>
+    </tr>
+
+    %if hasattr(tag,'unit'):
+    <tr>
+        <td>Base Unit</td>
+        <td>${tag.unit|h}</td>
+    </tr>
+    %endif
+
+</table>
+
+<h3>Current State</h3>
+<table border="1" class="w-full">
+
+%if tag and isinstance(tag,tagpoints.NumericTagPointClass):
+<tr>
+    <td>Type</td>
+    <td>${tag.type|h}</td>
+</tr>
+<tr>
+    <td>Interval</td>
+    <td>${tag.interval}</td>
+</tr>
+<tr>
+    <td>Min</td>
+    <td>${tag.min}</td>
+</tr>
+<tr>
+    <td>Max</td>
+    <td>${tag.max}</td>
+</tr>
+<tr>
+    <td>Hi</td>
+    <td>${tag.hi}</td>
+</tr>
+<tr>
+    <td>Lo</td>
+    <td>${tag.lo}</td>
+</tr>
+<tr>
+    <td>Display in Units</td>
+    <td>${tag.display_units}</td>
+</tr>
+%endif
+
+%if tag and isinstance(tag,(tagpoints.StringTagPointClass, tagpoints.ObjectTagPointClass)):
+<tr>
+    <td>Type</td>
+    <td>${tag.type|h}</td>
+</tr>
+<tr>
+    <td>Interval</td>
+    <td>${tag.interval}</td>
+</tr>
+%endif
+
+%if tag==None:
+<tr>
+    <td>DELETED</td>
+</tr>
+%endif
+</table>
+
+</div>
+
+
+
+
+
+<h3>Alerting</h3>
+
+<table border=1 class="w-full">
+    <tr>
+        <th>Name</th>
+        <th>State</th>
+    </tr>
+
+
+%for i in tag.alerts:
+    <tr>
+        <td>${i}</td>
+        <td>${tag.alerts[i].sm.state}</td>
+    </tr>
+%endfor
+
+</table>
+</div>
+
+
+<%include file="/pagefooter.html"/>

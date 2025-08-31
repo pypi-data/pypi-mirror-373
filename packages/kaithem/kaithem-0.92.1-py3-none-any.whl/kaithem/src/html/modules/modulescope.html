@@ -1,0 +1,68 @@
+<%!
+from kaithem.src.util import url
+from kaithem.src import pages,unitsofmeasure,util,widgets
+import json,re,quart
+%>
+<style>
+    h3{
+        text-align: left !important;
+    }
+</style>
+<%include file="/pageheader.html"/>
+<title>Object Inspector</title>
+<%
+result = ''
+%>
+<%
+if "cmd" in kwargs:
+    if not quart.request.method=="POST":
+        raise RuntimeError("/errors/wrongmethod")
+    if re.match('([a-zA-Z_][a-zA-Z0-9_]* *=[^=])|(import )|(del )',kwargs['cmd']):
+        exec(kwargs['cmd'], {},obj.__dict__)
+    else:
+        result =eval(kwargs['cmd'], {},obj.__dict__)
+
+%>
+
+<section class="window paper">
+<h2>Inspecting ${objname|h}</h2>
+    <p class="help">
+        This shows all attributes of the selected object and allows you to run commands in the namespace of the selected object.
+    <p>
+
+
+%for i in obj.__dict__:
+<h3><form method="post" action="?objpath=a${i|h}&objname=${i|h}"><button>${i|h}</button></form></h3>
+<pre>${util.saferepr(obj.__dict__[i])|h}</pre>
+%endfor
+
+</section>
+
+
+<section class="window paper">
+<a id="cmd"></a>
+<h2>Command Interpreter</h2>
+<p>You can enter single line commands here. Commands execute in the scope of the object's __dict__, so obj.cheese
+here would just be cheese. You can call functions and get the result, and you can set and delete values.
+multiline code doesn't work however. Be careful when refreshing this page as it may resend. Using this will add a __builtins__ to the module object.<p>
+%if "cmd" in kwargs:
+%if not quart.request.method=="POST":
+<%
+raise quart.redirect("/errors/wrongmethod")
+%>
+%endif
+You Entered:
+<pre>${kwargs['cmd']}</pre>
+Result:
+%if re.match('([a-zA-Z_][a-zA-Z0-9_]* *=[^=])|(import )|(del )',kwargs['cmd']):
+<pre>Command Run</pre>
+%else:
+<pre>${result|h}</pre>
+%endif
+%endif
+
+<form action=#cmd method=post>
+<input name="cmd" size=80><input type="submit" value="Go">
+</form>
+</section>
+<%include file="/pagefooter.html"/>
