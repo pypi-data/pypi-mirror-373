@@ -1,0 +1,66 @@
+name: Version Check
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Check version increment
+      run: |
+        # Get current version from PR branch
+        CURRENT_VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+        
+        # Get version from main branch
+        git fetch origin main
+        MAIN_VERSION=$(git show origin/main:pyproject.toml | grep '^version = ' | sed 's/version = "\(.*\)"/\1/')
+        
+        echo "Current PR version: $CURRENT_VERSION"
+        echo "Main branch version: $MAIN_VERSION"
+        
+        # Compare versions using Python
+        python3 -c "
+        import sys
+        from packaging import version
+        
+        current = version.parse('$CURRENT_VERSION')
+        main = version.parse('$MAIN_VERSION')
+        
+        if current <= main:
+            print(f'❌ Version must be incremented. Current: {current}, Main: {main}')
+            sys.exit(1)
+        else:
+            print(f'✅ Version correctly incremented from {main} to {current}')
+        "
+    
+    - name: Install packaging
+      if: failure()
+      run: python3 -m pip install packaging
+    
+    - name: Retry version check with packaging
+      if: failure()
+      run: |
+        CURRENT_VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+        MAIN_VERSION=$(git show origin/main:pyproject.toml | grep '^version = ' | sed 's/version = "\(.*\)"/\1/')
+        
+        python3 -c "
+        import sys
+        from packaging import version
+        
+        current = version.parse('$CURRENT_VERSION')
+        main = version.parse('$MAIN_VERSION')
+        
+        if current <= main:
+            print(f'❌ Version must be incremented. Current: {current}, Main: {main}')
+            print('Please update the version in pyproject.toml')
+            sys.exit(1)
+        else:
+            print(f'✅ Version correctly incremented from {main} to {current}')
+        "
