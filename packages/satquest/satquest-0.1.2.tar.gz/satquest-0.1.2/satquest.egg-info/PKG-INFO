@@ -1,0 +1,157 @@
+Metadata-Version: 2.4
+Name: satquest
+Version: 0.1.2
+Summary: A Verifier for Logical Reasoning Evaluation and Reinforcement Fine-Tuning of LLMs
+Author-email: Yanxiao Zhao <pazyx728@gmail.com>
+Maintainer-email: Yanxiao Zhao <pazyx728@gmail.com>
+License: MIT License
+        
+        Copyright (c) 2025 Adam Yanxiao Zhao
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+        
+Project-URL: Homepage, https://github.com/sdpkjc/satquest
+Project-URL: Documentation, https://github.com/sdpkjc/satquest#readme
+Project-URL: Source, https://github.com/sdpkjc/satquest
+Project-URL: Issues, https://github.com/sdpkjc/satquest/issues
+Keywords: LLM,reasoning,evaluation,reinforcement-learning
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3 :: Only
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: python-sat==1.8.dev14
+Dynamic: license-file
+
+# SATQuest: A Verifier for Logical Reasoning Evaluation and Reinforcement Fine-Tuning of LLMs
+
+[Preprint Paper](./SATQuest-paper.pdf)
+
+[![License MIT](https://img.shields.io/badge/License-MIT-green)](https://opensource.org/licenses/MIT)
+[![GitHub Repo](https://img.shields.io/badge/GitHub-sdpkjc/SATQuest-181717?logo=github)](https://github.com/sdpkjc/SATQuest)
+[![PyPI](https://img.shields.io/pypi/v/satquest?logo=pypi)](https://pypi.org/project/satquest/)
+
+![pipeline](./satquest-pipeline.png)
+
+## 🚀 Quickstart
+
+```python
+# Install dependencies
+# pip install datasets satquest
+
+from datasets import load_dataset
+from satquest import CNF, create_problem, create_question
+
+item = load_dataset('sdpkjc/SATQuest', split='test')[0]
+cnf = CNF(dimacs=item['sat_dimacs'])
+# cnf.shuffle()
+
+problem = create_problem('SATSP', cnf) # or 'SATDP', 'MaxSAT', 'MCS', 'MUS'
+question = create_question('math')  # or 'dimacs', 'story', 'dualstory'
+prompt = problem.accept(question)
+answer = problem.solution  # reference answer
+reward = int(problem.check(answer))  # 1 if answer is correct, 0 otherwise
+```
+
+## Dataset Generation
+
+[![Dataset on HF](https://huggingface.co/datasets/huggingface/badges/resolve/main/dataset-on-hf-sm.svg)]([https://huggingface.co/sdpkjc/](https://huggingface.co/collections/sdpkjc/satquest-6820687d856b96f869921e53))
+
+```bash
+# Run dataset generation
+uv run --group gen gen_cnf_dataset.py --hf-entity {YOUR_HF_ENTITY} --seed 9527
+
+uv run --group gen gen_cnf_rft_dataset.py --hf-entity {YOUR_HF_ENTITY} --seed 9527
+```
+
+## Evaluation
+
+```bash
+# Run evaluation
+uv run --group eval eval_model.py \
+    --exp-name {YOUR_EXP_NAME} \
+    --wandb-project "SATQuest-Eval" \
+    --hf-dataset-name "sdpkjc/SATQuest" \
+    --p-type-list SATSP \
+    --q-type-list math \
+    --llm-model "gpt-4o" \
+    --max-tokens 16384 \
+    --temperature 0.6 \
+    --num-example 10 \
+    --stream True \
+    --cnf-shuffle False \
+    --n-repeat 1
+```
+
+### Evaluation Parameters
+
+- `exp-name`: Name of your experiment
+- `wandb-project`: Weights & Biases project name
+- `hf-dataset-name`: HuggingFace dataset name
+- `p-type-list`: Problem types to evaluate (e.g., "SATSP", "MaxSAT", "MCS", "MUS", "SATDP_SAT", "SATDP_UNSAT")
+- `q-type-list`: Question types to evaluate (e.g., "math", "dimacs", "story", "dualstory")
+- `llm-model`: LLM model to use for evaluation
+- `max-tokens`: Maximum tokens for LLM response
+- `temperature`: Temperature for LLM generation
+- `num-example`: Number of examples to evaluate
+- `stream`: Whether to stream LLM responses
+- `cnf-shuffle`: Whether to shuffle CNF formulas
+- `n-repeat`: Number of times to repeat evaluation
+
+The evaluation results will be logged to Weights & Biases.
+
+## Reinforcement Fine-Tuning (RFT)
+
+```bash
+# Run RFT training
+CUDA_VISIBLE_DEVICES=0,1,2,3 nohup uv run --group rft trl vllm-serve --model "Qwen/Qwen2.5-7B-Instruct" --tensor_parallel_size 4 --max_model_len 16384  --gpu_memory_utilization 0.9 --enable_prefix_caching True &
+CUDA_VISIBLE_DEVICES=4,5,6,7 uv run --group rft accelerate launch --num-processes 4 --config-file zero3.yaml rft.py --model-id "Qwen/Qwen2.5-7B-Instruct" --p-list SATSP --q-list math --exp-name "test" --server-ip "0.0.0.0"
+```
+
+### RFT Parameters
+
+- `model-id`: Base model to fine-tune (default: "Qwen/Qwen2.5-7B-Instruct")
+- `p-list`: Problem types for training (e.g., "SATSP", "MaxSAT", "MCS", "MUS", "SATDP_SAT", "SATDP_UNSAT")
+- `q-list`: Question formats for training (e.g., "math", "story")
+- `exp-name`: Name of your experiment
+- `server-ip`: IP address for VLLM server
+
+
+## Citation
+
+```bibtex
+@misc{satquest2025,
+  author = {Yanxiao Zhao, Yaqian Li, Zihao Bo, Rinyoichi Takezoe, Haojia Hui, Mo Guang, Lei Ren, Xiaolin Qin, Kaiwen Long},
+  title = {SATQuest: A Verifier for Logical Reasoning Evaluation and Reinforcement Fine-Tuning of LLMs},
+  year = {2025},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished = {\url{https://github.com/sdpkjc/SATQuest}},
+}
+```
