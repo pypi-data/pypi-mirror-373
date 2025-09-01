@@ -1,0 +1,66 @@
+#!python
+# -*- coding: utf-8 -*-
+
+import argparse
+import re
+import sys
+
+from url2bib.core import (
+    build_bibtex,
+    create_bib_id,
+    get_dblp_bibtexs,
+    maybeprint,
+    parse_bibtex,
+    set_verbosity,
+    url2bibtex,
+)
+
+VERBOSE = True
+USE_DBLP = True
+
+
+def main():
+    set_verbosity(VERBOSE)
+
+    parser = argparse.ArgumentParser(description="Convert URLs to BibTeX entries")
+    parser.add_argument("url", type=str, help="The URL to fetch DOIs from.")
+    args = parser.parse_args()
+
+    if args.url:
+        bibtex = url2bibtex(args.url)
+        if bibtex:
+            # Parse and rebuild to ensure consistent formatting
+            bibdict = parse_bibtex(bibtex)
+            # Try DBLP (optional)
+            if USE_DBLP:
+                print("Querying DBLP...")
+                title = bibdict.get("title", "")
+                if title:
+                    dblp_bibtexs = get_dblp_bibtexs(title)
+                    if dblp_bibtexs:
+                        # Prefer entries not mentioning CoRR / arXiv
+                        preferred = []
+                        deprioritized = []
+
+                        for bibtex_entry in dblp_bibtexs:
+                            if re.search(r"(corr|arxiv)", bibtex_entry, re.I):
+                                deprioritized.append(bibtex_entry)
+                            else:
+                                preferred.append(bibtex_entry)
+
+                        chosen_bibtex = (preferred or deprioritized)[0]
+                        maybeprint("Selected paper from DBLP.")
+                        bibdict = parse_bibtex(chosen_bibtex)
+
+            bibdict["ID"] = create_bib_id(bibdict)
+            print(build_bibtex(bibdict))
+        else:
+            print("No matching publications found", file=sys.stderr)
+            exit(1)
+    else:
+        parser.print_help()
+        exit(1)
+
+
+if __name__ == "__main__":
+    main()
