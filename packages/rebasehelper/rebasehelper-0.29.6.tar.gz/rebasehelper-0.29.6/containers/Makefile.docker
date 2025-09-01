@@ -1,0 +1,22 @@
+DISTRO ?= fedora-latest fedora-rawhide
+
+PYTEST_ADDOPTS ?= -m 'standard and not long_running'
+
+CONFIG := docker-compose.yml
+
+DOCKER_COMPOSE := docker-compose
+
+ifeq (,$(CI))
+# sudo is needed in case user is not member of docker group
+ifeq (,$(findstring docker,$(shell groups)))
+	DOCKER_COMPOSE := sudo docker-compose
+endif
+endif
+
+.PHONY: test $(DISTRO)
+
+test: $(DISTRO)
+
+$(DISTRO):
+	$(DOCKER_COMPOSE) -f $(CONFIG) build --build-arg DISTRO="$@" tests
+	$(DOCKER_COMPOSE) -f $(CONFIG) run -e PYTEST_ADDOPTS="$(PYTEST_ADDOPTS)" tests

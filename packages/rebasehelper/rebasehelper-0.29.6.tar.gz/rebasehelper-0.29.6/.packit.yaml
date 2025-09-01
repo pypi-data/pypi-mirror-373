@@ -1,0 +1,46 @@
+packit_instances: ["prod", "stg"]
+
+specfile_path: rebase-helper.spec
+
+# name in upstream package repository or registry (e.g. in PyPI)
+upstream_package_name: rebasehelper
+# downstream (Fedora) RPM package name
+downstream_package_name: rebase-helper
+
+upstream_project_url: https://github.com/rebase-helper/rebase-helper
+issue_repository: https://github.com/rebase-helper/rebase-helper
+
+actions:
+  create-archive:
+    - python3 -m build --sdist --outdir .
+    - bash -c "ls -1t ./rebasehelper-*.tar.gz | head -n 1"
+  get-current-version: python3 -m setuptools_scm
+
+srpm_build_deps:
+  - python3-build
+  - python3-setuptools_scm
+
+jobs:
+  - job: copr_build
+    trigger: pull_request
+    targets:
+      - fedora-all
+
+  - job: propose_downstream
+    trigger: release
+    dist_git_branches:
+      - fedora-all
+
+  - job: koji_build
+    trigger: commit
+    packit_instances: ["stg"]
+    allowed_pr_authors: ["packit-stg", "packit"]
+    dist_git_branches:
+      - fedora-all
+
+  - job: bodhi_update
+    trigger: commit
+    packit_instances: ["stg"]
+    allowed_builders: ["packit-stg", "packit"]
+    dist_git_branches:
+      - fedora-branched # rawhide updates are created automatically

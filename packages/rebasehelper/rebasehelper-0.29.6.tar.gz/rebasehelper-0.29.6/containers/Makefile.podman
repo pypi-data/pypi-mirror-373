@@ -1,0 +1,38 @@
+DISTRO ?= fedora-latest fedora-rawhide
+
+PYTEST_ADDOPTS ?= -m 'standard and not long_running'
+
+PODMAN ?= sudo podman
+
+.PHONY: test integration $(DISTRO)
+
+test: integration $(DISTRO)
+
+integration:
+	$(PODMAN) pod create \
+		--name=integration \
+		--hostname=integration \
+		--share=net \
+		--replace=true
+
+	$(PODMAN) run \
+		--pod=integration \
+		--detach=true \
+		quay.io/rebasehelper/integration\:latest
+
+$(DISTRO):
+	$(PODMAN) rmi --force rebase-helper-tests-$@ || true
+
+	$(PODMAN) build \
+		--build-arg=DISTRO="$@" \
+		--file=containers/Containerfile.tests \
+		--tag=rebase-helper-tests-$@ \
+		..
+
+	$(PODMAN) run \
+		--pod=integration \
+		--privileged=true \
+		--env=TOXENV="$(TOXENV)" \
+		--env=PYTEST_ADDOPTS="$(PYTEST_ADDOPTS)" \
+		--tty=true \
+		rebase-helper-tests-$@

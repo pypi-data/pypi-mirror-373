@@ -1,0 +1,29 @@
+name: build
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 0 * * *'
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: fedora-latest
+          - distro: fedora-rawhide
+    steps:
+      - uses: actions/checkout@v2
+      - name: Select correct tests
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
+            echo "PYTEST_ADDOPTS=-m 'standard or functional'" >> $GITHUB_ENV
+          else
+            echo "PYTEST_ADDOPTS=-m 'not long_running'" >> $GITHUB_ENV
+          fi
+      - name: Run the tests
+        env:
+          DISTRO: ${{ matrix.distro }}
+        # https://github.com/containers/podman/issues/14920
+        run: make PODMAN="sudo -E XDG_RUNTIME_DIR= podman" test-podman
