@@ -1,0 +1,118 @@
+"""Test IPT."""
+import unittest
+from . import util
+from coloraide.everything import ColorAll as Color, NaN
+import pytest
+
+
+class TestIPT(util.ColorAssertsPyTest):
+    """Test IPT."""
+
+    COLORS = [
+        ('red', 'color(--ipt 0.45616 0.62091 0.44283)'),
+        ('orange', 'color(--ipt 0.64877 0.18904 0.53032)'),
+        ('yellow', 'color(--ipt 0.85655 -0.10828 0.65149)'),
+        ('green', 'color(--ipt 0.39331 -0.23453 0.2746)'),
+        ('blue', 'color(--ipt 0.4443 -0.23752 -0.74845)'),
+        ('indigo', 'color(--ipt 0.28318 0.09814 -0.31013)'),
+        ('violet', 'color(--ipt 0.72887 0.31213 -0.24008)'),
+        ('white', 'color(--ipt 1 0 0)'),
+        ('gray', 'color(--ipt 0.51724 0 0)'),
+        ('black', 'color(--ipt 0 0 0)'),
+        # Test color
+        ('color(--ipt 0.5 0.1 -0.1)', 'color(--ipt 0.5 0.1 -0.1)'),
+        ('color(--ipt 0.5 0.1 -0.1 / 0.5)', 'color(--ipt 0.5 0.1 -0.1 / 0.5)'),
+        ('color(--ipt 50% 50% -50% / 50%)', 'color(--ipt 0.5 0.5 -0.5 / 0.5)'),
+        ('color(--ipt none none none / none)', 'color(--ipt none none none / none)'),
+        # Test percent ranges
+        ('color(--ipt 0% 0% 0%)', 'color(--ipt 0 0 0)'),
+        ('color(--ipt 100% 100% 100%)', 'color(--ipt 1 1 1)'),
+        ('color(--ipt -100% -100% -100%)', 'color(--ipt -1 -1 -1)')
+    ]
+
+    @pytest.mark.parametrize('color1,color2', COLORS)
+    def test_colors(self, color1, color2):
+        """Test colors."""
+
+        self.assertColorEqual(Color(color1).convert('ipt'), Color(color2))
+
+
+class TestIPTSerialize(util.ColorAssertsPyTest):
+    """Test IPT serialization."""
+
+    COLORS = [
+        # Test color
+        ('color(--ipt 0.75 0.1 -0.1 / 0.5)', {}, 'color(--ipt 0.75 0.1 -0.1 / 0.5)'),
+        # Test alpha
+        ('color(--ipt 0.75 0.1 -0.1)', {'alpha': True}, 'color(--ipt 0.75 0.1 -0.1 / 1)'),
+        ('color(--ipt 0.75 0.1 -0.1 / 0.5)', {'alpha': False}, 'color(--ipt 0.75 0.1 -0.1)'),
+        # Test None
+        ('color(--ipt none 0.1 -0.1)', {}, 'color(--ipt 0 0.1 -0.1)'),
+        ('color(--ipt none 0.1 -0.1)', {'none': True}, 'color(--ipt none 0.1 -0.1)'),
+        # Test Fit (not bound)
+        ('color(--ipt 0.75 1.2 -0.1)', {}, 'color(--ipt 0.75 1.2 -0.1)'),
+        ('color(--ipt 0.75 1.2 -0.1)', {'fit': False}, 'color(--ipt 0.75 1.2 -0.1)')
+    ]
+
+    @pytest.mark.parametrize('color1,options,color2', COLORS)
+    def test_colors(self, color1, options, color2):
+        """Test colors."""
+
+        self.assertEqual(Color(color1).to_string(**options), color2)
+
+
+class TestIPTPoperties(util.ColorAsserts, unittest.TestCase):
+    """Test IPT."""
+
+    def test_names(self):
+        """Test Lab-ish names."""
+
+        c = Color('color(--ipt 0.85654 -0.10831 0.65148)')
+        self.assertEqual(c._space.lightness_name(), 'i')
+
+    def test_i(self):
+        """Test `i`."""
+
+        c = Color('color(--ipt 0.85654 -0.10831 0.65148)')
+        self.assertEqual(c['i'], 0.85654)
+        c['i'] = 0.2
+        self.assertEqual(c['i'], 0.2)
+
+    def test_p(self):
+        """Test `p`."""
+
+        c = Color('color(--ipt 0.85654 -0.10831 0.65148)')
+        self.assertEqual(c['p'], -0.10831)
+        c['p'] = 0.1
+        self.assertEqual(c['p'], 0.1)
+
+    def test_t(self):
+        """Test `t`."""
+
+        c = Color('color(--ipt 0.85654 -0.10831 0.65148)')
+        self.assertEqual(c['t'], 0.65148)
+        c['t'] = 0.1
+        self.assertEqual(c['t'], 0.1)
+
+    def test_alpha(self):
+        """Test `alpha`."""
+
+        c = Color('color(--ipt 0.85654 -0.10831 0.65148)')
+        self.assertEqual(c['alpha'], 1)
+        c['alpha'] = 0.5
+        self.assertEqual(c['alpha'], 0.5)
+
+
+class TestsAchromatic(util.ColorAsserts, unittest.TestCase):
+    """Test achromatic."""
+
+    def test_achromatic(self):
+        """Test when color is achromatic."""
+
+        self.assertEqual(Color('ipt', [0, NaN, NaN]).is_achromatic(), True)
+        self.assertEqual(Color('ipt', [0, NaN, NaN]).is_achromatic(), True)
+        self.assertEqual(Color('ipt', [0, 0.3, -0.4]).is_achromatic(), False)
+        self.assertEqual(Color('ipt', [NaN, 0, -0.3]).is_achromatic(), False)
+        self.assertEqual(Color('ipt', [0.3, NaN, 0]).is_achromatic(), True)
+        self.assertEqual(Color('ipt', [NaN, NaN, 0]).is_achromatic(), True)
+        self.assertEqual(Color('ipt', [-0.5, NaN, NaN]).is_achromatic(), True)
