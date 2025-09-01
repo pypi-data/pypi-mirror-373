@@ -1,0 +1,69 @@
+[build-system]
+requires = ["scikit-build-core >=0.4.3", "typing_extensions >= 4.0.0"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "pyxpg"
+version = "0.0.5"
+description = "XPG python bindings"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+    { name = "Dario Mylonopoulos", email = "ramenguy99@gmail.com" },
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+]
+
+[project.urls]
+Homepage = "https://github.com/ramenguy99/xpg"
+
+[tool.scikit-build]
+# Protect the configuration against future changes in scikit-build-core
+minimum-version = "0.4"
+
+# Setuptools-style build caching in a local directory
+build-dir = "python-build/{wheel_tag}"
+
+# Build stable ABI wheels for CPython 3.12+
+wheel.py-api = "cp312"
+
+# Configure
+cmake.define.XPG_BUILD_APPS = "OFF"
+cmake.define.XPG_BUILD_PYTHON = "ON"
+cmake.define.XPG_BUILD_SLANG = "ON"
+# cmake.define.XPG_BUILD_SLANG = "OFF"
+
+[[tool.scikit-build.overrides]]
+if.platform-system = "^linux"
+inherit.cmake.define = "append"
+cmake.define.CMAKE_CXX_FLAGS = "-D_LARGEFILE64_SOURCE"
+cmake.define.CMAKE_C_FLAGS="-D_POSIX_C_SOURCE=199309L -D_POSIX_SOURCE=199309L -D_XOPEN_SOURCE=700 -D_GNU_SOURCE"
+
+[tool.cibuildwheel]
+build-verbosity = 1
+archs = ["auto64"]
+#build = ["cp38-*" ]
+build = ["cp38-*", "cp39-*", "cp310-*", "cp311-*", "cp312-*"]
+skip = ["cp38-macosx_arm64"]
+
+# Select linux images
+[tool.cibuildwheel.linux]
+manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"
+musllinux-x86_64-image = "musllinux_1_2"
+musllinux-aarch64-image = "musllinux_1_2"
+
+# Install dependencies on manylinux
+[[tool.cibuildwheel.overrides]]
+select = "*-manylinux*"
+before-all = [ "yum install -y libXcursor-devel libXi-devel libXinerama-devel libXrandr-devel wayland-devel libxkbcommon-devel wayland-protocols-devel" ]
+
+# Install dependencies on musllinux
+[[tool.cibuildwheel.overrides]]
+select = "*-musllinux*"
+before-all = [ "apk add xorg-server-dev libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev wayland-dev libxkbcommon-dev wayland-protocols" ]
+
+# Needed for full C++17 support on intel macOS
+[tool.cibuildwheel.macos.environment]
+MACOSX_DEPLOYMENT_TARGET = "10.14"

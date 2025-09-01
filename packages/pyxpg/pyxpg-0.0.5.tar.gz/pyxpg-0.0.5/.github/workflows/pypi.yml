@@ -1,0 +1,87 @@
+name: Build wheels and sdist and publish to pypi
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: 'Upload wheels to PyPI? (0: no, 1: yes)'
+        required: true
+        default: '0'
+      fast:
+        description: 'Build only python 3.9? (0: no, 1: yes)'
+        required: true
+        default: '0'
+
+jobs:
+  # Wheels
+  build_wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, windows-2025, macos-14]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Download and setup MoltenVK (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          wget https://github.com/KhronosGroup/MoltenVK/releases/download/v1.3.0/MoltenVK-macos.tar
+          tar xvf MoltenVK-macos.tar
+          echo "CIBW_CONFIG_SETTINGS=\"cmake.define.XPG_MOLTENVK_PATH=\"$(pwd)/MoltenVK\"\"" >> $GITHUB_ENV
+
+      - name: Build wheels (Python 3.9 only)
+        if: ${{ github.event.inputs.fast == '1'}}
+        env:
+          CIBW_BUILD: "cp39-*"
+        uses: pypa/cibuildwheel@v3.1.4
+
+      - name: Build wheels
+        if: ${{ github.event.inputs.fast == '0'}}
+        uses: pypa/cibuildwheel@v3.1.4
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+          path: ./wheelhouse/*.whl
+
+  # Source distribution
+  make_sdist:
+    name: Make SDist
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: recursive
+
+    - name: Build SDist
+      run: pipx run build --sdist
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: cibw-sdist
+        path: dist/*.tar.gz
+
+  # Upload to pypi
+  upload_all:
+    needs: [build_wheels, make_sdist]
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pyxpg/
+    permissions:
+      id-token: write
+    runs-on: ubuntu-24.04
+    if: ${{ github.event.inputs.upload == '1'}}
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: cibw-*
+        path: dist
+        merge-multiple: true
+    - uses: pypa/gh-action-pypi-publish@release/v1

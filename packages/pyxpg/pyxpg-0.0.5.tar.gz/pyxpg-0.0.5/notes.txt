@@ -1,0 +1,449 @@
+Python:
+
+    Interactive recompile on import:
+        pip install -C cmake.build-type=Debug -Ceditable.rebuild=true  --no-build-isolation -ve .
+    Same but force ninja (much faster on windows):
+        pip install -C cmake.args=-GNinja -C cmake.build-type=Debug -Ceditable.rebuild=true  --no-build-isolation -ve .
+
+- Imgui bindings with dear_bindings:
+    -> json file looks straight forward for binding gen, nice that we can match API 1 to 1 with what we use in xpg
+    -> not yet clear if we can also do ImPlot with this, or if we need internal stuff too. But good starting point.
+    -> also not clear what stuff goes to python and what goes to nanonbind autogenned bindings
+        -> we definitely want python stubs for autocomplete experience
+        -> we probably dont want to do weird cython / ffi stuff in python
+        -> we probably want to autogen implementation of the nanobind bindings on the C++ side
+        -> we probably want a set of manually generated pythonic helpers for commonly used stuff
+- Slang:
+    - ReflectioN:
+        - XPG provides only bindings, usage of reflection up to app
+        - See at least 2 potential use cases from python:
+            - Auto resolve -> use names in python, descriptor set creation and set/binding/offset computation is automatic
+            - Python bindings gen -> offline step builds shaders and creates python bindings to call stuff
+    - Slang takes around 200ms to initialize in release and (2.5s in debug) -> fixed by removing glsl support
+    - Include files / deps:
+        - Use modules for shareable reusable parts (e.g. helper functions, materials, shadows, etc..)
+        - Can use include files in shaders to share common types etc.., less prio than modules but still useful e.g. for cpp interop
+    - Initialize slang asynchronously on module creation? There is 100ms in release and 300 in debug to save there.
+- Framegraph implementation on top of reflection for easy prototyping of pipelines/shaders
+    -> interesting here would be how much perf we can have when sharing data through arrays, e.g. textures, buffers, uniforms
+    -> also interesting if we want to have a full python framegraph or if we can somehow leverage python callables
+       + some python bindings to reuse at least the synchronization / traversal logic implemented in C++
+    -> idea is currently to do this in applications even, if we come with some good implementation at some point we will maybe make
+       it part of it
+- App ideas:
+    - Expose compute and raytracing -> redo raytrace
+    - Try to redo sequence, can i read directly to bufs without gil?
+    - Huge voxel engine
+        -> brickmap
+        -> packed coords in storage buffers
+        -> auto cube trick
+        -> gpu frustum culling
+        -> SVO traversal?
+- Use within conda:
+        conda install conda-forge::vulkan-tools
+
+Run python examples:
+cmd /C "set PYTHONPATH=install\python && python python\example.py"
+
+Swapchain:
+- You can technically without waitidle, recreate swapchain, start using new swapchain, delete old when no more frame is using it.
+    -> not entirely clear what happens when you have 3 frames in flight, can you potentially have 3 swapchains alive
+       at the same time? Or do you end up calling wait idle at that point?
+    -> See: https://www.youtube.com/watch?v=mvkHYAu7i6c
+    -> See todo in gfx.h, needs helper on application side, otherwise very complex to do right, should probably sacrifice
+       perf during resize (e.g. cap to 2 swapchains in flight) instead of having growing history.
+
+Descriptors:
+- To run a pipeline need to bind the related descriptor sets
+- Those can be known statically or learned through reflections
+- No need to rebind across pipelines if these can be shared
+- Need to do this in increasing frequency, because after binding something incompatible the later descriptors are disturbed
+
+Framegraph:
+- The 3 main advantages are:
+    - automatic barriers on resources
+    - memory aliasing
+    - ideally library of reusable components -> would be very nice, but unknown how easy to get the ergonomics right for this
+- Not obvious how to handle descriptors in this case:
+    - Gray: the user does not need to care
+        - descriptors for owned resources are allocated by the render pass
+        - descriptors for external resources are provided on render
+        - granularity is per descriptor, which means we HAVE to do copies CPU -> GPU or GPU -> GPU on draw
+        - can we somehow extend this to work per set?
+        - binding frequency and granularity does not necessarily match ownership
+    - User in control:
+        - Pipelines have a well defined layout. At creation time we know what descriptors we can generate or validate this layout.
+        - Descriptors are really just part of the signature of a render pass. Together with other parameters that might be required.
+        [ ] Think about an API that allows us to define either statically or dynamically the descriptor sets that should be passed when invoking this pass.
+        - The global constants problem:
+            It is very likely that you have some scene constants that are the same for all shaders in an app.
+            On descriptor set 0 you might have (among other things) a constant buffer for those constants.
+            On shader side those are reusing the same struct -> always in sync.
+            On c++ side we can do the same thing, just share the struct. (hopefully can make this work with slang somehow)
+            On binding side this descriptor set can be the same for all compatible pipelines.
+- Static vs dynamic graph:
+    - Graph built per frame. Can specify all needed params every time -> requires caching, at least for owned resources.
+    - Graph built per at startup and then run.
+        - How does the user pass dynamic parameters to the graph?
+            -> Keep handles (either the task object itself or some returned reference)?
+            -> Everything through function pointers? Seems messy and hard to get right, control flow will be very weird, almost impossible to do threading then.
+            -> Try to design some tasks and see how those could look like: (simple: copy, full screen pass. more comples: ping pong blur, gen mips, draw opaque, gbuffer, shadows).
+- Another API would be to do state tracking on a resource (likely manually or through helpers for each usage on binding) and then deduce barriers:
+    - maybe more flexible when prototyping?
+    - more similar to d3d11 / opengl approach
+    - less efficient potentially? Extra work done for you can maybe be opt in?
+    - Is specifying barriers really that annoying if we have sync helpers (to validate with vulkan sync helper lib -> this looks similar to what we were doing and could be a nice set of helpers / reference)
+- Thoughts:
+    In favor of graphs:
+        - Composability of self-contained parts (if possible to achieve in a sane way)
+    Against graphs:
+        - I don't think the flamegraph is the correct unit of granularity for simple programs / prototyping -> too retained:
+            - hard to share descriptor layouts
+            - can't control order of execution of passes -> how to know what needs to be rebound -> maybe need to always rebind from scratch or do complex state management.
+            - hard to do dependency injection in the meat of the passes
+        - Framegraph can be built on top of this API if you need it
+        - Resource creation can be done manually at init time
+        - API MUST be immediate mode when calling render passes
+        - We can have synchronization helpers on resources instead of frame graphs.
+        - Reusable components can be more flexible instead of requiring retained mode processing.
+            -> sketch API of how this could look like
+    [ ] Try to rewrite our exmaples and a viewer-like app with both styles, see what looks better.
+        -> can try to do something a vulkan backend for aitviewer
+        -> also want to support more advanced use cases like indirect rendering, batched meshes, per frame upload with triple buffering, gpu driven stuff, raytracing, etc..
+
+Ideas:
+- Maybe have an internal feature set kind of thing to support multiple hardware types.
+  Seem important to support at least:
+    - Compute only (required: subgroup stuff?)
+    - Basic rendering (required: dynamic rendering?)
+    - Raytracing (required: rt + bindless)
+
+- Cleaness and portability:
+    - Statically link on windows and with musl on linux (no idea about macOS)
+    - Get rid of some headers
+    - Maybe split stuff in some cpp files
+
+- New error model for everything:
+    - Error on the handle kind of thing
+    - Ability to attach context and record call stacks
+    - Maybe helpers / macros to check if an handle is errored and collect callstacks / attach additional info.
+
+- File formats:
+    - Do we need this in python? Or do we keep it there?
+
+- Meshlet stuff:
+    - Integrate meshoptimizer
+    - Rasterize meshlets
+        - Vertex shader
+        - Mesh shaders
+    - Raytrace CLAS
+    - Python bindings
+
+Notes:
+- Add python library target and test nanobind + pybind11 stubs generator for generating and packaging python module
+    - Python module interface (similar to viewer needs):
+        - Window utilities (multiple windows, surface rendering without window / swapchains)
+        - Rendering logic and scene hierarchy/renderables likely defined in C++ code and exposed to python. (Maybe add wrappers for conversions/utils that are easier to do in python).
+        - Debugging options at runtime (e.g. logging / tracing / validation / named objects etc..)
+- Targets (share as much code as possible):
+    - Standalone apps in C++.
+    - Scriptable apps from python.
+    - Headless rendering/compute from C++/python.
+- Initialize vulkan stuff and build rendering layer utilities on top of it.
+    - Required extensions?
+    - ImGui/docking support -> use same GUI version as pyimgui and share ctx somehow, or make our own bindings.
+    - Render on resize mode?
+    - Binding helpers?
+    - Synchronization / render passes?
+    - Resource / memory management (VMA)?
+    - Ring/buffers?
+    - Ray-tracing?
+- Shaders:
+    - HLSL/GLSL/SLANG? -> all require toolchain to be installed for development
+    - Need introspection?
+    - Hot reloading?
+
+
+Project structure:
+- Core:
+    - Vulkan context and headless rendering
+    - Resource creation and other utils
+    - Shader and pipeline management helpers
+    - Maybe a rendergraph helper here too?
+- Viewer:
+    - Windowing
+    - ImGui
+    - Input
+    - Renderables and passes
+
+- Python module:
+    - Bindings for both core and viewer
+
+ Core    -
+  |        \
+  |          -> Python bindings + conversion utils -> python wrappers/helpers -> user code
+  V        /
+Viewer   -
+
+
+
+
+Initializers notes:
+
+Likely ok to have an extra read-only span for this, ArrayView
+is inherently read-write.
+We can also delete copy constructor stuff ehere that allows
+it to be even more typechecked (cannot create with initializer list and then assign when list is destroyed)
+struct A {
+    int a;
+};
+
+This is would also be nice, but unfortunately the c++ compiler cant reason about it when
+it's inside a struct, only as top level param. Guess we gotta dynamically allocate.
+template<typename T, size_t N>
+using SpanFixed = T[N];
+
+template<typename T>
+struct Span {
+    const T* data;
+    size_t length;
+
+    Span(std::initializer_list<T> l) {
+        data = l.begin();
+        length = l.size();
+    }
+
+    Span(const Span& other) = delete;
+    Span& operator=(const Span& other) = delete;
+};
+
+struct B {
+    A a;
+    Span<int> span;
+};
+
+void construct_safe(const B&& b) {
+}
+B b = {
+    .a = {.a = 5},
+    .span = { 1, 2, 3 },
+};
+
+Span s = { 1, 2, 3 };
+construct_safe({
+    .a = {.a = 5},
+    .span = { 1, 2, 3},
+});
+
+Span span = { 1, 2, 3 };
+construct_safe({
+    .a = {.a = 5},
+    .span = std::move(span),
+});
+
+Perf notes:
+- Index buffer was on GPU -> double check wtf logic is there in VMA to cause this (likely because we want it host visible, but we are preferring device local?)
+    - this was messing heavily with PCIe perf and slowing draw significantly confusing the trace
+- on my RTX3060 mobile copy queue seems to be way slower than async compute queue (and also slower than BAR writes)
+    - copy     -> 16%
+    - compute  -> 22%
+    - PCIe BAR -> 38%
+- when not using nsight actually I get the same performance with async copy compute queue and PCIe BAR writes -> likely closer bandwidth
+- All in all we have 2.5ms draw and ~3.5ms transfer. We are just transfer bound, but with the copy queue we keep the CPU free during those transfers.
+[ ] Try with buffered stream loading directly to upload heap -> slightly more complex because we have more buffers then frames there
+- https://ctf.re/about/
+
+Slang global session creation time notes:
+- CapabilityAtom        enum of 196 values
+- CapabilityName        enum of 516 values
+- CapabilityAtomSet     array of bit flags for each atom ceil(196 / 64) -> 4 uin64 -> 32 bytes (on heap tho)
+
+- CapabilityStageSet    stage (CapabilityAtom), optional CapabilityAtomSet
+- CapabilityStageSets   CapabilityAtom -> CapabilityStageSet
+
+- CapabilityTargetSet   target CapabilityAtom, CapabilityStageSets
+- CapabilityTargetSets  CapabilityAtom -> CapabilityTargetSet dictionary
+
+- CapabilitySet         Just helpers on top of a CapabilityTargetSets
+
+Ideas:
+- Probably: not all atoms can be targets and not all atoms can be stages -> simplify those dictionary Atom -> Obj to direct indexed with proper count of possibilities
+
+Opts:                                           Debug         Release
+- Start ->                                      320ms            90ms
+- CapabilitySet::toNative (std move)       -> [285  300]
+- CapabilityTargetSet::toNative (std move) -> [275  292]
+- UintList + avoid lists in deserialize    -> [234  247]      [59 - 65]
+
+Shaders:
+- DECIDE IF CONTINUE WITH SLANG (means at least implement the binding ranges api for global stuff)
+    Pros:
+    - Already mostly integrated
+    - More powerful language:
+        - Better module system
+        - Potentially can use autodiff stuff
+        - Interfaces
+        - Generics
+        - Overloading
+    - Cross platform -> could port to HLSL
+    Cons:
+    - Way more complex
+    - Build is super slow
+    - Slower to run
+    - Naming does not
+- OR GO WITH SPIR-V CROSS (seems easy to statically link and use as submodule, then wrap in python)
+    Pros:
+    - Simple, faster, easier to understand
+    - Maps well to vulkan
+    - Better subgroup stuff
+    Cons:
+    - Not very expressive
+    - Requires at least glslang for dynamic compilation and spirv-cross for reflection
+    - Not sure yet if reflection gives us all we need.
+        - Struct layouts
+        - Descriptor sets (need to assign bindings by hand? maybe ok..)
+        - List of dependency files -> available ony in glslang
+- Plan:
+    - Try integrating glslang + spirv-cross, see build times / static linking pain
+        - spriv-cross:
+            - looks very easy, can easily parse structs of basetypes
+            - can probably also easily get resources and their types:
+                - images:
+                    - distinguish combined image sampler / sampled images / storage images
+                    - image format for storage images
+                    - internal type (number of channels could be useful to know what is used?)
+                    - readonly / writeonly / readwrite attributes
+                - storage buffers:
+                    - fixed size vs infinite array
+                    - parse internal type too
+                    - readonly / writeonly / readwrite attributes
+        - glslang:
+            - Configure compiler
+            - Pass files
+            - Extract spirv
+            - Define include handler and extract depfiles
+    - Slang
+        - The issue with the bindingranges api is that it's already flattened.
+          It's ok for creating layouts, but not for binding. If we have structure
+          in the source we want to have the same structure in reflection, not
+          just the flattened version.
+        - One options is to understand how the binding ranges work, how the
+          bindingtype and set/binding is inferred, and try to reconstruct that
+          ourselves.
+        - Other option is to use the binding ranges, but still somehow parse
+          the tree and match the two. Feels a bit more hacky but maybe easier?
+    - Notes:
+        - glslang already can do most of the reflection that we need, probably
+          do not need spirv-cross then.
+        - slang does not seem to handle well redefined targets, likely just
+          a matter of checking if a target already exist and not add it again.
+          But need to do this and upstream it.
+
+
+        u32 binding = content->getBindingIndex();
+        u32 space = content->getBindingSpace();
+        u32 regspace = content->getOffset(slang::ParameterCategory::RegisterSpace);
+        u32 sub_regspace = content->getOffset(slang::ParameterCategory::SubElementRegisterSpace);
+        u32 table = content->getOffset(slang::ParameterCategory::DescriptorTableSlot);
+
+    - Logging:
+        - Logging is a global concept in XPG, we can use a global callback, but how do we ensure
+          this is freed properly? If it's just a module global, what is the best way to expose it?
+        - How do we ensure that the logging is freed after everything else? Ideally we would like
+          to see teardown logs (we currently don't see the Contxt teardown)
+        - Can we somehow bind the lifetime of this to the module? Does not seem to be exposed by
+          nanobind, but technically possible also with gc.
+        - GC on module does not seem to work
+        - atexit runs earlier than Context (unless nested in func)
+        - user fixes would be:
+           - user manually calls cleanup funcs if he wants to see cleanup -> suitable for viewer
+           - user manually wraps uses of the library outside global scope -> annoying for small scripts?
+             But maybe don't care about cleanup logs?
+        - Decided to use global object, if user instantiates it twice it throws, automatically cleaned up,
+           can potentially add methods (e.g. log level control). Can be cleaned up before other stuff, but not
+           critical.
+
+
+Sequence and aysnc upload:
+    NOTE:
+    - Want to separate Application logic, CPU loading and GPU loading
+    - Prefetch logix:
+    - Enqueue loads based on what data we think will be useful soon
+    - Cancel loads that we know we will not need anymore (optional optimization)
+    - Can be called directly from the main thread every frame
+    - Should prioritize getting the next frame on screen, then the next and so on
+    - examples policies:
+        - next few frames in a sequence
+        - closest by chunks in a 2D / 3D scene
+    - CPU threadpool:
+    - Responsible for loading data to vulkan mapped CPU buffers -> this can also do pre-processing / conversions
+    - Handles keeping track of which buffer are in use
+    - API:
+        - Enqueue load
+        - Cancel load
+        - Get buffer
+        - Callback when buffer loaded -> this can be used to wake an existing thread
+    - GPU upload thread:
+    - Lives on top of a vulkan queue (ideally transfer, but potentially async compute or graphics)
+    - Responsible for submitting upload commands to the queue and signal a GPU semaphore when done
+    - Notifyies rendering thread when the submission started and with what semaphore, rendering thread will use this to wait until it can submit a command and
+    - Notifies CPU threadpool when the copy is done to release source buffers
+    - API:
+        - enqueue upload
+        - get buffer -> waits and returns semaphore
+        - callback when buffer uploaded
+
+    Plan:
+    - start with sequence example
+    - just do globals and functions
+    - compress into reusable pieces
+
+    Eviction and prefetch policies:
+
+    Eviction:
+    LRU -> requires keeping track of usage, can do this whenever we ask for a frame
+    Queue -> evicts
+
+    Prefetch:
+    Sequence, Spatial
+
+    Maybe threadpool API should be agnostic of this, only knows about free buffers and load requests
+    Then usecase specific abstractions on top keep track of which buffers are used for what.
+    And implement prefetch / eviction policies
+
+Notes on render during resize / move on windows:
+- We prefer to keep main thread drawing because that simplifies things
+- We can trigger extra draws by having a thread spam WM_PAINT to the window, but we would rather do it
+  only when the window is being moved resized, by somehow signaling the spammer thread to start/stop spamming.
+- Technically this is whay WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE is for, but it does not work 100%
+    - It has a delay if you press the bar
+    - Does not detect press + hold of minimize, maximize, close buttons
+- The only solution that seems promising is to capture WM_NCLBUTTONDOWN and implement a state machine
+    Results of running some msg tracing:
+    // On press of bar:
+    //   a1 - WM_NCLBUTTONDOWN     -> mouse button pressed in NC
+    //  112 - WM_SYSCOMMAND        -> with f012 apparently undocumented SC_DRAG (https://stackoverflow.com/questions/3976610/moving-a-caption-less-window-by-using-a-drag-area) -> seems promising
+    //
+    //  -- delay --:
+    //  215 - WM_CAPTURECHANGED    -> hold click anywhere
+    //   24 - WM_GETMINMAXINFO     -> window about to move / resize also promising
+    // 0231 - WM_ENTERSIZEMOVE     -> arrives immediately for resize / move, but later for just press titlebar
+    //
+    // On release of bar:
+    //  215 - WM_CAPTURECHANGED    -> release capture
+    //   46 - WM_WINDOWPOSCHANGING -> pos / size / z about to change, not sure why this happens
+    //  232 - WM_EXITSIZEMOVE      -> arrives instantly in this case
+    //
+    // We could use WM_SYSCOMMAND to detect press of bar. But it does not detect press of minimize, maximize, close buttons. Those
+    // seem to only be detectable through WM_NCLBUTTONDOWN. They also don't trigger anything on release outside other than
+    // WM_CAPTURECHANGED, so we probably need to keep some state and handle WM_CAPTURECHANGED too.
+
+    if (uMsg != 0x7c &&  // WM_STYLECHANGING -> any poll
+        uMsg != 0x7d &&  // WM_STYLECHANGED  -> any poll
+        uMsg != 0x84 &&  // WM_NCHIHITTEST   -> any poll with NC under mouse
+        uMsg != 0x20 &&  // WM_SETCURSOR     -> mouse enter C or NC
+        uMsg != 0xa0 &&  // WM_NCMOUSEMOVE   -> mouse move NC
+        uMsg != 0x2a2 && // WM_NCMOUSELEAVE  -> moues leave
+        1
+    )
+        printf("%p %lx %lx %lx\n", hWnd, uMsg, wParam, lParam);
