@@ -1,0 +1,110 @@
+.. _spkg_tinycss2:
+
+tinycss2: A tiny CSS parser
+===========================
+
+Description
+-----------
+
+A tiny CSS parser
+
+License
+-------
+
+Upstream Contact
+----------------
+
+https://pypi.org/project/tinycss2/
+
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+- :ref:`spkg_webencodings`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    1.2.1
+
+version_requirements.txt::
+
+    tinycss2
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Alpine:
+
+   .. CODE-BLOCK:: bash
+
+       $ apk add py3-tinycss2
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S python-tinycss2
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install tinycss2
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install python3-tinycss2
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python3-tinycss2
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install textproc/py-tinycss2
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-python/tinycss2
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install py-tinycss2
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install python-tinycss2
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install python3-tinycss2
+
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

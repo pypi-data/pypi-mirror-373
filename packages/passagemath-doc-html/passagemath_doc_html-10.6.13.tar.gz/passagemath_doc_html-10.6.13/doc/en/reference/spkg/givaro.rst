@@ -1,0 +1,106 @@
+.. _spkg_givaro:
+
+givaro: C++ library for arithmetic and algebraic computations
+=============================================================
+
+Description
+-----------
+
+Givaro is a C++ library for arithmetic and algebraic computations. Its
+main features are implementations of the basic arithmetic of many
+mathematical entities: Primes fields, Extensions Fields, Finite Fields,
+Finite Rings, Polynomials, Algebraic numbers, Arbitrary precision
+integers and rationals (C++ wrappers over gmp) It also provides
+data-structures and templated classes for the manipulation of basic
+algebraic objects, such as vectors, matrices (dense, sparse,
+structured), univariate polynomials (and therefore recursive
+multivariate).
+
+Website: https://casys.gricad-pages.univ-grenoble-alpes.fr/givaro/
+
+SPKG Repository: https://bitbucket.org/malb/givaro-spkg
+
+License
+-------
+
+-  GNU GPL
+
+
+Upstream Contact
+----------------
+
+-  Clement Pernet
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(MP_LIBRARY)
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    4.2.1
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install givaro
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install libgivaro-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install givaro givaro-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/givaro
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge sci-libs/givaro
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr givaro
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install pkgconfig\(givaro\)
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install givaro-devel
+
+# See https://repology.org/project/givaro/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

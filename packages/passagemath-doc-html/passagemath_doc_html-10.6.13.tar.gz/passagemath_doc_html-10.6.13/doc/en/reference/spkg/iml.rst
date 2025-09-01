@@ -1,0 +1,123 @@
+.. _spkg_iml:
+
+iml: Integer Matrix Library
+===========================
+
+Description
+-----------
+
+IML is a free library of C source code which implements algorithms for
+computing exact solutions to dense systems of linear equations over the
+integers. IML is designed to be used with the ATLAS/BLAS library and GMP
+bignum library.
+
+Written in portable C, IML can be used on both 32-bit and 64-bit
+machines. It can be called from C++.
+
+Website: https://www.cs.uwaterloo.ca/~astorjoh/iml.html
+
+License
+-------
+
+-  GPLv2+
+
+
+Upstream Contact
+----------------
+
+-  Zhuliang Chen z4chen@uwaterloo.ca
+-  Arne Storjohann astorjoh@uwaterloo.ca
+
+Special Update/Build Instructions
+---------------------------------
+
+-  As of version 1.0.4, you need to repackage the upstream tarball
+   using the spkg-src script because there was a bugfix version of 1.0.4
+   reposted upstream without version number bump.
+
+Patches
+~~~~~~~
+
+-  examples.patch: Modified some of the examples.
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(BLAS)
+- $(MP_LIBRARY)
+- :ref:`spkg_pkgconf`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    1.0.4p2.p2
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S iml
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install iml
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install libiml-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install iml iml-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/iml
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge sci-libs/iml
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr iml
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install iml-devel
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install iml-devel
+
+# See https://repology.org/project/iml/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

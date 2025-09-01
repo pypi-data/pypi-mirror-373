@@ -1,0 +1,109 @@
+.. _spkg_m4rie:
+
+m4rie: Arithmetic with dense matrices over GF(2^e)
+==================================================
+
+Description
+-----------
+
+M4RIE: Library for matrix multiplication, reduction and inversion over
+GF(2^k) for 2 <= k <= 10.
+
+License
+-------
+
+-  GNU General Public License Version 2 or later (see src/COPYING)
+
+
+Upstream Contact
+----------------
+
+-  Authors: Martin Albrecht
+-  Email: <m4ri-devel@googlegroups.com>
+-  Website: http://m4ri.sagemath.org
+
+Dependencies
+------------
+
+-  M4RI
+-  Givaro
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- :ref:`spkg_m4ri`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    20250128
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S m4rie
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install m4rie
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install libm4rie-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install m4rie-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/m4rie
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge sci-libs/m4rie
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr m4rie
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install pkgconfig\(m4rie\)
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install m4rie-devel
+
+# See https://repology.org/project/libm4rie/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

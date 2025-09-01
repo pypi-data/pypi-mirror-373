@@ -1,0 +1,90 @@
+.. _spkg_pari_galpol:
+
+pari_galpol: PARI data package for polynomials defining Galois extensions of the rationals
+==========================================================================================
+
+Description
+-----------
+
+PARI package of the GALPOL database of polynomials defining Galois
+extensions of the rationals, accessed by galoisgetpol, galoisgetgroup,
+galoisgetname.
+
+License
+-------
+
+GNU General Public License (GPL version 2 or any later version).
+
+
+Upstream Contact
+----------------
+
+http://pari.math.u-bordeaux.fr/
+
+Dependencies
+------------
+
+-  Installation: None
+-  Runtime: PARI/GP
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    20180625
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S pari-galpol
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install pari-galpol
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install pari-galpol
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/pari_galpol
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install pari-galpol
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install pari-galpol-small
+
+# See https://repology.org/project/pari-galpol/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

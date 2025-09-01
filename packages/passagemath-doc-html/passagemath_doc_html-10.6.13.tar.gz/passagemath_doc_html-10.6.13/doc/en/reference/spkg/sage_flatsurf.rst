@@ -1,0 +1,48 @@
+.. _spkg_sage_flatsurf:
+
+sage_flatsurf: Flat surfaces in SageMath
+========================================
+
+Description
+-----------
+
+SageMath package for studying the geometry of flat surfaces and the
+dynamics of their foliations.
+
+License
+-------
+
+GNU General Public License, version 2
+
+Upstream Contact
+----------------
+
+https://pypi.org/project/sage-flatsurf/
+
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+- $(SAGERUNTIME)
+- :ref:`spkg_surface_dynamics`
+
+Version Information
+-------------------
+
+requirements.txt::
+
+    sage-flatsurf
+
+Equivalent System Packages
+--------------------------
+
+(none known)

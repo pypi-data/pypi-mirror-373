@@ -1,0 +1,72 @@
+.. _spkg_jupyter_jsmol:
+
+jupyter_jsmol: JSmol viewer widget for Jupyter
+==============================================
+
+Description
+-----------
+
+JSmol viewer widget for Jupyter
+
+License
+-------
+
+MIT
+
+Upstream Contact
+----------------
+
+https://pypi.org/project/jupyter-jsmol/
+
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+- :ref:`spkg_ipywidgets`
+- :ref:`spkg_pip`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    2022.1.0
+
+version_requirements.txt::
+
+    jupyter-jsmol
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S jupyter-jsmol
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install jupyter-jsmol
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install science/py-jupyter_jsmol
+
+# See https://repology.org/project/jupyter-jsmol/versions, https://repology.org/project/python:jupyter-jsmol/versions
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

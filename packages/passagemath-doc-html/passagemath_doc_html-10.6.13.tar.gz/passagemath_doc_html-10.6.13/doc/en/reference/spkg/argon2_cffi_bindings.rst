@@ -1,0 +1,95 @@
+.. _spkg_argon2_cffi_bindings:
+
+argon2_cffi_bindings: Low-level CFFI bindings for Argon2
+========================================================
+
+Description
+-----------
+
+Low-level CFFI bindings for Argon2
+
+License
+-------
+
+MIT
+
+Upstream Contact
+----------------
+
+https://pypi.org/project/argon2-cffi-bindings/
+
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+- :ref:`spkg_cffi`
+- :ref:`spkg_setuptools_scm`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    21.2.0
+
+version_requirements.txt::
+
+    argon2-cffi-bindings
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Alpine:
+
+   .. CODE-BLOCK:: bash
+
+       $ apk add py3-argon2-cffi-bindings
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S python-argon2-cffi-bindings
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python-argon2-cffi-bindings
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install security/py-argon2-cffi-bindings
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-python/argon2-cffi-bindings
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install py-argon2-cffi-bindings
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install python-argon2-cffi-bindings
+
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

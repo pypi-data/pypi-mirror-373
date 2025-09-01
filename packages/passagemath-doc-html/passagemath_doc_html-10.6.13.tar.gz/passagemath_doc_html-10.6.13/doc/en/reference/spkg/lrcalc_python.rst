@@ -1,0 +1,69 @@
+.. _spkg_lrcalc_python:
+
+lrcalc_python: Littlewood-Richardson calculator
+===============================================
+
+Description
+-----------
+
+Python bindings for the Littlewood-Richardson Calculator
+
+http://sites.math.rutgers.edu/~asbuch/lrcalc/
+
+License
+-------
+
+GNU General Public License V3
+
+
+Upstream Contact
+----------------
+
+Anders S. Buch (asbuch@math.rutgers.edu)
+
+https://bitbucket.org/asbuch/lrcalc
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+- :ref:`spkg_cython`
+- :ref:`spkg_lrcalc`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    2.1
+
+version_requirements.txt::
+
+    lrcalc
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install python-lrcalc~=2.1
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python3-lrcalc
+
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

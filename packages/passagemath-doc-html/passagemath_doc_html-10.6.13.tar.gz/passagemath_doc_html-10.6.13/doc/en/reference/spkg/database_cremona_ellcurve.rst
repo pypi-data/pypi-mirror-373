@@ -1,0 +1,70 @@
+.. _spkg_database_cremona_ellcurve:
+
+database_cremona_ellcurve: Database of elliptic curves
+======================================================
+
+Description
+-----------
+
+John Cremona's database of elliptic curves
+
+See https://github.com/JohnCremona/ecdata
+
+This is an optional package, not included by default.
+
+License
+-------
+
+Public Domain
+
+Upstream Contact
+----------------
+
+-  Author: John Cremona
+-  Email: john.cremona@gmail.com
+-  Website: http://homepages.warwick.ac.uk/staff/J.E.Cremona/
+
+
+Update Instructions
+-------------------
+
+Get an up-to-date copy of the git repository ecdata from
+https://github.com/JohnCremona/ecdata.
+
+If the cremona database has already been installed, remove
+``SAGE_DATA/cremona/cremona.db``. Then run
+
+The build script expects to find the files in subfolders allcurves,
+allgens, degphi and allbsd of the ecdata folder. It extracts them and
+builds the new cremona.db file from the contents.
+
+Finally, copy ``SAGE_DATA/cremona/cremona.db`` to the src directory of
+the spkg.
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    20190911
+
+Equivalent System Packages
+--------------------------
+
+# See https://repology.org/project/sage-data-cremona-ellcurve/versions, https://repology.org/project/sagemath-database-cremona-elliptic-curves/versions
+
+However, these system packages will not be used for building Sage
+because ``spkg-configure.m4`` has not been written for this package;
+see :issue:`27330` for more information.

@@ -1,0 +1,124 @@
+.. _spkg_numpy:
+
+numpy: Package for scientific computing with Python
+===================================================
+
+Description
+-----------
+
+This package adds numerical linear algebra and other numerical computing
+capabilities to python.
+
+
+Upstream Contact
+----------------
+
+-  https://numpy.org/
+-  Travis Oliphant
+-  Fernando Perez
+-  Brian Granger
+
+Special Update/Build Instructions
+---------------------------------
+
+-  Scipy uses numpy's distutils to control its compilation of fortran
+   code.
+
+   Whenever numpy is updated it is necessary to make sure that scipy
+   still builds ok.
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(BLAS)
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+- :ref:`spkg_cython`
+- :ref:`spkg_gfortran`
+- :ref:`spkg_meson_python`
+- :ref:`spkg_pkgconfig`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    2.2.6
+
+src/pyproject.toml::
+
+    numpy >=1.19
+    numpy >=1.22.4
+
+version_requirements.txt::
+
+    numpy
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S python-numpy
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install numpy
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install python3-numpy
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python3-numpy
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-python/numpy
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install numpy
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install py-numpy
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install python3\$\{PYTHON_MINOR\}-numpy
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install python3-numpy
+
+# See https://repology.org/project/python:numpy/versions
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

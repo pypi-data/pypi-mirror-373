@@ -1,0 +1,142 @@
+.. _spkg_gfortran:
+
+gfortran: Fortran compiler from the GNU Compiler Collection
+===========================================================
+
+Description
+-----------
+
+This package represents the required Fortran compiler.
+
+Officially we support ``gfortran`` from `GNU Compiler Collection (GCC)
+<https://gcc.gnu.org/>`_.  It has also been reported that using ``flang``
+(from LLVM) might work.
+
+You can pass the names of compilers to use to ``./configure`` using
+the environment variables :envvar:`CC`, :envvar:`CXX`, and
+:envvar:`FC`, for C, C++, and Fortran compilers, respectively.
+
+For example, if your C compiler is ``clang``, your C++ compiler is
+``clang++``, and your Fortran compiler is ``flang``, then you would
+need to run::
+
+    $ ./configure CC=clang CXX=clang++ FC=flang
+
+License
+-------
+
+GPL version 2 or version 3
+
+
+Upstream Contact
+----------------
+
+http://gcc.gnu.org/
+
+Special Update/Build Instructions
+---------------------------------
+
+None.
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(MP_LIBRARY)
+- :ref:`spkg_flex`
+- :ref:`spkg_mpc`
+- :ref:`spkg_mpfr`
+- :ref:`spkg_xz`
+- :ref:`spkg_zlib`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    14.2.0
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Alpine:
+
+   .. CODE-BLOCK:: bash
+
+       $ apk add gfortran
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S gcc-fortran
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install fortran-compiler
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install gfortran
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install gcc-gfortran
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install lang/gcc9
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install gfortran
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install gcc10 +gfortran
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr gfortran
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install gcc-fortran
+
+.. tab:: Slackware:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo slackpkg install gcc-gfortran
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install gcc-fortran
+
+# See https://repology.org/project/gfortran/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

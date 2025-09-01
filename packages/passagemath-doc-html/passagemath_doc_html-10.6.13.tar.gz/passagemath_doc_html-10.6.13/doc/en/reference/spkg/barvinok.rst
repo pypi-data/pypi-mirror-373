@@ -1,0 +1,65 @@
+.. _spkg_barvinok:
+
+barvinok: Projections of integer point sets of parametric polytopes
+===================================================================
+
+Description
+-----------
+
+barvinok is a library for counting the number of integer points in
+parametric and non-parametric polytopes as well as projections of such
+sets.
+
+License
+-------
+
+GPL v2
+
+
+Upstream Contact
+----------------
+
+-  https://sourceforge.net/projects/barvinok/
+-  https://groups.google.com/group/isl-development
+
+
+Type
+----
+
+experimental
+
+
+Dependencies
+------------
+
+- :ref:`spkg_isl`
+- :ref:`spkg_ntl`
+- :ref:`spkg_polylib`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    0.41.7
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/barvinok
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install barvinok pkgconfig\(barvinok\)
+
+# See https://repology.org/project/barvinok/versions
+
+However, these system packages will not be used for building Sage
+because ``spkg-configure.m4`` has not been written for this package;
+see :issue:`27330` for more information.

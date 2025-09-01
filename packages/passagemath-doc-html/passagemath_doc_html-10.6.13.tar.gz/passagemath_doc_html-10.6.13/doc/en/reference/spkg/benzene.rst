@@ -1,0 +1,68 @@
+.. _spkg_benzene:
+
+benzene: Generate fusenes and benzenoids with a given number of faces
+=====================================================================
+
+Description
+-----------
+
+Benzene is a program for the efficient generation of all nonisomorphic
+fusenes and benzenoids with a given number of faces. Fusenes are planar
+polycyclic hydrocarbons with all bounded faces hexagons. Benzenoids are
+fusenes that are subgraphs of the hexagonal lattice.
+
+License
+-------
+
+Benzene is licensed under the GNU General Public License v2 or later
+(June 2007)
+
+
+Upstream Contact
+----------------
+
+Benzene was written by Gunnar Brinkmann and Gilles Caporossi. This
+version was adapted by Gunnar Brinkmann and Nico Van Cleemput for
+Grinvin.
+
+http://www.grinvin.org/
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    20130630
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S benzene
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install benzene
+
+# See https://repology.org/project/benzene/versions
+
+However, these system packages will not be used for building Sage
+because ``spkg-configure.m4`` has not been written for this package;
+see :issue:`27330` for more information.

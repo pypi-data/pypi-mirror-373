@@ -1,0 +1,67 @@
+.. _spkg_database_symbolic_data:
+
+database_symbolic_data: Database from the SymbolicData project
+==============================================================
+
+Description
+-----------
+
+The SymbolicData project is set out
+
+-  to develop concepts and tools for profiling, testing and benchmarking
+   Computer Algebra Software
+   (CAS) and
+
+-  to collect and interlink relevant data and activities from different
+   Computer Algebra Communities.
+
+SymbolicData is an
+
+-  inter-community project that has its roots in the activities of
+   different Computer Algebra Communities and
+-  aims at interlinking these activities using modern Semantic Web
+   concepts.
+
+Tools and data are designed to be used both
+
+-  on a local site for special testing and profiling purposes
+-  and to manage a central repository at www.symbolicdata.org.
+
+License
+-------
+
+GNU General Public License
+
+
+Upstream Contact
+----------------
+
+-  Andreas Nareike <nareike@informatik.uni-leipzig.de>
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    20070206
+
+Equivalent System Packages
+--------------------------
+
+# See https://repology.org/project/database-symbolic-data/versions
+
+However, these system packages will not be used for building Sage
+because ``spkg-configure.m4`` has not been written for this package;
+see :issue:`27330` for more information.

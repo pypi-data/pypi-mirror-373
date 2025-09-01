@@ -1,0 +1,151 @@
+.. _spkg_pari:
+
+pari: Computer algebra system for fast computations in number theory
+====================================================================
+
+Description
+-----------
+
+PARI/GP is a widely used computer algebra system designed for fast
+computations in number theory (factorizations, algebraic number theory,
+elliptic curves...), but also contains a large number of other useful
+functions to compute with mathematical entities such as matrices,
+polynomials, power series, algebraic numbers etc., and a lot of
+transcendental functions. PARI is also available as a C library to allow
+for faster computations.
+
+Originally developed by Henri Cohen and his co-workers (Université
+Bordeaux I, France), PARI is now under the GPL and maintained by Karim
+Belabas with the help of many volunteer contributors.
+
+License
+-------
+
+GPL version 2+
+
+
+Upstream Contact
+----------------
+
+-  http://pari.math.u-bordeaux.fr/
+
+Dependencies
+------------
+
+-  Perl
+-  MPIR or GMP
+-  Readline
+-  GNU patch (shipped with Sage)
+
+
+Special Update/Build Instructions
+---------------------------------
+
+See patches/README.txt for a list of patches.
+
+The current upstream tarball was created from the PARI git repository by
+running "make snapshot".
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(MP_LIBRARY)
+- :ref:`spkg_pari_galdata`
+- :ref:`spkg_pari_seadata_small`
+- :ref:`spkg_readline`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    2.17.2
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Alpine:
+
+   .. CODE-BLOCK:: bash
+
+       $ apk add pari-dev
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S pari pari-galdata pari-seadata pari-elldata \
+             pari-galpol
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install pari=\*=\*_pthread pari-elldata pari-galdata \
+             pari-galpol pari-seadata
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install pari-gp2c libpari-dev pari-doc pari-elldata \
+             pari-galdata pari-galpol pari-seadata
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install pari-devel pari-gp --setopt=tsflags= pari-galdata \
+             pari-galpol pari-seadata pari-elldata
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/pari
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge sci-mathematics/pari sci-mathematics/pari-data
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install pari pari-elldata pari-galdata pari-galpol pari-seadata
+
+.. tab:: MacPorts:
+
+   No package needed.
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr pari
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install pari-devel pari-gp
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install pari pari-devel pari-elldata-small pari-galdata \
+             pari-galpol-small pari-seadata
+
+# See https://repology.org/project/pari/versions, https://repology.org/project/pari-gp/versions, https://repology.org/project/pari-data/versions, https://repology.org/project/pari-elldata/versions, https://repology.org/project/pari-galdata/versions, https://repology.org/project/pari-galpol/versions, https://repology.org/project/pari-nftables/versions, https://repology.org/project/pari-seadata/versions, https://repology.org/project/pari-seadata-big/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

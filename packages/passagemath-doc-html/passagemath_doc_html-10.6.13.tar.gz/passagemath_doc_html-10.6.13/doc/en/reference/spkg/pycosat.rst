@@ -1,0 +1,93 @@
+.. _spkg_pycosat:
+
+pycosat: SAT solver picosat with Python bindings
+================================================
+
+Description
+-----------
+
+PicoSAT is a popular SAT solver written by Armin Biere in pure C. This
+package provides efficient Python bindings to picosat on the C level,
+i.e. when importing pycosat, the picosat solver becomes part of the
+Python process itself. For ease of deployment, the picosat source
+(namely picosat.c and picosat.h) is included in this project. These
+files have been extracted from the picosat source.
+
+License
+-------
+
+MIT
+
+
+Upstream Contact
+----------------
+
+- PicoSAT: http://fmv.jku.at/picosat/
+- pycosat: https://github.com/ContinuumIO/pycosat
+
+Special Update/Build Instructions
+---------------------------------
+
+None.
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    0.6.3
+
+version_requirements.txt::
+
+    pycosat >=0.6.3
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Alpine:
+
+   .. CODE-BLOCK:: bash
+
+       $ apk add py3-pycosat
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S python-pycosat
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install pycosat
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python3-pycosat
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/py-pycosat
+
+# See https://repology.org/project/pycosat/versions, https://repology.org/project/python:pycosat/versions
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

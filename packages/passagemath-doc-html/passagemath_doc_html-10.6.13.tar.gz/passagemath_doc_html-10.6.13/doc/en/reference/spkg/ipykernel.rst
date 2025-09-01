@@ -1,0 +1,113 @@
+.. _spkg_ipykernel:
+
+ipykernel: IPython Kernel for Jupyter
+=====================================
+
+Description
+-----------
+
+This package provides the IPython kernel for Jupyter.
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+- :ref:`spkg_appnope`
+- :ref:`spkg_comm`
+- :ref:`spkg_debugpy`
+- :ref:`spkg_hatchling`
+- :ref:`spkg_ipython`
+- :ref:`spkg_jupyter_client`
+- :ref:`spkg_jupyter_core`
+- :ref:`spkg_matplotlib_inline`
+- :ref:`spkg_nest_asyncio`
+- :ref:`spkg_packaging`
+- :ref:`spkg_psutil`
+- :ref:`spkg_pyzmq`
+- :ref:`spkg_tornado`
+- :ref:`spkg_traitlets`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    6.29.5
+
+src/pyproject.toml::
+
+    ipykernel >=5.2.1
+
+version_requirements.txt::
+
+    ipykernel
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S python-ipykernel
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install ipykernel
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install python3-ipykernel
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python3-ipykernel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install devel/py-ipykernel
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-python/ipykernel
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install py-ipykernel
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install python3\$\{PYTHON_MINOR\}-ipykernel
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install python3-ipython_ipykernel
+
+# See https://repology.org/project/python:ipykernel/versions
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.
