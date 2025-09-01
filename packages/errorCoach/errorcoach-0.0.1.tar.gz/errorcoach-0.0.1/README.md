@@ -1,0 +1,110 @@
+# errorCoach
+
+A friendly Python library that translates error messages into plain English explanations with helpful solutions.
+
+## What it does
+
+When Python throws an error, it uses technical jargon that can be confusing for beginners. Error Coach intercepts these error messages and provides:
+
+- **Simple explanations** of what went wrong
+- **Practical solutions** to fix the problem
+- **Clean, readable formatting** that's easy to understand
+
+## Installation (through pip)
+
+```bash
+pip install errorCoach
+```
+
+## Quick Start
+
+Just import and enable Error Coach at the top of your Python script:
+
+```python
+from errorCoach import coach
+coach.enable()
+
+# Now your errors will be much more helpful!
+x = 5 + "hello"  # This will show a friendly explanation
+```
+
+## Example
+
+**Before** (standard Python error):
+
+```
+TypeError: unsupported operand type(s) for +: 'int' and 'str'
+```
+
+**After** (with Error Coach):
+
+```
+-------------------- Error-Coach --------------------
+Error: TypeError: unsupported operand type(s) for +: 'int' and 'str'
+What went wrong: You tried to add a number (int) and text (str).
+How to Fix: Convert one using int() or str().
+-----------------------------------------------------
+```
+
+## Supported Error Types
+
+Error Coach currently handles these common Python errors:
+
+### Type Errors
+
+- Adding numbers and strings
+- Calling non-callable objects
+- String/number concatenation issues
+
+### Index Errors
+
+- List index out of range
+- String index out of range
+
+### Name Errors
+
+- Undefined variables
+- Typos in variable names
+
+### Key/Attribute Errors
+
+- Missing dictionary keys
+- Non-existent object attributes
+
+### Value Errors
+
+- Invalid int() conversions
+- Math domain errors
+
+### Syntax Errors
+
+- Unclosed strings
+- Missing colons/parentheses
+- Indentation problems
+
+### Other Common Errors
+
+- Division by zero
+- File not found
+- Missing modules
+
+## How it works
+
+Error Coach uses Python's `sys.excepthook` to intercept exceptions before they're displayed. It matches error messages against a database of regex patterns and provides human-friendly explanations when matches are found.
+
+For unrecognized errors, it falls back to Python's default error display.
+
+## Contributing
+
+Found an error that should be explained better? Contributions are welcome! The error patterns and explanations are stored in the `ERRORS` dictionary - just add new patterns following the existing format.
+
+## License
+
+MIT License - feel free to use this in your projects and educational materials.
+
+## Perfect for
+
+- **Learning Python** - Get helpful explanations instead of cryptic errors
+- **Teaching Python** - Help students understand what went wrong
+- **Debugging** - Quickly identify common mistakes
+- **Code reviews** - Better understand errors in others' code
