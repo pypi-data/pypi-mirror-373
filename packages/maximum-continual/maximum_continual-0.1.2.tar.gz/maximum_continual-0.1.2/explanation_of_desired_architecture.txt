@@ -1,0 +1,47 @@
+@vllm_backend.py @https://docs.vllm.ai/en/stable/ 
+
+So for prediction, I want to use a vllm backend that loads a lora as in the above, and for saving, I want to use the update_model_modal
+
+The MaximumContinual library should work as the following:
+
+use Tool and localpythonexecutor from smolagents
+@https://github.com/huggingface/smolagents/blob/main/src/smolagents/local_python_executor.py
+https://huggingface.co/docs/smolagents/en/tutorials/tools
+class PredictionResponseT(BaseModel):
+    final_response : BaseModel
+    messages : list[MessageT]
+
+client = MaximumContinual()
+model = client.init_model(
+        base_model="Qwen/Qwen3-14B", 
+        model_id="lukas-favorite-model"
+    )
+prediction : PredictionResponseT = model.predict(messages, tools=[tools], final_answer_model : BaseModel)
+
+How predict should work:
+load the latest lora for the model_id, and use litellm to call the vllm endpoint.
+https://docs.litellm.ai/docs/completion/function_call
+https://docs.litellm.ai/docs/providers/vllm
+https://docs.litellm.ai/docs/
+
+How the agenttic part works:
+
+Give the model a single tool called code_executor. Take the python code from that and use the localpythonexecutor to execute it, loading in the tools passed to model.predict
+Loop on the model until it calls the final_answer tool. Define a final_answer tool as something that takes a dict input and parses it with final_answer_model, a pydantic model and returns that.
+
+Then collect the entire messages and the final answer and return that as a PredictionResponseT.
+
+Then have a second function, based on the update_model_modal in @modal_backend.py
+
+This should work as the following:
+
+class PredictionResponseWithRewardT(BaseModel):
+   prediction : PredictionResponseT
+   reward : float
+
+model.update(
+    predictions=PredictionResponseWithRewardT
+)
+
+
+Define abstract classes and write a nice library with pytests in a folder called maximum_continual, use uv for package management. 
