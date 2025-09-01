@@ -1,0 +1,161 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Create venv and install maturin (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          python -m venv .venv
+          VENV_PY=./.venv/bin/python
+          $VENV_PY -m pip install --upgrade pip
+          $VENV_PY -m pip install maturin
+          echo "VENV_PY=$VENV_PY" >> $GITHUB_ENV
+
+      - name: Create venv and install maturin (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          $VENV = '.\\.venv\\Scripts\\python.exe'
+          & $VENV -m pip install --upgrade pip
+          & $VENV -m pip install maturin
+          Write-Output "VENV_PY=$VENV" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build wheels (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          $VENV_PY -m maturin build --release --out dist
+
+      - name: Build wheels (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $VENV = $env:VENV_PY
+          & $VENV -m maturin build --release --out dist
+
+      - name: Upload wheels artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: dist/*.whl
+
+  sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Create venv and install maturin (sdist)
+        run: |
+          python -m venv .venv
+          VENV_PY=./.venv/bin/python
+          $VENV_PY -m pip install --upgrade pip
+          $VENV_PY -m pip install maturin
+          echo "VENV_PY=$VENV_PY" >> $GITHUB_ENV
+
+      - name: Build sdist (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          $VENV_PY -m maturin sdist --out dist
+
+      - name: Build sdist (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $VENV = $env:VENV_PY
+          & $VENV -m maturin sdist --out dist
+
+      - name: Upload sdist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  publish:
+    name: Publish to PyPI
+    needs: [build-wheels, sdist]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/bustapi
+    permissions:
+      contents: read
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Flatten downloaded artifacts
+        run: |
+          echo "Flattening artifacts into dist/ (move files from nested artifact folders)"
+          # move any files from subdirectories into dist/
+          find dist -mindepth 2 -type f -exec mv -t dist {} + || true
+          # remove any now-empty directories created by download-artifact
+          find dist -type d -empty -delete || true
+
+      - name: Display collected files
+        run: |
+          echo "Collected files:"
+          find dist -type f -maxdepth 2 -print
+
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          packages-dir: dist
+          skip-existing: true
+      - name: Verify dist contents
+        run: |
+          echo "Checking dist/ files before publish"
+          if [ -z "$(ls -A dist 2>/dev/null)" ]; then
+            echo "No files in dist/ to publish - aborting"
+            ls -la dist || true
+            exit 1
+          fi
