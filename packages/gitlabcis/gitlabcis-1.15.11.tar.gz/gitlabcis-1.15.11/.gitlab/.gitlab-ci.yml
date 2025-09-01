@@ -1,0 +1,277 @@
+# -----------------------------------------------------------------------------
+
+image: python:3.12
+
+# -----------------------------------------------------------------------------
+
+workflow:
+  auto_cancel:
+    on_job_failure: all
+
+# -----------------------------------------------------------------------------
+# Stages:
+# -----------------------------------------------------------------------------
+
+stages:
+  - deps
+  - lint
+  - test
+  - build
+  - compatibility
+  - release
+
+# -----------------------------------------------------------------------------
+# Generate SBOM:
+# -----------------------------------------------------------------------------
+
+# create job required by the DS analyzer to create pipdeptree.json
+# https://docs.gitlab.com/user/application_security/dependency_scanning/dependency_scanning_sbom/#pip
+
+dependency-setup:
+  stage: deps
+  script:
+    - make install
+    - make deps
+  artifacts:
+    when: on_success
+    paths: ["**/pipdeptree.json"]
+    access: developer
+  rules:
+    - when: always
+
+# -----------------------------------------------------------------------------
+# Security Scanning:
+# -----------------------------------------------------------------------------
+
+include:
+  # Sec templates:
+  - template: Security/SAST.gitlab-ci.yml
+  - component: $CI_SERVER_FQDN/components/dependency-scanning/main@0
+  - template: Security/Secret-Detection.gitlab-ci.yml
+
+sast:
+  stage: test
+  interruptible: true
+  needs: []
+
+bandit:
+  stage: test
+  interruptible: true
+  script:
+    - make install
+    - venv/bin/tox -e bandit
+  rules:
+    - when: always
+
+# -----------------------------------------------------------------------------
+# Linting tests:
+# -----------------------------------------------------------------------------
+
+commit:
+  stage: lint
+  image: node:latest
+  script:
+    - npm install -g @commitlint/cli @commitlint/config-angular
+    # get a copy of main
+    - git fetch origin $CI_MERGE_REQUEST_TARGET_BRANCH_NAME
+    # ensure that the angular commit msg type is followed
+    - git log --pretty=format:%s $CI_MERGE_REQUEST_DIFF_BASE_SHA..$CI_COMMIT_SHA | commitlint --config .commitlintrc
+  only:
+    - merge_requests
+
+renovate:
+  stage: lint
+  image: node:23
+  script:
+    - npm install -g renovate
+    - renovate-config-validator
+  rules:
+    - changes:
+        - renovate.json
+
+docs:
+  stage: lint
+  image: node:latest
+  script:
+    - npm install -g markdownlint-cli
+    - markdownlint **/*.md
+  rules:
+    - when: always
+
+codebase:flake8:
+  stage: lint
+  interruptible: true
+  script:
+    - make install
+    - venv/bin/tox -e flake8
+  rules:
+    - when: always
+
+benchmarks:baseline:
+  stage: lint
+  interruptible: true
+  script:
+    - make install
+    - venv/bin/tox -e baseline
+  rules:
+    - when: always
+
+benchmarks:yamllint:
+  stage: lint
+  interruptible: true
+  script:
+    - make install
+    - venv/bin/tox -e yamllint
+  rules:
+    - when: always
+
+codebase:benchmarks:
+  stage: lint
+  interruptible: true
+  script:
+    - make install
+    - venv/bin/tox -e benchmarks
+  rules:
+    - when: always
+
+# -----------------------------------------------------------------------------
+# Build:
+# -----------------------------------------------------------------------------
+
+build:
+  stage: build
+  interruptible: true
+  variables:
+    COSIGN_YES: true
+    COSIGN_VERSION: 2.4.1
+  id_tokens:
+    SIGSTORE_ID_TOKEN:
+      aud: sigstore
+  before_script:
+    - apt-get install wget
+    - wget -q https://github.com/sigstore/cosign/releases/download/v$COSIGN_VERSION/cosign-linux-amd64 -O /usr/local/bin/cosign
+    - chmod +x /usr/local/bin/cosign
+  script:
+    - make clean
+    - make install
+    - make build
+    - cosign sign-blob dist/gitlabcis-*.tar.gz --bundle cosign.bundle --output-signature gitlabcis.sig
+    - venv/bin/twine check dist/*
+  rules:
+    - when: always
+  artifacts:
+    untracked: false
+    when: on_success
+    access: all
+    expire_in: 7 days
+    paths:
+      - dist/*
+      - cosign.bundle
+      - gitlabcis.sig
+
+# -----------------------------------------------------------------------------
+# Code coverage:
+# -----------------------------------------------------------------------------
+
+coverage:
+  stage: test
+  interruptible: true
+  script:
+    - make install
+    - venv/bin/tox -e cover
+  coverage: '/TOTAL.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  rules:
+    - when: always
+
+# -----------------------------------------------------------------------------
+# Compatibility tests:
+# -----------------------------------------------------------------------------
+
+python:3.13:
+  stage: compatibility
+  image: python:3.13
+  script:
+    - make install
+    - venv/bin/tox -e py313
+  rules:
+    - when: always
+
+python:3.12:
+  stage: compatibility
+  image: python:3.12
+  script:
+    - make install
+    - venv/bin/tox -e py312
+  rules:
+    - when: always
+
+python:3.11:
+  stage: compatibility
+  image: python:3.11
+  script:
+    - make install
+    - venv/bin/tox -e py311
+  rules:
+    - when: always
+
+python:3.10:
+  stage: compatibility
+  image: python:3.10
+  script:
+    - make install
+    - venv/bin/tox -e py310
+  rules:
+    - when: always
+
+python:3.9:
+  stage: compatibility
+  image: python:3.9
+  script:
+    - make install
+    - venv/bin/tox -e py39
+  rules:
+    - when: always
+
+# -----------------------------------------------------------------------------
+# GitLab & Pypi release using python-semantic-release
+# -----------------------------------------------------------------------------
+
+release:
+  variables:
+    GIT_DEPTH: 0
+    GIT_STRATEGY: "clone"
+    TWINE_USERNAME: __token__
+    TWINE_PASSWORD: $PYPI_TOKEN
+  stage: release
+  script:
+    # ensure we don't have a detatched head in the pipeline
+    # and that there is no untracked files in the dir
+    # remove previous build files as we will overwrite if there's a new version:
+    - git stash -u && git checkout main && git fetch --all && rm dist/**
+
+    # install release deps
+    - python3 -m pip uninstall gitlabcis python-gitlab -y
+    - python3 -m pip install setuptools==76.0 wheel==0.45.1 build==1.2.2.post1 setuptools-scm==8.2.0 twine==6.1.0 python-semantic-release==9.8.8
+
+    # publish a new release (only if the commit msg matches)
+    - semantic-release version && semantic-release publish
+
+    # Check if there are files in the /dist folder
+    # this only will occur if semantic-release wants to publish a new version:
+    - if [ -z "$(ls -A dist)" ]; then
+        echo "No version to publish";
+        exit 0;
+      else
+        echo "Publishing new version";
+        twine upload --config-file .pypirc --repository pypi --verbose dist/*;
+        export TWINE_USERNAME="gitlab-ci-token" && export TWINE_PASSWORD="$CI_JOB_TOKEN";
+        twine upload --config-file .pypirc --repository gitlab --verbose dist/*;
+      fi
+
+  rules:
+    # only run on main branch
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    # skip the job if it's triggered by a release commit
+    - if: '$CI_COMMIT_MESSAGE =~ /^chore\(release\): bump version/'
+      when: never
