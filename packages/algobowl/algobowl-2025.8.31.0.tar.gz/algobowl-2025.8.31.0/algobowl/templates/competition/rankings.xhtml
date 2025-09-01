@@ -1,0 +1,169 @@
+<html py:extends="master.xhtml" py:strip="True">
+  <py:block name="title">
+    Rankings - ${competition.name}
+  </py:block>
+  <body py:block="body" py:strip="True">
+    <?python
+from algobowl.model import VerificationStatus
+
+def cell_color(iput, ent):
+    if iput not in ent.input_ranks.keys():
+        return "bg-warning"
+    if ent.input_ranks[iput].vdiffer:
+        return "bg-info vdiffer"
+    return {
+        VerificationStatus.accepted: "bg-success text-light",
+        VerificationStatus.rejected: "bg-danger text-light",
+        VerificationStatus.waiting: "bg-secondary text-light",
+    }[ent.input_ranks[iput].verification]
+
+def tooltip_attrs(iput, ent):
+    if iput not in ent.input_ranks.keys():
+        return {'data-toggle': 'tooltip', 'title': 'Nothing submitted'}
+    st = ent.input_ranks[iput]
+
+    if st.vdiffer:
+        return {'data-toggle': 'tooltip',
+                'title': 'Ground truth differs from student verification'}
+
+    if st.verification is VerificationStatus.rejected:
+        return {'data-toggle': 'tooltip', 'title': 'Rejected'}
+
+    if st.score is not None:
+        return {'data-toggle': 'tooltip', 'title': st.score}
+
+    return {}
+    ?>
+
+    <div class="container">
+      <h1 class="mb-3">
+        Rankings: ${competition.name}
+        <py:if test="ground_truth">
+          (Ground Truth)
+        </py:if>
+      </h1>
+      <div class="mb-2" py:if="ground_truth">
+        <strong>Verification Accuracy:</strong>
+        ${'{:.2f}'.format(verification_accuracy * 100)}%
+      </div>
+      <div py:if="admin or show_incognito_option"
+           class="admin-rankings-controls mb-3">
+        <py:if test="admin">
+          <a href="?ground_truth=t${'&amp;incognito=t' if incognito else ''}"
+             class="btn btn-info"
+             py:if="not ground_truth">
+            <i class="fas fa-user-secret fa-fw"></i>
+            View Ground Truth
+          </a>
+          <a href="?${'incognito=t' if incognito else ''}"
+             class="btn btn-info"
+             py:if="ground_truth">
+            <i class="fas fa-user-check fa-fw"></i>
+            View Student Verifications
+          </a>
+          <a href="${tg.request.path + '/grade'}"
+             class="btn btn-info"
+             py:if="asbool(tg.config['site.edu'])">
+            <i class="fas fa-marker fa-fw"></i>
+            Grading Table
+          </a>
+          <a href="${tg.request.path + '/reverify'}"
+             class="btn btn-info">
+            <i class="fas fa-sync-alt fa-fw"></i>
+            Recompute Ground Truths
+          </a>
+        </py:if>
+        <a href="?incognito=t${'&amp;ground_truth=t' if ground_truth else ''}"
+           class="btn btn-info"
+           py:if="incognito_teams and not incognito">
+          <i class="fas fa-user-secret fa-fw"></i>
+          Show Incognito Teams
+        </a>
+        <a href="?${'ground_truth=t' if ground_truth else ''}"
+           class="btn btn-info"
+           py:if="incognito_teams and incognito">
+          <i class="fas fa-undo-alt fa-fw"></i>
+          Hide Incognito Teams
+        </a>
+      </div>
+      <div py:if="open_verification" class="card mt-3 mb-3">
+        <div class="card-body">
+          <h4 class="card-title">
+            Open Verification is Active
+          </h4>
+          <p class="card-text">
+            Click on any output to download and run against your verifier.
+            If you believe there to be a verification error, use the linked
+            page to submit a protest. Incorrect protests will count as one
+            penalty against your group.
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="container-fluid table-responsive">
+      <table class="table table-striped rankings-table">
+        <thead>
+          <tr>
+            <th>Group</th>
+            <th py:for="iput in inputs"
+                class="${'bg-primary text-white' if iput.group in my_groups else ''}">
+              <py:if test="show_input_downloads">
+                <a href="${iput.url}"
+                   class="${'text-white' if iput.group in my_groups else ''}"
+                   py:content="iput.group_id"></a>
+              </py:if><py:else>
+                ${iput.group_id}
+              </py:else>
+            </th>
+            <th>Σ Ranks</th>
+            <th>Penalty</th>
+            <th>Place</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr py:for="group, ent in sorted(groups.items(), key=lambda t: t[1])"
+              class="${'font-weight-bold' if group in my_groups else ''}">
+            <td class="truncate-small">
+              <i py:if="group.incognito" class="fas fa-user-secret" />
+              ${group.name}
+            </td>
+            <td py:for="iput in inputs"
+                class="${cell_color(iput, ent)} ${'font-weight-bold' if iput.group in my_groups else ''}"
+                py:attrs="tooltip_attrs(iput, ent)">
+              <py:if test="iput in ent.input_ranks.keys()">
+                <py:with vars="st=ent.input_ranks[iput]">
+                  <py:def function="cell_text(st)">
+                    <py:if test="st.verification.name == 'rejected'">
+                      R
+                    </py:if><py:else>
+                      ${st.rank}
+                    </py:else>
+                  </py:def>
+                  <a py:if="st.output"
+                     href="${request.path}/ov/${st.output.id}"
+                     class="table-download-link"
+                     py:content="cell_text(st)" />
+                  <span py:if="not st.output"
+                        py:content="cell_text(st)" />
+                </py:with>
+              </py:if><py:else>
+                N
+              </py:else>
+            </td>
+            <td py:content="ent.sum_of_ranks"></td>
+            <td py:content="ent.penalties"></td>
+            <td>
+              ${ent.place}
+              <small class="score-rejects-total" py:if="ent.reject_count">
+                (${ent.score}+${ent.reject_count}R)
+              </small>
+              <small class="score-rejects-total" py:if="not ent.reject_count">
+                (${ent.score})
+              </small>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </body>
+</html>
