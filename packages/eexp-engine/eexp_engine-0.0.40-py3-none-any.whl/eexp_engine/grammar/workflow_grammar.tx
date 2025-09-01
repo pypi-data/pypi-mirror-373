@@ -1,0 +1,187 @@
+Root:
+        ('package' name=ID ';')?
+        component*=Component
+;
+
+Component:  Workflow | AssembledWorkflow | Experiment;
+
+Workflow:
+    'workflow' name=ID '{'
+        elements*=Element
+    '}'
+;
+
+// Note: StartAndEndEvent has to be come BEFORE StartEvent in the next line
+Element:  Node | Data | ConfigureData |  StartAndEndEvent | StartEvent | EndEvent | TaskLink | ConditionLink | DataLink | GroupTask | Comment;
+
+Node:
+    Task | ConfigureTask | Operator;
+
+StartAndEndEvent:
+    'START'
+    '->'
+    (nodes=[Node] '->')+
+    'END'
+    ';'
+;
+
+StartEvent:
+    'START'
+    ('->' nodes+=[Node])+
+    ';'
+;
+
+EndEvent:
+    (nodes=[Node] '->')+
+    'END'
+    ';'
+;
+
+TaskLink:
+    initial_node=[Node]
+    ('->' nodes+=[Node])+
+    ';'
+;
+
+Task:
+    'task' name=ID '{'
+        ('param' parameters=ID ('=' values=INT | STRING | FLOAT | BOOL | "null")* ';')*
+        ('implementation' filename=STRING';' | 'subworkflow' subworkflow=STRING';')?
+    '}' |
+
+    'task' name=ID ';'
+    ;
+
+// have a seperate grammar for configure task within workflows (line 14)
+
+ConfigureTask:
+    'task' task=[Task]'{'
+        ('param' parameters=ID ('=' values=INT | STRING | FLOAT | BOOL | "null")* ';')*
+        ('implementation' filename=STRING';' | 'subworkflow' subworkflow=STRING';')?
+    '}';
+
+ConfigureData:
+    'configure data' alias=[Data] '{'
+        ('path' path=STRING';' |
+        'name' name=STRING';' 'project' project=STRING';' |
+        'name' name=STRING';' |
+        'project' project=STRING';'
+        )
+    '}';
+
+Operator: 'define operator' name=ID ';';
+
+Data: 'define data' name=ID '[''data=' data*=[Value][','] '];'  | 'define input data' name=ID ';' | 'define output data' name=ID ';' ;
+
+Value: STRING | INT | FLOAT | BOOL | "null";
+
+DataLink:
+    firstData=[Data] '-->' secondNode=[Node] '.' secondData1=ID ';' |
+    firstNode=[Node] '.' firstData2=ID '-->' secondNode=[Node] '.' secondData2=ID ';' |
+    firstNode=[Node] '.' firstData3=ID '-->' secondData=[Data] ';'
+;
+
+ConditionLink: from_node=[Node] '->' condition=STRING '?' if_node=[Node]  ':' else_node=[Node] '->' continuation_Node=[Node] ';';
+
+GroupTask:  'group' name=ID '{' node+=[Node]* '};' ;
+
+AssembledWorkflow:
+    'workflow' name=ID 'from' parent_workflow=[Workflow] '{'
+        (tasks=ConfigureTask)*
+    '}';
+
+Experiment:
+    'experiment' name=ID '{'
+        (intent='intent' intent_name=ID ';')?
+        (control=Control)*
+        experimentNode*=ExperimentNode
+    '}';
+
+ExperimentNode:  ExperimentControlTask |  ExperimentControlInteraction | SpaceConfig;
+
+ExperimentControlTask:
+    'task' name=ID '{'
+        ('implementation' implementation=STRING';' | 'subworkflow' subworkflow=STRING';')
+        (data=ExperimentData)*
+    '}';
+
+ExperimentControlInteraction:
+    'interaction' name=ID '{'
+        ('implementation' implementation=STRING';' | 'subworkflow' subworkflow=STRING';')
+        (data=ExperimentData)*
+    '}';
+
+ExperimentData:
+    'input data' name=ID '{'
+        'path' path=STRING';'
+    '}';
+
+SpaceConfig:
+    'space' name=ID 'of' assembled_workflow=[AssembledWorkflow] '{'
+        'strategy' strategy_name=Strategy ';'
+        ('runs' '=' runs=INT ';')?
+        (vps=VP)*
+        ('filter' filter_function=STRING ';')?
+        ('generator' generator_function=STRING ';')?
+        (tasks=ESpaceTaskConfiguration)*
+    '}'|
+    'space' name=ID 'of' assembled_workflow=[Workflow] '{'
+        'strategy' strategy_name=Strategy ';'
+    '}';
+
+Strategy: 'gridsearch' |  'randomsearch' | 'singlerun';
+
+
+VP:
+    'param_values' vp_name=ID '=' vp_values=VP_value
+;
+
+VP_value: ENUM | RANGE;
+
+ENUM:
+    'enum(' values+=INT [','] ')' ';' |
+    'enum(' values+=STRING [','] ')' ';' |
+    'enum(' values+=FLOAT [','] ')' ';'
+;
+
+RANGE:
+    'range(' minimum=INT ',' maximum=INT ')' ';' |
+    'range(' minimum=INT ',' maximum=INT',' step=INT ');'
+
+;
+
+
+ESpaceTaskConfiguration:
+    'task' task=[Task] '{'
+         (config=ParameterConfiguration)*
+    '}';
+
+
+ParameterConfiguration: 'param' param_name=ID '=' vp=ID ';';
+
+Control:
+        'control' '{'
+               (expNode=[ExperimentNode]';')?
+               explink*=ExpLink
+        '}';
+
+ExpLink:  RegularExpLink | ConditionalExpLink;
+
+RegularExpLink:
+    'START' '->' (nodes+=ExperimentControlNode '->')+ 'END' ';' |
+    'START' ('->' start_nodes+=ExperimentControlNode)+ ';' |
+    (end_nodes+=ExperimentControlNode '->')+ 'END' ';' |
+    first_node=ExperimentControlNode ('->' other_nodes+=ExperimentControlNode)+ ';'
+;
+
+ConditionalExpLink:
+    from_node=ExperimentControlNode '?->' to_node=ExperimentControlNode '{' 'condition' condition=STRING '}' ';'
+;
+
+ExperimentControlNode:
+    single_node=[ExperimentNode] |
+    '(' single_node=[ExperimentNode] ')' |
+    '(' node_one=[ExperimentNode] ('||' rest_nodes+=[ExperimentNode])+ ')'
+;
+
+Comment: /\/\/.*$/;
