@@ -1,0 +1,102 @@
+#!/bin/sh
+
+# Run the system python.
+#
+# This is only for use by the build toolchain.
+#
+# (It has nothing to do with the python3 that configure --with-system-python3
+# is looking for in build/pkgs/python3/spkg-configure.m4.)
+
+if [ -z "$SAGE_ORIG_PATH" ]; then
+    # If not we're running from within sage-env just set the existing path
+    SAGE_ORIG_PATH="$PATH"
+fi
+IFS=':'
+NEW_PATH=""
+for path in $SAGE_ORIG_PATH
+do
+    case "$path" in
+        */.pyenv/shims*);;
+        *) NEW_PATH="$NEW_PATH$path:";;
+    esac
+done
+unset IFS
+SAGE_ORIG_PATH=${NEW_PATH%%':'}
+# In particular, it is invoked by "bootstrap -d" for sage-download-file,
+# i.e., before a configure run, and by "sage-spkg", also for sage-download-file.
+# So it needs to find a python that has the urllib module.
+# For example, on Debian buster, the python3-minimal package does NOT provide it.
+#
+# Also, Issue #20023 removed the vendored argparse library from sage_bootstrap,
+# so we test that python is new enough (>= 2.7) to run it.
+#
+# See https://github.com/sagemath/sage/issues/29090
+
+# Issue #29890: Our first choice is "python", not "python3". This is to avoid
+# a defect of sage_bootstrap on macOS regarding SSL URLs.
+
+# Issue #30177: Also check for hashlib.sha1 to guard against broken python2
+# from old homebrew installations.  Also check whether the current directory
+# is accessible by this python; this is to guard on WSL against Pythons
+# installed somewhere else in Windows.
+
+# Issue #29285: Do not accept pythons that manipulate PATH, such as
+# the shims provided by pyenv.
+
+# Issue #30008: Make it work even if the environment tries to sabotage UTF-8
+# operation in Python 3.0.x-3.6.x by setting LC_ALL=C or similar.
+
+if [ "$LC_ALL" = "C" -o "$LANG" = "C" -o "$LC_CTYPE" = "C" ]; then
+    LC_ALL=$(locale -a | grep -E -i '^(c|en_us)[-.]utf-?8$' | head -n 1)
+    LANG=$LC_ALL
+    export LC_ALL
+    export LANG
+fi
+
+# Make utf-8 stdout work even on Python 3.6
+export PYTHONIOENCODING=utf-8
+
+PYTHONS="python python3 python3.14 python3.13 python3.12 python3.11 python3.10 python3.9 python3.8 python3.7 python2.7 python3.6 python2"
+
+# MSYS has 2 different Pythons installed when targeting mingw: a cygwin-based Python located
+# at /usr/bin/python that uses the cygwin APIs, and a Windows-based Python located at
+# /mingw64/bin/python that uses the regular Windows APIs
+#
+# The latter will be first on PATH and is what we want to use as the Python for running sage itself,
+# but the code in the build system is expecting filepaths that work from the current shell to
+# also work when passed to Python (see the CHECK_PATH check below), so make sure that we find the
+# cygwin Python for bootstrapping
+if [ -n "$MSYSTEM" ]; then
+    PYTHONS="/usr/bin/python $PYTHONS"
+fi
+
+# If curl is present, sage_bootstrap uses it instead of the code using FancyURLopener.
+if command -v curl >/dev/null; then
+    URLLIB_REQUEST_TEST=0
+else
+    URLLIB_REQUEST_TEST="from urllib.request import FancyURLopener"
+fi
+
+# Trac #32405: Prefer a Python that provides ssl with SNI, which allows developers
+# Issue #32405: Prefer a Python that provides ssl with SNI, which allows developers
+# to download from upstream URLs (configure --enable-download-from-upstream-url),
+# in particular from PyPI, which requires SNI.
+for PY in $PYTHONS; do
+    PYTHON="$(PATH="$SAGE_ORIG_PATH" command -v $PY)"
+    if [ -n "$PYTHON" ]; then
+        if CHECK_PATH="$PATH" "$PYTHON" -c "import argparse; import urllib; from hashlib import sha1; from ssl import HAS_SNI; assert HAS_SNI; from os import listdir, environ; listdir(\"$(pwd)\"); assert environ[\"PATH\"] == environ[\"CHECK_PATH\"]; $URLLIB_REQUEST_TEST" 2>/dev/null; then
+            exec "$PYTHON" "$@"
+        fi
+    fi
+done
+# Second round, no ssl/SNI test.
+for PY in $PYTHONS; do
+    PYTHON="$(PATH="$SAGE_ORIG_PATH" command -v $PY)"
+    if [ -n "$PYTHON" ]; then
+        if CHECK_PATH="$PATH" "$PYTHON" -c "import argparse; import urllib; from hashlib import sha1; from os import listdir, environ; listdir(\"$(pwd)\"); assert environ[\"PATH\"] == environ[\"CHECK_PATH\"]; $URLLIB_REQUEST_TEST" 2>/dev/null; then
+            exec "$PYTHON" "$@"
+        fi
+    fi
+done
+echo >&2 "$0: error: none of $PYTHONS is a suitable Python"
+exit 1
