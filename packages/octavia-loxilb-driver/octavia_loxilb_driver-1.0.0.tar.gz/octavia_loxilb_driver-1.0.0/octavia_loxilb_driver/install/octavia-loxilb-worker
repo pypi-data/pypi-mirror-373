@@ -1,0 +1,74 @@
+#!/bin/bash
+# Copyright 2025 LoxiLB
+# Licensed under the Apache License, Version 2.0
+
+# Octavia LoxiLB Worker service script
+
+. /lib/lsb/init-functions
+
+USER="octavia"
+DAEMON="octavia-loxilb-worker"
+ROOT_DIR="/var/lib/octavia"
+
+LOCK_FILE="/var/lock/octavia/$DAEMON.lock"
+PID_FILE="/var/run/octavia/$DAEMON.pid"
+
+DAEMON_ARGS="--config-file=/etc/octavia/octavia.conf"
+
+test -x $DAEMON || exit 5
+
+if [ $USER ]; then
+    DAEMON_ARGS="$DAEMON_ARGS --user $USER"
+fi
+
+lock_file() {
+    if [ -x /usr/bin/lockfile-create ]; then
+        lockfile-create $LOCK_FILE
+        lockfile-touch $LOCK_FILE &
+        LOCKTOUCHPID="$!"
+    fi
+}
+
+unlock_file() {
+    if [ -x /usr/bin/lockfile-create ]; then
+        kill $LOCKTOUCHPID
+        lockfile-remove $LOCK_FILE
+    fi
+}
+
+start_daemon() {
+    lock_file
+    start-stop-daemon --start --quiet --oknodo --pidfile $PID_FILE \
+        --startas $DAEMON -- $DAEMON_ARGS
+    status=$?
+    unlock_file
+    return $status
+}
+
+stop_daemon() {
+    start-stop-daemon --stop --quiet --oknodo --pidfile $PID_FILE
+    return $?
+}
+
+case "$1" in
+    start)
+        log_daemon_msg "Starting $DAEMON_DESC" "$DAEMON"
+        start_daemon
+        case "$?" in
+            0|1) log_end_msg 0 ;;
+            2) log_end_msg 1 ;;
+        esac
+        ;;
+    stop)
+        log_daemon_msg "Stopping $DAEMON_DESC" "$DAEMON"
+        stop_daemon
+        case "$?" in
+            0|1) log_end_msg 0 ;;
+            2) log_end_msg 1 ;;
+        esac
+        ;;
+    *)
+        echo "Usage: $0 {start|stop}"
+        exit 3
+        ;;
+esac
