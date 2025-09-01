@@ -1,0 +1,260 @@
+"""
+line plot
+"""
+# packages
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+from typing import List, Union, Tuple, Optional, Dict
+from enum import Enum
+import qis.plots.utils as put
+
+
+def plot_line(df: Union[pd.Series, pd.DataFrame],
+              x: str = None,
+              y: str = None,
+              hue: str = None,
+              linestyles: List[str] = None,
+              linestyle: str = '-',
+              linewidth: float = 1.0,
+              legend_title: str = None,
+              legend_loc: Optional[Union[str, bool]] = 'upper left',
+              legend_stats: put.LegendStats = put.LegendStats.NONE,
+              legend_labels: List[str] = None,
+              x_labels: List[str] = None,
+              xlabel: str = None,
+              ylabel: str = None,
+              title: str = None,
+              xvar_format: Optional[str] = None,  # '{:,.2f}', # unless data is numerical
+              yvar_format: Optional[str] = '{:,.2f}',
+              markers: Union[str, List[str]] = False,
+              fontsize: int = 10,
+              colors: List[str] = None,
+              x_limits: Tuple[Optional[float], Optional[float]] = None,
+              y_limits: Tuple[Optional[float], Optional[float]] = None,
+              is_log: bool = False,
+              ax: plt.Subplot = None,
+              **kwargs
+              ) -> Optional[plt.Figure]:
+    """
+    line plot wrapper for sns, lineplot
+    plot df using index
+    x: str = None: x column
+    y: str = None: y column
+    hue: str = None: hue
+    """
+    if isinstance(df, pd.DataFrame):
+        pass
+    elif isinstance(df, pd.Series):
+        df = df.to_frame()
+    else:
+        raise TypeError(f"unsuported data type {type(df)}")
+
+    if x is not None:
+        if y is None:
+            raise ValueError(f"y column must be given with x column")
+        else:
+            if hue is not None:
+                df = df[[x, y, hue]]
+            else:
+                df = df[[x, y]]
+
+    if ax is None:
+        fig, ax = plt.subplots()
+    else:
+        fig = None
+
+    if colors is None:
+        if hue is None:
+            colors = put.get_n_colors(n=len(df.columns), **kwargs)
+        else:
+            colors = put.get_n_colors(n=len(df[hue].unique()), **kwargs)
+
+    sns.lineplot(data=df, x=x, y=y, hue=hue,
+                 palette=colors, dashes=False, markers=markers, linestyle=linestyle, linewidth=linewidth,
+                 style=hue,
+                 ax=ax)
+
+    if title is not None:
+        put.set_title(ax=ax, title=title, fontsize=fontsize, **kwargs)
+
+    if legend_loc is not None:
+        if legend_labels is None:
+            if hue is None:
+                legend_labels = put.get_legend_lines(data=df, legend_stats=legend_stats, var_format=yvar_format)
+            else:
+                h, legend_labels = ax.get_legend_handles_labels()
+        put.set_legend(ax=ax,
+                       labels=legend_labels,
+                       colors=colors,
+                       legend_loc=legend_loc,
+                       legend_title=legend_title,
+                       markers=markers,
+                       fontsize=fontsize,
+                       **kwargs)
+
+    else:
+        ax.legend().set_visible(False)
+
+    if linestyles is not None:
+        put.set_linestyles(ax=ax, linestyles=linestyles)
+
+    if y_limits is not None:
+        put.set_y_limits(ax=ax, y_limits=y_limits)
+    if x_limits is not None:
+        put.set_x_limits(ax=ax, x_limits=x_limits)
+
+    put.set_ax_ticks_format(ax=ax, fontsize=fontsize, xvar_format=xvar_format, yvar_format=yvar_format)
+
+    if x_labels is None:
+        put.set_ax_ticks_format(ax=ax, fontsize=fontsize, **kwargs)
+
+    put.set_ax_xy_labels(ax=ax, xlabel=xlabel, ylabel=ylabel, fontsize=fontsize, **kwargs)
+    put.set_spines(ax=ax, **kwargs)
+
+    if is_log:
+        ax.set_yscale('log')
+
+    return fig
+
+
+def plot_lines_list(xy_datas: Dict[str, pd.DataFrame],
+                    data_labels: List[List[str]],
+                    colors: List[str] = None,
+                    markers: List[str] = None,
+                    is_fill_annotations: bool = False,
+                    xvar_format: str = '{:.1f}',
+                    yvar_format: str = '{:.1f}',
+                    xlabel: str = None,
+                    ylabel: str = None,
+                    title: str = None,
+                    fontsize: int = 10,
+                    x_limits: Tuple[Union[float, None], Union[float, None]] = None,
+                    y_limits: Tuple[Union[float, None], Union[float, None]] = None,
+                    legend_loc: str = 'upper left',
+                    ax: plt.Subplot = None,
+                    **kwargs
+                    ) -> plt.Figure:
+    if ax is None:
+        fig, ax = plt.subplots()
+    else:
+        fig = None
+
+    if colors is None:
+        colors = put.get_n_colors(n=len(xy_datas.keys()))
+
+    for idx, (key, xy) in enumerate(xy_datas.items()):
+        color = colors[idx]
+        labels = data_labels[idx]
+
+        if markers is not None:
+            marker = markers[idx]
+        else:
+            marker = 'None'
+        sns.lineplot(x=xy.columns[0], y=xy.columns[1], data=xy, marker=marker, color=color, ax=ax)
+
+        for label, x, y in zip(labels, xy.iloc[:, 0].to_numpy(), xy.iloc[:, 1].to_numpy()):
+            if label != '':
+                x_offset = 1
+                y_offset = 1
+                if is_fill_annotations:
+                    ax.annotate(
+                        label,
+                        xy=(x, y), xytext=(x_offset, y_offset),
+                        textcoords='offset points', ha='right', va='bottom',
+                        bbox=dict(boxstyle='round, pad=0.5', fc='blue', alpha=0.75),
+                        arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0'),
+                        fontsize=fontsize)
+                else:
+                    ax.annotate(
+                        label,
+                        xy=(x, y), xytext=(x_offset, y_offset),
+                        textcoords='offset points', ha='right', va='bottom',
+                        fontsize=fontsize)
+
+    if y_limits is not None:
+        put.set_y_limits(ax=ax, y_limits=y_limits)
+
+    if x_limits is not None:
+        put.set_x_limits(ax=ax, x_limits=x_limits)
+
+    put.set_ax_ticks_format(ax=ax, fontsize=fontsize, xvar_format=xvar_format, yvar_format=yvar_format)
+    put.set_ax_xy_labels(ax=ax, xlabel=xlabel, ylabel=ylabel, fontsize=fontsize, **kwargs)
+
+    if title is not None:
+        put.set_title(ax=ax, title=title, fontsize=fontsize)
+
+    if legend_loc is not None:
+        legend_labels = list(xy_datas.keys())
+        put.set_legend(ax=ax,
+                       labels=legend_labels,
+                       colors=colors,
+                       legend_loc=legend_loc,
+                       markers=markers,
+                       fontsize=fontsize,
+                       **kwargs)
+    else:
+        ax.legend().set_visible(False)
+
+    put.set_spines(ax=ax, **kwargs)
+
+    return fig
+
+
+class LocalTests(Enum):
+    LINEPLOT = 1
+    MOVE_DATA = 2
+
+
+def run_local_test(local_test: LocalTests):
+    """Run local tests for development and debugging purposes.
+
+    These are integration tests that download real data and generate reports.
+    Use for quick verification during development.
+    """
+
+    if local_test == LocalTests.LINEPLOT:
+        x = np.linspace(0, 14, 100)
+        y = np.sin(x)
+        data = pd.Series(y, index=x, name='data')
+        fig, axs = plt.subplots(2, 1, figsize=(8, 6))
+        global_kwargs = dict(fontsize=12, linewidth=2.0, weight='normal', markersize=2)
+        plot_line(df=data, legend_stats=put.LegendStats.AVG_LAST, ax=axs[0], **global_kwargs)
+        plot_line(df=data, legend_stats=put.LegendStats.AVG_LAST,
+                  linestyle='dotted',
+                  ax=axs[1], **global_kwargs)
+
+    elif local_test == LocalTests.MOVE_DATA:
+        with sns.axes_style("darkgrid"):
+            fig, axs = plt.subplots(2, 1, figsize=(12, 6))
+            global_kwargs = dict(fontsize=12, linewidth=2.0, weight='normal', markersize=2)
+            index = ['06-07JUN22', '10-17JUN22', '17-24JUN22', '24JUN-01JUL22', '26JUN-30SEP22', '30SEP-30DEC22']
+            data = [0.7644, 0.7602, 0.7306, 0.7524, 0.8192, 0.8204]
+            df = pd.DataFrame(data, index=index, columns=['Expected Move % annualized'])
+            print(df)
+            markers = put.get_n_markers(n=1)
+            plot_line(df=df,
+                      title='ATM forward volatilities Implied from BTC MOVE contracts on 06-Jun-2022',
+                      legend_stats=put.LegendStats.NONE,
+                      yvar_format='{:.0%}',
+                      xvar_format=None,
+                      markers=markers,
+                      ax=axs[0],
+                      **global_kwargs)
+
+            plot_line(df=df,
+                      title='ATM forward volatilities Implied from BTC MOVE contracts on 06-Jun-2022',
+                      legend_stats=put.LegendStats.NONE,
+                      yvar_format='{:.0%}',
+                      xvar_format=None,
+                      linewidth=0.,
+                      markers=['s'] * len(df.columns),
+                      ax=axs[1])
+
+    plt.show()
+
+
+if __name__ == '__main__':
+
+    run_local_test(local_test=LocalTests.MOVE_DATA)
