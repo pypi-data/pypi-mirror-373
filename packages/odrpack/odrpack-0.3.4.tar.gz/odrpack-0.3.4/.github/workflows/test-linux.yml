@@ -1,0 +1,78 @@
+name: Test Linux
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    name: Ubuntu / ${{ matrix.python-version }} / ${{ matrix.resolution }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        resolution: ["lowest-direct", "highest"]
+        exclude:
+          - python-version: "3.12"
+            resolution: "lowest-direct"
+          - python-version: "3.13"
+            resolution: "lowest-direct"
+            
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up Fortran
+        uses: fortran-lang/setup-fortran@v1
+        with:
+          compiler: gcc
+          version: 14 
+
+      - name: Install Ubuntu-build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libopenblas-dev
+          gfortran --version
+          gcc --version
+
+      - name: Install uv
+        run: |
+          pip install uv
+          uv --version
+          
+      - name: Build package
+        run: |
+          uv sync --resolution ${{ matrix.resolution }}
+          uv pip install -ve . --no-build-isolation
+          
+      - name: Run tests and collect coverage
+        run: |
+          uv run --frozen pytest --cov -v -s --cov-report=xml --junitxml=junit.xml -o junit_family=legacy
+          uv run --frozen coverage report
+
+      - name: Run example
+        run: |
+          uv run --frozen ./tests/example5.py
+
+      - name: Upload coverage to Codecov
+        if: ${{ matrix.python-version == '3.10' }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: false
+          
+      - name: Upload test results to Codecov
+        if: ${{ matrix.python-version == '3.10' && !cancelled() }}
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
