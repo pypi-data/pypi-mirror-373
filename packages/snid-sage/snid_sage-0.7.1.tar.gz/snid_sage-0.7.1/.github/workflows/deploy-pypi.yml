@@ -1,0 +1,149 @@
+name: Deploy to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags like v1.2.3
+  workflow_dispatch:  # Allow manual trigger
+    inputs:
+      test_pypi:
+        description: 'Deploy to Test PyPI instead of PyPI'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write  # Required for creating releases
+  id-token: write  # Required for PyPI trusted publishing (if used)
+
+jobs:
+  test-before-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for setuptools_scm
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libhdf5-dev libpng-dev libjpeg-dev pkg-config build-essential
+    
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine setuptools_scm[toml]
+    
+    - name: Verify version detection
+      run: |
+        python -c "
+        from setuptools_scm import get_version
+        version = get_version()
+        print(f'Detected version: {version}')
+        "
+    
+    - name: Build package
+      run: |
+        python -m build
+    
+    - name: Check package
+      run: |
+        python -m twine check dist/*
+    
+    - name: Test basic import
+      run: |
+        pip install dist/*.whl
+        python -c "import snid_sage; print(f'Package version: {snid_sage.__version__}')"
+
+  deploy:
+    needs: test-before-deploy
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for setuptools_scm
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libhdf5-dev libpng-dev libjpeg-dev pkg-config build-essential
+    
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine setuptools_scm[toml]
+    
+    - name: Build package
+      run: |
+        python -m build
+    
+    - name: Verify built package
+      run: |
+        echo "Built files:"
+        ls -la dist/
+        echo "Package contents:"
+        python -m twine check dist/*
+    
+    - name: Deploy to Test PyPI
+      if: github.event.inputs.test_pypi == 'true'
+      run: |
+        python -m twine upload --repository testpypi dist/*
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+    
+    - name: Deploy to PyPI
+      if: github.event.inputs.test_pypi != 'true'
+      run: |
+        python -m twine upload dist/*
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+    
+    - name: Create GitHub Release
+      if: github.event.inputs.test_pypi != 'true' && startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: SNID SAGE ${{ github.ref_name }}
+        body: |
+          ## SNID SAGE ${{ github.ref_name }}
+          
+          ### Installation
+          ```bash
+          pip install snid-sage
+          ```
+          
+          ### What's Changed
+          - See commit history for detailed changes
+          
+          ### Full Changelog
+          **Full Changelog**: https://github.com/FiorenSt/SNID-SAGE/compare/v0.0.1...${{ github.ref_name }}
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+
+  notify-success:
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: success()
+    steps:
+    - name: Notify deployment success
+      run: |
+        echo "🎉 SNID SAGE successfully deployed to PyPI!"
+        echo "📦 Package: snid-sage"
+        echo "🏷️ Version: ${{ github.ref_name }}"
+        echo "📋 Install command: pip install snid-sage"
