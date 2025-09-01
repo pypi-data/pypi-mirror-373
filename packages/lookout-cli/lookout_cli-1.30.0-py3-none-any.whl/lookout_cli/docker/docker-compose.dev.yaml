@@ -1,0 +1,77 @@
+name: lookout
+
+services:
+  lookout_core:
+    build:
+      context: ./
+      dockerfile: projects/lookout_core/Dockerfile
+      args:
+        GPU: ${GPU:-true}
+        CUDA_VERSION: ${CUDA_VERSION:-12.6}
+      secrets:
+        - apt_conf
+        - API_TOKEN_GITHUB
+    volumes:
+      - ./projects/lookout_core/src:/home/ros/lookout_core/src
+      - ./projects/lookout_core/data:/home/ros/lookout_core/data
+      - ./projects/lookout_core/ros-ts-generator-config.json:/home/ros/lookout_core/ros-ts-generator-config.json
+      - ./packages/lookout_interfaces:/home/ros/lookout_core/src/lookout_interfaces
+      - ./packages/lookout_config:/home/ros/lookout_core/src/lookout_config
+      - ./packages/lookout_rosbag_tools:/home/ros/rosbag_scripts
+      - ./projects/lookout_ui/src/generated/ros:/home/ros/lookout_core/generated/ros
+      - ./.secrets/apt.conf:/etc/apt/auth.conf.d/greenroom-robotics.conf
+
+  lookout_ui:
+    image: ghcr.io/greenroom-robotics/lookout_ui:${LOOKOUT_VERSION:-latest}
+    build:
+      context: ./projects/lookout_ui
+      secrets:
+        - API_TOKEN_GITHUB
+      args:
+        VITE_LOOKOUT_NAMESPACE_VESSEL: ${LOOKOUT_NAMESPACE_VESSEL:-vessel_1} # TODO: Remove this and add env server or similar
+    volumes:
+      - ./projects/lookout_ui/.eslintrc.js:/app/.eslintrc.js
+      - ./projects/lookout_ui/.nvmrc:/app/.nvmrc
+      - ./projects/lookout_ui/.prettierrc:/app/.prettierrc
+      - ./projects/lookout_ui/index.html:/app/index.html
+      - ./projects/lookout_ui/package.json:/app/package.json
+      - ./projects/lookout_ui/public:/app/public
+      - ./projects/lookout_ui/src:/app/src
+      - ./projects/lookout_ui/tsconfig.json:/app/tsconfig.json
+      - ./projects/lookout_ui/typings:/app/typings
+      - ./projects/lookout_ui/vite.config.ts:/app/vite.config.ts
+    command: npm run dev
+
+  lookout_greenstream:
+    build:
+      context: .
+      dockerfile: projects/lookout_greenstream/Dockerfile
+      secrets:
+        - apt_conf
+        - API_TOKEN_GITHUB
+    volumes:
+      - ./projects/lookout_greenstream/lookout_greenstream_bringup:/home/ros/lookout_greenstream/lookout_greenstream_bringup
+      - ./packages/lookout_interfaces:/home/ros/lookout_greenstream/lookout_interfaces
+
+  lookout_docs:
+    build:
+      context: ./
+      dockerfile: projects/lookout_docs/Dockerfile
+      secrets:
+        - API_TOKEN_GITHUB
+    volumes:
+      - ./projects/lookout_docs/src:/app/src
+      - ./projects/lookout_docs/static:/app/static
+      - ./projects/lookout_docs/package.json:/app/package.json
+      - ./projects/lookout_docs/package-lock.json:/app/package-lock.json
+      - ./projects/lookout_docs/sidebars.js:/app/sidebars.js
+      - ./projects/lookout_docs/docusaurus.config.js:/app/docusaurus.config.js
+      - ./projects/lookout_docs/tsconfig.json:/app/tsconfig.json
+      - ./docs:/app/docs
+    command: npm run start
+
+secrets:
+  API_TOKEN_GITHUB:
+    file: ./.secrets/API_TOKEN_GITHUB
+  apt_conf:
+    file: ./.secrets/apt.conf
