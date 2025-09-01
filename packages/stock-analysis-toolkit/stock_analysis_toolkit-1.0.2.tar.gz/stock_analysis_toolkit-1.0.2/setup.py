@@ -1,0 +1,50 @@
+from setuptools import setup, find_namespace_packages
+
+setup(
+    name="stock_analysis_toolkit",
+    version="1.0.2",
+    package_dir={"": "src"},
+    packages=find_namespace_packages(where="src", include=["*"]),
+    python_requires=">=3.9",
+    install_requires=[
+        "pandas>=1.3.0",
+        "numpy>=1.21.0",
+        "matplotlib>=3.4.0",
+        "yfinance>=0.2.0",
+        "requests>=2.26.0",
+        "python-dotenv>=0.19.0",
+        "pydantic>=1.8.0",
+        "python-dateutil>=2.8.0",
+        "pytz>=2021.1",
+        "tqdm>=4.62.0",
+        "beautifulsoup4>=4.10.0",
+        "lxml>=4.6.0",
+    ],
+    extras_require={
+        "dev": [
+            "pytest>=6.0.0",
+            "pytest-cov>=2.8.0",
+            "black>=21.7b0",
+            "isort>=5.0.0",
+            "mypy>=0.910",
+            "flake8>=3.9.0",
+            "pre-commit>=2.0.0",
+        ]
+    },
+    author="Pranav Phalnikar",
+    author_email="phalnikar.pranav@gmail.com",
+    description="A comprehensive toolkit for stock market analysis and reporting",
+    long_description=open("README.md").read(),
+    long_description_content_type="text/markdown",
+    url="https://github.com/pranav87/my_stock_analyser",
+    classifiers=[
+        "Development Status :: 5 - Production/Stable",
+        "Intended Audience :: Financial and Insurance Industry",
+        "License :: OSI Approved :: MIT License",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Topic :: Office/Business :: Financial :: Investment",
+    ],
+)
