@@ -1,0 +1,85 @@
+[build-system]
+requires = ["hatchling>=1.5.0", "jupyterlab", "hatch-nodejs-version>=0.3.2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pantheon-notebook"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.8"
+classifiers = [
+    "Framework :: Jupyter",
+    "Framework :: Jupyter :: JupyterLab",
+    "Framework :: Jupyter :: JupyterLab :: 4",
+    "Framework :: Jupyter :: JupyterLab :: Extensions",
+    "Framework :: Jupyter :: JupyterLab :: Extensions :: Prebuilt",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "jupyter-server>=1.21,<3",
+    "tornado>=6.0",
+    "JLDracula"
+]
+dynamic = ["version", "description", "authors", "urls", "keywords"]
+
+[project.entry-points."jupyter_server.extension"]
+pantheon_notebook = "pantheon_notebook"
+
+[tool.hatch.version]
+source = "nodejs"
+
+[tool.hatch.metadata.hooks.nodejs]
+fields = ["description", "authors", "urls"]
+
+[tool.hatch.build.targets.sdist]
+artifacts = ["pantheon_notebook/labextension"]
+exclude = [".github", "binder"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"pantheon_notebook/labextension/static" = "share/jupyter/labextensions/pantheon-notebook/static"
+"pantheon_notebook/labextension/package.json" = "share/jupyter/labextensions/pantheon-notebook/package.json"
+"pantheon_notebook/labextension/build_log.json" = "share/jupyter/labextensions/pantheon-notebook/build_log.json"
+"install.json" = "share/jupyter/labextensions/pantheon-notebook/install.json"
+"jupyter-config/jupyter_server_config.d/pantheon_notebook.json" = "etc/jupyter/jupyter_server_config.d/pantheon_notebook.json"
+
+[tool.hatch.build.hooks.version]
+path = "pantheon_notebook/_version.py"
+
+[tool.hatch.build.hooks.jupyter-builder]
+dependencies = ["hatch-jupyter-builder>=0.5"]
+build-function = "hatch_jupyter_builder.npm_builder"
+ensured-targets = [
+    "pantheon_notebook/labextension/static/style.js",
+    "pantheon_notebook/labextension/package.json",
+]
+skip-if-exists = ["pantheon_notebook/labextension/static/style.js"]
+
+[tool.hatch.build.hooks.jupyter-builder.build-kwargs]
+build_cmd = "build:prod"
+npm = ["jlpm"]
+
+[tool.hatch.build.hooks.jupyter-builder.editable-build-kwargs]
+build_cmd = "install:extension"
+npm = ["jlpm"]
+source_dir = "src"
+build_dir = "pantheon_notebook/labextension"
+
+[tool.jupyter-releaser.options]
+version_cmd = "hatch version"
+
+[tool.jupyter-releaser.hooks]
+before-build-npm = [
+    "python -m pip install 'jupyterlab>=4.0.0,<5'",
+    "jlpm",
+    "jlpm build:prod"
+]
+before-build-python = ["jlpm clean:all"]
+
+[tool.check-wheel-contents]
+ignore = ["W002"]
