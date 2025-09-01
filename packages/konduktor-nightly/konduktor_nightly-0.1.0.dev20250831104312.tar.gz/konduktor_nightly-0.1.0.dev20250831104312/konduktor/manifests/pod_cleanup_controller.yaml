@@ -1,0 +1,129 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pod-cleanup-controller
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-cleanup-controller
+  namespace: default
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/status", "events"]
+  verbs: ["get", "list", "watch", "delete", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-cleanup-controller
+  namespace: default
+subjects:
+- kind: ServiceAccount
+  name: pod-cleanup-controller
+  namespace: default
+roleRef:
+  kind: Role
+  name: pod-cleanup-controller
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod-cleanup-controller
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pod-cleanup-controller
+  template:
+    metadata:
+      labels:
+        app: pod-cleanup-controller
+    spec:
+      serviceAccountName: pod-cleanup-controller
+      containers:
+      - name: controller
+        image: python:3.10
+        command: ["/bin/sh", "-c"]
+        args: ["pip install kubernetes && echo 'starting controller' && python /app/controller.py"]
+        env:
+          - name: PYTHONUNBUFFERED
+            value: "0"
+        volumeMounts:
+        - name: controller-code
+          mountPath: /app
+      volumes:
+      - name: controller-code
+        configMap:
+          name: pod-cleanup-controller-code
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pod-cleanup-controller-code
+  namespace: default
+data:
+  controller.py: |
+    from kubernetes import client, config, watch
+    from collections import defaultdict
+    from datetime import datetime
+    import time
+
+    FAILURE_MODES = ['ErrImagePull', 'InvalidImageName']
+
+    def check_failure_mode(message):
+        for mode in FAILURE_MODES:
+            if mode in message:
+                return mode
+        return ''
+
+    def main():
+        # Load kube config
+        try:
+            config.load_incluster_config()
+        except:
+            config.load_kube_config()
+
+        v1 = client.CoreV1Api()
+        error_counts = defaultdict(int)
+
+        w = watch.Watch()
+        while True:
+          for event in w.stream(v1.list_namespaced_event, namespace="default"):
+              if event['object'].type == 'Warning' and event['object'].reason == 'Failed' and  check_failure_mode(event['object'].message):
+                  pod_name = event['object'].involved_object.name
+                  pod_namespace = event['object'].involved_object.namespace
+                  print(f"Pod {pod_namespace}/{pod_name} has failed with ErrImagePull. Patching and deleting...")
+                  try:
+                      # Get current time in UTC
+                      current_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+                      
+                      # Create the status patch
+                      body = {
+                          "status": {
+                              "conditions": [
+                                  {
+                                      "type": "ConfigIssue",
+                                      "status": "True",
+                                      "reason": "ErrImagePull",
+                                      "lastTransitionTime": current_time
+                                  }
+                              ]
+                          }
+                      }
+                      
+                      # Patch pod status
+                      v1.patch_namespaced_pod_status(pod_name, pod_namespace, body)
+                      
+                      # Delete the pod
+                      v1.delete_namespaced_pod(pod_name, pod_namespace)
+                  except Exception as e:
+                      print(f"Error handling pod: {e}")
+          print("Finished event stream... waiting for another stream...")
+          time.sleep(5)
+
+    if __name__ == '__main__':
+        main()
