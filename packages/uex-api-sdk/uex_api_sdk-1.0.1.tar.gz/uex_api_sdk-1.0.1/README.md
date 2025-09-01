@@ -1,0 +1,180 @@
+
+# Getting Started with UEX Corp API
+
+## Introduction
+
+Created by [@thekronny](https://discord.com/users/224580858432978944).
+
+### Downloads
+
+[Secification file](https://app.swaggerhub.com/apiproxy/registry/dolejska-daniel/UEX-API/v2.0?resolved=true&flatten=true&pretty=true)
+
+### Other Resources
+
+Contact Support:
+Name: Official Discord
+
+## Install the Package
+
+The package is compatible with Python versions `3.7+`.
+Install the package from PyPi using the following pip command:
+
+```bash
+pip install uex-api-sdk==1.0.1
+```
+
+You can also view the package at:
+https://pypi.python.org/pypi/uex-api-sdk/1.0.1
+
+## Initialize the API Client
+
+**_Note:_** Documentation for the client can be found [here.](doc/client.md)
+
+The following parameters are configurable for the API Client:
+
+| Parameter | Type | Description |
+|  --- | --- | --- |
+| environment | `Environment` | The API environment. <br> **Default: `Environment.PRODUCTION`** |
+| http_client_instance | `HttpClient` | The Http Client passed from the sdk user for making requests |
+| override_http_client_configuration | `bool` | The value which determines to override properties of the passed Http Client from the sdk user |
+| http_call_back | `HttpCallBack` | The callback value that is invoked before and after an HTTP call is made to an endpoint |
+| timeout | `float` | The value to use for connection timeout. <br> **Default: 30** |
+| max_retries | `int` | The number of times to retry an endpoint call if it fails. <br> **Default: 0** |
+| backoff_factor | `float` | A backoff factor to apply between attempts after the second try. <br> **Default: 2** |
+| retry_statuses | `Array of int` | The http statuses on which retry is to be done. <br> **Default: [408, 413, 429, 500, 502, 503, 504, 521, 522, 524]** |
+| retry_methods | `Array of string` | The http methods on which retry is to be done. <br> **Default: ['GET', 'PUT']** |
+| logging_configuration | [`LoggingConfiguration`](doc/logging-configuration.md) | The SDK logging configuration for API calls |
+| bearer_credentials | [`BearerCredentials`](__base_path/auth/oauth-2-bearer-token.md) | The credential object for OAuth 2 Bearer token |
+| api_key_credentials | [`ApiKeyCredentials`](__base_path/auth/custom-header-signature.md) | The credential object for Custom Header Signature |
+
+The API client can be initialized as follows:
+
+```python
+import logging
+
+from uexcorpapi.configuration import Environment
+from uexcorpapi.http.auth.api_key import ApiKeyCredentials
+from uexcorpapi.http.auth.bearer import BearerCredentials
+from uexcorpapi.logging.configuration.api_logging_configuration import LoggingConfiguration
+from uexcorpapi.logging.configuration.api_logging_configuration import RequestLoggingConfiguration
+from uexcorpapi.logging.configuration.api_logging_configuration import ResponseLoggingConfiguration
+from uexcorpapi.uexcorpapi_client import UexcorpapiClient
+
+client = UexcorpapiClient(
+    bearer_credentials=BearerCredentials(
+        access_token='AccessToken'
+    ),
+    api_key_credentials=ApiKeyCredentials(
+        secret_key='secret_key'
+    ),
+    environment=Environment.PRODUCTION,
+    logging_configuration=LoggingConfiguration(
+        log_level=logging.INFO,
+        request_logging_config=RequestLoggingConfiguration(
+            log_body=True
+        ),
+        response_logging_config=ResponseLoggingConfiguration(
+            log_headers=True
+        )
+    )
+)
+```
+
+## Authorization
+
+This API uses the following authentication schemes.
+
+* [`bearer (OAuth 2 Bearer token)`](__base_path/auth/oauth-2-bearer-token.md)
+* [`apiKey (Custom Header Signature)`](__base_path/auth/custom-header-signature.md)
+
+## List of APIs
+
+* [Categories](doc/controllers/categories.md)
+* [Categories Attributes](doc/controllers/categories-attributes.md)
+* [Cities](doc/controllers/cities.md)
+* [Commodities](doc/controllers/commodities.md)
+* [Commodities Alerts](doc/controllers/commodities-alerts.md)
+* [Id Commodity](doc/controllers/id-commodity.md)
+* [Commodity Code](doc/controllers/commodity-code.md)
+* [Commodity Name](doc/controllers/commodity-name.md)
+* [Commodity Slug](doc/controllers/commodity-slug.md)
+* [Id Terminal](doc/controllers/id-terminal.md)
+* [Terminal Code](doc/controllers/terminal-code.md)
+* [Terminal Name](doc/controllers/terminal-name.md)
+* [Terminal Slug](doc/controllers/terminal-slug.md)
+* [Commodities Prices All](doc/controllers/commodities-prices-all.md)
+* [Commodities Ranking](doc/controllers/commodities-ranking.md)
+* [Commodities Raw Prices All](doc/controllers/commodities-raw-prices-all.md)
+* [Id Orbit Origin](doc/controllers/id-orbit-origin.md)
+* [Id Planet Origin](doc/controllers/id-planet-origin.md)
+* [Id Terminal Origin](doc/controllers/id-terminal-origin.md)
+* [Commodities Status](doc/controllers/commodities-status.md)
+* [Companies](doc/controllers/companies.md)
+* [Contacts](doc/controllers/contacts.md)
+* [Contracts](doc/controllers/contracts.md)
+* [Specialization](doc/controllers/specialization.md)
+* [Data Extract](doc/controllers/data-extract.md)
+* [Data Parameters](doc/controllers/data-parameters.md)
+* [Factions](doc/controllers/factions.md)
+* [Fleet](doc/controllers/fleet.md)
+* [Fuel Prices All](doc/controllers/fuel-prices-all.md)
+* [Game Versions](doc/controllers/game-versions.md)
+* [Id Category](doc/controllers/id-category.md)
+* [Id Company](doc/controllers/id-company.md)
+* [Size](doc/controllers/size.md)
+* [Uuid](doc/controllers/uuid.md)
+* [Id Item](doc/controllers/id-item.md)
+* [Items Prices All](doc/controllers/items-prices-all.md)
+* [Jump Points](doc/controllers/jump-points.md)
+* [Jurisdictions](doc/controllers/jurisdictions.md)
+* [Marketplace Favorites](doc/controllers/marketplace-favorites.md)
+* [Marketplace Listings](doc/controllers/marketplace-listings.md)
+* [Moons](doc/controllers/moons.md)
+* [Orbits](doc/controllers/orbits.md)
+* [Orbits Distances](doc/controllers/orbits-distances.md)
+* [Id Organization](doc/controllers/id-organization.md)
+* [Slug](doc/controllers/slug.md)
+* [Outposts](doc/controllers/outposts.md)
+* [Planets](doc/controllers/planets.md)
+* [Poi](doc/controllers/poi.md)
+* [Refineries Audits](doc/controllers/refineries-audits.md)
+* [Refineries Capacities](doc/controllers/refineries-capacities.md)
+* [Refineries Methods](doc/controllers/refineries-methods.md)
+* [Refineries Yields](doc/controllers/refineries-yields.md)
+* [Release Notes](doc/controllers/release-notes.md)
+* [Space Stations](doc/controllers/space-stations.md)
+* [Star Systems](doc/controllers/star-systems.md)
+* [Terminals](doc/controllers/terminals.md)
+* [Terminals Distances](doc/controllers/terminals-distances.md)
+* [User](doc/controllers/user.md)
+* [User Refineries Jobs](doc/controllers/user-refineries-jobs.md)
+* [User Trades](doc/controllers/user-trades.md)
+* [Vehicles](doc/controllers/vehicles.md)
+* [Vehicles Loaners](doc/controllers/vehicles-loaners.md)
+* [Vehicles Prices](doc/controllers/vehicles-prices.md)
+* [Vehicles Purchases Prices All](doc/controllers/vehicles-purchases-prices-all.md)
+* [Vehicles Rentals Prices All](doc/controllers/vehicles-rentals-prices-all.md)
+* [Wallet Balance](doc/controllers/wallet-balance.md)
+
+## SDK Infrastructure
+
+### Configuration
+
+* [AbstractLogger](doc/abstract-logger.md)
+* [LoggingConfiguration](doc/logging-configuration.md)
+* [RequestLoggingConfiguration](doc/request-logging-configuration.md)
+* [ResponseLoggingConfiguration](doc/response-logging-configuration.md)
+
+### HTTP
+
+* [HttpResponse](doc/http-response.md)
+* [HttpRequest](doc/http-request.md)
+
+### Utilities
+
+* [ApiResponse](doc/api-response.md)
+* [ApiHelper](doc/api-helper.md)
+* [HttpDateTime](doc/http-date-time.md)
+* [RFC3339DateTime](doc/rfc3339-date-time.md)
+* [UnixDateTime](doc/unix-date-time.md)
+
