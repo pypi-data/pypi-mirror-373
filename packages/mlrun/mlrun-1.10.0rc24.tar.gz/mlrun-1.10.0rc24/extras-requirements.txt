@@ -1,0 +1,54 @@
+# In our docker images we're copying the requirements files and pip installing them before copying and installing the
+# whole code. We're doing that to leverage docker build cache so that we won't need to actually install all the
+# requirements for every change in the code (which causes a cache miss in the copy command for the whole code) but we'll
+# get "requirement is already satisfied" which causes the pip install of the mlrun package itself to be very quick.
+# The extras requirements definition sits in the setup.py itself, therefore without this file these requirements were
+# installed only in the last phase of installing mlrun, which causes this step to be longer and lowers the effectiveness
+# of the above trick. To overcome this we have this file, which is a copy of all the requirements defined in the extras
+# in setup.py so that we'll be able to copy and install this in the layer with all other requirements making the last
+# layer (which is most commonly being re-built) as thin as possible
+# we have a test test_extras_requirement_file_aligned to verify this file is aligned to setup.py
+# The versions of gcsfs and s3fs should be identical to the fsspec version;
+# Therefore, they must be equal to each other.
+s3fs>=2023.9.2, <2024.7
+gcsfs>=2023.9.2, <2024.7
+ossfs==2023.12.0
+boto3>=1.28.0,<1.36
+oss2==2.18.1
+aiobotocore>=2.5.0,<2.16
+# https://github.com/Azure/azure-sdk-for-python/issues/24765#issuecomment-1150310498
+msrest~=0.6.21
+azure-core~=1.24
+# This version is required in order to support the self._strip_protocol
+# function in Azure Blob File System functions (such as _ls and more).
+adlfs==2023.9.0
+azure-identity~=1.5
+azure-keyvault-secrets~=4.2
+# cryptography>=39, which is required by azure, needs this, or else we get
+# AttributeError: module 'lib' has no attribute 'OpenSSL_add_all_algorithms' (ML-3471)
+pyopenssl>=23
+plotly~=5.23
+# To support python 3.11, google-cloud-bigquery requires grpcio>=1.49.1 (protobuf 4), which is incompatible with the
+# grpcio and protobuf versions required by frames<0.13 and kfp<2
+google-cloud-bigquery[pandas, bqstorage]==3.14.1
+google-cloud-storage==2.14.0
+google-cloud-bigquery-storage~=2.17
+google-cloud==0.34
+kafka-python~=2.1.0
+avro~=1.11
+redis~=4.3
+graphviz~=0.20.0
+mlflow~=2.22
+# any newer version then 0.13 should be tested with adlfs,gcsfs and s3fs installation.
+# we experience a different in google-auth package in databricks-sdk>0.13
+databricks-sdk~=0.20.0
+# sqlalchemy version should be aligned with mlrun-api due to common use with the model monitoring database
+sqlalchemy~=2.0
+# retaining old dask for compatibility with kfp 1.8
+dask~=2023.12.1; python_version < "3.11"
+distributed~=2023.12.1; python_version < "3.11"
+# new dask requires newer cloudpickle which is not compatible with kfp 1.8
+dask~=2024.12.1; python_version >= "3.11"
+distributed~=2024.12.1; python_version >= "3.11"
+taos-ws-py==0.3.2
+snowflake-connector-python~=3.7
