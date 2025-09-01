@@ -1,0 +1,260 @@
+# Cadence SDK
+
+A comprehensive SDK for building custom AI agent plugins for the Cadence AI Framework.
+
+## Overview
+
+The Cadence SDK provides the tools and interfaces needed to create powerful, extensible AI agents that integrate seamlessly with the Cadence multi-agent framework. Build agents with custom tools, sophisticated reasoning capabilities, and domain-specific knowledge.
+
+## Features
+
+- **Agent Framework**: Create intelligent agents with custom behavior
+- **Tool System**: Build and integrate custom tools for agents
+- **Plugin Management**: Easy plugin discovery and registration
+- **Type Safety**: Full TypeScript/Python type support
+- **Extensible**: Plugin-based architecture for easy extension
+
+## Installation
+
+```bash
+pip install cadence-sdk
+```
+
+## Quick Start
+
+### Creating a Simple Agent
+
+```python
+from cadence_sdk.base.agent import Agent
+from cadence_sdk.base.tool import Tool
+
+class CalculatorAgent(Agent):
+    name = "calculator"
+    description = "An agent that performs mathematical calculations"
+    
+    def process(self, message: str) -> str:
+        # Simple calculation logic
+        try:
+            result = eval(message)
+            return f"The result of {message} is {result}"
+        except:
+            return "I couldn't process that calculation. Please provide a valid mathematical expression."
+
+class CalculatorTool(Tool):
+    name = "calculate"
+    description = "Perform mathematical calculations"
+    
+    def execute(self, expression: str) -> str:
+        try:
+            result = eval(expression)
+            return str(result)
+        except Exception as e:
+            return f"Error: {str(e)}"
+```
+
+### Plugin Structure
+
+```
+my_plugin/
+├── __init__.py
+├── agent.py
+├── tools.py
+└── plugin.py
+```
+
+### Plugin Registration
+
+```python
+from cadence_sdk.base.plugin import Plugin
+from cadence_sdk.base.metadata import PluginMetadata
+
+class CalculatorPlugin(Plugin):
+    @staticmethod
+    def get_metadata() -> PluginMetadata:
+        return PluginMetadata(
+            name="calculator",
+            version="1.0.0",
+            description="Mathematical calculation plugin"
+        )
+    
+    @staticmethod
+    def create_agent():
+        from .agent import CalculatorAgent
+        return CalculatorAgent()
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Enable directory-based plugin discovery
+export CADENCE_ENABLE_DIRECTORY_PLUGINS=true
+
+# Set plugin directories
+export CADENCE_PLUGIN_DIRS="/path/to/plugins,/another/path"
+export CADENCE_PLUGIN_DIR="./plugins"
+
+# Plugin limits
+export CADENCE_MAX_AGENT_HOPS=5
+export CADENCE_MAX_TOOL_HOPS=25
+```
+
+### Plugin Discovery
+
+The SDK automatically discovers plugins from:
+
+- Environment packages
+- Directory paths
+- Custom registries
+
+## Advanced Usage
+
+### Custom Tool Decorators
+
+```python
+from cadence_sdk.tools.decorators import tool
+
+@tool
+def weather_tool(city: str) -> str:
+    """Get weather information for a city."""
+    # Implementation here
+    return f"Weather for {city}: Sunny, 72°F"
+```
+
+### Agent State Management
+
+```python
+from cadence_sdk.types.state import AgentState
+
+class StatefulAgent(Agent):
+    def process(self, message: str, state: AgentState) -> str:
+        # Access conversation history
+        history = state.get("messages", [])
+        
+        # Update state
+        state["current_context"] = message
+        
+        return "Processed with context awareness"
+```
+
+### Plugin Registry
+
+```python
+from cadence_sdk.registry.plugin_registry import PluginRegistry
+
+# Get plugin registry
+registry = PluginRegistry()
+
+# Register custom plugin
+registry.register(CalculatorPlugin())
+
+# Discover plugins
+plugins = registry.discover()
+```
+
+## Examples
+
+### Math Agent
+
+```python
+from cadence_sdk.base.agent import Agent
+from cadence_sdk.base.tool import Tool
+
+class MathAgent(Agent):
+    name = "math_agent"
+    description = "Specialized in mathematical operations"
+    
+    def process(self, message: str) -> str:
+        if "calculate" in message.lower():
+            return "I can help with calculations! Use my calculator tool."
+        return "I'm a math agent. How can I help with calculations?"
+
+class CalculatorTool(Tool):
+    name = "calculator"
+    description = "Perform mathematical calculations"
+    
+    def execute(self, expression: str) -> str:
+        try:
+            result = eval(expression)
+            return f"Result: {result}"
+        except:
+            return "Invalid expression"
+```
+
+### Search Agent
+
+```python
+from cadence_sdk.base.agent import Agent
+import requests
+
+class SearchAgent(Agent):
+    name = "search_agent"
+    description = "Web search and information retrieval"
+    
+    def process(self, message: str) -> str:
+        if "search" in message.lower():
+            query = message.replace("search", "").strip()
+            return f"I'll search for: {query}"
+        return "I can help you search the web. What would you like to find?"
+```
+
+## Development
+
+### Setting up Development Environment
+
+```bash
+# Clone the repository
+git clone https://github.com/jonaskahn/cadence-sdk.git
+cd cadence-sdk
+
+# Install dependencies
+poetry install
+
+# Run tests
+poetry run pytest
+
+# Format code
+poetry run black src/
+poetry run isort src/
+```
+
+### Testing
+
+```bash
+# Run all tests
+poetry run pytest
+
+# Run with coverage
+poetry run pytest --cov=src/cadence_sdk
+
+# Run specific test categories
+poetry run pytest -m "unit"
+poetry run pytest -m "integration"
+```
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### Development Setup
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Support
+
+- **Documentation**: [Read the Docs](https://cadence_sdk.readthedocs.io/)
+- **Issues**: [GitHub Issues](https://github.com/jonaskahn/cadence-sdk/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/jonaskahn/cadence-sdk/discussions)
+
+---
+
+**Built with ❤️ for the Cadence AI community**
