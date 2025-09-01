@@ -1,0 +1,69 @@
+# If you don't have 'just' installed, install it with the following command:
+#
+# $  uv tool install rust-just
+#
+# The 'just' website: https://just.systems/man/en/
+
+# print the available commands
+default:
+    @just --list
+
+# demo on using Python with Just
+hello arg="":
+  #!/usr/bin/env uv run --script
+  # /// script
+  # requires-python = ">=3.10"
+  # dependencies=["rich"]
+  # ///
+  import rich
+  print("Hello from Python!")
+  if "{{arg}}".lower() != "":
+      rich.print("A second [blue]blue line[/]... with 'Hello, {{arg}}!'")
+
+
+# What architecture and OS are we running on
+system-info:
+  @echo "This is an {{arch()}} machine, running {{os()}}".
+
+default_python := "3.10"
+
+# Start an IPython session
+ipython version=default_python:
+    #!/usr/bin/env sh
+    if [ "{{version}}" != {{default_python}} ] ; then
+        uv sync --python {{version}} --all-packages
+    fi
+    uv run --with ipython --python {{version}} ipython
+    uv sync --python {{default_python}} --all-packages --all-groups
+
+# Serve the documentation
+docs-serve:
+    uv run mkdocs serve
+
+# Build the documentation
+docs-build:
+    uv run mkdocs build
+
+# Publish the documentation
+docs-publish: docs-build
+    uv run mkdocs gh-deploy -r upstream -m "documentation update"
+
+default_part := "patch"
+
+# part can be (patch | minor | major)
+bump part=default_part:
+    #!/usr/bin/env sh
+    if [ -z "{{part}}" ] ; then
+        echo Version will not be bumped.
+    else
+        uv run bump.py --no-verbose {{part}}
+    fi
+
+# part can be (patch | minor | major)
+build part="": (bump part)
+    rm -r dist
+    uv build --all-packages
+
+# part can be (patch | minor | major)
+publish part="": (build part)
+    uv publish --token $UV_PUBLISH_TOKEN
