@@ -1,0 +1,114 @@
+"""Asset domain."""
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal, NewType, Optional, TypedDict
+
+from kili.domain.project import WorkflowVersion
+from kili.domain.types import ListOrTuple
+
+if TYPE_CHECKING:
+    from kili.domain.issue import IssueStatus, IssueType
+    from kili.domain.label import LabelType
+    from kili.domain.project import ProjectId
+
+AssetId = NewType("AssetId", str)
+AssetExternalId = NewType("AssetExternalId", str)
+AssetStatusInStep = NewType("AssetStatusInStep", str)
+
+AssetStatus = Literal["TODO", "ONGOING", "LABELED", "REVIEWED", "TO_REVIEW"]
+
+StatusInStep = Literal["TO_DO", "DOING", "PARTIALLY_DONE", "REDO", "DONE", "SKIPPED"]
+
+
+@dataclass
+class AssetFilters:
+    """Asset filters for running an asset search."""
+
+    # pylint: disable=too-many-instance-attributes
+    project_id: "ProjectId"
+    asset_id: Optional[AssetId] = None
+    asset_id_in: Optional[ListOrTuple[AssetId]] = None
+    asset_id_not_in: Optional[ListOrTuple[AssetId]] = None
+    consensus_mark_gte: Optional[float] = None
+    consensus_mark_lte: Optional[float] = None
+    external_id_strictly_in: Optional[ListOrTuple[AssetExternalId]] = None
+    external_id_in: Optional[ListOrTuple[AssetExternalId]] = None
+    honeypot_mark_gte: Optional[float] = None
+    honeypot_mark_lte: Optional[float] = None
+    label_author_in: Optional[ListOrTuple[str]] = None
+    label_consensus_mark_gte: Optional[float] = None
+    label_consensus_mark_lte: Optional[float] = None
+    label_created_at: Optional[str] = None
+    label_created_at_gte: Optional[str] = None
+    label_created_at_lte: Optional[str] = None
+    label_honeypot_mark_gte: Optional[float] = None
+    label_honeypot_mark_lte: Optional[float] = None
+    label_type_in: Optional[ListOrTuple["LabelType"]] = None
+    label_labeler_in: Optional[ListOrTuple[str]] = None
+    label_labeler_not_in: Optional[ListOrTuple[str]] = None
+    label_reviewer_in: Optional[ListOrTuple[str]] = None
+    label_reviewer_not_in: Optional[ListOrTuple[str]] = None
+    assignee_in: Optional[ListOrTuple[str]] = None
+    assignee_not_in: Optional[ListOrTuple[str]] = None
+    metadata_where: Optional[dict] = None
+    updated_at_gte: Optional[str] = None
+    updated_at_lte: Optional[str] = None
+    label_category_search: Optional[str] = None
+    created_at_gte: Optional[str] = None
+    created_at_lte: Optional[str] = None
+    inference_mark_gte: Optional[float] = None
+    inference_mark_lte: Optional[float] = None
+    issue_type: Optional["IssueType"] = None
+    issue_status: Optional["IssueStatus"] = None
+    skipped: Optional[bool] = None
+    status_in: Optional[ListOrTuple[AssetStatus]] = None
+    step_id_in: Optional[ListOrTuple[str]] = None
+    step_status_in: Optional[ListOrTuple[StatusInStep]] = None
+
+
+class AssetWorkflowFilters(TypedDict):
+    """Asset filters relative to worklow."""
+
+    skipped: Optional[bool]
+    status_in: Optional[ListOrTuple[AssetStatus]]
+    step_name_in: Optional[ListOrTuple[str]]
+    step_status_in: Optional[ListOrTuple[StatusInStep]]
+
+
+def get_asset_default_fields(
+    project_workflow_version: WorkflowVersion,
+) -> ListOrTuple[str]:
+    """Get asset default fields for depending on the project workflow version."""
+    if project_workflow_version == "V1":
+        return (
+            "content",
+            "createdAt",
+            "externalId",
+            "id",
+            "isHoneypot",
+            "jsonMetadata",
+            "labels.author.id",
+            "labels.author.email",
+            "labels.createdAt",
+            "labels.id",
+            "labels.jsonResponse",
+            "skipped",
+            "status",
+        )
+
+    return (
+        "content",
+        "createdAt",
+        "externalId",
+        "id",
+        "isHoneypot",
+        "jsonMetadata",
+        "labels.author.id",
+        "labels.author.email",
+        "labels.createdAt",
+        "labels.id",
+        "labels.jsonResponse",
+        "skipped",
+        "currentStep.name",
+        "currentStep.status",
+    )
