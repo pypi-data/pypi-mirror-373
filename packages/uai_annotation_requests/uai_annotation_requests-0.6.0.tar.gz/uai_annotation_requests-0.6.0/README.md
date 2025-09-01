@@ -1,0 +1,204 @@
+# UAI Annotation Requests
+<!-- Start Summary [summary] -->
+## Summary
+
+UAI Annotation Requests API: The API lets a client request annotations from UAI, track the progress of the work and fetch the result annotations.
+<!-- End Summary [summary] -->
+
+<!-- Start Table of Contents [toc] -->
+## Table of Contents
+<!-- $toc-max-depth=2 -->
+* [UAI Annotation Requests](#uai-annotation-requests)
+  * [Example Usage](#example-usage)
+  * [Authentication](#authentication)
+  * [Available Resources and Operations](#available-resources-and-operations)
+  * [Error Handling](#error-handling)
+
+<!-- End Table of Contents [toc] -->
+
+<!-- No SDK Installation [installation] -->
+
+<!-- No IDE Support [idesupport] -->
+
+## Example Usage
+
+### Example
+
+Below is an example of how an annotation request with data can be submitted to UAI for annotation.
+
+```python
+from uai_annotation_requests import UaiAnnotationRequests
+from uai_annotation_requests_util import uai_oauth2, uai_upload_data
+
+with UaiAnnotationRequests(
+    uai_oauth2=uai_oauth2("<client_id>", "<client_secret>"),
+) as uar_client:
+
+    res = uar_client.annotation_request.create(project_id="<id>", clips=[
+        {
+            "clip_reference_id": "clip_reference_01",
+            "display_name": "my first clip",
+        },
+    ], request_reference_id="request_reference_01", priority=0, display_name="my annotation request")
+
+    # Handle response
+    print(res)
+
+    # Upload data directory for each defined clip
+    # The upload step here is only relevant for projects
+    # That are uploading archived data to UAI where no
+    # bucket integration is configured.
+    for clip in res.clips:
+        uai_upload_data(res, clip, path_to_data)
+
+```
+<!-- No SDK Example Usage [usage] -->
+
+## Authentication
+
+### Per-Client Security Schemes
+
+This SDK supports the following security scheme globally:
+
+| Name         | Type   | Scheme       |
+| ------------ | ------ | ------------ |
+| `uai_oauth2` | oauth2 | uai_oauth2 helper or OAuth2 token |
+
+To authenticate with the API the `uai_oauth2` parameter must be set when initializing the SDK client instance.
+The `uai_oauth2` parameter accepts either the `uai_oauth2` helper login function or an OAuth2 token. For example:
+```python
+from uai_annotation_requests import UaiAnnotationRequests
+from uai_annotation_requests_util import uai_oauth2
+
+with UaiAnnotationRequests(
+    uai_oauth2=uai_oauth2(client_id="<UAI_CLIENT_ID>", client_secret="<UAI_CLIENT_SECRET>"),
+) as uar_client:
+
+    res = uar_client.annotation_request.create(project_id="<id>", clips=[
+        {
+            "clip_reference_id": "clip_reference_01",
+            "display_name": "my first clip",
+        },
+    ], request_reference_id="request_reference_01", priority=0, display_name="my annotation request")
+
+    # Handle response
+    print(res)
+
+```
+<!-- No Authentication [security] -->
+
+<!-- Start Available Resources and Operations [operations] -->
+## Available Resources and Operations
+
+<details open>
+<summary>Available methods</summary>
+
+### [annotation_request](docs/sdks/annotationrequest/README.md)
+
+* [create](docs/sdks/annotationrequest/README.md#create) - Create a new annotation request
+* [get](docs/sdks/annotationrequest/README.md#get) - Get annotation request
+* [get_filtered](docs/sdks/annotationrequest/README.md#get_filtered) - Get annotation requests filtered by projectId and phase.
+* [get_by_annotation_request_id](docs/sdks/annotationrequest/README.md#get_by_annotation_request_id) - Get annotation request by the annotation request ID
+* [restart_annotation_request](docs/sdks/annotationrequest/README.md#restart_annotation_request) - Restart the data intake for one or more clips
+* [get_exported_annotations](docs/sdks/annotationrequest/README.md#get_exported_annotations) - Request the download URLs for the result annotations.
+
+### [clips](docs/sdks/clips/README.md)
+
+* [get_clips](docs/sdks/clips/README.md#get_clips) - Get clips in the project filtered by clip reference ids and
+states.
+
+For example, querying for clips with state 'Exported'
+lists all the clips that have annotations to fetch.
+
+Combinding the filters state and isExportDownloaded
+makes it possible to list all the clips that are exported
+and haven't yet been downloaded by the client, ex:
+`?state=Exported&isExportDownloade=false`
+* [get_annotations](docs/sdks/clips/README.md#get_annotations) - Get annotations for a clip.
+
+The clip must be in state Exported.
+
+
+</details>
+<!-- End Available Resources and Operations [operations] -->
+
+<!-- No Retries [retries] -->
+
+<!-- Start Error Handling [errors] -->
+## Error Handling
+
+[`UaiAnnotationRequestsError`](./src/uai_annotation_requests/models/uaiannotationrequestserror.py) is the base class for all HTTP error responses. It has the following properties:
+
+| Property           | Type             | Description                                                                             |
+| ------------------ | ---------------- | --------------------------------------------------------------------------------------- |
+| `err.message`      | `str`            | Error message                                                                           |
+| `err.status_code`  | `int`            | HTTP response status code eg `404`                                                      |
+| `err.headers`      | `httpx.Headers`  | HTTP response headers                                                                   |
+| `err.body`         | `str`            | HTTP body. Can be empty string if no body is returned.                                  |
+| `err.raw_response` | `httpx.Response` | Raw HTTP response                                                                       |
+| `err.data`         |                  | Optional. Some errors may contain structured data. [See Error Classes](#error-classes). |
+
+### Example
+```python
+import uai_annotation_requests
+from uai_annotation_requests import UaiAnnotationRequests, models
+
+
+with UaiAnnotationRequests(
+    uai_oauth2="<YOUR_UAI_OAUTH2_HERE>",
+) as uar_client:
+    res = None
+    try:
+
+        res = uar_client.annotation_request.get(project_id="<id>", field=uai_annotation_requests.FilterField.REQUEST_REFERENCE_ID, value="<value>")
+
+        # Handle response
+        print(res)
+
+
+    except models.UaiAnnotationRequestsError as e:
+        # The base class for HTTP error responses
+        print(e.message)
+        print(e.status_code)
+        print(e.body)
+        print(e.headers)
+        print(e.raw_response)
+
+        # Depending on the method different errors may be thrown
+        if isinstance(e, models.AnnotationRequestNotFoundDTO):
+            print(e.data.message)  # str
+```
+
+### Error Classes
+**Primary error:**
+* [`UaiAnnotationRequestsError`](./src/uai_annotation_requests/models/uaiannotationrequestserror.py): The base class for HTTP error responses.
+
+<details><summary>Less common errors (7)</summary>
+
+<br />
+
+**Network errors:**
+* [`httpx.RequestError`](https://www.python-httpx.org/exceptions/#httpx.RequestError): Base class for request errors.
+    * [`httpx.ConnectError`](https://www.python-httpx.org/exceptions/#httpx.ConnectError): HTTP client was unable to make a request to a server.
+    * [`httpx.TimeoutException`](https://www.python-httpx.org/exceptions/#httpx.TimeoutException): HTTP request timed out.
+
+
+**Inherit from [`UaiAnnotationRequestsError`](./src/uai_annotation_requests/models/uaiannotationrequestserror.py)**:
+* [`AnnotationRequestNotFoundDTO`](./src/uai_annotation_requests/models/annotationrequestnotfounddto.py): A message providing details that the annotation request was not found. Status code `404`. Applicable to 2 of 8 methods.*
+* [`AnnotationRequestExportNotReadyDTO`](./src/uai_annotation_requests/models/annotationrequestexportnotreadydto.py): A message providing details on why the annotations export is not available. Status code `404`. Applicable to 1 of 8 methods.*
+* [`ResponseValidationError`](./src/uai_annotation_requests/models/responsevalidationerror.py): Type mismatch between the response data and the expected Pydantic model. Provides access to the Pydantic validation error via the `cause` attribute.
+
+</details>
+
+\* Check [the method documentation](#available-resources-and-operations) to see if the error is applicable.
+<!-- End Error Handling [errors] -->
+
+<!-- No Server Selection [server] -->
+
+<!-- No Custom HTTP Client [http-client] -->
+
+<!-- No Resource Management [resource-management] -->
+
+<!-- No Debugging [debug] -->
+
+<!-- Placeholder for Future Speakeasy SDK Sections -->
