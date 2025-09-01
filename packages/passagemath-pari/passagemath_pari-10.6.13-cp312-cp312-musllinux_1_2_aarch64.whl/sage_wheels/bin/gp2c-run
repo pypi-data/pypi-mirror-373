@@ -1,0 +1,57 @@
+#!/bin/sh -e
+#Copyright (C) 2001-2013  The PARI group.
+#
+#This file is part of the GP2C package.
+#
+#PARI/GP is free software; you can redistribute it and/or modify it under the
+#terms of the GNU General Public License as published by the Free Software
+#Foundation. It is distributed in the hope that it will be useful, but WITHOUT
+#ANY WARRANTY WHATSOEVER.
+#
+#Check the License for details. You should have received a copy of it, along
+#with the package; see the file 'COPYING'. If not, write to the Free Software
+#Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+name="stdin";
+for p in "$@"; do
+case "$p" in
+  -h|--help) cat <<EOF
+gp2c-run <options> <file.gp>
+Compile file.gp with gp2c and launch a gp session with functions of file.gp
+added.
+<options> are passed to gp2c
+
+gp2c-run <file.c>
+Compile file.c and launch a gp session with functions of file.c added.
+
+ENVIRONMENT:
+GP2C: path to the gp2c compiler, default: /host/sage-musllinux_1_2_aarch64/bin/gp2c
+GP: path to the gp calculator, default: /host/sage-musllinux_1_2_aarch64/bin/gp
+EOF
+exit
+;;
+  -l|-t|-v)  exec $GP2C "$@" ;;
+  -o) echo "gp2c-run does not support option -o" 1>&2; exit 1;;
+  -*) ;; #We discard options
+  *) name=$p;;
+esac
+done
+
+if test "x$GP2C" = "x"; then
+  GP2C="/host/sage-musllinux_1_2_aarch64/bin/gp2c"
+fi
+
+
+if test "x$GP" = "x"; then
+  GP="/host/sage-musllinux_1_2_aarch64/bin/gp"
+fi
+
+case $name in
+*.c) name=${name%.c};;
+*) $GP2C -o $name.c "$@" ;;
+esac
+
+command=`echo "gcc -c -o %s.o -O3 -Wall -fno-strict-aliasing -g -O2 -fPIC -I\"/host/sage-musllinux_1_2_aarch64/include\" %s.c && gcc -o %s.so -shared -O3 -Wall -fno-strict-aliasing -g -O2 -fPIC -Wl,-shared -Wl,-rpath-link,/host/sage-musllinux_1_2_aarch64/lib -L/host/sage-musllinux_1_2_aarch64/lib -Wl,-rpath,/host/sage-musllinux_1_2_aarch64/lib -Wl,-rpath-link,/host/sage-musllinux_1_2_aarch64/lib -L/host/sage-musllinux_1_2_aarch64/lib -Wl,-rpath,/host/sage-musllinux_1_2_aarch64/lib %s.o -Wl,-rpath,/host/sage-musllinux_1_2_aarch64/lib -lc -lm -L/host/sage-musllinux_1_2_aarch64/lib -lpari" | sed -e "s %s $name g"`
+eval $command || exit $?
+grep "^GP;" $name.c | sed 's/^GP;//' >$name.run
+$GP $name.run
