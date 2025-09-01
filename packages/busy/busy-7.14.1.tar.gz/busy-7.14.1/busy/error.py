@@ -1,0 +1,2 @@
+class BusyError(Exception):
+    pass
