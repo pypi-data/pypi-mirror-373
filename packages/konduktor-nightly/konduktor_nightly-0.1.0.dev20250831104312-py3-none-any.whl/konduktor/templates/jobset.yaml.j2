@@ -1,0 +1,43 @@
+jobset:
+  apiVersion: jobset.x-k8s.io/v1alpha2
+  kind: JobSet
+  metadata:
+    name: {{ job_name }}
+    labels:
+      {{ jobset_name_label }}: "{{ job_name }}"
+      {{ jobset_userid_label }}: "{{ user_id }}"
+      {{ jobset_user_label }}: "{{ user }}"
+      {% if accelerator_type %}
+      {{ jobset_accelerator_label }}: "{{ accelerator_type }}"
+      {{ jobset_num_accelerators_label }}: "{{ num_accelerators }}"
+      {% endif %}
+      {% if max_execution_time %}
+      {{ jobset_max_execution_time_label }}: "{{ max_execution_time }}"
+      {% endif %}
+      trainy.ai/konduktor-managed: "true"
+      parent: "trainy"
+    annotations: {}
+  spec:
+    ttlSecondsAfterFinished: 31536000 # 1 year (365 days)
+    {% if max_restarts is not none %}
+    failurePolicy:
+      maxRestarts: {{ max_restarts }}
+    {% endif %}
+    replicatedJobs:
+    - name: workers
+      template:
+        spec:
+          ttlSecondsAfterFinished: 600 # 5 minutes
+          parallelism: {{ num_nodes }}
+          {% if completions %}
+          completions: {{ completions }}
+          {% else %}
+          completions: {{ num_nodes }}
+          {% endif %}
+          backoffLimit: 0
+          template: {}
+          podFailurePolicy:
+            rules:
+            - action: FailJob
+              onPodConditions:
+              - type: ConfigIssue

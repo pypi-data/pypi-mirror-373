@@ -1,0 +1,142 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    {% if not general %}
+    {{ model_name_label }}: {{ name }}
+    model.aibrix.ai/port: "{{ ports }}"
+    {% endif %}
+    {{ deployment_name_label }}: "{{ name }}"
+    {{ deployment_user_label }}: "{{ user }}"
+    {{ deployment_accelerator_label }}: "{{ accelerator_type }}"
+    {{ deployment_num_accelerators_label }}: "{{ num_accelerators }}"
+    trainy.ai/has-autoscaler: "{{ autoscaler }}"
+    trainy.ai/konduktor-managed: "true"
+  name: {{ name }}
+  namespace: default
+spec:
+  replicas: {{ min_replicas }}
+  selector:
+    matchLabels:
+      {% if not general %}
+      {{ model_name_label }}: {{ name }}
+      {% endif %}
+      {{ deployment_name_label }}: "{{ name }}"
+  template: {}
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    {% if not general %}
+    {{ model_name_label }}: {{ name }}
+    {% endif %}
+    prometheus-discovery: "true"
+    {{ deployment_name_label }}: "{{ name }}"
+    {{ deployment_user_label }}: "{{ user }}"
+    trainy.ai/has-autoscaler: "{{ autoscaler }}"
+  {% if not general %}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+  {% endif %}
+  name: {{ name }}
+  namespace: default
+spec:
+  ports:
+    - name: serve
+      port: {{ ports }}
+      protocol: TCP
+      targetPort: {{ ports }}
+    {% if not general %}
+    - name: http
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    {% endif %}
+  selector:
+    {% if not general %}
+    {{ model_name_label }}: {{ name }}
+    {% endif %}
+    {{ deployment_name_label }}: "{{ name }}"
+  {% if general %}
+  type: LoadBalancer
+  {% else %}
+  type: ClusterIP
+  {% endif %}
+
+{% if not general %}
+---
+apiVersion: autoscaling.aibrix.ai/v1alpha1
+kind: PodAutoscaler
+metadata:
+  name: {{ name }}-apa
+  namespace: default
+  labels:
+    {{ model_name_label }}: {{ name }}
+    app.kubernetes.io/name: aibrix
+    app.kubernetes.io/managed-by: kustomize
+    {{ deployment_name_label }}: "{{ name }}"
+    {{ deployment_user_label }}: "{{ user }}"
+  annotations:
+    autoscaling.aibrix.ai/up-fluctuation-tolerance: '0.1'
+    autoscaling.aibrix.ai/down-fluctuation-tolerance: '0.2'
+    apa.autoscaling.aibrix.ai/window: 30s
+spec:
+  scalingStrategy: APA
+  minReplicas: {{ min_replicas }}
+  maxReplicas: {{ max_replicas }}
+  metricsSources:
+    - metricSourceType: pod
+      protocolType: http
+      port: "{{ ports }}"
+      path: metrics
+      targetMetric: gpu_cache_usage_perc
+      targetValue: '0.5'
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ name }}
+{% endif %}
+
+{% if general %}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ name }}-hpa
+  namespace: default
+  labels:
+    {{ deployment_name_label }}: "{{ name }}"
+    {{ deployment_user_label }}: "{{ user }}"
+    trainy.ai/has-autoscaler: "{{ autoscaler }}"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ name }}
+  minReplicas: {{ min_replicas }}
+  maxReplicas: {{ max_replicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+    scaleUp:
+      stabilizationWindowSeconds: 20
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+{% endif %}
