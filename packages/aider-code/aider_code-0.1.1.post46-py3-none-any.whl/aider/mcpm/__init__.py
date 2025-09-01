@@ -1,0 +1,183 @@
+#!/usr/bin/env python
+
+from typing import Dict, List, Tuple
+
+from . import mcp_prompts
+from .mcp_manager import McpManager
+from .mcp_server import McpServer
+from .mcp_tool import McpTool
+from .mcp_tool_parser import McpToolParser
+from ..i18n import I18n
+import locale
+
+# Global instance of the MCP manager
+mcp_manager = McpManager()
+
+
+def configure(args, i18n) -> None:
+    """Configure the MCP manager from command-line arguments."""
+    mcp_manager.i18n = i18n or I18n(args.chat_language or locale.getlocale()[0])
+    mcp_manager.configure_from_args(args)
+
+
+def initialize(io) -> None:
+    """Initialize and start all enabled MCP servers.
+
+    Args:
+        io: InputOutput object for logging messages
+        :param io:
+    """
+    mcp_manager.initialize_servers(io)
+    mcp_manager.discover_tools(io)
+
+
+def stop_servers() -> None:
+    """Quit all enabled MCP servers."""
+    if is_enabled():
+        mcp_manager.stop_servers()
+
+
+def is_enabled() -> bool:
+    """Check if MCP is enabled."""
+    return mcp_manager.enabled
+
+
+def list_servers() -> List[McpServer]:
+    """List all configured MCP servers."""
+    return mcp_manager.list_servers()
+
+
+def list_tools() -> Dict[str, List[McpTool]]:
+    """List all available MCP tools grouped by server."""
+    return mcp_manager.list_tools()
+
+
+def _execute_tool(server_name: str, tool_name: str, arguments: dict, io) -> str:
+    """Execute an MCP tool with the given arguments.
+
+    Args:
+        server_name: The name of the server providing the tool
+        tool_name: The name of the tool to execute
+        arguments: A dictionary of arguments to pass to the tool
+        io: InputOutput object for logging messages
+
+    Returns:
+        The result of the tool execution as a string
+    """
+    return mcp_manager.execute_tool(server_name, tool_name, arguments, io)
+
+
+def execute_tool(server_name: str, tool_name: str, arguments: dict, io) -> str:
+    """Execute an MCP tool with the given arguments.
+
+    Args:
+        server_name: The name of the server providing the tool
+        tool_name: The name of the tool to execute
+        arguments: A dictionary of arguments to pass to the tool
+        io: InputOutput object for logging messages
+
+    Returns:
+        The result of the tool execution as a string
+    """
+    return _execute_tool(server_name, tool_name, arguments, io)
+
+
+def process_llm_tool_requests(text: str, io, edit_format) -> list[Tuple[str, bool]]:
+    """
+    Process tools execution request from the LLM.
+
+    Args:
+        text: The text to parse for tool execution requests
+        io: InputOutput object for logging messages
+
+    Returns:
+        A list of (result, is_error) if a request was processed,
+    """
+    tool_requests = McpToolParser.extract_tool_requests(text)
+
+    results = []
+    for server_name, tool_name, arguments in tool_requests:
+        result, _ = process_llm_tool_request(
+            server_name, tool_name, arguments, io, edit_format
+        )
+        results.append(result)
+
+    return results
+
+
+def process_llm_tool_request(
+    server_name: str, tool_name: str, arguments: dict, io, edit_format
+) -> Tuple[str, bool]:
+    """
+    Process a single tool execution request from the LLM.
+
+    Args:
+        server_name: The name of the server providing the tool
+        tool_name: The name of the tool to execute
+        arguments: A dictionary of arguments to pass to the tool
+        io: InputOutput object for logging messages
+
+    Returns:
+        A tuple containing the result of the tool execution as a string and a boolean indicating if an error
+        occurred during the execution
+    """
+
+    # Check if the server and tool exist
+    server = mcp_manager.get_server(server_name)
+    identifier = f"{server_name}.{tool_name}"
+    if not server:
+        error = f"MCP server '{server_name}' not found"
+        io.tool_error(error)
+        return McpToolParser.format_tool_error(identifier, error), True
+
+    if not server.enabled:
+        error = f"MCP server '{server_name}' is not enabled"
+        io.tool_error(error)
+        return McpToolParser.format_tool_error(identifier, error), True
+
+    if tool_name not in server.tools:
+        error = f"Tool '{tool_name}' not found in server '{server_name}'"
+        io.tool_error(error)
+        return McpToolParser.format_tool_error(identifier, error), True
+
+    try:
+        result = _execute_tool(server_name, tool_name, arguments, io)
+        return McpToolParser.format_tool_result(identifier, result), False
+    except Exception as e:
+        error = f"Error executing tool '{tool_name}': {str(e)}"
+        io.tool_error(error)
+        return McpToolParser.format_tool_error(identifier, error), True
+
+
+def get_available_tools_prompt(suggest_shell_commands) -> str:
+    """
+    Get a formatted string describing the available MCP tools for inclusion in the system prompt.
+
+    Returns:
+        A formatted string describing the available tools
+    """
+    tools_by_server = list_tools()
+    available_tools = McpToolParser.format_available_tools(tools_by_server)
+    prompt_template = (
+        mcp_prompts.mcp_tool_prompt if tools_by_server else mcp_prompts.no_mcp_tool
+    )
+    mcp_tool_shell_prompt = ""
+    if suggest_shell_commands:
+        mcp_tool_shell_prompt = mcp_prompts.mcp_tool_shell_prompt
+
+    return prompt_template.format(
+        available_tools=available_tools, mcp_tool_shell_prompt=mcp_tool_shell_prompt
+    )
+
+
+def get_available_tools_reminder_prompt() -> str:
+    """
+    Get a formatted string describing the available MCP tools for inclusion in the system prompt.
+
+    Returns:
+        A formatted string describing the available tools
+    """
+    tools_by_server = list_tools()
+    available_tools = McpToolParser.format_available_tools(tools_by_server)
+    prompt_template = mcp_prompts.mcp_tool_reminder
+    return prompt_template.format(available_tools=available_tools)
