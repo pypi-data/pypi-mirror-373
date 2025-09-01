@@ -1,0 +1,274 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.10.6] - 2025-08-31
+
+### ⚙️ Miscellaneous Tasks
+
+- Update pyproject.toml, pixi.lock, and .actrc for CI and act compatibility
+- Remove rattler-build workflow now that it is a part of the CI workflow
+
+### ⭐ Features
+
+- **ci**: Add rattler-build workflow and update recipe for CI compatibility
+- **ci**: Add rattler-build job to CI workflow for package building
+- **ci**: Update rattler-build job to support multiple OS environments
+- **ci**: Enhance rattler-build job to support OS-specific recipe updates
+
+### 🐛 Bug Fixes
+
+- **ci**: Streamline recipe.yaml update step for cross-platform compatibility
+- **ci**: Correct syntax for updating recipe.yaml in rattler-build job
+- **ci**: Correct syntax for updating context version in recipe.yaml
+- **ci**: Add debug output for recipe.yaml after context version update
+- **ci**: Add build step to rattler-build job for package compilation
+- **ci**: Update fetch options in rattler-build job
+- **dependencies**: Update virtualenv version to >=20.26.6 to address PVE-2024-73456
+
+## [0.10.5] - 2025-08-31
+
+### 🐛 Bug Fixes
+
+- Add PYPI_API_TOKEN secret for publishing to PyPI
+
+## [0.10.4] - 2025-08-31
+
+### 🐛 Bug Fixes
+
+- Update prettier hook to use 'files' instead of 'types_or' for better file matching
+- Update version to 0.10.3 and refine requirements in recipe.yaml
+- Update recipe.yaml to use dynamic versioning and refine requirements
+- Update TOML handling for compatibility with Python 3.11 and remove deprecated dependencies
+- Update demo.py to use 'toml' for writing and adjust requirements in recipe.yaml
+- Update build command in pyproject.toml to simplify packaging process
+- Add 'toml' as a dependency
+- Remove sensitive information from publish.yml
+- Update version and sha256 in pixi.lock; add toml dependencies in pyproject.toml; enhance demo tests in test_demo.py
+
+## [0.10.3] - 2025-08-31
+
+### ⚙️ Miscellaneous Tasks
+
+- Comment out Test PyPI publishing steps in workflow
+
+### ⭐ Features
+
+- Add .secrets to .gitignore for nektos/act
+- Add act and pixi-diff-to-markdown dependencies and commands
+- Add .actrc and ACT_USAGE.md for local GitHub Actions testing setup
+- Add workflow_dispatch trigger to CI workflow
+
+### 🐛 Bug Fixes
+
+- Specify safety and marshmallow version constraints in pyproject.toml
+- Change token for pull request creation
+- Fix command for generating markdown diff
+- Remove unnecessary quotes in labeler.yml file paths
+- Update labeler configuration to use changed-files syntax
+- Correct 'file' to 'files' in Codecov action configuration
+
+### 🚜 Refactor
+
+- Reorder build and check package steps in release workflow
+
+## [0.10.2] - 2025-08-30
+
+### ⭐ Features
+
+- Add workflow to update Pixi lockfiles
+
+## [0.10.1] - 2025-08-30
+
+### 🐛 Bug Fixes
+
+- Add missing checkout step to publish workflow
+
+## [0.10.0] - 2025-08-30
+
+### ⭐ Features
+
+- Split release workflow into separate release and publish workflows
+
+### 🐛 Bug Fixes
+
+- Resolve actionlint shellcheck warnings and add standalone actionlint task
+- Ensure publish workflow triggers after release creation
+
+### 📚 Documentation
+
+- Add comprehensive documentation for workflow split
+
+### 🚜 Refactor
+
+- **release**: Remove unused publish options and add package check step
+
+## [0.9.9] - 2025-08-29
+
+### ⚙️ Miscellaneous Tasks
+
+- **deps**: Bump peter-evans/create-pull-request from 6 to 7 (#8)
+- **deps**: Bump actions/checkout from 4 to 5 (#9)
+- **deps**: Bump codecov/codecov-action from 5.4.3 to 5.5.0 (#10)
+
+### 🐛 Bug Fixes
+
+- Add missing enable-versioned-regex parameter to labeler workflow
+
+## [0.9.8] - 2025-08-24
+
+### 🐛 Bug Fixes
+
+- Add missing v0.9.8 to CHANGELOG.md and improve git-cliff config
+
+## [0.9.7] - 2025-08-24
+
+### ⚙️ Miscellaneous Tasks
+
+- Extract release notes from CHANGELOG.md for GitHub releases
+
+### 📚 Documentation
+
+- Add comprehensive badges to README.md
+
+## [0.9.6] - 2025-08-24
+
+### 📚 Documentation
+
+- Remove public security vulnerability template
+- Improve issue and PR guidance in CONTRIBUTING.md
+
+## [0.9.5] - 2025-08-24
+
+### 🐛 Bug Fixes
+
+- Ensure git-cliff sees the release tag when generating changelog
+
+## [0.9.2] - 2025-08-24
+
+### 🐛 Bug Fixes
+
+- Correct release notes formatting in GitHub releases
+
+### 📚 Documentation
+
+- Regenerate CHANGELOG.md using git-cliff with full project history
+
+## [0.9.1] - 2025-08-24
+
+### Build
+
+- **deps**: Update all pre-commit hook versions to latest
+
+### ⚙️ Miscellaneous Tasks
+
+- **deps**: Bump actions/checkout from 4 to 5 (#4)
+- **deps**: Bump prefix-dev/setup-pixi from 0.8.1 to 0.9.0 (#5)
+
+### ⭐ Features
+
+- Enhance build configuration with auto-detection
+- Advanced Requirements Management with conditional dependencies
+- Test Section Enhancement with intelligent auto-detection
+- Source Section Intelligence with auto-detection
+- Add platform/variant support with intelligent auto-detection
+- Implement Output Customization enhancement
+- Implement Integration Enhancements
+- Add comprehensive security reporting infrastructure
+- Add Copilot instructions for pull request reviews
+- Consolidate release and publishing workflows
+- Add comprehensive repository maintenance workflows
+- Add automated labeling system
+- Add Python 3.13 support
+- Update package version to 0.1.3.dev25 and sha256 checksum
+- Add comprehensive interactive demo module
+- Standardize task naming and add comprehensive security scanning
+- Use Personal Access Token for release workflow to bypass branch protection
+- Add PyPI publishing steps to release workflow
+
+### 🐛 Bug Fixes
+
+- Exclude auto-generated _version.py from linting and coverage
+- Resolve markdown linting issues in documentation
+- Enable automatic dependabot scans
+- Update CI workflow to use standardized type-check task name
+- Update changelog generation to use specific tag version
+
+### 📚 Documentation
+
+- Add comprehensive release process documentation
+- Update README with documentation references and release process
+
+### 🚜 Refactor
+
+- Consolidate bandit configuration in pyproject.toml
+
+## [0.1.2] - 2025-08-18
+
+### 🐛 Bug Fixes
+
+- Add contents:write permission for uploading release assets
+
+## [0.1.1] - 2025-08-18
+
+### 🐛 Bug Fixes
+
+- Simplify version verification in publish workflow to handle editable installs
+
+## [0.1.0] - 2025-08-18
+
+### ⚙️ Miscellaneous Tasks
+
+- Update pixi tasks for pre-commit integration
+- Add security report files to gitignore
+- Update package version in pixi.lock
+
+### ⭐ Features
+
+- Add pyrattler-recipe-autogen package for generating Rattler-Build recipes
+- Add type stubs for PyYAML and update import handling for tomli
+- Add pre-commit configuration and hooks for code quality
+
+### 🎨 Styling
+
+- Clean up code formatting and improve readability across multiple files
+- Improve YAML formatting in GitHub Actions workflows
+
+### 🐛 Bug Fixes
+
+- Update CI workflow to trigger on main and develop branches
+- Remove obsolete rattler-build package references from pixi.lock
+- Add type cast for setuptools_scm version resolution
+- Simplify type casting for setuptools_scm version resolution
+- Improve cross-platform compatibility for temporary file handling in tests
+- Simplify command for package integrity check in CI workflows
+- Simplify safety and bandit command execution in CI workflow
+- Remove safety check from CI workflow
+- Update Pixi setup to version 0.9.0 and adjust pixi-version to 0.52.0
+- Streamline imports and enhance cross-platform compatibility in test_core.py
+- Update SonarQube project key for consistency
+- Update SonarQube project key for accuracy
+- Update SonarCloud configuration for project key and exclusions
+- Update SonarCloud Quality Gate action version to v1.2.0
+- Remove comment from SonarCloud organization key for clarity
+- Normalize path handling for cross-platform compatibility in tests
+- Enhance dynamic version resolution with setuptools_scm handling and tests
+- Update dynamic version resolution fallback to use placeholder for unknown backends
+- Improve handling of Windows cross-drive paths in _get_relative_path function
+- Update version in pixi.lock and refactor setuptools_scm import handling in core.py and tests
+- Update Pixi setup to version 0.9.0 and adjust Pixi version to 0.52.0
+- Configure hatch-vcs to avoid local version identifiers for PyPI uploads
+
+### 📚 Documentation
+
+- Improve changelog formatting and organization
+- Enhance README with pre-commit hooks documentation
+
+### 🧪 Testing
+
+- Add unit tests for CLI functionality and package initialization
+
+<!-- generated by git-cliff -->
