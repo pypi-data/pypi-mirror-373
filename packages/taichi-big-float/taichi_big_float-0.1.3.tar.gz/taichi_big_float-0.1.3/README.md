@@ -1,0 +1,2 @@
+# taichi-bigfloat
+This is a module which makes arbitrary precision GPU accelerated computations possible using Taichi. It has 2 main functionalities: the supports_bigfloat decorator, and the make_float_t function which dynamically creates the high precision float module for the required precision with all the attached functions. This is a generalization of the [float192](https://github.com/balazs-szalai/taichi-float192) module for arbitrary sized float types. It only contains the most basic mathematical function everything else has to be implemenented from scratch. 
