@@ -1,0 +1,81 @@
+- 0.4.0
+  - Integrate ISMRMD exporter
+  - Update documentation
+  - Provide option to get PDG graph plotting data without plotting
+  - Helper plotting function that works with all pulseq versions
+- 0.3.13
+  - bugfix: util.load_phantom - B0_polynomial computation used wrong number of dims
+  - default `clear_state_mag` to `True` to avoid memory problems
+  - include optional initial magnetization in execute_graph
+  - fixed numpy version in playground
+- 0.3.12
+  - Changed how to return magnetization from the simulation, see pull request #97
+- 0.3.11
+  - new util functions for phantom loading and simulating
+- 0.3.10
+  - phantom_motion and voxel_motion now also exists in VoxelGridPhantom
+  - new simple simulate function in util, that directly accepts a VoxelGridPhantom
+- 0.3.9
+  - New simple load_default_phantom function in util
+- 0.3.8
+  - Bugfix missing tensor dtype (#82)
+  - Support for 0 shim array shape_id
+  - Default shim in importer for pulses that do not specify any
+  - Deprecated old importer
+- 0.3.7
+  - Support for loading .seq files with pTx rf_shim extension for pulseq
+  - Support for loading .dsv files
+- 0.3.6
+  - Support for complex B1 maps (#80)
+  - Isochromat bugfix (#74)
+- 0.3.5
+  - centered signal on adc samples in `insert_signal_plot()`
+  - ensured `tissue_masks` is never zero to fix remaining bugs
+- 0.3.4
+  - Bugfix: `insert_signal_plot()` now respects adc delay
+- 0.3.3
+  - Bugfix: `VoxelGridPhantom.interpolate()` and `.scale()` now work again
+- 0.3.2
+  - Added tissue maps to phantom and plotting (#68)
+  - Fixed `.plot()`ting of 3D VoxelGridPhantom, added slice parameter
+  - Added `simulate_2D` to util for easy simulation of pypulseq sequences
+- 0.3.1
+  - WIP .dsv support with pydisseqt 0.1.5
+  - changed type annotation in util.imshow for python 3.9 compatibility
+- 0.3.0
+  - Bugfixes (seq.get_contrast(), pTx shim phase, pytorch deprecation warnings, > 360° pulses, pulseq plot, missing 2pi in diffusion, phantom plot titles)
+  - WIP rigid phantom motion simulation - not yet documented and subject to change
+  - Added option to return transversal magnetization from simulation
+  - New imshow() function in util.py for consistent plotting
+  - Some fixes to playground sequences - bigger overhaul coming soon
+  - Allow loading B0 / B1 in new VoxelGridPhantom.load() function
+  - Introduced quantified brain
+  - Performance improvement - only calculate signal for measured ADC samples
+  - Added latent_signal_unormalized to prepass graph for vizualisation
+- 0.2.12
+  - Fixed Brainweb phantom loading and generation
+  - Switched pre-pass kt precision from f32 to f64
+  - Made pre-pass state merging relative to sequence gradient moment and event time sizes
+- 0.2.11
+  - (re-)introduced return_mag_z parameter in pdg simulation
+- 0.2.10
+  - change default FOV in all notebooks to phantom size (200 mm)
+  - Use Open in Colab badges in the playground instead of links
+  - Documented how to run on GPU
+  - Added another pure mr0 flash DWI sequence to the playground
+  - Bugfix: normalized_grads setting was not passed in Sequence.cuda() and .cpu()
+  - Bugfix: removed wrong 2*pi factor from Diffusion b-value calculations
+- 0.2.9
+  - Change sign in gradient simulation - flips orientation of old reconstructions
+  - Included util file in mr0
+  - Improved plot function to support pypulseq 1.4.0-dev
+  - Add util to documentation
+- 0.2.8
+  - Updated playground notebook to use new FOV definitions
+  - Fixed SimData.recover()
+- 0.2.7
+  - Removed perlin-numpy from dependencies (git dependency not allowed by pypi)
+- 0.2.6
+  - New pulseq importer (correctly implements 1.2 - 1.4 spec)
+  - FOV / phantom size now in SI units per default
+  - Normalized gradients (when defining sequences in mr0) is now an explicit sequence flag
