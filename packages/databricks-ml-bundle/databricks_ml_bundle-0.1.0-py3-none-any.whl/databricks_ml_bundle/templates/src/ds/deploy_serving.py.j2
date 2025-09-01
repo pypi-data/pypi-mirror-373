@@ -1,0 +1,58 @@
+import click
+import mlflow
+from databricks.sdk import WorkspaceClient
+
+@click.command()
+@click.option("--registered-model", required=True)
+@click.option("--endpoint-name", required=True)
+@click.option("--stage", default="Staging")
+@click.option("--workload-size", default="Medium")
+@click.option("--scale-to-zero", is_flag=True, default=True)
+
+def main(registered_model: str, endpoint_name: str, stage: str, workload_size: str, scale_to_zero: bool):
+    """Deploy {{ model_type }} model to serving endpoint"""
+    # Find current model version for stage
+    mlflow.set_registry_uri("databricks-uc")
+    client = mlflow.tracking.MlflowClient()
+    versions = [v for v in client.search_model_versions(f"name='{registered_model}'") if v.current_stage == stage]
+    if not versions:
+        raise SystemExit(f"No version in stage {stage}")
+    version = sorted(versions, key=lambda v: int(v.version))[-1]
+
+    w = WorkspaceClient()
+    try:
+        w.serving_endpoints.get(endpoint_name)
+        exists = True
+    except Exception:
+        exists = False
+
+    served_entities = [
+        {
+            "name": "default",
+            "entity_name": registered_model,
+            "entity_version": version.version,
+            "scale_to_zero_enabled": scale_to_zero,
+            "workload_size": workload_size,
+            {% if use_gpu %}"workload_type": "GPU_MEDIUM"{% endif %}
+        }
+    ]
+
+    if exists:
+        w.serving_endpoints.update_config(
+            name=endpoint_name,
+            served_entities=served_entities,
+            traffic_config={"routes": [{"served_entity_name": "default", "traffic_percentage": 100}]}
+        )
+        print(f"Updated serving endpoint {endpoint_name}")
+    else:
+        w.serving_endpoints.create(
+            name=endpoint_name,
+            config={
+                "served_entities": served_entities,
+                "traffic_config": {"routes": [{"served_entity_name": "default", "traffic_percentage": 100}]}
+            }
+        )
+        print(f"Created serving endpoint {endpoint_name}")
+
+if __name__ == "__main__":
+    main()
