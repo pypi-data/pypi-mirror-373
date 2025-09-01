@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Red Team Evaluation Report</title>
+
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- ─────────────  STYLE  ───────────── -->
+  <style>
+  /* ─── Color tokens ───────────────────────────────────────── */
+  :root{
+    --safe-green:#A5D6A7;
+    --unsafe-red:#F44336;
+    --warn-yellow:#FFC107;
+    --brand-blue:#0288D1;
+    --brand-blue-light:#E1F5FE;
+    --text-dark:#343a40;
+  }
+
+  /* ─── Base typography & body ─────────────────────────────── */
+  body{background:#ffffff;color:var(--text-dark);font-family:Roboto,Arial,sans-serif}
+  h1,h2,h3,h4,h5{color:#1f2d3d;margin-top:0}
+
+  /* ─── Cards & boxes ──────────────────────────────────────── */
+  .card{border-radius:.5rem;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+  .card-gauge     {background:#fff;border:1px solid #e0e6f0}
+  .card-readiness {border:1px solid #d7e1f5;background:#fff;transition:.15s}
+  .card-readiness:hover{box-shadow:0 2px 8px rgba(0,0,0,.08)}
+  .card-summary   {background:#fff;border:1px solid #e0e6f0}
+  .card-summary .text-muted{font-weight:600}
+
+  /* ─── Severity colours (text + badge bg) ─────────────────── */
+  .severity-low      {color:var(--safe-green); background:#e9f6ee}
+  .severity-medium   {color:var(--warn-yellow);background:#fff3dd}
+  .severity-high     {color:var(--unsafe-red); background:#fdeaea}
+  .severity-critical {color:#F44336;          background:#fae6e6}
+
+  /* pill badge tweak */
+  .list-group-item span:last-child{
+    min-width:72px;text-align:right;padding:.25rem .5rem;
+    border-radius:1rem;font-size:.875rem
+  }
+
+  /* ─── Tables ─────────────────────────────────────────────── */
+  .table-primary thead th{background:var(--brand-blue);color:#fff;border-color:var(--brand-blue)}
+  .table-primary tbody tr:nth-child(even){background:var(--brand-blue-light)}
+  .table-primary tbody tr:hover{background:#d9e8ff}
+  .detail-table thead th{background:var(--brand-blue);color:#fff}
+  .detail-table td{vertical-align:top}
+
+  /* underline after first <h4> section */
+  h4:not(:first-child){padding-top:1.5rem;border-top:2px solid #d7e1f5}
+
+  /* collapse row background */
+  .collapse-row td{background:#f1f5fa;border-top:none}
+
+  /* copy buttons */
+  .copy-btn{font-size:.75rem;padding:2px 8px}
+
+  /* ─── Gauge ──────────────────────────────────────────────── */
+  .gauge-wrapper{max-width:180px;margin:0 auto;position:relative}
+  .gauge-wrapper canvas{width:100%!important;height:auto!important}
+  .gauge-center{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    font-weight:600;font-size:1.75rem;color:var(--text-dark)
+  }
+
+  /* --- For User and Assistant convo ----- */
+  .message-preview .full-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .message-preview {
+    position: relative;
+    padding-bottom: 22px; 
+  }
+  .message-preview .toggle-message {
+    cursor: pointer;
+    color: #0288D1;
+    text-decoration: underline;
+    font-size: 0.95em;
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    background: #f8f9fa;
+    padding-left: 8px;
+    padding-right: 4px;
+  }
+
+  </style>
+</head>
+
+<body>
+<div class="container my-5">
+  <h2 class="text-center mb-5">AI Red Team Evaluation Report</h2>
+
+  <!-- ─────  OVERALL SAFETY & RISK  ───── -->
+  <div class="row gy-4 mb-5 align-items-start">
+    <!-- Gauge -->
+    <div class="col-md-6">
+      <h4>Overall Safety</h4>
+      <div class="card card-gauge p-4 text-center">
+        <div class="gauge-wrapper">
+          <canvas id="safetyChart"></canvas>
+          <div class="gauge-center">{{ overall_safety_score }}/100</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ SAFETY SCORE BREAK‑UP (dummy values) ═══ -->
+    <div class="col-md-6">
+      <h4>Safety Score Break‑up</h4>
+      <ul class="list-group">
+        {% for cat in safety_categories %}
+          {% if cat.failed == 0 %}
+            {% set row_class = "list-group-item-success" %}
+          {% elif cat.passed == 0 %}
+            {% set row_class = "list-group-item-danger" %}
+          {% else %}
+            {% set row_class = "list-group-item-warning" %}
+          {% endif %}
+          <li class="list-group-item {{ row_class }} d-flex justify-content-between align-items-center">
+            <span class="fw-semibold">{{ cat.title }}</span>
+            <span class="fw-semibold">{{ cat.score }}%</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+    
+  </div>
+
+  <!-- ─────  REGULATORY  ───── -->
+  <h4>Regulatory Readiness</h4>
+  <p class="text-muted mb-3">
+    Presents your compliance levels against leading AI governance frameworks.
+    Each percentage reflects the share of required controls you meet.
+  </p>
+  <div class="row gy-3 mb-5">
+    {% for framework,pct in regulatory_readiness.items() %}
+    <div class="col-6 col-md-4 col-lg-2">
+      <div class="card card-readiness p-3 text-center h-100">
+        <div class="h6 fw-semibold">{{ framework }}</div>
+        <div class="h3 text-primary mb-0">{{ pct }}%</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- ═══ FINDINGS SUMMARY (now 5 cards) ═══ -->
+  <h4>Findings Summary</h4>
+  <p class="text-muted">Critical / High / Medium issues & total jailbreaks.</p>
+  <div class="row gy-3 mb-4">
+    {% for label,val in {
+        'Critical':findings_summary.critical,
+        'High':findings_summary.high,
+        'Medium':findings_summary.medium,
+        'Total Jailbreaks':findings_summary.jailbreaks,
+        'Total Findings':findings_summary.total_findings }.items() %}
+      <div class="col-6 col-md-2">
+        <div class="card card-summary p-3 text-center">
+          <div class="text-muted">{{ label }}</div>
+          <div class="h2 mb-0">{{ val }}</div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+
+    <!-- ═══ PLUGIN SUMMARY  ( % failed ) ═══ -->
+  <h4>Plugin Summary</h4>
+  <p class="text-muted mb-3">Failure‑rate for each plugin category.</p>
+
+  <div class="row gy-3 mb-5">
+    {% for p in findings_list %}
+      {% set fail_pct = (p.failed / p.total * 100) | round(0) %}
+      <div class="col-6 col-md-3 col-lg-2">
+        <div class="card p-3 text-center h-100">
+          <div class="fw-semibold small mb-1">{{ p.title }}</div>
+          <div class="display-7" style="color:var(--unsafe-red)">
+            {{ fail_pct }}<span class="fs-4">%</span>
+          </div>
+          <small class="text-muted">{{ p.failed }} of {{ p.total }} failed</small>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+
+  <!-- ─────  RESULTS TABLE  ───── -->
+<h4>Summary of Evaluation Results</h4>
+<div class="table-responsive mb-4">
+  <table class="table table-primary table-hover align-middle">
+    <thead>
+    <tr>
+      <th>Plugin ID</th><th>Prompt Goal</th><th>Failed</th>
+      <th>Risk Score (Overall)</th><th>Jailbreak</th><th>Description</th>
+    </tr>
+    </thead>
+
+    {% macro score_str(o) -%}
+      {%- if o is none -%} N/A
+      {%- elif o.overall_score is defined -%}
+          {{ "{:.2f}".format(o.overall_score.score) }} ({{ o.overall_score.severity.value }})
+      {%- elif o.score is defined -%}
+          {{ "{:.2f}".format(o.score) }}{% if o.severity is defined %} ({{ o.severity.value }}){% endif %}
+      {%- else -%} {{ o }} {%- endif -%}
+    {%- endmacro %}
+
+
+    {% set sorted_results = report.eval_results | sort(attribute='risk_score.overall.overall_score.score') | reverse %}
+
+    <tbody>
+    {% for res in sorted_results %}
+      <tr data-bs-toggle="collapse" data-bs-target="#detail-{{ loop.index }}" class="cursor-pointer">
+        <td>{{ res.prompt.goal }}</td>
+        <td>{{ res.plugin_id }}</td>
+        <td class="{% if not res.responses[0].success %}text-danger fw-bold{% else %}text-success{% endif %}">
+          {% if not res.responses[0].success %}Yes{% else %}No{% endif %}
+        </td>
+        <td>
+          {{ '{:.2f}'.format(res.risk_score.overall.overall_score.score) }}
+          (<span class="severity-{{ res.risk_score.overall.overall_score.severity.value|lower }}">
+            {{ res.risk_score.overall.overall_score.severity.value }}
+          </span>)
+        </td>
+        <td>{{ res.responses[0].jailbreak_achieved or '-' }}</td>
+        <td>{{ res.responses[0].description or '–' }}</td>
+      </tr>
+
+      <!-- collapsible detail -->
+      <tr id="detail-{{ loop.index }}" class="collapse collapse-row">
+        <td colspan="7">
+          <div class="p-3">
+            <h6 class="mb-3">Finding for Run ID: {{ res.run_id }}</h6>
+            <div class="table-responsive">
+              <table class="table detail-table mb-0">
+                <thead>
+                  <tr><th style="width:25%">Field</th><th>Value</th><th style="width:10%"></th></tr>
+                </thead>
+                <tbody>
+                  {% macro row(label,val) -%}
+                    <tr>
+                      <td class="fw-semibold">{{ label }}</td>
+                      <td>{{ val if val is not none else '–' }}</td>
+                      <td><button class="btn btn-outline-secondary btn-sm copy-btn" data-copy="{{ val }}">Copy</button></td>
+                    </tr>
+                  {%- endmacro %}
+                  {{ row('Plugin ID',          res.plugin_id) }}
+                  {{ row('Prompt Goal',        res.prompt.goal) }}
+                  {{ row('Base Prompt',        res.prompt.base_prompt) }}
+
+                  <!-- User Message -->
+                  <tr>
+                    <td class="fw-semibold">User Message</td>
+                    <td>
+                      <div class="message-preview">
+                        <span class="preview-text">{{ res._user_message[:150] }}{% if res._user_message|length > 150 %}...{% endif %}</span>
+                        {% if res._user_message|length > 150 %}
+                          <a href="javascript:void(0)" class="toggle-message">Read more</a>
+                        {% endif %}
+                        <span class="full-text d-none">{{ res._user_message }}</span>
+                      </div>
+                    </td>
+                    <td><button class="btn btn-outline-secondary btn-sm copy-btn" data-copy="{{ res._user_message }}">Copy</button></td>
+                  </tr>
+
+                  <!-- Assistant Response -->
+                  <tr>
+                    <td class="fw-semibold">Assistant Response</td>
+                    <td>
+                      <div class="message-preview">
+                        <span class="preview-text">{{ res._assistant_response[:150] }}{% if res._assistant_response|length > 150 %}...{% endif %}</span>
+                        {% if res._assistant_response|length > 150 %}
+                          <a href="javascript:void(0)" class="toggle-message">Read more</a>
+                        {% endif %}
+                        <span class="full-text d-none">{{ res._assistant_response }}</span>
+                      </div>
+                    </td>
+                    <td><button class="btn btn-outline-secondary btn-sm copy-btn" data-copy="{{ res._assistant_response }}">Copy</button></td>
+                  </tr>
+
+                  {{ row('Failed', 'Yes' if not res.responses[0].success else 'No') }}
+
+                  {{ row('Risk Score (AIVSS)', score_str(res.risk_score.aivss.aivss_score)) }}
+                  {{ row('Base Score',         score_str(res.risk_score.base.base)) }}
+                  {{ row('Breakability Score', score_str(res.risk_score.breakability.breakability)) }}
+                  {{ row('Overall Score',      score_str(res.risk_score.overall.overall_score)) }}
+
+                  {{ row('Jailbreak Achieved', res.responses[0].jailbreak_achieved or 'N/A') }}
+                  {{ row('Description',        res.responses[0].description) }}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+</div><!-- /container -->
+
+<!-- Bootstrap JS bundle -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+/* ─────  Resolve CSS vars to hex for Chart.js  ───── */
+const css   = getComputedStyle(document.documentElement);
+const gOk   = css.getPropertyValue('--safe-green').trim()  || '#28a745';
+const gBad  = css.getPropertyValue('--unsafe-red').trim()  || '#dc3545';
+
+/* ─────  Gauge  ───── */
+new Chart(document.getElementById('safetyChart'),{
+  type:'doughnut',
+  data:{
+    datasets:[{
+      data:[{{ overall_safety_score }}, 100-{{ overall_safety_score }}],
+      backgroundColor:[ gOk, gBad ],
+      cutout:'80%',borderWidth:0
+    }]
+  },
+  options:{plugins:{legend:{display:false},tooltip:{enabled:false}},maintainAspectRatio:false}
+});
+
+
+/* ─────  Copy buttons  ───── */
+document.querySelectorAll('.copy-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    navigator.clipboard.writeText(btn.getAttribute('data-copy'));
+    const t = btn.textContent;
+    btn.textContent='Copied!';
+    setTimeout(()=>btn.textContent=t,800);
+  });
+});
+
+/* ─────  Collapse/Expand "Read more" for User & Assistant long messages.  ───── */
+document.querySelectorAll('.toggle-message').forEach(function(link){
+  link.addEventListener('click', function(){
+    var preview = this.closest('.message-preview');
+    var previewText = preview.querySelector('.preview-text');
+    var fullText = preview.querySelector('.full-text');
+    if(fullText.classList.contains('d-none')){
+      previewText.style.display = 'none';
+      fullText.classList.remove('d-none');
+      this.textContent = 'Show less';
+    }else{
+      previewText.style.display = '';
+      fullText.classList.add('d-none');
+      this.textContent = 'Read more';
+    }
+  });
+});
+
+</script>
+</body>
+</html>
