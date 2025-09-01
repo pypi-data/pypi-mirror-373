@@ -1,0 +1,591 @@
+Metadata-Version: 2.4
+Name: llama-search
+Version: 0.3.0
+Summary: Official Python SDK for Llama Search AI Platform
+Author-email: Llama Search Team <support@llama-search.com>
+License-Expression: MIT
+Project-URL: Homepage, https://llama-search.com
+Project-URL: Documentation, https://llama-search.com/docs
+Project-URL: Repository, https://github.com/llama-search/llama-search
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: httpx>=0.24.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: typing-extensions>=4.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "dev"
+Requires-Dist: pytest-mock>=3.10.0; extra == "dev"
+Requires-Dist: mypy>=1.7.0; extra == "dev"
+Requires-Dist: ruff>=0.1.6; extra == "dev"
+Requires-Dist: pre-commit>=3.5.0; extra == "dev"
+Dynamic: license-file
+
+# Llama Search Python SDK
+
+The official Python SDK for the Llama Search AI Platform. This SDK provides a simple, intuitive interface for integrating AI-powered web search capabilities into your applications.
+
+## Installation
+
+```bash
+pip install llama-search
+```
+
+## Quick Start
+
+### Async Usage (Recommended)
+
+```python
+from llama_search import AsyncLlamaSearch
+
+async def main():
+    async with AsyncLlamaSearch(api_key="your_api_key_here") as client:
+        # Perform a web search
+        result = await client.web_search(
+            query="Tesla Model 3 battery specifications",
+            search_depth="standard"
+        )
+
+        print(f"Found {len(result.sources)} sources")
+        for source in result.sources:
+            print(f"- {source.url}: {source.content[:100]}...")
+
+        # Get available search types
+        search_types = await client.get_search_types()
+        for search_type in search_types.search_types:
+            print(f"{search_type.name}: {search_type.credits} credits")
+
+        # Check account status
+        balance = await client.get_credit_balance()
+        stats = await client.get_usage_stats()
+        print(f"Credits remaining: {balance.balance}")
+        print(f"Total searches: {stats.total_searches}")
+
+        # Purchase more credits if needed
+        if balance.balance < 50:  # Low credit threshold
+            packages = await client.get_credit_packages()
+            print("Available credit packages:")
+            for package in packages.packages:
+                print(f"- {package.name}: {package.credits} credits for {package.price_display}")
+
+        # Get search history
+        history = await client.get_search_history(limit=5)
+        for search in history.searches:
+            print(f"Recent: {search.query} ({search.credits_consumed} credits)")
+
+import asyncio
+asyncio.run(main())
+```
+
+### Sync Usage
+
+```python
+from llama_search import LlamaSearch
+
+with LlamaSearch(api_key="your_api_key_here") as client:
+    # Check account status and purchase credits if needed
+    balance = client.get_credit_balance()
+    stats = client.get_usage_stats()
+    print(f"Credits: {balance.balance}, Total searches: {stats.total_searches}")
+
+    # Get available credit packages
+    if balance.balance < 20:
+        packages = client.get_credit_packages()
+        print(f"Low credits! Available packages:")
+        for package in packages.packages[:2]:
+            print(f"- {package.name}: {package.credits} credits for {package.price_display}")
+
+    # Perform a web search
+    result = client.web_search(
+        query="Tesla Model 3 battery specifications",
+        search_depth="standard"
+    )
+
+    print(f"Found {len(result.sources)} sources")
+    for source in result.sources:
+        print(f"- {source.url}: {source.content[:100]}...")
+
+    # View recent searches and purchases
+    history = client.get_search_history(limit=3)
+    purchases = client.get_purchase_history(limit=2)
+    print(f"Recent searches: {len(history.searches)}")
+    print(f"Recent purchases: ${purchases.total_spent_cents / 100:.2f} spent")
+```
+
+## API Reference
+
+### Search Methods
+
+#### `web_search(query, search_depth="standard", domain="", with_full_content=False)`
+
+Perform intelligent web search using AI.
+
+**Parameters:**
+- `query` (str): The search query to execute
+- `search_depth` (str): Search depth level affecting cost and quality
+  - `"basic"`: 5 credits, 2 tool calls, low context
+  - `"standard"`: 8 credits, 3 tool calls, medium context (default)
+  - `"extensive"`: 15 credits, 5 tool calls, high context
+- `domain` (str): Optional domain filter (e.g., "reddit.com")
+- `with_full_content` (bool): Whether to fetch full content from URLs
+
+**Returns:** `WebSearchResult` containing sources and metadata
+
+#### `get_search_types()`
+
+Get available search types and their costs.
+
+**Returns:** `SearchTypesResponse` containing available search types
+
+### Account Management Methods
+
+#### `get_usage_stats()`
+
+Get current usage statistics for your account.
+
+**Returns:** `UsageStats` containing search counts, credits used/remaining, monthly usage
+
+```python
+stats = await client.get_usage_stats()
+print(f"Credits remaining: {stats.credits_remaining}")
+print(f"Searches this month: {stats.searches_this_month}")
+```
+
+#### `get_search_history(limit=10)`
+
+Get your recent search history.
+
+**Parameters:**
+- `limit` (int): Maximum number of searches to return (1-100, default: 10)
+
+**Returns:** `SearchHistory` containing list of recent searches
+
+```python
+history = await client.get_search_history(limit=20)
+for search in history.searches:
+    print(f"{search.created_at}: {search.query} ({search.credits_consumed} credits)")
+```
+
+#### `get_credit_balance()`
+
+Get current credit balance and purchase history.
+
+**Returns:** `CreditBalance` containing balance, total purchased, last update
+
+```python
+balance = await client.get_credit_balance()
+print(f"Balance: {balance.balance} credits")
+print(f"Total purchased: {balance.total_purchased} credits")
+```
+
+### Billing Methods
+
+#### `get_credit_packages()`
+
+Get available credit packages for purchase.
+
+**Returns:** `CreditPackagesResponse` containing available credit packages
+
+```python
+packages = await client.get_credit_packages()
+for package in packages.packages:
+    popular = " 🔥 POPULAR" if package.popular else ""
+    bonus = f" + {package.bonus_credits} bonus" if package.bonus_credits > 0 else ""
+    print(f"{package.name}: {package.credits} credits{bonus} - {package.price_display}{popular}")
+```
+
+#### `create_purchase_session(package_id, success_url, cancel_url)`
+
+Create a credit purchase session for Stripe Checkout.
+
+**Parameters:**
+- `package_id` (str): ID of the credit package to purchase
+- `success_url` (str): URL to redirect to after successful payment
+- `cancel_url` (str): URL to redirect to if payment is cancelled
+
+**Returns:** `PurchaseSession` with checkout URL and session details
+
+```python
+session = await client.create_purchase_session(
+    package_id="basic_100",
+    success_url="https://yourapp.com/billing/success",
+    cancel_url="https://yourapp.com/billing/cancel"
+)
+# Redirect user to: session.checkout_url
+print(f"Session expires at: {session.expires_at}")
+```
+
+#### `get_payment_status(session_id)`
+
+Get the current status of a payment session.
+
+**Parameters:**
+- `session_id` (str): Checkout session ID from `create_purchase_session`
+
+**Returns:** `PaymentStatus` containing payment status and details
+
+```python
+status = await client.get_payment_status("cs_1234567890")
+if status.status == "completed":
+    print(f"Payment successful! {status.credits_added} credits added")
+elif status.status == "failed":
+    print(f"Payment failed: {status.error_message}")
+```
+
+#### `get_purchase_history(limit=10)`
+
+Get credit purchase history for the authenticated user.
+
+**Parameters:**
+- `limit` (int): Maximum number of purchases to return (1-50, default: 10)
+
+**Returns:** `PurchaseHistory` containing purchases and spending totals
+
+```python
+history = await client.get_purchase_history(limit=20)
+print(f"Total spent: ${history.total_spent_cents / 100:.2f}")
+print(f"Total credits purchased: {history.total_credits_purchased:,}")
+for purchase in history.purchases:
+    print(f"{purchase.created_at}: {purchase.package_name} - {purchase.credits} credits")
+```
+
+### Response Models
+
+#### `WebSearchResult`
+```python
+{
+    "success": bool,
+    "sources": List[SearchSource],
+    "error_message": str,
+    "id": Optional[str],
+    "query": str,
+    "credits_consumed": int,
+    "processing_time_ms": int,
+    "status": str
+}
+```
+
+#### `SearchSource`
+```python
+{
+    "url": str,
+    "content": str,
+    "full_content": str
+}
+```
+
+#### `UsageStats`
+```python
+{
+    "total_searches": int,
+    "credits_used": int,
+    "credits_remaining": int,
+    "searches_this_month": int
+}
+```
+
+#### `SearchHistory`
+```python
+{
+    "searches": List[SearchHistoryItem],
+    "total": int
+}
+```
+
+#### `SearchHistoryItem`
+```python
+{
+    "id": str,
+    "query": str,
+    "search_type": str,
+    "credits_consumed": int,
+    "processing_time_ms": Optional[int],
+    "status": str,
+    "created_at": datetime
+}
+```
+
+#### `CreditBalance`
+```python
+{
+    "balance": int,
+    "total_purchased": int,
+    "last_updated": datetime
+}
+```
+
+#### `CreditPackage`
+```python
+{
+    "id": str,
+    "name": str,
+    "credits": int,
+    "price_cents": int,
+    "price_display": str,
+    "popular": bool,
+    "bonus_credits": int
+}
+```
+
+#### `PurchaseSession`
+```python
+{
+    "session_id": str,
+    "checkout_url": str,
+    "expires_at": datetime,
+    "package_id": str,
+    "credits": int,
+    "price_cents": int
+}
+```
+
+#### `PaymentStatus`
+```python
+{
+    "session_id": str,
+    "status": str,  # "pending", "completed", "failed", "expired"
+    "credits_added": Optional[int],
+    "completed_at": Optional[datetime],
+    "error_message": Optional[str]
+}
+```
+
+#### `PurchaseHistory`
+```python
+{
+    "purchases": List[PurchaseHistoryItem],
+    "total_spent_cents": int,
+    "total_credits_purchased": int
+}
+```
+
+#### `PurchaseHistoryItem`
+```python
+{
+    "id": str,
+    "package_name": str,
+    "credits": int,
+    "price_cents": int,
+    "status": str,
+    "created_at": datetime,
+    "completed_at": Optional[datetime],
+    "session_id": Optional[str]
+}
+```
+
+## Error Handling & Resilience
+
+The SDK provides comprehensive error handling with custom exceptions, advanced retry logic, and circuit breaker patterns for robust production use.
+
+### Exception Types
+
+```python
+from llama_search import AsyncLlamaSearch
+from llama_search.exceptions import (
+    AuthenticationError,      # Invalid API key
+    InsufficientCreditsError, # Not enough credits
+    ValidationError,          # Invalid request parameters
+    RateLimitError,          # Rate limit exceeded
+    ServerError,             # 5xx HTTP errors
+    NetworkError,            # Connection/network issues
+    TimeoutError,            # Request timeout
+    CircuitBreakerError,     # Circuit breaker is open
+    RetryExhaustedError,     # All retries failed
+    PaymentError,            # Payment processing error
+    PaymentCancelledError,   # Payment cancelled by user
+    PaymentFailedError,      # Payment failed
+)
+
+async def search_with_error_handling():
+    async with AsyncLlamaSearch(api_key="your_api_key") as client:
+        try:
+            result = await client.web_search("test query")
+        except InsufficientCreditsError as e:
+            print(f"Need more credits: {e.credits_required - e.credits_available}")
+        except AuthenticationError:
+            print("Invalid API key")
+        except ValidationError as e:
+            print(f"Invalid request parameter '{e.field}': {e}")
+        except RateLimitError as e:
+            print(f"Rate limited. Retry after: {e.retry_after}s")
+        except TimeoutError as e:
+            print(f"Request timed out after {e.timeout_duration}s")
+        except NetworkError as e:
+            print(f"Network error: {e.original_error}")
+        except CircuitBreakerError as e:
+            print(f"Service unavailable. Retry at: {e.next_attempt_time}")
+        except RetryExhaustedError as e:
+            print(f"All {e.attempts} retry attempts failed: {e.last_error}")
+        except PaymentCancelledError as e:
+            print(f"Payment cancelled by user (Session: {e.session_id})")
+        except PaymentFailedError as e:
+            print(f"Payment failed: {e.failure_reason} (Session: {e.session_id})")
+        except PaymentError as e:
+            print(f"Payment error: {e} (Session: {e.session_id})")
+```
+
+### Billing Integration Example
+
+```python
+async def purchase_credits_example():
+    async with AsyncLlamaSearch(api_key="your_api_key") as client:
+        try:
+            # Check current balance
+            balance = await client.get_credit_balance()
+            if balance.balance < 50:
+                # Get available packages
+                packages = await client.get_credit_packages()
+                selected_package = packages.packages[0]  # Choose first package
+
+                # Create purchase session
+                session = await client.create_purchase_session(
+                    package_id=selected_package.id,
+                    success_url="https://yourapp.com/billing/success",
+                    cancel_url="https://yourapp.com/billing/cancel"
+                )
+
+                # Redirect user to session.checkout_url
+                print(f"Redirect to: {session.checkout_url}")
+
+                # Later, check payment status
+                status = await client.get_payment_status(session.session_id)
+                if status.status == "completed":
+                    print(f"Payment successful! {status.credits_added} credits added")
+
+        except PaymentCancelledError:
+            print("Payment cancelled - user can try again anytime")
+        except PaymentFailedError as e:
+            print(f"Payment failed: {e.failure_reason}")
+        except InsufficientCreditsError:
+            print("Purchase more credits to continue")
+```
+
+### Advanced Retry Configuration
+
+The SDK includes intelligent retry logic with exponential backoff, jitter, and circuit breaker support:
+
+```python
+from llama_search import AsyncLlamaSearch
+from llama_search._retry import RetryConfig, RetryPolicy, CircuitBreakerConfig
+
+# Custom retry configuration
+retry_config = RetryConfig(
+    max_retries=5,
+    base_delay=1.0,
+    max_delay=30.0,
+    policy=RetryPolicy.EXPONENTIAL_BACKOFF,
+    jitter=True,
+    retry_on=[NetworkError, ServerError, TimeoutError],
+    no_retry_on=[AuthenticationError, ValidationError]
+)
+
+# Circuit breaker configuration
+circuit_breaker_config = CircuitBreakerConfig(
+    failure_threshold=3,  # Open after 3 failures
+    timeout=60.0,         # Wait 60s before trying again
+    success_threshold=1   # Close after 1 success
+)
+
+async with AsyncLlamaSearch(
+    api_key="your_api_key",
+    retry_config=retry_config,
+    circuit_breaker_config=circuit_breaker_config
+) as client:
+    # Client will automatically retry failed requests
+    result = await client.web_search("test query")
+```
+
+### Retry Policies
+
+- **`EXPONENTIAL_BACKOFF`**: 1s, 2s, 4s, 8s... (recommended for most use cases)
+- **`LINEAR_BACKOFF`**: 1s, 2s, 3s, 4s... (predictable intervals)
+- **`FIXED_INTERVAL`**: 1s, 1s, 1s, 1s... (constant delay)
+
+### Debug Logging
+
+Enable detailed request/response logging for troubleshooting:
+
+```python
+async with AsyncLlamaSearch(
+    api_key="your_api_key",
+    debug=True  # Enable debug logging
+) as client:
+    # Detailed logs will be printed to console
+    result = await client.web_search("test query")
+```
+
+### Circuit Breaker
+
+The circuit breaker automatically protects your application from cascading failures:
+
+1. **Closed**: Normal operation, requests pass through
+2. **Open**: Service is failing, requests are rejected immediately
+3. **Half-Open**: Testing if service has recovered
+
+The circuit breaker helps prevent overwhelming a failing service and provides graceful degradation.
+
+## Configuration
+
+### Client Initialization Options
+
+```python
+# Async client with all options
+client = AsyncLlamaSearch(
+    api_key="your_api_key",
+    timeout=30.0,                    # Request timeout in seconds
+    max_retries=3,                   # Maximum retry attempts (if no retry_config)
+    default_headers={"Custom": "Header"},  # Additional headers
+    debug=False,                     # Enable debug logging
+    retry_config=None,               # Custom retry configuration
+    circuit_breaker_config=None,     # Custom circuit breaker config
+    enable_circuit_breaker=True      # Enable/disable circuit breaker
+)
+
+# Sync client (same options available)
+client = LlamaSearch(api_key="your_api_key", timeout=60.0, debug=True)
+```
+
+## Requirements
+
+- Python 3.10+
+- httpx >= 0.24.0
+- pydantic >= 2.0.0
+
+## Development
+
+### Running Tests
+
+```bash
+# Install development dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Run tests with coverage
+pytest --cov=llama_search
+```
+
+### Code Quality
+
+```bash
+# Format code
+ruff format .
+
+# Lint code
+ruff check .
+
+# Type checking
+mypy llama_search
+```
+
+## License
+
+MIT License - see LICENSE file for details.
+
+## Support
+
+- Documentation: https://llama-search.com/docs
+- GitHub Issues: https://github.com/llama-search/llama-search/issues
+- Email: support@llamasearch.ai
