@@ -1,0 +1,1 @@
+- Use conventional commits as this project uses github actions that auto-pubish .github\workflows\release.yml
