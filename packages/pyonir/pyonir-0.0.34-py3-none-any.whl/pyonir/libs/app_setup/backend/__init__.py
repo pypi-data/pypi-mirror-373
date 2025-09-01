@@ -1,0 +1,1 @@
+# this package is now discoverable by the app setup backend
