@@ -1,0 +1,21 @@
+
+export default new Map([
+["src/content/docs/index.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Findex.mdx&astroContentModuleFlag=true")],
+["src/content/docs/configuration/themeing.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fconfiguration%2Fthemeing.mdx&astroContentModuleFlag=true")],
+["src/content/docs/configuration/configuration.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fconfiguration%2Fconfiguration.mdx&astroContentModuleFlag=true")],
+["src/content/docs/overview.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Foverview.mdx&astroContentModuleFlag=true")],
+["src/content/docs/features/image-previews.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Ffeatures%2Fimage-previews.mdx&astroContentModuleFlag=true")],
+["src/content/docs/features/previewing-files.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Ffeatures%2Fpreviewing-files.mdx&astroContentModuleFlag=true")],
+["src/content/docs/features/plugins.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Ffeatures%2Fplugins.mdx&astroContentModuleFlag=true")],
+["src/content/docs/features/cd-on-quit.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Ffeatures%2Fcd-on-quit.mdx&astroContentModuleFlag=true")],
+["src/content/docs/features/search.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Ffeatures%2Fsearch.mdx&astroContentModuleFlag=true")],
+["src/content/docs/get-started/installation.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fget-started%2Finstallation.mdx&astroContentModuleFlag=true")],
+["src/content/docs/get-started/tutorial.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fget-started%2Ftutorial.mdx&astroContentModuleFlag=true")],
+["src/content/docs/contributing/how-to-contribute.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fcontributing%2Fhow-to-contribute.mdx&astroContentModuleFlag=true")],
+["src/content/docs/guides/file-operations.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fguides%2Ffile-operations.mdx&astroContentModuleFlag=true")],
+["src/content/docs/contributing/optimisation.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fcontributing%2Foptimisation.mdx&astroContentModuleFlag=true")],
+["src/content/docs/contributing/project-structure.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fcontributing%2Fproject-structure.mdx&astroContentModuleFlag=true")],
+["src/content/docs/reference/keybindings.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Freference%2Fkeybindings.mdx&astroContentModuleFlag=true")],
+["src/content/docs/guides/user-interface.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Fguides%2Fuser-interface.mdx&astroContentModuleFlag=true")],
+["src/content/docs/reference/schema.mdx", () => import("astro:content-layer-deferred-module?astro%3Acontent-layer-deferred-module=&fileName=src%2Fcontent%2Fdocs%2Freference%2Fschema.mdx&astroContentModuleFlag=true")]]);
+		
