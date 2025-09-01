@@ -1,0 +1,1 @@
+default_app_config = 'sign_manager.apps.SignManagerConfig'
