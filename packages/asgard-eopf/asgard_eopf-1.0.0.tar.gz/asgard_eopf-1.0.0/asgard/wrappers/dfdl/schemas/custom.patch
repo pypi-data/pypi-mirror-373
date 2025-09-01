@@ -1,0 +1,113 @@
+diff -burN output/generated_s3_slstr_slt.c patched/generated_s3_slstr_slt.c
+--- output/generated_s3_slstr_slt.c	2023-11-27 11:13:16.752448300 +0100
++++ patched/generated_s3_slstr_slt.c	2023-11-27 12:32:18.143320896 +0100
+@@ -968,7 +968,7 @@
+ static size_t
+ array_array_slstrBandArray_band_slstrData__getArraySize(const band_slstrData_ *instance)
+ {
+-    return instance->(............primaryHeader.packetLength_22)idiv2;
++    return (((isp_ *)instance->_base.parent->parent->parent)->primaryHeader.packetLength-22) / 2;
+ }
+ 
+ static void
+@@ -1063,8 +1063,7 @@
+ static size_t
+ array_array_slstrScanEncoderArray_scanpos_slstrData__getArraySize(const scanpos_slstrData_ *instance)
+ {
+-    UNUSED(instance);
+-    return ((data_slstrType_ *)instance->_base.parent->parent)->header.TARGET_LENGTH;
++    return ((sourceData_ispType_ *)instance->_base.parent->parent)->header.TARGET_LENGTH;
+ }
+ 
+ static void
+diff -burN output/infoset.h patched/infoset.h
+--- output/infoset.h	2023-11-27 11:13:16.756448303 +0100
++++ patched/infoset.h	2023-11-27 12:31:34.463294646 +0100
+@@ -148,11 +148,13 @@
+ 
+ typedef struct VisitEventHandler
+ {
+-    const VisitStartDocument visitStartDocument;
+-    const VisitEndDocument visitEndDocument;
+-    const VisitStartComplex visitStartComplex;
+-    const VisitEndComplex visitEndComplex;
+-    const VisitSimpleElem visitSimpleElem;
++    // WARNING: due to https://github.com/cython/cython/issues/4939, we had to remove the const
++    // qualifier on VisitEventHandler visiter methods
++    VisitStartDocument visitStartDocument;
++    VisitEndDocument visitEndDocument;
++    VisitStartComplex visitStartComplex;
++    VisitEndComplex visitEndComplex;
++    VisitSimpleElem visitSimpleElem;
+ } VisitEventHandler;
+ 
+ // get_erd_name, get_erd_xmlns, get_erd_ns - get name and xmlns
+@@ -183,6 +185,9 @@
+ 
+ extern const Error *walk_infoset(const VisitEventHandler *handler, const InfosetBase *infoset);
+ 
++// declare packet size
++extern const int packet_size;
++
+ // UNUSED - suppress compiler warning about unused variable
+ 
+ #define UNUSED(x) (void)(x)
+diff -burN output/infoset.pxd patched/infoset.pxd
+--- output/infoset.pxd	2023-11-27 11:13:17.360448693 +0100
++++ patched/infoset.pxd	2023-11-27 12:31:38.423297027 +0100
+@@ -1,16 +1,18 @@
++cimport errors as dfdl_err
++
+ from libc.stdint cimport uint8_t as uint8_t
+ from libc.stdio cimport FILE as FILE
+ 
+ cdef extern from "infoset.h":
+     ctypedef void (*ERDParseSelf)(InfosetBase*, PState*)
+     ctypedef void (*ERDUnparseSelf)(InfosetBase*, UState*)
+-    ctypedef Error* (*InitChoiceRD)(InfosetBase*)
++    ctypedef dfdl_err.Error* (*InitChoiceRD)(InfosetBase*)
+     ctypedef size_t (*GetArraySize)(InfosetBase*)
+-    ctypedef Error* (*VisitStartDocument)(VisitEventHandler*)
+-    ctypedef Error* (*VisitEndDocument)(VisitEventHandler*)
+-    ctypedef Error* (*VisitStartComplex)(VisitEventHandler*, InfosetBase*)
+-    ctypedef Error* (*VisitEndComplex)(VisitEventHandler*, InfosetBase*)
+-    ctypedef Error* (*VisitSimpleElem)(VisitEventHandler*, ERD*, const void*)
++    ctypedef dfdl_err.Error* (*VisitStartDocument)(VisitEventHandler*)
++    ctypedef dfdl_err.Error* (*VisitEndDocument)(VisitEventHandler*)
++    ctypedef dfdl_err.Error* (*VisitStartComplex)(VisitEventHandler*, InfosetBase*)
++    ctypedef dfdl_err.Error* (*VisitEndComplex)(VisitEventHandler*, InfosetBase*)
++    ctypedef dfdl_err.Error* (*VisitSimpleElem)(VisitEventHandler*, ERD*, const void*)
+     struct NamedQName:
+         const char* prefix
+         const char* local
+@@ -52,8 +54,8 @@
+     struct ParserOrUnparserState:
+         FILE* stream
+         size_t bitPos0b
+-        Diagnostics* diagnostics
+-        Error* error
++        dfdl_err.Diagnostics* diagnostics
++        dfdl_err.Error* error
+     struct PState:
+         ParserOrUnparserState pu
+         uint8_t unreadBits
+@@ -74,6 +76,8 @@
+     InfosetBase* get_infoset(bint)
+     void parse_data(InfosetBase*, PState*)
+     void unparse_infoset(InfosetBase*, UState*)
+-    Error* walk_infoset(VisitEventHandler*, InfosetBase*)
++    dfdl_err.Error* walk_infoset(VisitEventHandler*, InfosetBase*)
++    const int packet_size
++
+
+
+diff -burN output/errors.c patched/errors.c
+--- output/errors.c	2023-11-27 14:26:12.787947401 +0100
++++ patched/errors.c	2023-11-27 15:43:35.569264297 +0100
+@@ -190,3 +190,5 @@
+ 
+     return code;
+ }
++
++cli_error_lookup_t *cli_error_lookup = &error_lookup;
+

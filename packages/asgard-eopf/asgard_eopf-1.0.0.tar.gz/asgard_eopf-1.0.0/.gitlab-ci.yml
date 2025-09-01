@@ -1,0 +1,487 @@
+# Copyright 2023 CS GROUP
+#
+# Licensed to CS GROUP (CS) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# CS licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+stages:
+- build
+- package-build
+- test
+- quality
+- deploy
+
+variables:
+  BRANCH_NAME: $CI_COMMIT_REF_NAME
+  SOURCES: asgard
+  TESTS: tests
+  REPORTS: .reports
+  TRIVY_VERSION: "0.37.3"
+  # SonarQube
+  SQ_PROJECTKEY: geolib-asgard
+  SQ_PROJECTNAME: 'ASGARD'
+  SQ_ENCODING: UTF-8
+  SQ_PROJECTBASE: .
+  SQ_LANGUAGE: py
+  # Go to the asgard-build-environment Gitlab Settings -> CI/CD -> Token Access -> Expand -> add "geolib/pyrugged"
+  ASGARD_BUILD_ENV: registry.eopf.copernicus.eu/geolib/asgard-build-environment:latest
+  # Idem in the SXGeo and pyrugged Gitlab Settings (to download the sxgeo and pyrugged whl)
+  PIP_EXTRA_INDEX_URL: >
+    https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.eopf.copernicus.eu/api/v4/projects/67/packages/pypi/simple
+    https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.eopf.copernicus.eu/api/v4/projects/78/packages/pypi/simple
+    https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.eopf.copernicus.eu/api/v4/projects/94/packages/pypi/simple
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  # https://pip.pypa.io/en/stable/cli/pip_wheel/#cmdoption-w
+  PIP_WHEEL_DIR: dist
+  # Variables for wheel publication in the package registry
+  PYTHON_PUBLISH_ENABLED: 'true'
+  # By default, publish on the Packages registry of the project
+  # https://docs.gitlab.com/ee/user/packages/pypi_repository/#authenticate-with-a-ci-job-token
+  PYTHON_REPOSITORY_URL: ${CI_SERVER_URL}/api/v4/projects/${CI_PROJECT_ID}/packages/pypi
+  PYTHON_REPOSITORY_USERNAME: 'gitlab-ci-token'
+  PYTHON_REPOSITORY_PASSWORD: $CI_JOB_TOKEN
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      variables:
+        BRANCH_NAME: $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH == "develop"
+      variables:
+        BRANCH_NAME: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
+      variables:
+        BRANCH_NAME: $CI_COMMIT_TAG
+
+build:
+  stage: build
+  image: $ASGARD_BUILD_ENV
+  variables:
+    # Python setuptools_scm needs enough data
+    GIT_DEPTH: 50
+  artifacts:
+    paths:
+        - dist/asgard_eopf-*.*
+    expire_in: 1 month
+  script:
+    - |
+      set -x
+
+      pip install --upgrade pip
+
+      # Package project .whl to PIP_WHEEL_DIR
+      python -m pip wheel .
+
+
+build-docker-image:
+  stage: package-build
+  image:
+    # Use the official kaniko docker image.
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  dependencies:
+    - build # Use the artifacts from the 'build' stage
+  script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+
+    - >-
+      /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
+      --build-arg CI_COMMIT_SHA
+      --build-arg PIP_EXTRA_INDEX_URL
+      --destination "${CI_REGISTRY_IMAGE}:snapshot-${CI_COMMIT_SHORT_SHA}"
+
+
+test:
+  stage: test
+  image: $ASGARD_BUILD_ENV
+  dependencies:
+    - build # Use the artifacts from the 'build' job
+  needs:
+    - build
+    - build-docker-image
+  script:
+    - |
+      set -x
+
+      # Upgrade pip, add support for Dependency Groups (PEP 735), since 25.1.
+      # https://pip.pypa.io/en/stable/user_guide/#dependency-groups
+      pip install --upgrade pip
+
+      # Install the ASGARD wheel that was built in the CI build stage
+      pip install ./dist/asgard_eopf-*.whl
+      pip install --group test --group qa
+
+      # Tests on Dask workers requires exact same paths between the client and
+      # the workers. So far, only /tmp is expected to exist everywhere.
+      # Eventually, use a /data directory.
+      # export ASGARD_DATA="$(realpath ./ASGARD_DATA)"
+      export ASGARD_DATA=/tmp/ASGARD_DATA
+
+      # Download and unzip everything
+      prj_pwd="$(pwd)"
+      (cd /tmp && python "${prj_pwd}/gitlab-ci/download.py" test)
+
+      # Patch ASGARD_DATA
+      chmod -R u+rwx "${ASGARD_DATA}"
+      #ls -al "${ASGARD_DATA}/S3AOLCIdataset/S3__AX___DEM_AX_20000101T000000_20991231T235959_20151214T120000___________________MPC_O_AL_001.SEN3/"
+      ./tests/helpers/fix-EEF.sh "${ASGARD_DATA}"
+
+      # Check DASK config
+      env | egrep -i "dask|gate"
+
+      mkdir -p dist/qa
+
+      # Generate JSON schema example implementations for the slow unit tests.
+      # Due to presence of tests folder in eopf, tests from ASGARD are not recognize if eopf test folder is not rm:
+      # https://gitlab.eopf.copernicus.eu/sde/python-build-environment/-/issues/4
+      rm -Rf /home/eopf/.local/lib/python3.11/site-packages/tests/
+      python3 ./doc/scripts/init_schema/slow_test_examples.py
+
+      # move to test folder and check if some imports works at this stage
+      cd tests
+      echo $(python -c "from helpers.dask import UploadAsgardData")
+      export ASGARD_INSTALL_DIR="$(python -c 'import asgard; print(asgard.__path__[0])')"
+      
+      # make the init_schema module visible so that we generate JSON examples
+      export PYTHONPATH="../doc/scripts/init_schema"
+
+      # Run pytest.
+      # -> to ignore Dask tests that use workers in the EOPF infrastructure,
+      #    add "-m 'not dask_eopf'"
+      # To skip tests that are toow slow or use the DEM, add: -m "not dem and not slow"
+      pytest \
+        --cov="$ASGARD_INSTALL_DIR" \
+        --cov-report=xml:../dist/qa/coverage.xml \
+        -o log_cli_level=info \
+        -o log_cli=true \
+        --junitxml=report.xml \
+        --durations=0 \
+        -m "not slow and not dask_eopf"
+
+      # patch the source dir in coverage report
+      sed -i 's@<source>.*</source>@<source>asgard</source>@' ../dist/qa/coverage.xml
+
+      # go back to source folder
+      cd ..
+
+      python -m flake8 ./${SOURCES} --output-file dist/qa/flake8-report.txt --exit-zero
+      python -m bandit -r ./${SOURCES} -f json -o dist/qa/bandit-report.json --exit-zero
+      python -m pylint ./${SOURCES} --output=dist/qa/pylint-report.txt --exit-zero
+
+  artifacts:
+    paths:
+        - dist/qa/*.txt
+        - dist/qa/*.xml
+        - dist/qa/*.json
+        - doc/scripts/init_schema/examples/*.json
+    when: always
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: dist/qa/coverage.xml
+      junit: tests/report.xml
+    expire_in: 1 month
+
+
+slow-test:
+  stage: test
+  image: $ASGARD_BUILD_ENV
+  dependencies:
+    - build # Use the artifacts from the 'build' job
+  needs:
+    - build
+    - build-docker-image
+  script:
+    - |
+      set -x
+
+      # Upgrade pip, add support for Dependency Groups (PEP 735), since 25.1.
+      # https://pip.pypa.io/en/stable/user_guide/#dependency-groups
+      pip install --upgrade pip
+
+      # Install the ASGARD wheel that was built in the CI build stage
+      pip install ./dist/asgard_eopf-*.whl
+      pip install --group test
+
+      # Tests on Dask workers requires exact same paths between the client and
+      # the workers. So far, only /tmp is expected to exist everywhere.
+      # Eventually, use a /data directory.
+      # export ASGARD_DATA="$(realpath ./ASGARD_DATA)"
+      export ASGARD_DATA=/tmp/ASGARD_DATA
+
+      # Download and unzip everything
+      prj_pwd="$(pwd)"
+      (cd /tmp && python "${prj_pwd}/gitlab-ci/download.py" test)
+
+      # Patch ASGARD_DATA
+      chmod -R u+rwx "${ASGARD_DATA}"
+      ./tests/helpers/fix-EEF.sh "${ASGARD_DATA}"
+
+      # Check DASK config
+      env | egrep -i "dask|gate"
+
+      # move to test folder and check if some imports works at this stage
+      cd tests
+      echo $(python -c "from helpers.dask import UploadAsgardData")
+      export ASGARD_INSTALL_DIR="$(python -c 'import asgard; print(asgard.__path__[0])')"
+
+      # Run pytest.
+      # -> to ignore Dask tests that use workers in the EOPF infrastructure,
+      #    add "-m 'not dask_eopf'"
+      # To skip tests that are toow slow or use the DEM, add: -m "not dem and not slow"
+      pytest \
+        -o log_cli_level=info \
+        -o log_cli=true \
+        --durations=0 \
+        -m "slow and not dask_orekit"
+
+  rules:
+    # manual activation for all branches, except main and tags
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH == "develop"
+      when: on_success
+    - if: $CI_COMMIT_TAG
+      when: on_success
+
+
+generate-documentation:
+  stage: quality
+  image: $ASGARD_BUILD_ENV
+  dependencies: # Use the artifacts from the 'build' and 'test' jobs
+    - build
+    - test 
+  needs:
+    - build
+    - test 
+  script:
+    # Upgrade pip, add support for Dependency Groups (PEP 735), since 25.1.
+    # https://pip.pypa.io/en/stable/user_guide/#dependency-groups
+    - pip install --upgrade pip
+
+    # Install the ASGARD wheel that was built in the CI build stage
+    - pip install ./dist/asgard_eopf-*.whl
+    - pip install --group doc
+
+    # change directory to build doc
+    - cd doc
+    - python3 -c "import asgard.core.math"
+
+    # Prepare build    
+    - sphinx-apidoc -o source/apidoc ../asgard ../asgard/wrappers/dfdl/template.pyx
+
+    # Generate JSON schemas, create symlinks to generated dirs into the apidoc dir.
+    # The 'init_schema' dir also contains the JSON 'examples' dir generated by the pytests.
+    - python3 ./scripts/init_schema/doc_init_schema.py
+    - (cd ./source/apidoc && mkdir -p ./doc/scripts/init_schema && cd "$_" && ln -sf -t ./ ../../../../../scripts/init_schema/*/)
+
+    # Build the documentation
+    - sphinx-build -d /tmp/asgard/doctrees ./source ../dist/docs -W --keep-going
+
+  artifacts:
+    name: 'asgard-docs'
+    expose_as: 'Documentation'
+    paths:
+      # Allow consulting the generated documentation without
+      # overwriting the "official" documentation made available through
+      # GitLab Pages.
+      - dist/docs/
+    expire_in: 1 week
+
+
+quality:
+  stage: quality
+  image: sonarsource/sonar-scanner-cli
+  allow_failure: true
+  needs:
+    - test
+  dependencies:
+    - test
+  script:
+    - >-
+      sonar-scanner -X
+      -Dsonar.python.coverage.reportPaths=dist/qa/coverage.xml
+      -Dsonar.report.export.path=dist/qa/sonarqube-report.json
+      -Dsonar.qualitygate.wait=true
+      -Dsonar.verbose=true
+      -Dsonar.host.url=${SQ_URL}
+      -Dsonar.login=${SQ_LOGIN}
+      -Dsonar.projectKey=${SQ_PROJECTKEY}
+      -Dsonar.projectName=${SQ_PROJECTNAME}
+      -Dsonar.links.homepage=${CI_PROJECT_URL}
+      -Dsonar.projectBaseDir=${SQ_PROJECTBASE}
+      -Dsonar.branch.name=${BRANCH_NAME}
+      -Dsonar.sources=${SOURCES}
+      -Dsonar.tests=${TESTS}
+      -Dsonar.sourceEncoding=${SQ_ENCODING}
+      -Dsonar.language=${SQ_LANGUAGE}
+      -Dsonar.python.version=3.7
+      -Dsonar.python.pylint.reportPaths=dist/qa/pylint-report.txt
+      -Dsonar.python.flake8.reportPaths=dist/qa/flake8-report.txt
+      -Dsonar.python.bandit.reportPaths=dist/qa/bandit-report.json
+  artifacts:
+    paths:
+        - dist/qa/sonarqube-report.json
+    expire_in: 1 month
+
+
+scan-docker-image:
+  stage: test
+  image:
+    # Use the official kaniko docker image.
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  dependencies:
+    - build # Use the artifacts from the 'build' stage
+  script:
+    - mkdir -p target ${REPORTS} cache/trivy cache/kaniko /kaniko/.docker
+    - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+
+    # Build image as tar file so that trivy can scan it without
+    # needing Docker in Docker.
+    - >-
+      /kaniko/executor
+      --context $CI_PROJECT_DIR
+      --dockerfile $CI_PROJECT_DIR/Dockerfile
+      --build-arg CI_COMMIT_SHA
+      --build-arg PIP_EXTRA_INDEX_URL
+      --cache-dir cache/kaniko
+      --tar-path target/image.tar
+      --no-push --destination image
+
+    # Install trivy
+    # The kaniko image has been used to build the image,
+    # thus the trivy image cannot be used as that would require
+    # passing the built image as an artifact.
+    - wget https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
+    - tar zxvf trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
+    - rm -f trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
+    - chmod +x trivy
+    - ./trivy --version
+
+    # Cache cleanup is needed when scanning images with the same tags,
+    # it does not remove the database
+    - ./trivy image --clear-cache
+    # Update vulnerabilities db
+    - ./trivy --cache-dir cache/trivy image --download-db-only
+
+    # Scan image
+    # .txt report as artifact for user
+    - >-
+      ./trivy
+      --cache-dir cache/trivy
+      image
+      --exit-code 0
+      --severity HIGH,CRITICAL
+      --ignore-unfixed
+      --format table
+      --output ${REPORTS}/trivy-report-table.txt
+      --input target/image.tar
+
+  artifacts:
+    when: always
+    paths:
+      - ${REPORTS}/
+    expire_in: 1 month
+
+
+# `pip wheel` build a whl file named "*-linux_x86_64.whl" however pypi refuses it:
+# twine upload ERROR HTTPError: 400 Bad Request from https://upload.pypi.org/legacy/
+# Binary wheel '*-cp311-linux_x86_64.whl' has an unsupported platform tag 'linux_x86_64'.
+# https://github.com/pypa/manylinux
+# https://peps.python.org/pep-0600/
+# https://github.com/pypa/auditwheel
+# -> fix using `auditwheel repair`
+deploy-package-pypi:
+  stage: deploy
+  needs: [ build ]
+  image: debian:12
+  variables:
+    TWINE_PASSWORD: "${PYPI_TOKEN}"
+    TWINE_USERNAME: "__token__"
+  before_script:
+    - apt update
+    - apt install --no-install-recommends -y python3-venv git patchelf
+    - python3 -m venv .venv && . .venv/bin/activate
+  script:
+    - python -m pip install auditwheel build twine
+    - python -m build --sdist
+    - python -m auditwheel repair --exclude "*" dist/asgard_eopf-*linux*.whl
+    - python -m twine check --strict wheelhouse/asgard_eopf-*.whl dist/asgard_eopf-*.tar.gz
+    - python -m twine upload --skip-existing wheelhouse/asgard_eopf-*.whl dist/asgard_eopf-*.tar.gz
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: manual
+
+
+py-publish:
+  stage: deploy
+  image: python:latest
+  dependencies:
+    - build # Use the artifacts from the 'build' job
+  script:
+    - |
+      echo "--- publish distribution packages..."
+
+      # shellcheck disable=SC2086
+      pip install ${PIP_OPTS} twine
+      twine upload ${TRACE+--verbose} --username "$PYTHON_REPOSITORY_USERNAME" --password "$PYTHON_REPOSITORY_PASSWORD" --repository-url "$PYTHON_REPOSITORY_URL" --skip-existing dist/*
+
+
+promote-deploy-docker-image:
+  stage: deploy
+  image:
+    name: gcr.io/go-containerregistry/crane:debug
+    entrypoint: [""]
+  dependencies:
+    - build-docker-image # Use the artifacts from the 'build-docker-image' job
+  variables:
+    # No need for Git sources files
+    GIT_STRATEGY: empty
+  script:
+    # Default branch leaves tag empty (= latest tag)
+    # All other branches are tagged with the escaped branch name (commit ref slug)
+    - |
+      if [[ "${CI_COMMIT_BRANCH}" == "${CI_DEFAULT_BRANCH}" ]]; then
+        tag="latest"
+        echo "Running on default branch '${CI_DEFAULT_BRANCH}': tag = 'latest'"
+      elif [[ -n "${CI_COMMIT_TAG}" ]]; then
+        tag="${CI_COMMIT_TAG}"
+        echo "Running on tag ${CI_COMMIT_TAG}"
+      else
+        tag="${CI_COMMIT_REF_SLUG}"
+        echo "Running on branch '${CI_COMMIT_BRANCH}': tag = ${tag}"
+      fi
+    - crane auth login -u "${CI_REGISTRY_USER}" -p "${CI_REGISTRY_PASSWORD}" "${CI_REGISTRY}"
+    - crane tag "${CI_REGISTRY_IMAGE}:snapshot-${CI_COMMIT_SHORT_SHA}" "${tag}"
+
+
+pages:
+  stage: deploy
+  image: $ASGARD_BUILD_ENV
+  variables:
+    # No need for Git sources files
+    GIT_STRATEGY: empty
+  script:
+    # Move the previously generated documentation into the
+    # 'public' directory as expected by GitLab.
+    - mv ./dist/docs ./public
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
