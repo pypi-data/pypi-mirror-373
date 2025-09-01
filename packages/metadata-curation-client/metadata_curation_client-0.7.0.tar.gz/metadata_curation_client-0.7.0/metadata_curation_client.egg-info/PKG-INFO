@@ -1,0 +1,241 @@
+Metadata-Version: 2.4
+Name: metadata-curation-client
+Version: 0.7.0
+Summary: API client for metadata curation platforms
+Author: Digital Edition Curation Team
+License: MIT
+Project-URL: Homepage, https://github.com/yourusername/digital-edition-curation
+Project-URL: Repository, https://github.com/yourusername/digital-edition-curation
+Project-URL: Issues, https://github.com/yourusername/digital-edition-curation/issues
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: requests>=2.28.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: black; extra == "dev"
+Requires-Dist: isort; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
+Dynamic: license-file
+
+# Metadata Curation Client
+
+API client for external partners to integrate with metadata curation platforms.
+
+## Installation
+
+```bash
+pip install metadata-curation-client
+```
+
+## Basic Usage
+
+```python
+from metadata_curation_client import CurationAPIClient, PropertyType
+
+# Initialize client
+client = CurationAPIClient("http://localhost:8000")
+
+# Create source
+source = client.create_source({
+    "name": "My Archive",
+    "description": "Digital editions from our collection"
+})
+
+# Create controlled vocabulary property
+language_prop = client.create_property({
+    "technical_name": "language",
+    "name": "Language", 
+    "type": PropertyType.MULTIPLE_CHOICE,
+    "property_options": [{"name": "English"}, {"name": "German"}]
+})
+
+# Create free text property
+description_prop = client.create_property({
+    "technical_name": "description",
+    "name": "Description", 
+    "type": PropertyType.FREE_TEXT
+})
+
+# Create entity
+entity = client.create_entity({
+    "source_id": source["id"],
+    "source_internal_id": "my_001"
+})
+
+# Create properties for each type
+genre_prop = client.create_property({
+    "technical_name": "genre",
+    "name": "Genre", 
+    "type": PropertyType.MULTIPLE_CHOICE,
+    "property_options": [
+        {"name": "Poetry"}, {"name": "Prose"}, {"name": "Drama"}
+    ]
+})
+
+language_prop = client.create_property({
+    "technical_name": "language",
+    "name": "Language", 
+    "type": PropertyType.SINGLE_CHOICE,
+    "property_options": [
+        {"name": "English"}, {"name": "German"}, {"name": "French"}
+    ]
+})
+
+has_annotations_prop = client.create_property({
+    "technical_name": "has_annotations",
+    "name": "Has Annotations", 
+    "type": PropertyType.BINARY
+})
+
+year_prop = client.create_property({
+    "technical_name": "publication_year",
+    "name": "Publication Year", 
+    "type": PropertyType.NUMERICAL
+})
+
+description_prop = client.create_property({
+    "technical_name": "description",
+    "name": "Description", 
+    "type": PropertyType.FREE_TEXT
+})
+
+# Example 1: MULTIPLE_CHOICE suggestion
+properties = client.get_properties()
+genre_prop = next(p for p in properties if p["technical_name"] == "genre")
+poetry_option = next(opt for opt in genre_prop["property_options"] if opt["name"] == "Poetry")
+client.create_suggestion({
+    "source_id": source["id"],
+    "entity_id": entity["id"],
+    "property_id": genre_prop["id"],
+    "property_option_id": poetry_option["id"]
+})
+
+# Example 2: SINGLE_CHOICE suggestion
+language_prop = next(p for p in properties if p["technical_name"] == "language")
+english_option = next(opt for opt in language_prop["property_options"] if opt["name"] == "English")
+client.create_suggestion({
+    "source_id": source["id"],
+    "entity_id": entity["id"],
+    "property_id": language_prop["id"],
+    "property_option_id": english_option["id"]
+})
+
+# Example 3: BINARY suggestion (uses property_option_id)
+# Binary properties always have options with name "1" (true/1) and "0" (false/0)
+has_annotations_prop = next(p for p in properties if p["technical_name"] == "has_annotations")
+true_option = next(opt for opt in has_annotations_prop["property_options"] if opt["name"] == "1")
+client.create_suggestion({
+    "source_id": source["id"],
+    "entity_id": entity["id"],
+    "property_id": has_annotations_prop["id"],
+    "property_option_id": true_option["id"]  # For "yes"/"true" value
+})
+
+# Example 3: NUMERICAL suggestion (uses custom_value)
+client.create_suggestion({
+    "source_id": source["id"],
+    "entity_id": entity["id"],
+    "property_id": year_prop["id"],
+    "custom_value": "2025"  # Note: numerical values are sent as strings
+})
+
+# Example 4: FREE_TEXT suggestion (uses custom_value)
+client.create_suggestion({
+    "source_id": source["id"],
+    "entity_id": entity["id"],
+    "property_id": description_prop["id"],
+    "custom_value": "This is a detailed description of the entity."
+})
+
+# Mark ingestion complete
+client.mark_ingestion_complete(source["id"])
+```
+
+## Property Types
+
+- `PropertyType.SINGLE_CHOICE` - Predefined options (only one allowed)
+- `PropertyType.MULTIPLE_CHOICE` - Predefined options (multiple allowed)
+- `PropertyType.FREE_TEXT` - Free text
+- `PropertyType.BINARY` - True/false values
+- `PropertyType.NUMERICAL` - Numeric values
+
+## API Reference
+
+See the docstrings in `curation_api_client.py` for detailed method documentation.
+
+## Enhanced Integration with SourceManager
+
+For more sophisticated integrations, we also provide a higher-level abstraction in `source_manager.py` that mirrors some of the conveniences of our internal extractors:
+
+```python
+from metadata_curation_client import CurationAPIClient, PropertyType, SourceManager, PropertyBuilder
+
+# Initialize client and create source
+client = CurationAPIClient("http://localhost:8000")
+
+# Define properties using helper builders
+property_definitions = [
+    PropertyBuilder.multiple_choice(
+        "example_genre", "Genre", ["Poetry", "Prose", "Drama"]
+    ),
+    PropertyBuilder.binary(
+        "example_has_annotations", "Has Annotations"
+    ),
+    PropertyBuilder.numerical(
+        "example_year", "Publication Year"
+    )
+]
+
+# Initialize the source manager - this will:
+# - Fetch all existing data
+# - Build lookup tables
+# - Create any missing properties
+manager = SourceManager(client, source_identifier, property_definitions)
+
+# Efficiently get or create entity using lookup tables
+entity = manager.get_or_create_entity("book_001")
+
+# Create suggestions in a batch with validation and deduplication
+manager.create_suggestions_batch(
+    entity["id"],
+    {
+        "example_genre": "Poetry",
+        "example_has_annotations": True,
+        "example_year": 2022
+    }
+)
+
+# Mark ingestion complete (updates timestamp)
+manager.finish_ingestion()
+```
+
+### Benefits of the SourceManager
+
+The `SourceManager` provides several advantages for more complex integrations:
+
+1. **Reduced API Calls**: Prefetches data to minimize API requests
+2. **Lookup Tables**: Maintains efficient in-memory lookups for entities, properties, and suggestions
+3. **Automatic Property Creation**: Creates properties from definitions as needed
+4. **Validation**: Automatically validates values based on property types
+5. **Deduplication**: Avoids creating duplicate suggestions
+6. **Builder Helpers**: Provides convenient builder classes for creating properties and sources
+7. **Timestamp Management**: Automatically updates the last ingestion timestamp
+
+For a complete example, see `example_with_source_manager.py`.
+
+### Choosing the Right Approach
+
+- **Basic API Client**: For simple integrations or when you need complete control over the process
+- **SourceManager**: For more complex integrations where efficiency and convenience are priorities
+
+Both approaches use the same underlying API endpoints and data models, so you can choose the one that best fits your needs or even mix them as required.
