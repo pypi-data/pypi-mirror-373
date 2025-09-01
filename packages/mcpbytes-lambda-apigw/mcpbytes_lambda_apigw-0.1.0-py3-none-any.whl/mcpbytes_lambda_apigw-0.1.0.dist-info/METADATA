@@ -1,0 +1,416 @@
+Metadata-Version: 2.4
+Name: mcpbytes-lambda-apigw
+Version: 0.1.0
+Summary: AWS API Gateway transport adapter for mcpbytes-lambda-core
+Project-URL: Homepage, https://mcpbytes.com/
+Project-URL: Repository, https://github.com/MCPBytes/mcpbytes-lambda
+Project-URL: Issues, https://github.com/MCPBytes/mcpbytes-lambda/issues
+Project-URL: Documentation, https://github.com/MCPBytes/mcpbytes-lambda#readme
+Author-email: "MCPBytes.com" <hello@mcpbytes.com>
+License-Expression: Apache-2.0
+Keywords: api-gateway,aws-lambda,cors,mcp,model-context-protocol,serverless,transport
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Internet :: WWW/HTTP :: HTTP Servers
+Classifier: Topic :: Software Development :: Libraries :: Application Frameworks
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.12
+Requires-Dist: mcpbytes-lambda-core>=0.2.0
+Description-Content-Type: text/markdown
+
+# mcpbytes-lambda-apigw
+
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![MCP 2025-06-18](https://img.shields.io/badge/MCP-2025--06--18-green.svg)](https://spec.modelcontextprotocol.io/)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
+Production-ready AWS API Gateway transport adapter for [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers. Seamlessly converts between HTTP requests and MCP JSON-RPC with enterprise-grade authentication and CORS handling.
+
+## 🚀 **Quick Start**
+
+```python
+from mcpbytes_lambda.core import MCPServer
+from mcpbytes_lambda.apigw import ApiGatewayAdapter
+
+# Create your MCP server with tools
+mcp = MCPServer(name="my-server", version="1.0.0")
+
+@mcp.tool(name="example.tool")
+def my_tool(message: str) -> str:
+    return f"Processed: {message}"
+
+# Zero-boilerplate Lambda handler
+def lambda_handler(event, context):
+    adapter = ApiGatewayAdapter()
+    return adapter.handle(event, mcp)  # That's it!
+```
+
+## ✨ **Features**
+
+- **🔒 Smart Authentication** - Auto-detects Lambda Authorizers, supports custom token validation
+- **🌐 CORS Compliance** - Full preflight handling with configurable origins
+- **📡 MCP Streamable HTTP** - Compliant with MCP 2025-06-18 transport specification
+- **⚡ High Performance** - Optimized for AWS Lambda cold starts and execution
+- **🛡️ Input Validation** - JSON-RPC 2.0 validation with detailed error responses
+- **📊 Production Logging** - Structured logging for debugging and monitoring
+- **🔄 Base64 Support** - Automatic handling of API Gateway base64 encoding
+
+## 🔐 **Authentication**
+
+The API Gateway adapter provides flexible authentication with smart auto-detection:
+
+### Authentication Flow
+1. **Lambda Authorizer Detection**: Auto-detects and uses existing Lambda Authorizer context
+2. **Token Format Validation**: Validates Bearer token format when auth is required  
+3. **Custom Validation**: Executes custom token validation logic (if provided)
+4. **User Context Access**: Provides unified access to authentication context
+
+### Usage Patterns
+
+#### Lambda Authorizer (Auto-detected)
+```python
+def lambda_handler(event, context):
+    adapter = ApiGatewayAdapter(require_auth=True)
+    user_info = adapter.get_user_context(event)  # From Lambda Authorizer
+    return adapter.handle(event, mcp_server)
+```
+
+#### Custom Token Validation
+```python
+import jwt
+from typing import Dict, Any, Union
+
+def validate_jwt_token(token: str) -> Union[Dict[str, Any], bool]:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        return {"user_id": payload["sub"], "role": payload["role"]}
+    except jwt.InvalidTokenError:
+        return False
+
+def lambda_handler(event, context):
+    adapter = ApiGatewayAdapter(require_auth=True, token_validator=validate_jwt_token)
+    user_info = adapter.get_user_context(event)  # From custom validator
+    return adapter.handle(event, mcp_server)
+```
+
+## ⚙️ **Configuration**
+
+```python
+adapter = ApiGatewayAdapter(
+    cors_origin="https://myapp.com",           # CORS origin header
+    require_auth=True,                         # Enable authentication
+    auth_header="Authorization",               # Auth header name  
+    token_validator=my_custom_validator        # Custom validation function
+)
+```
+
+### Parameters:
+- `cors_origin`: CORS origin header value (default: "*")
+- `require_auth`: Whether to require Bearer token authentication (default: False)
+- `auth_header`: Header name for authentication token (default: "Authorization")
+- `token_validator`: Optional custom token validation function
+  - Should return `Dict[str, Any]` for user context on success
+  - Should return `False` for explicit rejection
+  - Should return `True` for acceptance without context
+  - May raise exceptions for validation errors
+
+## 📋 **Requirements**
+
+- Python 3.12+
+- `mcpbytes-lambda-core` package
+- AWS API Gateway Lambda Proxy Integration
+- Bearer token authentication (via Lambda Authorizer or custom validation)
+
+## 🏗️ **Architecture**
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   API Gateway   │───▶│  APIGW Adapter  │───▶│   MCP Core      │
+│   HTTP Request  │    │  (Transport)    │    │   JSON-RPC      │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       ▼                       │
+         │              ┌─────────────────┐              │
+         │              │  Authentication │              │
+         │              │  CORS Handling  │              │
+         │              │  Error Mapping  │              │
+         │              └─────────────────┘              │
+         │                                                │
+         ▼                                                ▼
+┌─────────────────┐                              ┌─────────────────┐
+│   HTTP Response │◀─────────────────────────────│   Tool Results  │
+│   (200/500)     │                              │   JSON-RPC      │
+└─────────────────┘                              └─────────────────┘
+```
+
+## 🛠️ **Usage Examples**
+
+### **Basic Lambda Handler**
+
+```python
+def lambda_handler(event, context):
+    adapter = ApiGatewayAdapter()
+    return adapter.handle(event, mcp)
+```
+
+### **Lambda Authorizer Integration**
+
+```python
+def lambda_handler(event, context):
+    adapter = ApiGatewayAdapter(require_auth=True)
+    
+    # Access user context from Lambda Authorizer
+    user_info = adapter.get_user_context(event)
+    if user_info:
+        print(f"User: {user_info.get('principalId')}")
+    
+    return adapter.handle(event, mcp)
+```
+
+### **JWT Token Validation**
+
+```python
+import jwt
+import os
+from typing import Dict, Any, Union
+from mcpbytes_lambda.core.exceptions import AuthenticationError
+
+def validate_jwt(token: str) -> Union[Dict[str, Any], bool]:
+    try:
+        payload = jwt.decode(token, os.environ["JWT_SECRET"], algorithms=["HS256"])
+        return {
+            "user_id": payload["sub"],
+            "email": payload["email"],
+            "role": payload.get("role", "user")
+        }
+    except jwt.ExpiredSignatureError:
+        raise AuthenticationError("Token has expired")
+    except jwt.InvalidTokenError:
+        return False
+
+def lambda_handler(event, context):
+    adapter = ApiGatewayAdapter(
+        require_auth=True,
+        token_validator=validate_jwt
+    )
+    
+    user_context = adapter.get_user_context(event)
+    return adapter.handle(event, mcp)
+```
+
+### **Multi-Server Routing**
+
+```python
+# Route to different MCP servers based on path
+def lambda_handler(event, context):
+    path = event.get("path", "")
+    
+    if path.startswith("/math"):
+        server = math_mcp_server
+    elif path.startswith("/weather"):
+        server = weather_mcp_server
+    else:
+        server = default_mcp_server
+    
+    adapter = ApiGatewayAdapter(require_auth=True)
+    return adapter.handle(event, server)
+```
+
+## 📡 **MCP Protocol Compliance**
+
+### **Streamable HTTP Transport (2025-06-18)**
+✅ HTTP POST for JSON-RPC requests/notifications/responses  
+✅ HTTP GET for optional Server-Sent Events (SSE) streams  
+✅ Proper status codes: 200 OK, 202 Accepted, 4xx/5xx errors  
+✅ MCP-Protocol-Version header support  
+✅ Bearer token authentication (RFC 6750)  
+✅ Session management with Mcp-Session-Id  
+✅ CORS preflight handling  
+✅ Content negotiation (application/json + text/event-stream)  
+
+### **Lambda Limitations**
+❌ Server-Sent Events (SSE) streaming not supported  
+❌ Real-time server-to-client notifications not supported  
+❌ HTTP GET for stream initiation not supported  
+❌ Stream resumability not supported  
+
+*For full streaming support, deploy as a long-running server process.*
+
+### **Required Headers**
+
+**Client must send:**
+```http
+POST /your-endpoint HTTP/1.1
+Content-Type: application/json
+Accept: application/json, text/event-stream #BOTH headers
+Authorization: Bearer <token> #if needed/enabled
+MCP-Protocol-Version: 2025-06-18 / multiple supported
+```
+
+**Server responds with:**
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+Access-Control-Allow-Origin: https://example.com
+```
+
+### **JSON-RPC Format**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "example.tool",
+    "arguments": {"message": "Hello MCP!"}
+  },
+  "id": "request-1"
+}
+```
+
+## 🔍 **Error Handling**
+
+### **HTTP Status Codes**
+
+- **200 OK** - CORS preflight successful, JSON-RPC requests processed
+- **400 Bad Request** - Malformed requests, unsupported protocol versions
+- **401 Unauthorized** - Missing or invalid Bearer token
+- **403 Forbidden** - Origin not allowed (CORS violation)
+- **406 Not Acceptable** - Accept header doesn't include required content types
+- **415 Unsupported Media Type** - Content-Type is not application/json
+- **500 Internal Server Error** - JSON-RPC error or server failure
+
+### **JSON-RPC Error Codes**
+
+```python
+# Standard JSON-RPC 2.0 error codes
+-32700  # Parse error (invalid JSON)
+-32600  # Invalid request (missing method, bad headers)
+-32601  # Method not found  
+-32602  # Invalid params
+-32603  # Internal error
+```
+
+## 🛡️ **Security Best Practices**
+
+### **Authentication Strategies**
+1. **Lambda Authorizer** (Recommended for production)
+   - Centralized authentication logic
+   - Automatic caching and performance optimization
+   - Built-in AWS integration
+
+2. **Custom Token Validation**
+   - Flexible validation logic
+   - Support for JWT, API keys, custom tokens
+   - Direct integration with your auth system
+
+### **Environment Variables**
+
+```bash
+# Production CORS configuration
+ALLOWED_ORIGINS="https://example.com,https://app.example.com"
+
+# JWT Secret for token validation
+JWT_SECRET="your-secret-key"
+
+# Development (allows all origins - not recommended for production)
+# ALLOWED_ORIGINS=""  # Empty = allow all
+```
+
+### **API Gateway Setup**
+
+```yaml
+# SAM Template example
+Resources:
+  McpApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Cors:
+        AllowMethods: "'POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization,MCP-Protocol-Version'"
+        AllowOrigin: "'*'"  # Override with adapter's origin validation
+      Auth:
+        DefaultAuthorizer: TokenAuth
+        Authorizers:
+          TokenAuth:
+            FunctionArn: !GetAtt AuthFunction.Arn
+```
+
+## 🚀 **Deployment**
+
+### **SAM Template**
+
+```yaml
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Resources:
+  McpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: handler.lambda_handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          ALLOWED_ORIGINS: "https://myapp.com,https://admin.myapp.com"
+          JWT_SECRET: !Ref JWTSecret
+      Events:
+        McpApi:
+          Type: Api
+          Properties:
+            Path: /mcp
+            Method: any
+```
+
+### **CDK Deployment**
+
+```python
+from aws_cdk import aws_lambda as lambda_
+from aws_cdk import aws_apigateway as apigw
+
+lambda_function = lambda_.Function(
+    self, "McpFunction",
+    runtime=lambda_.Runtime.PYTHON_3_12,
+    handler="handler.lambda_handler",
+    code=lambda_.Code.from_directory("src/"),
+    environment={
+        "ALLOWED_ORIGINS": "https://myapp.com",
+        "JWT_SECRET": jwt_secret.secret_value_from_json("secret").to_string()
+    }
+)
+
+api = apigw.RestApi(self, "McpApi")
+api.root.add_proxy(default_integration=apigw.LambdaIntegration(lambda_function))
+```
+
+## 🤝 **Contributing**
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Make your changes and add tests
+4. Run tests: `python -m pytest`
+5. Submit a pull request
+
+## 📄 **License**
+
+Apache 2.0 License - see [LICENSE](../../LICENSE) for details.
+
+## 🔗 **Related Packages**
+
+- [`mcpbytes-lambda-core`](../core/) - Transport-agnostic MCP server core
+- [`mcpbytes-lambda-stdio`](../stdio/) - Stdio transport adapter
+
+## 📚 **Documentation**
+
+- [MCP Specification](https://spec.modelcontextprotocol.io/)
+- [AWS API Gateway Documentation](https://docs.aws.amazon.com/apigateway/)
+- [AWS Lambda Proxy Integration](https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html)
+- [Project Examples](../../examples/)
+
+---
+
+Built with ❤️ for the MCP ecosystem
