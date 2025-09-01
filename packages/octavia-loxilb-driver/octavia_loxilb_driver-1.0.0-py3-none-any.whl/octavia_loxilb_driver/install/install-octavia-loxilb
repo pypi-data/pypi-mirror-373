@@ -1,0 +1,54 @@
+#!/bin/bash
+# Copyright 2025 LoxiLB
+# Licensed under the Apache License, Version 2.0
+
+# Installation script for Octavia LoxiLB Driver
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+INSTALL_DIR="/usr/local/bin"
+SERVICE_DIR="/etc/systemd/system"
+CONFIG_DIR="/etc/octavia"
+
+echo "Installing Octavia LoxiLB Driver..."
+
+# Install Python package
+echo "Installing Python package..."
+cd "$SCRIPT_DIR/.."
+pip install -e .
+
+# Install service scripts
+echo "Installing service scripts..."
+sudo cp install/octavia-loxilb-worker "$INSTALL_DIR/"
+sudo cp install/octavia-loxilb-controller-worker "$INSTALL_DIR/"
+sudo chmod +x "$INSTALL_DIR/octavia-loxilb-worker"
+sudo chmod +x "$INSTALL_DIR/octavia-loxilb-controller-worker"
+
+# Install systemd service files
+echo "Installing systemd service files..."
+sudo cp install/octavia-loxilb-worker.service "$SERVICE_DIR/"
+sudo cp install/octavia-loxilb-controller-worker.service "$SERVICE_DIR/"
+
+# Create sample configuration
+echo "Creating sample configuration..."
+sudo mkdir -p "$CONFIG_DIR"
+sudo cp etc/loxilb.conf.sample "$CONFIG_DIR/loxilb.conf"
+
+# Reload systemd
+echo "Reloading systemd..."
+sudo systemctl daemon-reload
+
+# Enable services
+echo "Enabling services..."
+sudo systemctl enable octavia-loxilb-worker
+sudo systemctl enable octavia-loxilb-controller-worker
+
+echo "Installation completed successfully!"
+echo
+echo "Next steps:"
+echo "1. Configure /etc/octavia/loxilb.conf with your LoxiLB settings"
+echo "2. Update /etc/octavia/octavia.conf to enable the loxilb provider"
+echo "3. Start the services:"
+echo "   sudo systemctl start octavia-loxilb-worker"
+echo "   sudo systemctl start octavia-loxilb-controller-worker"
