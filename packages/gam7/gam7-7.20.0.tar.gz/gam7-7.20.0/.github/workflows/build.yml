@@ -1,0 +1,1041 @@
+name: Build and test GAM
+
+on:
+  push:
+    paths-ignore:
+      - 'wiki/**'
+  pull_request:
+    paths-ignore:
+      - 'wiki/**'
+  schedule:
+    - cron: '37 22 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+defaults:
+  run:
+    shell: bash
+    working-directory: src
+
+env:
+  SCRATCH_COUNTER: 14
+  OPENSSL_CONFIG_OPTS: no-fips --api=3.0.0
+  OPENSSL_INSTALL_PATH: ${{ github.workspace }}/bin/ssl
+  OPENSSL_SOURCE_PATH: ${{ github.workspace }}/src/openssl
+  PYTHON_INSTALL_PATH: ${{ github.workspace }}/bin/python
+  PYTHON_SOURCE_PATH: ${{ github.workspace }}/src/cpython
+  CRYPTOGRAPHY_BUILD_OPENSSL_NO_LEGACY: 1
+  CRYPTOGRAPHY_OPENSSL_NO_LEGACY: 1
+  WINDOWS_CODESIGN_CERT_HASH: 590dc5bb10dfb31dbff38c0e2f9c35ef0f6d0e9e
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            jid: 1
+            goal: build
+            name: Build Intel Ubuntu Jammy
+          - os: ubuntu-24.04
+            jid: 2
+            goal: build
+            name: Build Intel Ubuntu Noble
+          - os: ubuntu-24.04-arm
+            jid: 3
+            goal: build
+            name: Build Arm Ubuntu Noble
+          - os: ubuntu-22.04-arm
+            jid: 4
+            goal: build
+            name: Build Arm Ubuntu Jammy
+          - os: ubuntu-22.04
+            jid: 5
+            goal: build
+            staticx: yes
+            name: Build Intel StaticX Legacy
+          - os: ubuntu-22.04-arm
+            jid: 6
+            goal: build
+            staticx: yes
+            name: Build Arm StaticX Legacy
+          - os: macos-13
+            jid: 7
+            goal: build
+            name: Build Intel MacOS
+          - os: macos-14
+            jid: 8
+            goal: build
+            name: Build Arm MacOS 14
+          - os: macos-15
+            jid: 9
+            goal: build
+            name: Build Arm MacOS 15
+          - os: windows-2025
+            jid: 10
+            goal: build
+            name: Build Intel Windows
+          - os: windows-11-arm
+            jid: 11
+            goal: build
+            name: Build Arm Windows
+          - os: ubuntu-24.04
+            goal: test
+            python: "3.10"
+            jid: 12
+            name: Test Python 3.10
+          - os: ubuntu-24.04
+            goal: test
+            python: "3.11"
+            jid: 13
+            name: Test Python 3.11
+          - os: ubuntu-24.04
+            goal: test
+            python: "3.12"
+            jid: 14
+            name: Test Python 3.12
+          - os: ubuntu-24.04
+            goal: test
+            python: "3.14-dev"
+            jid: 15
+            name: Test Python 3.14-dev
+
+    steps:
+
+      - uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493 # v5.0.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - id: auth
+        name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: projects/297925809119/locations/global/workloadIdentityPools/gha-pool/providers/gha-provider
+          service_account: github-actions-testing-for-gam@gam-project-wyo-lub-ivl.iam.gserviceaccount.com
+
+      - name: Cache multiple paths
+        if: matrix.goal == 'build'
+        uses: actions/cache@638ed79f9dc94c1de1baef91bcab5edaa19451f4 # v4.2.4
+        id: cache-python-ssl
+        with:
+          path: |
+            cache.tar.xz
+          key: gam-${{ matrix.jid }}-20250814
+
+      - name: Untar Cache archive
+        if: matrix.goal == 'build' && steps.cache-python-ssl.outputs.cache-hit == 'true'
+        working-directory: ${{ github.workspace }}
+        run: |
+          tar xvvf cache.tar.xz
+
+      - name: Use pre-compiled Python for testing
+        if: matrix.python != ''
+        uses: actions/setup-python@3d1e2d2ca0a067f27da6fec484fce7f5256def85 # v5.6.0
+        with:
+          python-version: ${{ matrix.python }}
+          allow-prereleases: true
+          check-latest: true
+
+      - name: common variables for all runs
+        env:
+          JID: ${{ matrix.jid }}
+          ACTIONS_CACHE: ${{ steps.cache-python-ssl.outputs.cache-hit }}
+          ACTIONS_GOAL: ${{ matrix.goal }}
+        run: |
+          case $RUNNER_ARCH in
+            X64)
+              echo "arch=x86_64" >> $GITHUB_ENV
+              ;;
+            ARM64)
+              echo "arch=arm64" >> $GITHUB_ENV
+              ;;
+            *)
+              echo "arch=${RUNNER_ARCH}" >> $GITHUB_ENV
+              ;;
+          esac 
+          echo "JID=${JID}" >> $GITHUB_ENV
+          echo "ACTIONS_CACHE=${ACTIONS_CACHE}" >> $GITHUB_ENV
+          echo "ACTIONS_GOAL=${ACTIONS_GOAL}" >> $GITHUB_ENV
+          curl_version=$(curl --version | head -n 1 | awk '{ print $2 }')
+          echo "cURL is ${curl_version}"
+          if [ "$curl_version" == "7.68.0" ]; then
+            export curl_retry="--retry 5 --retry-connrefused"
+          else
+            export curl_retry="--retry 5 --retry-all-errors"
+          fi
+          echo "curl_retry=${curl_retry}" >> $GITHUB_ENV
+          # GAMCFGDIR should be recreated on every run
+          GAMCFGDIR="${RUNNER_TEMP}/.gam"
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            GAMCFGDIR=$(cygpath -u "$GAMCFGDIR")
+          fi
+          echo "GAMCFGDIR=${GAMCFGDIR}" >> $GITHUB_ENV
+          echo "GAMCFGDIR is: ${GAMCFGDIR}"
+          export GAMOS=$(echo "$RUNNER_OS" | tr '[:upper:]' '[:lower:]')
+          echo "GAMOS=${GAMOS}" >> $GITHUB_ENV
+          echo "GAMOS is: ${GAMOS}"
+
+      - name: Set env variables for test
+        if: matrix.goal == 'test'
+        run: |
+          export PYTHON=$(which python3)
+          export PIP=$(which pip3)
+          export gam="${PYTHON} -m gam"
+          export gampath="$(readlink -e .)"
+          echo -e "PYTHON: ${PYTHON}\nPIP: ${PIP}\gam: ${gam}\ngampath: ${gampath}"
+          echo "PYTHON=${PYTHON}" >> $GITHUB_ENV
+          echo "PIP=${PIP}" >> $GITHUB_ENV
+          echo "gam=${gam}" >> $GITHUB_ENV
+          echo "gampath=${gampath}" >> $GITHUB_ENV
+
+      - name: Install necessary Github-hosted Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          echo "RUNNING: apt update..."
+          sudo apt-get -qq --yes update
+          sudo apt-get -qq --yes install swig libpcsclite-dev libxslt1-dev libsqlite3-dev libffi-dev pkg-config
+
+      - name: MacOS install tools
+        if: runner.os == 'macOS'
+        run: |
+          # Install latest Rust
+          curl $curl_retry -fsS -o rust.sh https://sh.rustup.rs
+          bash ./rust.sh -y
+          source $HOME/.cargo/env
+          # Install needed packages
+          #brew update
+          #brew install gpg
+          #brew install swig
+          #brew install ncurses
+
+      - name: MacOS import developer certificates for signing
+        if: runner.os == 'macOS'
+        uses: apple-actions/import-codesign-certs@11e1bb2d3771ad8ffa8459dfe527bc26b2dd4b62 # v5.0.3
+        with:
+          p12-file-base64: ${{ secrets.CERTIFICATES_P12 }}
+          p12-password: ${{ secrets.CERTIFICATES_P12_PASSWORD }}
+
+      - name: Windows Configure VCode
+        uses: ilammy/msvc-dev-cmd@460a772e4cf7358f9f2f23773240813e40e7a894 # v1.13.0
+        if: runner.os == 'Windows' && steps.cache-python-ssl.outputs.cache-hit != 'true'
+        with:
+          arch: ${{ runner.arch }}
+
+      - name: Set Env Variables for build
+        if: matrix.goal == 'build'
+        env:
+          staticx: ${{ matrix.staticx }}
+        run: |
+          echo "We are running on ${RUNNER_OS}"
+          LD_LIBRARY_PATH="${OPENSSL_INSTALL_PATH}/lib:${PYTHON_INSTALL_PATH}/lib:/usr/local/lib"
+          if [[ "${RUNNER_OS}" == "macOS" ]]; then
+            MAKE=make
+            MAKEOPT="-j$(sysctl -n hw.logicalcpu)"
+            PERL=perl
+            MACOSX_DEPLOYMENT_TARGET=$(sw_vers -productVersion | awk -F '.' '{print $1 "." $2}')
+            echo "MACOSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET}" >> $GITHUB_ENV
+            echo "We are running on and targetting MacOS ${MACOSX_DEPLOYMENT_TARGET}"
+            echo "PYTHON=${PYTHON_INSTALL_PATH}/bin/python3" >> $GITHUB_ENV
+          elif [[ "${RUNNER_OS}" == "Linux" ]]; then
+            MAKE=make
+            MAKEOPT="-j$(nproc)"
+            PERL=perl
+            echo "PYTHON=${PYTHON_INSTALL_PATH}/bin/python3" >> $GITHUB_ENV
+          elif [[ "${RUNNER_OS}" == "Windows" ]]; then
+            MAKE=nmake
+            MAKEOPT=""
+            PERL="c:\strawberry\perl\bin\perl.exe"
+            if [[ "$RUNNER_ARCH" == "ARM64" ]]; then
+              PYEXTERNALS_PATH="arm64"
+              WIX_ARCH="arm64"
+            elif [[ "$RUNNER_ARCH" == "X64" ]]; then
+              PYEXTERNALS_PATH="amd64"
+              WIX_ARCH="x64"
+            fi
+            LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${PYTHON_SOURCE_PATH}/PCbuild/${PYEXTERNALS_PATH}"
+            echo "PYTHON=${PYTHON_SOURCE_PATH}/PCbuild/${PYEXTERNALS_PATH}/python.exe" >> $GITHUB_ENV
+            echo "WIX_ARCH=${WIX_ARCH}" >> $GITHUB_ENV
+          fi
+          echo "We'll run make with: ${MAKEOPT}"
+          echo "staticx=${staticx}" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}" >> $GITHUB_ENV
+          echo "MAKE=${MAKE}" >> $GITHUB_ENV
+          echo "MAKEOPT=${MAKEOPT}" >> $GITHUB_ENV
+          echo "PERL=${PERL}" >> $GITHUB_ENV
+          echo "PYEXTERNALS_PATH=${PYEXTERNALS_PATH}" >> $GITHUB_ENV
+
+      - name: Get latest stable OpenSSL source
+        if: matrix.goal == 'build' && steps.cache-python-ssl.outputs.cache-hit != 'true'
+        run: |
+          mkdir -vp "${GITHUB_WORKSPACE}/src"
+          cd "${GITHUB_WORKSPACE}/src"
+          git clone https://github.com/openssl/openssl.git
+          cd "${OPENSSL_SOURCE_PATH}"
+          export LATEST_STABLE_TAG=$(git tag --list openssl-* | grep -v alpha | grep -v beta | sort -Vr | head -n1)
+          echo "Checking out version ${LATEST_STABLE_TAG}"
+          git checkout "${LATEST_STABLE_TAG}"
+          export COMPILED_OPENSSL_VERSION=${LATEST_STABLE_TAG:8} # Trim the openssl- prefix
+          echo "COMPILED_OPENSSL_VERSION=${COMPILED_OPENSSL_VERSION}" >> $GITHUB_ENV
+
+      - name: Windows NASM Install
+        uses: ilammy/setup-nasm@3a5c2907aab40613bec4a2c63f5d0ef0b11fbd9f # v1.5.2
+        if: matrix.goal == 'build' && runner.os == 'Windows' && runner.arch == 'X64' && steps.cache-python-ssl.outputs.cache-hit != 'true'
+
+      - name: Config OpenSSL
+        if: matrix.goal == 'build' && steps.cache-python-ssl.outputs.cache-hit != 'true'
+        run: |
+          cd "${OPENSSL_SOURCE_PATH}"
+          #if ([ "$RUNNER_OS" == "Windows" ] && [ "$RUNNER_ARCH" == "ARM64" ]); then
+            # https://github.com/openssl/openssl/issues/26239
+            export CFLAGS=-DNO_INTERLOCKEDOR64
+          #fi
+          # --libdir=lib is needed so Python can find OpenSSL libraries
+          "${PERL}" ./Configure --libdir=lib --prefix="${OPENSSL_INSTALL_PATH}" $OPENSSL_CONFIG_OPTS
+
+      - name: Rename GNU link on Windows
+        if: matrix.goal == 'build' && runner.os == 'Windows' && steps.cache-python-ssl.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          mv -v /usr/bin/link /usr/bin/gnulink
+
+      - name: Make OpenSSL
+        if: matrix.goal == 'build' && steps.cache-python-ssl.outputs.cache-hit != 'true'
+        run: |
+          cd "${OPENSSL_SOURCE_PATH}"
+          # TODO: remove this once https://github.com/openssl/openssl/issues/26239 is fixed.
+          if ([ "$RUNNER_OS" == "Windows" ] && [ "$RUNNER_ARCH" == "ARM64" ]); then
+            export CFLAGS=-DNO_INTERLOCKEDOR64
+          fi
+          $MAKE "$MAKEOPT"
+
+      - name: Install OpenSSL
+        if: matrix.goal == 'build' && steps.cache-python-ssl.outputs.cache-hit != 'true'
+        run: |
+          cd "${OPENSSL_SOURCE_PATH}"
+          # install_sw saves us ages processing man pages :-)
+          $MAKE install_sw
+          if [[ "${RUNNER_OS}" != "Windows" ]]; then
+            echo "LDFLAGS=-L${OPENSSL_INSTALL_PATH}/lib" >> $GITHUB_ENV
+          fi
+          echo "CRYPTOGRAPHY_SUPPRESS_LINK_FLAGS=1" >> $GITHUB_ENV
+          case $RUNNER_ARCH in
+            X64)
+              echo "CFLAGS=-I${OPENSSL_INSTALL_PATH}/include ${CFLAGS}" >> $GITHUB_ENV
+              echo "ARCHFLAGS=-arch x86_64" >> $GITHUB_ENV
+              ;;
+            ARM64)
+              echo "CFLAGS=-I${OPENSSL_INSTALL_PATH}/include ${CFLAGS}" >> $GITHUB_ENV
+              echo "ARCHFLAGS=-arch arm64" >> $GITHUB_ENV
+              ;;
+          esac
+
+      - name: Run OpenSSL
+        if: matrix.goal == 'build'
+        run: |
+          "${OPENSSL_INSTALL_PATH}/bin/openssl" version -a
+          file "${OPENSSL_INSTALL_PATH}/bin/openssl"
+
+      - name: Get latest stable Python source
+        if: matrix.goal == 'build' && steps.cache-python-ssl.outputs.cache-hit != 'true'
+        run: |
+          cd "${GITHUB_WORKSPACE}/src"
+          git clone https://github.com/python/cpython.git
+          cd "${PYTHON_SOURCE_PATH}"
+          export LATEST_STABLE_TAG=$(git tag --list | grep -v a | grep -v rc | grep -v b | sort -Vr | head -n1)
+          git checkout "${LATEST_STABLE_TAG}"
+          export COMPILED_PYTHON_VERSION=${LATEST_STABLE_TAG:1} # Trim the "v" prefix
+          echo "COMPILED_PYTHON_VERSION=${COMPILED_PYTHON_VERSION}" >> $GITHUB_ENV
+
+      - name: Mac/Linux Configure Python
+        if: matrix.goal == 'build' && runner.os != 'Windows' && steps.cache-python-ssl.outputs.cache-hit != 'true'
+        run: |
+          cd "${PYTHON_SOURCE_PATH}"
+          ./configure --with-openssl="${OPENSSL_INSTALL_PATH}" \
+                      --prefix="${PYTHON_INSTALL_PATH}" \
+                      --enable-shared \
+                      --with-ensurepip=upgrade \
+                      --enable-optimizations \
+                      --with-lto || : # exit 0
+          cat config.log
+
+      - name: Windows Get External Python deps
+        if: matrix.goal == 'build' && runner.os == 'Windows' && steps.cache-python-ssl.outputs.cache-hit != 'true'
+        shell: powershell
+        run: |
+          cd "${env:PYTHON_SOURCE_PATH}"
+          PCBuild\get_externals.bat
+
+      - name: Windows overwrite external OpenSSL with local
+        if: matrix.goal == 'build' && runner.os == 'Windows' && steps.cache-python-ssl.outputs.cache-hit != 'true'
+        shell: powershell
+        run: |
+          cd "${env:PYTHON_SOURCE_PATH}"
+          $env:OPENSSL_EXT_PATH = "$(Get-Item externals\openssl-bin-* | Select -exp FullName)\"
+          echo "External OpenSSL was downloaded to ${env:OPENSSL_EXT_PATH}"
+          Remove-Item -recurse -force "${env:OPENSSL_EXT_PATH}*"
+          # Emulate what this script does:
+          # https://github.com/python/cpython/blob/main/PCbuild/openssl.vcxproj
+          if (${env:RUNNER_ARCH} -eq "X64") {
+            $env:ossl_path = "amd64"
+          } elseif (${env:RUNNER_ARCH} -eq "ARM64") {
+            $env:ossl_path =  "arm64"
+          }
+          $env:OPENSSL_EXT_TARGET_PATH = "${env:OPENSSL_EXT_PATH}${env:ossl_path}"
+          echo "Copying our OpenSSL to ${env:OPENSSL_EXT_TARGET_PATH}"
+          mkdir "${env:OPENSSL_EXT_TARGET_PATH}\include\openssl\"
+          Copy-Item -Path "${env:OPENSSL_SOURCE_PATH}\LICENSE.txt" -Destination "${env:OPENSSL_EXT_TARGET_PATH}\LICENSE"
+          cp -v "$env:OPENSSL_INSTALL_PATH\lib\*" "${env:OPENSSL_EXT_TARGET_PATH}"
+          cp -v "$env:OPENSSL_INSTALL_PATH\bin\*" "${env:OPENSSL_EXT_TARGET_PATH}"
+          cp -v "$env:OPENSSL_INSTALL_PATH\include\openssl\*" "${env:OPENSSL_EXT_TARGET_PATH}\include\openssl\"
+          cp -v "$env:OPENSSL_INSTALL_PATH\include\openssl\applink.c" "${env:OPENSSL_EXT_TARGET_PATH}\include\"
+
+      - name: Windows Install sphinx-build
+        if: matrix.goal == 'build' && runner.os == 'Windows' && steps.cache-python-ssl.outputs.cache-hit != 'true'
+        shell: powershell
+        run: |
+          pip install --upgrade pip
+          pip install --upgrade sphinx
+          sphinx-build --version
+
+      - name: Windows Config/Build Python
+        if: matrix.goal == 'build' && runner.os == 'Windows' && steps.cache-python-ssl.outputs.cache-hit != 'true'
+        shell: powershell
+        run: |
+          cd "${env:PYTHON_SOURCE_PATH}"
+          # We need out custom openssl.props which uses OpenSSL 3 DLL names
+          Copy-Item -Path "${env:GITHUB_WORKSPACE}\src\tools\openssl.props" -Destination PCBuild\ -Verbose
+          if (${env:RUNNER_ARCH} -eq "X64") {
+            $env:arch = "x64"
+            PCBuild\build.bat -c Release -p $env:arch --pgo
+          } elseif (${env:RUNNER_ARCH} -eq "ARM64") {
+            $env:arch =  "ARM64"
+            # TODO: figure out why Windows ARM64 isn't compat with PGO optimiazation
+            # causes 10-20% slowdown in Python
+            PCBuild\build.bat -c Release -p $env:arch
+          }
+
+      - name: Mac/Linux Build Python
+        if: matrix.goal == 'build' && runner.os != 'Windows' && steps.cache-python-ssl.outputs.cache-hit != 'true'
+        run: |
+          cd "${PYTHON_SOURCE_PATH}"
+          echo "Running: ${MAKE} ${MAKEOPT}"
+          $MAKE $MAKEOPT
+
+      - name: Mac/Linux Install Python
+        if: matrix.goal == 'build' && runner.os != 'Windows' && steps.cache-python-ssl.outputs.cache-hit != 'true'
+        run: |
+          cd "${PYTHON_SOURCE_PATH}"
+          $MAKE altinstall
+          $MAKE bininstall
+          export PATH="${PATH}:${PYTHON_INSTALL_PATH}/bin"
+          echo "PATH=${PATH}" >> $GITHUB_ENV
+          echo "PATH: ${PATH}"
+
+      - name: Run Python
+        run: |
+          "${PYTHON}" -V
+          "${PYTHON}" -c "import ssl; print(f'Using {ssl.OPENSSL_VERSION}')"
+
+      - name: Upgrade pip, wheel, etc
+        run: |
+          curl $curl_retry -O https://bootstrap.pypa.io/get-pip.py
+          "$PYTHON" get-pip.py
+          "$PYTHON" -m pip install --upgrade pip
+          "$PYTHON" -m pip install --upgrade wheel
+          "$PYTHON" -m pip install setuptools
+          "$PYTHON" -m pip install --upgrade importlib-metadata
+          "$PYTHON" -m pip install --upgrade setuptools-scm
+          "$PYTHON" -m pip list
+
+      - name: Custom wheels for Win arm64
+        if: runner.os == 'Windows' && runner.arch == 'ARM64'
+        run: |
+          latest_crypt_whl=$(curl https://api.github.com/repos/jay0lee/cryptography/releases/latest -s | jq -r .assets.[0].browser_download_url)
+          echo "Downloading ${latest_crypt_whl}..."
+          curl -O -L "$latest_crypt_whl"
+          "$PYTHON" -m pip install cryptography*.whl
+
+      - name: Install pip requirements
+        run: |
+          echo "before anything..."
+          "$PYTHON" -m pip list
+          "$PYTHON" -m pip install --upgrade ..[yubikey]
+          "$PYTHON" -m pip list
+          #"$PYTHON" -m pip install --force-reinstall --no-deps --upgrade cryptography
+          echo "after everything..."
+          "$PYTHON" -m pip list
+
+      - name: Install PyInstaller
+        if: matrix.goal == 'build'
+        run: |
+          git clone https://github.com/pyinstaller/pyinstaller.git
+          cd pyinstaller
+          export latest_release=$(git tag --list | grep -v dev | grep -v rc | sort -Vr | head -n1)
+          git checkout "${latest_release}"
+          # git checkout "v6.9.0"
+          # remove pre-compiled bootloaders so we fail if bootloader compile fails
+          rm -rvf PyInstaller/bootloader/*-*/*
+          cd bootloader
+          "${PYTHON}" ./waf all
+          cd ..
+          echo "---- Installing PyInstaller ----"
+          "${PYTHON}" -m pip install .
+
+      - name: Build GAM with PyInstaller
+        if: matrix.goal != 'test'
+        run: |
+          export distpath="./dist/gam"
+          mkdir -p -v "${distpath}"
+          if [[ "${RUNNER_OS}" == "macOS" ]]; then
+            # Tell our gam.spec to use our code sign certificate
+            export codesign_identity="Jay Lee"
+            # brew OpenSSL gets picked up by PyInstaller
+            # breaking our self-compiled version
+            brew uninstall --ignore-dependencies openssl
+          elif [[ "${RUNNER_OS}" == "Windows" ]]; then
+            # Work around issue where PyInstaller picks up python3.dll from other Python versions
+            # https://github.com/pyinstaller/pyinstaller/issues/7102
+            export PATH="$(dirname ${PYTHON}):/usr/bin"
+          fi
+          if [[ "$staticx" != "yes" ]]; then
+            export PYINSTALLER_BUILD_ONEDIR=yes
+          fi
+          "${PYTHON}" -m PyInstaller --clean --noconfirm --distpath="${distpath}" gam.spec
+          if [[ "$PYINSTALLER_BUILD_ONEDIR" == "yes" ]]; then
+            mv -v "${distpath}/gam" "${distpath}/gam7"
+            export gampath="${distpath}/gam7"
+          else
+            mv -v "$distpath" "${distpath}7"
+            export gampath="${distpath}7"
+          fi
+          export gampath=$(realpath "$gampath")
+          echo "gampath ${gampath} results:"
+          ls -alRF "$gampath"
+          echo "---- WARNINGS FROM build/gam/warn-gam.txt"
+          cat build/gam/warn-gam.txt
+          echo "---- Analysis FROM build/gam/Analysis-00.toc"
+          cat build/gam/Analysis-00.toc
+          echo "---- EXE data FROM build/gam/EXE-00.toc"
+          cat build/gam/EXE-00.toc
+          export gam="${gampath}/gam"
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            export gam=$(cygpath -w "$gam")
+            echo "GAM on Windows at ${gam}"
+          else
+            export gam=$(realpath "$gam")
+          fi
+          echo "gampath=${gampath}" >> $GITHUB_ENV
+          echo "gam=${gam}" >> $GITHUB_ENV
+          echo -e "GAM: ${gam}\nGAMPATH: ${gampath}"
+
+      - name: Copy extra package files
+        if: matrix.goal == 'build'
+        run: |
+          cp -v cacerts.pem "$gampath"
+          cp -v LICENSE "$gampath"
+          cp -v GamCommands.txt "$gampath"
+          cp -v GamUpdate.txt "$gampath"
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+              cp -v gam-setup.bat "$gampath"
+          fi
+
+      - name: Install StaticX
+        if: matrix.staticx == 'yes'
+        run: |
+          sudo apt-get -qq --yes update
+          # arm64 needs to build a wheel and needs scons to build
+          sudo apt-get -qq --yes install scons
+          "${PYTHON}" -m pip install --upgrade patchelf-wrapper
+          # "${PYTHON}" -m pip install --upgrade staticx
+          # install latest github src for staticx
+          "${PYTHON}" -m pip install --upgrade "git+https://github.com/JonathonReinhart/staticx"
+
+      - name: Make StaticX GAM build
+        if: matrix.staticx == 'yes'
+        run: |
+          case $RUNNER_ARCH in
+            X64)
+              ldlib=/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+              ;;
+            ARM64)
+              ldlib=/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1
+              ;;
+          esac
+          echo "ldlib=${ldlib}"
+          $PYTHON -m staticx -l "${ldlib}" "$gam" "${gam}-staticx"
+          rm -v "$gam"
+          mv -v "${gam}-staticx" "$gam"
+
+      - name: MacOS send GAM binary for Apple notarization
+        if: runner.os == 'macOS'
+        env:
+          ASP_NOTARIZE: ${{ secrets.ASP_NOTARIZE }}
+        run: |
+          # Apple wants some kind of "package" submitted so just add gam to a .zip
+          # name it something we can track and link in Apple's notarize process
+          zipfilename="./gam-${RUNNER_ARCH}-${GITHUB_RUN_ID}-${GITHUB_RUN_NUMBER}.zip"
+          zip -r "$zipfilename" "$gampath"
+          xcrun notarytool submit --apple-id "jay0lee@gmail.com" --password "$ASP_NOTARIZE" --team-id GZ85H2DRLM "$zipfilename"
+          rm -v "$zipfilename"
+
+      - name: Basic Tests all jobs
+        id: basictests
+        run: |
+          $PYTHON -m unittest discover --start-directory ./ --pattern "*_test.py" --buffer || if [ $? != 5 ]; then exit $?; fi # exit 5 is no tests
+          $gam version extended nooffseterror
+          export GAMVERSION=$($gam version simple)
+          echo "GAM Version ${GAMVERSION}"
+          echo "GAMVERSION=${GAMVERSION}" >> $GITHUB_ENV
+
+      - name: Install WinAppDriver
+        if: runner.os == 'Windows'
+        run: |
+          choco install -y winappdriver
+
+      - name: Enabled dev mode for WinAppDriver
+        if: runner.os == 'Windows'
+        shell: cmd
+        run : |
+         reg add "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
+
+      - name: Install appium and totp tools
+        if: runner.os == 'Windows'
+        run: |
+          echo "Installing appium..."
+          npm install -g appium
+          echo "Installing totp-generator..."
+          npm install "totp-generator"
+          echo "Installing wdio..."
+          npm install @wdio/cli
+          echo "Installing appium win driver..."
+          appium driver install windows
+
+      - name: Install Certum MSI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $url = "https://files.certum.eu/software/SimplySignDesktop/Windows/9.3.2.67/SimplySignDesktop-9.3.2.67-64-bit-en.msi"
+          $file = "SimplySignDesktop-9.3.2.67-64-bit-en.msi"
+          Invoke-WebRequest $url -OutFile $file
+          $log = "install.log" 
+          $procMain = Start-Process "msiexec" "/i `"$file`" /qn /l*! `"$log`"" -NoNewWindow -PassThru
+          $procLog = Start-Process "powershell" "Get-Content -Path `"$log`" -Wait" -NoNewWindow -PassThru 
+          $procMain.WaitForExit() 
+          $procLog.Kill()
+
+      - name: Login to Certum
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TOTP_SECRET: ${{ secrets.TOTP_SECRET }}
+        run: |
+          # disable win private firewall that interferes with appium server
+          Set-NetFirewallProfile -Profile Private -Enabled False
+          $appiumCmd = Get-Command appium
+          $appiumPath = $appiumCmd.Path
+          Start-Process -Filepath "powershell.exe" -ArgumentList "-File", $appiumPath, "--address", "127.0.0.1", "--log-level", "error"
+          Start-Sleep -Seconds 10
+          write-host "appium started"
+          write-host "running SimplySignDesktop login..."
+          node tools/ssd.mjs --log-level warn
+          write-host "sleeping during login..."
+          Start-Sleep 10
+
+      - name: Sign gam.exe
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          write-Host "Signing ${env:gam}...."
+          # Always explicitely use x64 version os signtool.exe, arm64 version apparently can't
+          # see Certum certs since SimplySignDesktop is x64-only today.
+          Start-Process -Wait -NoNewWindow -ErrorAction Continue -FilePath 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe'  -ArgumentList "sign", "/sha1", "590dc5bb10dfb31dbff38c0e2f9c35ef0f6d0e9e", "/tr", "http://time.certum.pl", "/td", "SHA256", "/fd", "SHA256", "/v", "$env:gam"
+          write-Host "Verifying signature of ${env:gam}...."
+          # verify signature. If we failed to sign we should fail to verify and die.
+          & 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe' verify /pa /v "$env:gam"
+
+      - name: Configure user and service account auth
+        id: configserviceaccount
+        env:
+          oa2: ${{ secrets[format('GAM_GHA_{0}', matrix.jid)] }}
+        run: |
+          ../.github/actions/decrypt.sh "${GAMCFGDIR}"
+          $gam create signjwtserviceaccount
+
+      - name: Attest gam executable was generated from this Action
+        uses: actions/attest-build-provenance@0b6e9809265278d02c58acf52849a95818a5a306 # v3.0.0
+        if: matrix.goal == 'build'
+        with:
+          subject-path: ${{ env.gam }}
+
+      - name: Linux/MacOS package
+        if: runner.os != 'Windows' && matrix.goal == 'build'
+        run: |
+          if [[ "${RUNNER_OS}" == "macOS" ]]; then
+              GAM_ARCHIVE="${GITHUB_WORKSPACE}/gam-${GAMVERSION}-macos${MACOSX_DEPLOYMENT_TARGET}-${arch}.tar.xz"
+          elif [[ "${RUNNER_OS}" == "Linux" ]]; then
+            if [[ "${staticx}" == "yes" ]]; then
+              libver="legacy"
+            else
+              libver="glibc$(ldd --version | awk '/ldd/{print $NF}')"
+            fi
+            GAM_ARCHIVE="${GITHUB_WORKSPACE}/gam-${GAMVERSION}-linux-${arch}-${libver}.tar.xz"
+          fi
+          echo "GAM Archive ${GAM_ARCHIVE}"
+          tar -C "${gampath}/.." --create --verbose --exclude-from "${GITHUB_WORKSPACE}/.github/actions/package_exclusions.txt" --file $GAM_ARCHIVE --xz gam7
+
+      - name: Install Wix on Win ARM64
+        if: runner.os == 'Windows' && runner.arch == 'ARM64'
+        run: |
+          choco install wixtoolset
+
+      - name: Windows package zip
+        if: runner.os == 'Windows' && matrix.goal != 'test'
+        run: |
+          echo "started in $(pwd)"
+          cd "${gampath}/.."
+          echo "moved to $(pwd)"
+          GAM_ARCHIVE="${GITHUB_WORKSPACE}/gam-${GAMVERSION}-windows-${arch}.zip"
+          /c/Program\ Files/7-Zip/7z.exe a -tzip "$GAM_ARCHIVE" gam7 "-xr@${GITHUB_WORKSPACE}/.github/actions/package_exclusions.txt" -bb3
+
+      - name: Windows package MSI
+        if: runner.os == 'Windows' && matrix.goal != 'test'
+        run: |
+          export MSI_FILENAME="${GITHUB_WORKSPACE}/gam-${GAMVERSION}-windows-${arch}.msi"
+          # auto-generate a lib.wxs based on the files PyInstaller created for the lib/ directory
+          /c/Program\ Files\ \(x86\)/WiX\ Toolset\ v3.14/bin/heat.exe dir "${gampath}/lib" -ke -srd -cg Lib -gg -dr lib -directoryid lib -out lib.wxs
+          $PYTHON tools/gen-wix-xml-filelist.py lib.wxs
+          echo "-- begin lib.wxs --"
+          cat lib.wxs
+          echo "-- end lib.wxs --"
+          /c/Program\ Files\ \(x86\)/WiX\ Toolset\ v3.14/bin/candle.exe -arch "${WIX_ARCH}" gam.wxs lib.wxs
+          /c/Program\ Files\ \(x86\)/WiX\ Toolset\ v3.14/bin/light.exe -ext /c/Program\ Files\ \(x86\)/WiX\ Toolset\ v3.14/bin/WixUIExtension.dll gam.wixobj lib.wixobj -b "${gampath}/lib" -o "$MSI_FILENAME" || true;
+          rm -v -f *.wixpdb
+          rm -v -f *.wixobj
+          echo "MSI_FILENAME=${MSI_FILENAME}" >> $GITHUB_ENV
+
+      - name: Sign GAM MSI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          write-Host "Signing ${env:MSI_FILENAME}...."
+          # Always explicitely use x64 version os signtool.exe, arm64 version apparently can't
+          # see Certum certs since SimplySignDesktop is x64-only today.
+          Start-Process -Wait -NoNewWindow -ErrorAction Continue -FilePath 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe'  -ArgumentList "sign", "/sha1", "590dc5bb10dfb31dbff38c0e2f9c35ef0f6d0e9e", "/tr", "http://time.certum.pl", "/td", "SHA256", "/fd", "SHA256", "/v", "$env:MSI_FILENAME"
+          write-Host "Verifying signature of ${env:MSI_FILENAME}...."
+          # verify signature. If we failed to sign we should fail to verify and die.
+          & 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe' verify /pa /v "$env:MSI_FILENAME"
+
+      - name: Attest that gam package files were generated from this Action
+        uses: actions/attest-build-provenance@0b6e9809265278d02c58acf52849a95818a5a306 # v3.0.0
+        if: (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && matrix.goal == 'build'
+        with:
+          subject-path: |
+            gam*.tar.xz
+            gam*.zip
+            gam*.msi
+
+      - name: Archive production artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # 4.6.2
+        if: (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && matrix.goal != 'test'
+        with:
+          name: gam-binaries-${{ env.GAMOS }}-${{ env.arch }}-${{ matrix.jid }}
+          path: |
+            gam*.tar.xz
+            gam*.zip
+            gam*.msi
+
+      - name: Basic Tests build jobs only
+        if: matrix.goal != 'test' && steps.cache-python-ssl.outputs.cache-hit != 'true'
+        run: |
+          export voutput=$($gam version extended nooffseterror)
+          export python_line=$(echo -e "${voutput}" | grep "Python ")
+          export python_arr=($python_line)
+          export this_python=${python_arr[1]}
+          if [[ "${this_python}" != "${COMPILED_PYTHON_VERSION}" ]]; then
+            echo "ERROR: Tried to compile Python ${COMPILED_PYTHON_VERSION} but ended up with ${this_python}"
+            exit 1
+          fi
+          export openssl_line=$(echo -e "${voutput}" | grep "OpenSSL ")
+          export openssl_arr=($openssl_line)
+          export this_openssl="${openssl_arr[1]}"
+          if [[ "${this_openssl}" != "${COMPILED_OPENSSL_VERSION}" ]]; then
+            echo "ERROR: Tried to compile OpenSSL ${COMPILED_OPENSSL_VERSION} but ended up with ${this_openssl}"
+            exit 1
+          fi
+          echo "We successfully compiled Python ${this_python} and OpenSSL ${this_openssl}"
+
+      - name: Live API tests
+        if: (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        run: |
+          export gam_user="gam-gha-${JID}@pdl.jaylee.us"
+          echo "gam_user=${gam_user}" >> $GITHUB_ENV
+          $gam config customer_id "C03uzfv2s" save
+          $gam config domain "pdl.jaylee.us" save
+          $gam config admin_email "${gam_user}" save
+          $gam config enable_dasa false save
+          $gam oauth info
+          $gam oauth refresh
+          $gam config enable_dasa true save 
+          $gam checkconn
+          $gam user "$gam_user" check serviceaccount
+          $gam info domain
+          $gam info user
+          export tstamp=$($PYTHON -c "import time; print(time.time_ns())")
+          export newbase="gha_test_${JID}_${tstamp}"
+          export newuser="${newbase}@pdl.jaylee.us"
+          export newgroup="${newbase}-group@pdl.jaylee.us"
+          export newalias="${newbase}-alias@pdl.jaylee.us"
+          export newbuilding="${newbase}-building"
+          export newresource="${newbase}-resource"
+          export newou="aaaGithub Actions/${newbase}"
+          
+          # cleanup old runs
+          $gam config enable_dasa false save
+          $gam config csv_output_row_filter "name:regex:gha_test_${JID}_" print vaultholds | $gam csv - gam delete vaulthold "id:~~holdId~~" matter "id:~~matterId~~" || if [ $? != 55 ]; then exit $?; fi 
+          $gam config csv_output_row_filter "name:regex:gha_test_${JID}_" print vaultmatters matterstate OPEN | $gam csv - gam update vaultmatter "id:~~matterId~~" action close
+          $gam config csv_output_row_filter "name:regex:gha_test_${JID}_" print vaultmatters matterstate CLOSED | $gam csv - gam update vaultmatter "id:~~matterId~~" action delete
+          $gam config csv_output_row_filter "Emails.1.address:regex:^gha_test-${JID}_" print contacts | $gam csv - gam delete contact ~ContactID
+          $gam config enable_dasa true save
+          $gam config csv_output_row_filter "name:regex:gha_test_${JID}_" print features | $gam csv - gam delete feature ~name
+          $gam config csv_output_row_filter "name:regex:^gha_test_${JID}_" user $gam_user print shareddrives asadmin | $gam csv - gam user $gam_user delete shareddrive ~id nukefromorbit
+          $gam print users query "gha.jid=$JID" | $gam csv - gam delete user ~primaryEmail
+          $gam config csv_output_row_filter "name:regex:^gha_test_${JID}_" print ous fromparent "aaaGithub Actions" | $gam csv - gam delete ou ~orgUnitId
+          $gam config csv_output_row_filter "email:regex:^gha_test_${JID}_" print cigroups | $gam csv - gam delete cigroup ~email
+          $gam config csv_output_row_filter "resourceId:regex:^gha_test_${JID}_" print resources | $gam csv - gam delete resource ~resourceId
+          $gam config csv_output_row_filter "buildingId:regex:^gha_test_${JID}_" print buildings | $gam csv - gam delete building ~buildingId
+
+          echo "Creating OrgUnit ${newou}"
+          $gam create ou "${newou}"
+          export GAM_THREADS=5
+          echo email > sample.csv;
+          for i in {1..10}; do
+            echo "${newbase}-bulkuser-$i" >> sample.csv;
+          done
+          driveid=$($gam user $gam_user add shareddrive "${newbase}" returnidonly)
+          echo "Created shared drive ${driveid}"
+          $gam create user $newuser firstname GHA lastname $JID displayname "Github Actions ${JID}" password random recoveryphone 12125121110 recoveryemail jay0lee@gmail.com gha.jid $JID languages en+,en-GB- ou "${newou}"
+          $gam user $newuser add license workspaceenterpriseplus
+          $gam user $newuser update photo https://dummyimage.com/98x98/000/fff.jpg
+          $gam user $newuser get photo
+          $gam user $newuser delete photo
+          $gam create alias $newalias user $newuser
+          $gam create group $newgroup name "GHA $JID group" description "This is a description" isarchived true
+          $gam user $gam_user sendemail recipient dev-null@pdl.jaylee.us subject "test message $newbase" message "GHA test message"
+          $gam config enable_dasa false save
+          # don't expose policy output
+          $gam show policies > policies.csv
+          $gam create contact firstname GHA lastname "$JID" email work "${newbase}@example.com" primary
+          $gam print contacts
+          $gam print privileges
+          $gam config enable_dasa true save
+          $gam update cigroup $newgroup security memberrestriction 'member.type == 1 || member.customer_id == groupCustomerId()'
+          $gam info cigroup $newgroup
+          $gam update group $newgroup add owner $gam_user
+          $gam update group $newgroup add member $newuser
+          $gam config enable_dasa false save
+          # 9/17/24 temp disable due to Google API sluggishness to see new users for admin commands
+          # $gam create admin $newuser _GROUPS_EDITOR_ROLE CUSTOMER # condition nonsecuritygroup
+          $gam create admin $newgroup _HELP_DESK_ADMIN_ROLE org_unit "${newou}"
+          $gam config csv_output_row_filter "assignedToUser:regex:${newuser}" print admins | $gam csv - gam delete admin "~roleAssignmentId"
+          $gam config csv_output_row_filter "assignedToGroup:regex:${newgroup}" print admins | $gam csv - gam delete admin "~roleAssignmentId"
+          $gam config enable_dasa false save
+          $gam csv sample.csv gam create user ~~email~~ firstname "GHA Bulk" lastname ~~email~~ gha.jid $JID ou "${newou}"
+          $gam csv sample.csv gam update user ~~email~~ recoveryphone 12125121110 recoveryemail jay0lee@gmail.com password random displayname "GitHub Actions Bulk ${JID}"
+          $gam csv sample.csv gam update user ~~email~~ recoveryphone "" recoveryemail ""
+          $gam config enable_dasa false save
+          $gam csv sample.csv gam user ~email add license workspaceenterpriseplus
+          #$gam user $newuser add contactdelegate "${newbase}-bulkuser-1"
+          #$gam user $newuser print contactdelegates
+          $gam config enable_dasa true save
+          $gam csv sample.csv gam user $gam_user sendemail recipient ~~email~~@pdl.jaylee.us subject "test message $newbase" message "GHA test message"
+          $gam csv sample.csv gam update group $newgroup add member ~email
+          $gam info group $newgroup
+          $gam info cigroup $newgroup membertree
+          # confirm mailbox is provisoned before continuing
+          $gam user $newuser waitformailbox retries 50
+          $gam user $newuser imap on
+          $gam user $newuser show imap
+          $gam user $newuser show delegates
+          export biohazard=$(echo -e '\xe2\x98\xa3')
+          $gam user $newuser label "$biohazard unicode biohazard $biohazard"
+          $gam user $newuser show labels
+          $gam user $newuser show labels > labels.txt
+          $gam user $gam_user importemail subject "GHA import $newbase" message "This is a test import" labels IMPORTANT,UNREAD,INBOX,STARRED
+          $gam user $gam_user insertemail subject "GHA insert $newbase" file gam.py labels INBOX,UNREAD # yep body is gam code
+          $gam user $gam_user sendemail recipient admin@pdl.jaylee.us subject "GHA send $gam_user $newbase" file gam.py
+          $gam user $gam_user draftemail subject "GHA draft $newbase" message "Draft message test"
+          $gam csvfile sample.csv:email waitformailbox retries 20
+          $gam user $newuser delegate to "${newbase}-bulkuser-1" || if [ $? != 50 ]; then exit $?; fi # expect a 50 return code (delegation failed)
+          $gam users "$gam_user $newbase-bulkuser-1 $newbase-bulkuser-2 $newbase-bulkuser-3" delete messages query in:anywhere maxtodelete 99999 doit || if [ $? != 60 ]; then exit $?; fi # expect a 60 return code (no messages)
+          $gam users "$newbase-bulkuser-4 $newbase-bulkuser-5 $newbase-bulkuser-6" trash messages query in:anywhere maxtotrash 99999 doit || if [ $? != 60 ]; then exit $?; fi # expect a 60 return code (no messages)
+          $gam users "$newbase-bulkuser-7 $newbase-bulkuser-8 $newbase-bulkuser-9" modify messages query in:anywhere maxtomodify 99999 addlabel IMPORTANT addlabel STARRED doit || if [ $? != 60 ]; then exit $?; fi # expect a 60 return code (no messages)
+          $gam user $newuser delete label --ALL_LABELS--
+          $gam config csv_output_row_filter "name:regex:gha-test-${JID}" print features | $gam csv - gam delete feature ~name
+          $gam create feature name VC-$newbase
+          $gam create feature name Whiteboard-$newbase
+          $gam create building "My Building - $newbase" id $newbuilding floors 1,2,3,4,5,6,7,8,9,10,11,12,14,15 description "No 13th floor here..."
+          $gam create resource $newresource "Resource Calendar $tstamp" capacity 25 features Whiteboard-$newbase,VC-$newbase building $newbuilding floor 15 type Room
+          $gam info resource $newresource
+          $gam user $newuser add drivefile drivefilename "TPS Reports" mimetype gfolder
+          $gam user $newuser show filelist
+          $gam calendar $gam_user printacl | $gam csv - gam calendar $gam_user delete ~id # clear ACLs
+          $gam calendar $gam_user add read domain
+          $gam calendar $gam_user add freebusy default
+          $gam calendar $gam_user add editor $newuser
+          $gam calendar $gam_user showacl
+          $gam calendar $gam_user printacl | $gam csv - gam calendar $gam_user delete ~id
+          $gam calendar $gam_user addevent summary "GHA test event" start +1h end +2h attendee $newgroup hangoutsmeet guestscanmodify true sendupdates all
+          $gam calendar $gam_user printevents after -0d
+          $gam config enable_dasa false save
+          matterid=uid:$($gam create vaultmatter name "GHA matter $newbase" description "test matter" returnidonly)
+          $gam create vaulthold matter $matterid name "GHA hold $newbase" corpus mail accounts $newuser
+          $gam print vaultmatters matterstate open
+          $gam print vaultholds matter $matterid
+          $gam print vaultcount matter $matterid corpus mail everyone todrive tdnobrowser
+          $gam create vaultexport matter $matterid name "GHA export $newbase" corpus mail accounts $newuser
+          $gam print exports matter $matterid | $gam csv - gam info export $matterid id:~~id~~
+          $gam config enable_dasa true save
+          $gam csv sample.csv gam user ~email add calendar id:$newresource
+          $gam delete resource $newresource
+          $gam delete feature Whiteboard-$newbase
+          $gam delete feature VC-$newbase
+          $gam delete building $newbuilding
+          $gam delete group $newgroup
+          $gam config enable_dasa false save
+          echo start
+          $gam user $newuser delete license workspaceenterpriseplus
+          echo finish
+          $gam config enable_dasa true save
+          $gam whatis $newuser || if [ $? != 20 ]; then exit $?; fi # expect a 20 return code (is a user)
+          $gam user $gam_user show tokens
+          $gam config enable_dasa false save
+          download_dir="${RUNNER_TEMP}/TEMP_DELETE_ME"
+          mkdir -v "$download_dir"
+          $gam print exports matter $matterid | $gam csv - gam download export $matterid id:~~id~~ targetfolder "$download_dir"
+          rm -rvf "$download_dir"
+          $gam delete hold "GHA hold $newbase" matter $matterid
+          $gam update matter $matterid action close
+          $gam update matter $matterid action delete
+          # shakes off vault hold on user so we can delete
+          $gam print users query "email:${newuser}" orgunitpath | $gam csv - gam update user ~primaryEmail ou ~orgUnitPath
+          $gam user $newuser show holds || if [ $? != 55 ]; then exit $?; fi # expect a 55 return code
+          export sn="$JID$JID$JID$JID-$(openssl rand -base64 32 | sed 's/[^a-zA-Z0-9]//g')"
+          $gam create device serialnumber $sn devicetype android
+          $gam delete contacts emailmatchpattern "^${newbase}@example.com$"
+          $gam config enable_dasa true save
+          $gam print users query "gha.jid=$JID" | $gam csv - gam delete user ~primaryEmail  || if [ $? != 50 ]; then exit $?; fi # expect a 50 return code (vault hold on user)
+          $gam print mobile
+          $gam print devices clientstates
+          $gam print browsers
+          $gam print cros allfields orderby serialnumber
+          $gam show crostelemetry storagepercentonly
+          $gam report usageparameters customer
+          $gam report usage customer parameters gmail:num_emails_sent,accounts:num_1day_logins
+          $gam report customer todrive tdnobrowser
+          #$gam report users fields accounts:is_less_secure_apps_access_allowed,gmail:last_imap_time,gmail:last_pop_time filters "accounts:last_login_time>2019-01-01T00:00:00.000Z" todrive tdnobrowser
+          $gam report users todrive tdnobrowser
+          $gam report admin start -3d todrive tdnobrowser
+          $gam print devices nopersonaldevices nodeviceusers filter "serial:$JID$JID$JID$JID-" | $gam csv - gam delete device id ~name
+          $gam config enable_dasa false save
+          $gam print userinvitations
+          $gam print userinvitations | $gam csv - gam send userinvitation ~name
+          $gam config enable_dasa false save
+          $gam create caalevel "zzz_${newbase}" basic condition ipsubnetworks 1.1.1.1/32,2.2.2.2/32 endcondition
+          $gam print caalevels
+          $gam delete caalevel "zzz_${newbase}"
+          $gam user $gam_user add drivefile localfile gam.py parentid "${driveid}"
+          $gam user $gam_user update shareddrive "${driveid}" ou "${newou}"
+          $gam user $gam_user show shareddrives asadmin
+          $gam user $gam_user update shareddrive "${driveid}" ou "aaaGithub Actions" # so we can delete our OU...
+          $gam user $gam_user delete shareddrive "${driveid}" nukefromorbit
+          ssoprofile=$($gam config debug_level 1 create inboundssoprofile name "El Goog ${newbase}" loginurl https://www.google.com logouturl https://www.google.com changepasswordurl https://www.google.com entityid ElGoog return_name_only)
+          if [ ${ssoprofile} != 'inProgress' ]; then
+            $gam create inboundssocredential profile "id:${ssoprofile}" generate_key
+            #$gam create inboundssoassignment profile "id:${ssoprofile}" orgunit "${newou}" mode SAML_SSO
+            #$gam delete inboundssoassignment "orgunit:${newou}"
+            $gam delete inboundssoprofile "id:${ssoprofile}"
+          fi
+          echo "printer model count:"
+          $gam print printermodels | wc -l
+          $gam print printers
+          printerid=$($gam create printer displayname "${newbase}" uri ipp://localhost:631 driverless description "made by ${gam_user}" ou "${newou}" nodetails | awk '{print substr($2, 1, length($2)-1)}')
+          $gam info printer "$printerid"
+          $gam delete printer "$printerid"
+          $gam delete ou "${newou}"
+
+      - name: Tar Cache archive
+        if: matrix.goal == 'build' && steps.cache-python-ssl.outputs.cache-hit != 'true'
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            tar_folders="src/cpython/ bin/ssl"
+          else
+            tar_folders="bin/"
+          fi
+          tar cJvvf cache.tar.xz $tar_folders
+
+  merge:
+    if: (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    needs: build
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Merge Artifacts
+        uses: actions/upload-artifact/merge@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gam-binaries
+          pattern: gam-binaries-*
+
+  publish:
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    needs: merge
+    permissions:
+      contents: write
+      packages: write
+      pull-requests: read
+
+    steps:
+
+      - uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493 # v5.0.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # 5.0.0
+
+      - name: VirusTotal Scan
+        uses: crazy-max/ghaction-virustotal@d34968c958ae283fe976efed637081b9f9dcf74f # 4.2.0
+        with:
+          vt_api_key: ${{ secrets.VT_API_KEY }}
+          files: |
+            gam-binaries/*
+
+      - name: Set datetime version string
+        id: dateversion
+        run: |
+          export dateversion="$(date  +'%Y%m%d.%H%M%S')"
+          echo "Date version: ${dateversion}"
+          echo "dateversion=${dateversion}" >> $GITHUB_OUTPUT
+
+      - name: Publish draft release
+        uses: softprops/action-gh-release@fbadcc90e88ecface60a0a0d123795b784ceb239 # v2.3.2
+        with:
+          draft: true
+          prerelease: false
+          tag_name: "${{ steps.dateversion.outputs.dateversion }}"
+          fail_on_unmatched_files: true
+          files: |
+            gam-binaries/*
+
+        
