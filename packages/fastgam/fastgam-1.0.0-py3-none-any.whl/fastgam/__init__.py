@@ -1,0 +1,1 @@
+from fastgam.fast import FastGAM
