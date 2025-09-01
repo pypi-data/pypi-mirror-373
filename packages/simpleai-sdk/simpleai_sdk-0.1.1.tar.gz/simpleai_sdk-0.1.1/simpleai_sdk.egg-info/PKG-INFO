@@ -1,0 +1,125 @@
+Metadata-Version: 2.4
+Name: simpleai-sdk
+Version: 0.1.1
+Summary: A simple, high-level Python package for the Lille language model.
+Author: Nikityyy
+License: Apache License (2.0)
+Project-URL: Homepage, https://github.com/Nikityyy/simple-ai
+Project-URL: Bug Tracker, https://github.com/Nikityyy/simple-ai/issues
+Keywords: llm,language model,ai,onnx,transformers,huggingface
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Operating System :: OS Independent
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Dynamic: license-file
+
+# SimpleAI
+
+A simple, high-level API for running the Lille language model.
+
+This package provides an easy-to-use interface for both the Hugging Face Transformers and ONNX Runtime backends, automatically downloading the required model files on first use.
+
+## Installation
+
+```bash
+pip install simpleai-sdk
+```
+
+### A Note on ONNX Runtime and GPU Support
+
+The package will automatically try to install the correct version of `onnxruntime` for your system:
+
+-   If you have a **CUDA 12.x+** compatible GPU and `torch` is installed, it will automatically install `onnxruntime-gpu`.
+-   If you have a **CPU-only** system, it will install `onnxruntime`.
+
+**Important for CUDA 11.x Users:**
+If you are using CUDA 11.x, `pip` cannot handle the special installation source automatically. The setup will default to the CPU version and print a warning. To get GPU acceleration, you must run the following command **after** installing `simpleai-sdk`:
+
+```bash
+pip install onnxruntime-gpu --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/
+```
+
+## Quick Start
+
+The `lille()` function is the main entry point. You can specify either the `"huggingface"` or `"onnx"` backend.
+
+### Hugging Face Backend (Default)
+
+This is the recommended backend for flexibility and ease of use, especially on GPUs.
+
+```python
+from simple_ai import lille
+
+# This will download and cache the model on first run
+# You can specify the model version, e.g., "130m-instruct" (default) or "130m-base"
+model = lille("huggingface", "130m-instruct") 
+
+# For text completion
+prompt = "Artificial Intelligence is"
+response = model.generate(prompt, max_new_tokens=50, temperature=0.9)
+print(response)
+
+# For chat
+print("\n--- Chat Example ---")
+response1 = model.chat("What is the capital of France?", max_new_tokens=50, top_k=200)
+print(f"Bot: {response1}")
+
+response2 = model.chat("And what is its population?", max_new_tokens=50, top_p=0.90)
+print(f"Bot: {response2}")
+
+# Reset the conversation history
+model.reset_chat()
+```
+
+### ONNX Backend
+
+The ONNX backend is optimized for fast CPU and GPU inference.
+
+```python
+from simple_ai import lille
+
+# This will download and cache the model on first run
+# You can specify the model version, e.g., "130m-instruct" (default) or "130m-base"
+model = lille("onnx", "130m-instruct") 
+
+# For text completion
+prompt = "Artificial Intelligence is"
+response = model.generate(prompt, max_new_tokens=50, temperature=0.9)
+print(response)
+
+# For chat
+print("\n--- Chat Example ---")
+response1 = model.chat("What is the capital of France?", max_new_tokens=50, top_k=200)
+print(f"Bot: {response1}")
+
+response2 = model.chat("And what is its population?", max_new_tokens=50, top_p=0.90)
+print(f"Bot: {response2}")
+
+# Reset the conversation history
+model.reset_chat()
+```
+
+### Advanced Usage (Direct Transformers Access)
+
+If you use the `"huggingface"` backend, you can still access the underlying `transformers` model and tokenizer for advanced use cases, just like any standard Hugging Face model.
+
+```python
+from simple_ai import lille
+
+# Load the model and tokenizer
+lille_hf = lille("huggingface")
+model = lille_hf.model
+tokenizer = lille_hf.tokenizer
+
+# Example from Hugging Face docs
+messages = [{"role": "user", "content": "What is gravity?"}]
+input_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+inputs = tokenizer.encode(input_text, return_tensors="pt").to(model.device)
+
+outputs = model.generate(inputs, max_new_tokens=50)
+print(tokenizer.decode(outputs[0]))
