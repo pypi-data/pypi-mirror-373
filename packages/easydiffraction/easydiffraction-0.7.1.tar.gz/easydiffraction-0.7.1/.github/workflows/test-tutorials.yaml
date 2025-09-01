@@ -1,0 +1,108 @@
+name: Test tutorials
+
+on:
+  # Trigger the workflow on push
+  push:
+    # Every branch
+    branches:
+      - '**'
+    # But do not run this workflow on creating a new tag starting with
+    # 'v', e.g. 'v1.0.3' (see publish-pypi.yml)
+    tags-ignore:
+      - 'v*'
+  # Trigger the workflow on pull request
+  pull_request:
+    branches:
+      - '**'
+  # Trigger the workflow on workflow_call (to be called from other workflows)
+  # Needed, as standard schedule triggers the master branch only, but we want
+  # to run this workflow on develop branch.
+  workflow_call:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Allow only one concurrent workflow, skipping runs queued between the run
+# in-progress and latest queued. And cancel in-progress runs.
+concurrency:
+  group:
+    ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Job 1: Check code quality and consistency
+  code-quality:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@v0.9.0
+        with:
+          environments: >-
+            py313-dev
+          activate-environment: py313-dev
+          run-install: true
+          frozen: true
+          cache: false
+          post-cleanup: false
+
+      - name: Convert tutorial scripts to notebooks
+        shell: bash
+        run: pixi run notebook-prepare
+
+      - name: Check notebooks formatting
+        id: check_formatting
+        continue-on-error: true
+        shell: bash
+        run: pixi run notebook-format-check
+
+      - name: Suggestion to fix notebook formatting
+        if: steps.check_formatting.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "Run 'pixi run notebook-format-fix' and commit changes."
+          exit 1
+
+  # Job 2: Test tutorials as Python scripts and Jupyter Notebooks
+  test-tutorials:
+    needs: code-quality # previous job needs to be finished first
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@v0.9.0
+        with:
+          environments: >-
+            py313-dev
+          activate-environment: py313-dev
+          run-install: true
+          frozen: true
+          cache: false
+          post-cleanup: false
+
+      - name: Test tutorials as python scripts
+        shell: bash
+        run: pixi run script-tests
+
+      - name: Convert tutorial scripts to notebooks
+        shell: bash
+        run: pixi run notebook-prepare
+
+      - name: Test tutorials as notebooks
+        shell: bash
+        run: pixi run notebook-tests
