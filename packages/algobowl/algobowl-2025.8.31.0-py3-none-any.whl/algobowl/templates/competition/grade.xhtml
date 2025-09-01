@@ -1,0 +1,83 @@
+<html py:extends="master.xhtml" py:strip="True">
+  <py:block name="title">
+    Grading Information
+  </py:block>
+  <body py:block="body" py:strip="True">
+    <py:def function="format_percent(num)">
+      ${num if isinstance(num, int) else f"{num:.2f}"}%
+    </py:def>
+    <div class="container">
+      <h1 class="mb-3">
+        Grading Table: ${competition.name}
+      </h1>
+    </div>
+    <div class="container-fluid table-responsive">
+      <table class="table table-striped">
+        <thead>
+          <tr>
+            <th>Group</th>
+            <th>Name</th>
+            <th>Verification</th>
+            <th>Input Submitted</th>
+            <th>Input Difficulty</th>
+            <th>Participation</th>
+            <th>Rankings</th>
+            <th>Group Grade</th>
+          </tr>
+        </thead>
+        <tbody>
+          <py:for each="g, gt in sorted(groups.items(), key=lambda i: i[0].id)"
+                  py:with="grade=sum(float(x) for x in gt.contributions)">
+            <tr>
+              <td py:content="g.id"></td>
+              <td py:content="g.name" class="truncate-small"></td>
+              <td>
+                ${format_percent(gt.contributions.verification)}
+                (${gt.verification.correct}C,
+                 ${gt.verification.false_positives}FP,
+                 ${gt.verification.false_negatives}FN)
+              </td>
+              <td>
+                ${format_percent(gt.contributions.input_submitted)}
+                (${"Yes" if gt.contributions.input_submitted else "No"})
+              </td>
+              <td>
+                ${format_percent(gt.contributions.input_difficulty)}
+                (${gt.input_ones})
+              </td>
+              <td>
+                ${format_percent(gt.contributions.participation)}
+                (${gt.rankings.reject_count}R)
+              </td>
+              <td>
+                ${format_percent(gt.contributions.ranking)}
+                (Fleet ${gt.fleet})
+              </td>
+              <td>
+                ${grade}
+              </td>
+            </tr>
+            <tr py:for="u in g.users"
+                class="${'bg-warning text-dark'
+                         if max(gt.evaluations[u].values()) > 0.45
+                         else 'bg-secondary text-light'}"
+                py:with="mult=sum(gt.evaluations[u].values())">
+              <td colspan="3">
+                ${u}
+              </td>
+              <td colspan="4">
+                Evaluation Multiplier: ${'{:.4f}'.format(mult)}
+                <small>
+                  (${', '.join('{}: {:.2f}%'.format(k, v * 100) for k, v in gt.evaluations[u].items())})
+                </small>
+              </td>
+              <td>
+                Grade: <strong>${format_percent(min(grade * mult, 100))}</strong>
+              </td>
+            </tr>
+          </py:for>
+        </tbody>
+      </table>
+    </div>
+  </body>
+</html>
