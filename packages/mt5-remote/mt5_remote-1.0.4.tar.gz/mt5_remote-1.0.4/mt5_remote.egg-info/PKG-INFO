@@ -1,0 +1,172 @@
+Metadata-Version: 2.4
+Name: mt5_remote
+Version: 1.0.4
+Summary: MetaTrader5 with remote access using a client/server architecture
+Author: BigMitchGit
+License-Expression: MIT
+Project-URL: Homepage, https://github.com/bigmitchgit/mt5_remote
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE.txt
+Requires-Dist: numpy==2.3.2
+Requires-Dist: plumbum==1.9.0
+Requires-Dist: rpyc==6.0.2
+Requires-Dist: metatrader5==5.0.5200; sys_platform == "win32"
+Requires-Dist: pywin32==311; sys_platform == "win32"
+Provides-Extra: server
+Requires-Dist: metatrader5==5.0.5200; extra == "server"
+Requires-Dist: pywin32==311; extra == "server"
+Dynamic: license-file
+
+# mt5_remote — Remote MetaTrader 5 access
+
+mt5_remote lets you control MetaTrader 5 from any machine by connecting to a remote Windows Python process that runs MT5. Your client script (Linux, macOS, or Windows) sends commands to a server running MetaTrader5 on Windows (native Windows or via Wine).
+
+This project builds on the original mt5linux package, maintaining compatibility with its Linux support while adding generalized remote access. Unlike the original mt5linux, this version works with modern Python versions.
+
+## Purpose
+
+- Run MT5 trading scripts from any machine by connecting to a remote MT5 server
+- Keep your trading logic on Linux/macOS while MT5 runs on Windows (locally via Wine/VM or on a remote Windows machine)
+- Simple client/server setup that generally allows you to keep your trading logic and MT5 terminals separate
+
+## Install
+
+Option A — install from PyPI (recommended)
+
+- Preferred (using the `uv` virtual environment helper):
+```bash
+# create and activate a uv environment
+uv venv
+source .venv/bin/activate  # Linux/Mac
+# or: .venv\Scripts\activate  # Windows
+uv pip install mt5-remote
+```
+
+- Or, if you don't use `uv`, use a standard venv and pip:
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# or: .venv\Scripts\activate  # Windows
+pip install mt5-remote
+```
+
+Important: the package name on PyPI is `mt5-remote` but you must import it in Python with an underscore:
+```python
+import mt5_remote  # use underscore
+from mt5_remote import MetaTrader5
+```
+
+Option B — install from source
+
+**On both client and server machines:**
+```bash
+# Clone the repository
+git clone <repo-url>
+cd mt5_remote
+
+# Create virtual environment (recommended: uv)
+uv venv
+source .venv/bin/activate  # Linux/Mac
+# or: .venv\Scripts\activate  # Windows
+
+# Alternative: standard venv
+# python -m venv .venv && source .venv/bin/activate
+
+# Install base requirements and package (editable install for development)
+pip install -r requirements.txt
+pip install -e .
+```
+
+**Additionally on the remote server only:**
+```bash
+# In the activated server venv
+pip install -r server-requirements.txt
+```
+
+**Note:** Always activate the virtual environment before running client/server commands. `requirements.txt` contains base requirements for both client and server. `server-requirements.txt` adds MT5-specific dependencies only needed on the server.
+
+## How to use
+
+1. Start MetaTrader 5 on the machine with Windows Python (native Windows, Wine, or VM).
+
+2. Start the server that connects to MT5:
+
+```bash
+# Make sure server venv is activated first
+source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+# Optionally, specify which MT5 terminal executable to use with --mt5path
+# and default to portable mode with --portable (isolates data per install)
+python -m mt5_remote <path/to/windows/python.exe> \
+  --mt5path "C:\\Program Files\\MetaTrader 5\\terminal64.exe" \
+  --portable
+```
+
+The `<path/to/windows/python.exe>` parameter is the path to your Windows Python interpreter **inside the virtual environment** where you installed the server requirements.
+
+If `--mt5path` is provided, the server sets `MT5_TERMINAL_PATH` (and `MT5_PATH`) in its environment. When your client later calls `mt5.initialize()` without an explicit path, the server will default to this MT5 terminal executable path.
+
+If `--portable` is provided, the server sets `MT5_PORTABLE=1` in its environment. When your client calls `mt5.initialize()` without `portable=` specified, the server defaults to launching the terminal in portable mode.
+
+Portable mode keeps the MT5 data folder inside the terminal installation directory, which makes it easy to run multiple isolated terminals on the same machine (each in its own folder).
+
+Examples:
+- Native Windows: `.venv\Scripts\python.exe`
+- Wine on Linux: `--wine wine .venv/Scripts/python.exe` (note the `--wine` flag)
+- Windows VM: `.venv/Scripts/python.exe` (or full path to venv within VM)
+
+**Note:** 
+- Use the venv's python.exe (not system Python) unless you installed packages globally
+- For Wine, you must use the `--wine` argument to specify the Wine command
+- Relative paths work fine if you're in the project directory
+
+3. From your client machine (can be the same machine for localhost usage), connect and run your trading logic:
+
+```python
+from mt5_remote import MetaTrader5
+
+# Connect to MT5 server (defaults: localhost:18812)
+mt5 = MetaTrader5()
+
+mt5.initialize()
+info = mt5.terminal_info()
+rates = mt5.copy_rates_from_pos('EURUSD', mt5.TIMEFRAME_M1, 0, 1000)
+mt5.shutdown()
+```
+
+**Common Usage Scenarios:**
+- **Linux/macOS development with Wine:** Run the server via Wine locally, develop your trading logic in native Linux/macOS Python
+- **Linux/macOS with Windows VM:** Run the server in a Windows VM, connect from Linux/macOS host
+- **Remote Windows server:** Run the server on a separate Windows machine, connect from any client
+
+**Server Options:**
+Run `python -m mt5_remote --help` for host, port, and other configuration options.
+
+To run multiple MT5 terminals on one machine, start multiple servers with different `--port` values and distinct MT5 installation folders (ideally with `--portable`). Example:
+
+```bash
+python -m mt5_remote .venv\Scripts\python.exe --mt5path "C:\\MT5A\\terminal64.exe" --portable -p 18812
+python -m mt5_remote .venv\Scripts\python.exe --mt5path "C:\\MT5B\\terminal64.exe" --portable -p 18813
+```
+
+## MT5 configuration notes
+
+- Enable Algorithmic trading in the MT5 GUI: Tools -> Options -> Expert Advisors and check "Allow algorithmic trading" (or similar on your MT5 build).
+
+- You can also enable these settings programmatically by editing the MT5 configuration files (for example `terminal.ini` or `common.ini` in the MT5 data/config folders) to enable Expert Advisors / automated trading. Exact keys may differ between MT5 builds; prefer using the GUI unless you know the correct ini keys for your installation.
+
+## Broker discovery note
+
+- The MT5 terminal must have discovered your broker server before remote operations can succeed. If the terminal hasn't discovered the broker it will fail to connect to market data or accounts. In the MT5 GUI open "Open an Account" and search for your broker; once your broker appears in the list, mt5_remote should be able to use the terminal to access market data and trading services.
+
+
+## Credits
+
+Originally created as the `mt5linux` project by Lucas Prett Campagna (github: `lucas-campagna`). This repository repurposes and extends that work — maintained by BigMitchGit.
+
+## License
+
+This project is released under the MIT License. See the `LICENSE.txt` file for details.
