@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install the project
+        run: uv sync --locked --dev --extra mcp
+      - name: Install pocl
+        run: uv pip install pocl-binary-distribution==3.0
+      - name: Run tests
+        run: |
+          uv run pytest --cov --cov-report=xml
+          echo $? > pytest-exitcode
+        continue-on-error: true
+      # Always upload coverage, even if tests fail
+      - name: Run codacy-coverage-reporter
+        uses: codacy/codacy-coverage-reporter-action@v1.3.0
+        with:
+          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+          coverage-reports: coverage.xml
+      - name: Fail job if pytest failed
+        run: |
+          if [ -f pytest-exitcode ] && [ "$(cat pytest-exitcode)" -ne 0 ]; then
+            echo "Pytest failed, failing job."
+            exit 1
+          fi
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Build the project
+        run: uv build
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Run linters
+        run: uvx ruff check
+  typing:
+    name: typing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install the project
+        run: uv sync --locked --dev --extra mcp
+      - name: Run type checkers
+        run: uv run pyrefly check src tests
+  typing-docs:
+    name: typing-docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install the project
+        run: uv sync --group docs-type
+      - name: Convert notebooks to Python scripts
+        run: |
+          find docs/ -name "*.ipynb" -exec uv run --group docs-type marimo convert {} -o {}.py \;
+      - name: Run type checkers on docs
+        run: uv run --group docs-type pyrefly check docs/notebooks/*.ipynb.py
+
