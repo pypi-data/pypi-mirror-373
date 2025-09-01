@@ -1,0 +1,195 @@
+Metadata-Version: 2.2
+Name: PyAsyncScheduler
+Version: 0.0.1
+Summary: An asynchronous task scheduler, with cron syntax, intervals, limits, dynamic configuration, and optional vault integration.
+Home-page: https://github.com/mauricelambert/PyAsyncScheduler
+Author: Maurice Lambert
+Author-email: Maurice Lambert <mauricelambert434@gmail.com>
+Maintainer: Maurice Lambert
+Maintainer-email: Maurice Lambert <mauricelambert434@gmail.com>
+License: GPL-3.0 License
+Project-URL: Github, https://github.com/mauricelambert/PyAsyncScheduler
+Project-URL: Documentation, https://mauricelambert.github.io/info/python/code/PyAsyncScheduler.html
+Keywords: scheduler,cron,async,task-scheduler,background-tasks,vault
+Platform: Windows
+Platform: Linux
+Platform: MacOS
+Classifier: Topic :: System
+Classifier: Environment :: Console
+Classifier: Topic :: System :: Shells
+Classifier: Operating System :: POSIX
+Classifier: Natural Language :: English
+Classifier: Programming Language :: Python
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: System :: System Shells
+Classifier: Operating System :: MacOS :: MacOS X
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Operating System :: Microsoft :: Windows
+Classifier: Topic :: System :: Systems Administration
+Classifier: Topic :: Software Development :: Libraries
+Classifier: Intended Audience :: System Administrators
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE.txt
+Dynamic: author
+Dynamic: home-page
+Dynamic: maintainer
+Dynamic: requires-python
+
+![PyAsyncScheduler Logo](https://mauricelambert.github.io/info/python/code/PyAsyncScheduler_small.png "PyAsyncScheduler logo")
+
+# PyAsyncScheduler
+
+## Description
+
+This is an asynchronous scheduler designed to execute both synchronous and asynchronous tasks with flexible timing and configuration options. It supports cron expressions, sleep durations, fixed intervals, start/end time windows, and occurrence limits.
+
+Tasks can be defined using simple wordlists, added dynamically at runtime, and configured individually with execution constraints. While most tasks are expected to be asynchronous, synchronous functions are fully supported.
+
+Optional features include integration with a vault for secure configuration or secrets management. The scheduler is built with extensibility and clarity in mind, suitable for running background jobs, periodic checks, lightweight automation, or orchestrating custom workflows in asynchronous Python applications.
+
+## Requirements
+
+This package require:
+
+ - python3
+ - python3 Standard Library
+
+### Optional
+
+ - UrlTasker
+ - MiniVault
+ - JsonRpcExtended
+
+#### Optional Dependencies
+
+> Not used in this package but it's required for multiples optional requirements.
+
+ - PegParser (in JsonRpcExtended and UrlTasker)
+ - RC6Encryption (in MiniVault)
+
+## Installation
+
+### Pip
+
+```bash
+python3 -m pip install PyAsyncScheduler
+```
+
+### Git
+
+```bash
+git clone "https://github.com/mauricelambert/PyAsyncScheduler.git"
+cd "PyAsyncScheduler"
+python3 -m pip install .
+```
+
+### Wget
+
+```bash
+wget https://github.com/mauricelambert/PyAsyncScheduler/archive/refs/heads/main.zip
+unzip main.zip
+cd PyAsyncScheduler-main
+python3 -m pip install .
+```
+
+### cURL
+
+```bash
+curl -O https://github.com/mauricelambert/PyAsyncScheduler/archive/refs/heads/main.zip
+unzip main.zip
+cd PyAsyncScheduler-main
+python3 -m pip install .
+```
+
+## Usages
+
+### Command line
+
+> Command line require all optional requirements.
+
+```bash
+PyAsyncScheduler              # Using CLI package executable
+python3 -m PyAsyncScheduler   # Using python module
+python3 PyAsyncScheduler.pyz  # Using python executable
+PyAsyncScheduler.exe          # Using python Windows executable
+
+PyAsyncScheduler -v myvault tasks1.json tasks2.json ... tasksN.json
+```
+
+### Python script
+
+```python
+from PyAsyncScheduler import *
+
+async def my_async_template(template, **kwargs):
+    # kwargs are used in environment variables for subprocess tasks
+    print("Do something with template", template, kwargs)
+
+scheduler = TaskScheduler(start_callable=lambda x, **y: my_async_template(x, **y))
+scheduler.add_task({
+    "template": "https://api.com/foo?u=${user}&p=${pass}",
+    "csv_inputs": ["credentials.csv"],
+    "sleep": 3600,
+})
+run(scheduler.run())
+```
+
+```python
+from MiniVault import PasswordVault
+from PyAsyncScheduler import *
+from functools import partial
+from getpass import getpass
+from asyncio import sleep
+
+async def my_async_service():
+    # kwargs are used in environment variables for subprocess tasks
+    while True:
+        await sleep(1)
+        print("Do something in async loop")
+
+def my_sync_template(url, **kwargs):
+    # kwargs are used in environment variables for subprocess tasks
+    print("Do something with template", template, kwargs)
+
+def handle_task_completed(template, task):
+    print("Task complete:", template, task["id"], task)
+
+PasswordVault.start(master_password=getpass(), root_dir="test")
+
+scheduler = TaskScheduler(
+    start_callable=lambda x, **y: partial(my_sync_template, x, **y),
+    worker_count=8,
+    process_result=handle_task_completed,
+    external_coroutines=[my_async_service()],
+    vault=vault,
+)
+scheduler.add_task({
+    "template": "https://api.com/foo?u=${user}&p=${pass}",
+    "csv_inputs": ["users.csv", "passes.csv"],
+    "start_time": "2025-06-22T00:00:00",
+    "end_time":   "2025-06-22T06:00:00",
+    "occurrences": 12,
+})
+scheduler.add_task({
+    "template": "https://${edr_user}:${edr_password}@edr.com/foo?u=${user}&p=${pass}",
+    "csv_inputs": ["users.csv", "passes.csv"],
+    "credentials": {"edr": {"category": "EDR", "role": "events_reader"}},
+    "cron": "*/5 * * * *",
+    "limit": {"max_executions": 100, "per_seconds": 60},
+    "instance_spacing": 1
+})
+run(scheduler.run())
+```
+
+## Links
+
+ - [Pypi](https://pypi.org/project/PyAsyncScheduler)
+ - [Github](https://github.com/mauricelambert/PyAsyncScheduler)
+ - [Documentation](https://mauricelambert.github.io/info/python/code/PyAsyncScheduler.html)
+
+## License
+
+Licensed under the [GPL, version 3](https://www.gnu.org/licenses/).
