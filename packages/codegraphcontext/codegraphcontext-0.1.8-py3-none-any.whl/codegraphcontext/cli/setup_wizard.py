@@ -1,0 +1,449 @@
+from InquirerPy import prompt
+from rich.console import Console
+import subprocess
+import platform
+import os
+from pathlib import Path
+import time
+import json
+import sys
+import shutil
+
+console = Console()
+
+def _generate_mcp_json(creds):
+    """Generates and prints the MCP JSON configuration."""
+    cgc_path = shutil.which("cgc") or sys.executable
+
+    if "python" in Path(cgc_path).name:  
+        # fallback to running as module if no cgc binary is found
+        command = cgc_path
+        args = ["-m", "cgc", "start"]
+    else:
+        command = cgc_path
+        args = ["start"]
+
+    mcp_config = {
+        "mcpServers": {
+            "CodeGraphContext": {
+                "command": command,
+                "args": args,
+                "env": {
+                    "NEO4J_URI": creds.get("uri", ""),
+                    "NEO4J_USER": creds.get("username", "neo4j"),
+                    "NEO4J_PASSWORD": creds.get("password", "")
+                },
+                "tools": {
+                    "alwaysAllow": [
+                        "list_imports", "add_code_to_graph", "add_package_to_graph",
+                        "check_job_status", "list_jobs", "find_code",
+                        "analyze_code_relationships", "watch_directory",
+                        "find_dead_code", "execute_cypher_query",
+                        "calculate_cyclomatic_complexity", "find_most_complex_functions",
+                        "list_indexed_repositories", "delete_repository"
+                    ],
+                    "disabled": False
+                },
+                "disabled": False,
+                "alwaysAllow": []
+            }
+        }
+    }
+    
+    console.print("\n[bold green]Configuration successful![/bold green]")
+    console.print("Copy the following JSON and add it to your MCP server configuration file:")
+    console.print(json.dumps(mcp_config, indent=2))
+    
+    # Also save to a file for convenience
+    mcp_file = Path.cwd() / "mcp.json"
+    with open(mcp_file, "w") as f:
+        json.dump(mcp_config, f, indent=2)
+    console.print(f"\n[cyan]For your convenience, the configuration has also been saved to: {mcp_file}[/cyan]")
+
+
+def get_project_root() -> Path:
+    """Always return the directory where the user runs `cgc` (CWD)."""
+    return Path.cwd()
+
+def run_command(command, console, shell=False, check=True, input_text=None):
+    """
+    Runs a command, captures its output, and handles execution.
+    Returns the completed process object on success, None on failure.
+    """
+    cmd_str = command if isinstance(command, str) else ' '.join(command)
+    console.print(f"[cyan]$ {cmd_str}[/cyan]")
+    try:
+        process = subprocess.run(
+            command,
+            shell=shell,
+            check=check,
+            capture_output=True,  # Always capture to control what gets displayed
+            text=True,
+            timeout=300,
+            input=input_text
+        )
+        return process
+    except subprocess.CalledProcessError as e:
+        console.print(f"[bold red]Error executing command:[/bold red] {cmd_str}")
+        if e.stdout:
+            console.print(f"[red]STDOUT: {e.stdout}[/red]")
+        if e.stderr:
+            console.print(f"[red]STDERR: {e.stderr}[/red]")
+        return None
+    except subprocess.TimeoutExpired:
+        console.print(f"[bold red]Command timed out:[/bold red] {cmd_str}")
+        return None
+
+def run_setup_wizard():
+    """Guides the user through setting up CodeGraphContext."""
+    console.print("[bold cyan]Welcome to the CodeGraphContext Setup Wizard![/bold cyan]")
+    
+    questions = [
+        {
+            "type": "list",
+            "message": "Where is your Neo4j database located? We can help you get one, if you don't have.",
+            "choices": [
+                "Local (Recommended: I'll help you run it on this machine)",
+                "Hosted (Connect to a remote database like AuraDB)",
+            ],
+            "name": "db_location",
+        }
+    ]
+    result = prompt(questions)
+    db_location = result.get("db_location")
+
+    if db_location and "Hosted" in db_location:
+        setup_hosted_db()
+    elif db_location:
+        setup_local_db()
+
+
+def find_latest_neo4j_creds_file():
+    """Finds the latest Neo4j credentials file in the Downloads folder."""
+    downloads_path = Path.home() / "Downloads"
+    if not downloads_path.exists():
+        return None
+    
+    cred_files = list(downloads_path.glob("Neo4j*.txt"))
+    if not cred_files:
+        return None
+        
+    latest_file = max(cred_files, key=lambda f: f.stat().st_mtime)
+    return latest_file
+
+
+
+def setup_hosted_db():
+    """Guides user to configure a remote Neo4j instance."""
+    console.print("\nTo connect to a hosted Neo4j database, you'll need your connection credentials.")
+    console.print("If you don't have a hosted database, you can create a free one at [bold blue]https://neo4j.com/product/auradb/[/bold blue] (click 'Start free').")
+    
+    questions = [
+
+        {
+            "type": "list",
+            "message": "How would you like to add your Neo4j credentials?",
+            "choices": ["Add credentials from file", "Add credentials manually"],
+            "name": "cred_method",
+        }
+    ]
+    result = prompt(questions)
+    cred_method = result.get("cred_method")
+
+    creds = {}
+    if cred_method and "file" in cred_method:
+        latest_file = find_latest_neo4j_creds_file()
+        file_to_parse = None
+        if latest_file:
+            confirm_questions = [
+                {
+                    "type": "confirm",
+                    "message": f"Found a credentials file: {latest_file}. Use this file?",
+                    "name": "use_latest",
+                    "default": True,
+                }
+            ]
+            if prompt(confirm_questions).get("use_latest"):
+                file_to_parse = latest_file
+
+        if not file_to_parse:
+            path_questions = [
+                {"type": "input", "message": "Please enter the path to your credentials file:", "name": "cred_file_path"}
+            ]
+            file_path_str = prompt(path_questions).get("cred_file_path", "")
+            file_path = Path(file_path_str.strip())
+            if file_path.exists() and file_path.is_file():
+                file_to_parse = file_path
+            else:
+                console.print("[red]❌ The specified file path does not exist or is not a file.[/red]")
+                return
+
+        if file_to_parse:
+            try:
+                with open(file_to_parse, "r") as f:
+                    for line in f:
+                        if "=" in line:
+                            key, value = line.strip().split("=", 1)
+                            if key == "NEO4J_URI":
+                                creds["uri"] = value
+                            elif key == "NEO4J_USERNAME":
+                                creds["username"] = value
+                            elif key == "NEO4J_PASSWORD":
+                                creds["password"] = value
+            except Exception as e:
+                console.print(f"[red]❌ Failed to parse credentials file: {e}[/red]")
+                return
+
+    elif cred_method:  # Manual entry
+        console.print("Please enter your remote Neo4j connection details.")
+        questions = [
+            {"type": "input", "message": "URI (e.g., neo4j+s://xxxx.databases.neo4j.io):", "name": "uri"},
+            {"type": "input", "message": "Username:", "name": "username", "default": "neo4j"},
+            {"type": "password", "message": "Password:", "name": "password"},
+        ]
+        manual_creds = prompt(questions)
+        if not manual_creds: return  # User cancelled
+        creds = manual_creds
+
+    if creds.get("uri") and creds.get("password"):
+        _generate_mcp_json(creds)
+    else:
+        console.print("[red]❌ Incomplete credentials. Please try again.[/red]")
+
+def setup_local_db():
+    """Guides user to set up a local Neo4j instance."""
+    questions = [
+        {
+            "type": "list",
+            "message": "How would you like to run Neo4j locally?",
+            "choices": ["Docker (Easiest)", "Local Binary (Advanced)"],
+            "name": "local_method",
+        }
+    ]
+    result = prompt(questions)
+    local_method = result.get("local_method")
+    
+    if local_method and "Docker" in local_method:
+        setup_docker()
+    elif local_method:
+        setup_local_binary()
+
+def setup_docker():
+    """Creates Docker files and runs docker-compose for Neo4j."""
+    console.print("\n[bold cyan]Setting up Neo4j with Docker...[/bold cyan]")
+
+    # Prompt for password first
+    console.print("Please set a secure password for your Neo4j database:")
+    password_questions = [
+        {"type": "password", "message": "Enter Neo4j password:", "name": "password"},
+        {"type": "password", "message": "Confirm password:", "name": "password_confirm"},
+    ]
+    
+    while True:
+        passwords = prompt(password_questions)
+        if not passwords:
+            return  # User cancelled
+        
+        password = passwords.get("password", "")
+        if password and password == passwords.get("password_confirm"):
+            break
+        console.print("[red]Passwords do not match or are empty. Please try again.[/red]")
+
+    # Create data directories
+    neo4j_dir = Path.cwd() / "neo4j_data"
+    for subdir in ["data", "logs", "conf", "plugins"]:
+        (neo4j_dir / subdir).mkdir(parents=True, exist_ok=True)
+
+    # Fixed docker-compose.yml content
+    docker_compose_content = f"""
+services:
+  neo4j:
+    image: neo4j:5.21
+    container_name: neo4j-cgc
+    restart: unless-stopped
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/12345678
+      - NEO4J_ACCEPT_LICENSE_AGREEMENT=yes
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+"""
+
+    # Write docker-compose.yml
+    compose_file = Path.cwd() / "docker-compose.yml"
+    with open(compose_file, "w") as f:
+        f.write(docker_compose_content)
+
+    console.print("[green]✅ docker-compose.yml created with secure password.[/green]")
+
+    # Check if Docker is running
+    docker_check = run_command(["docker", "--version"], console, check=False)
+    if not docker_check:
+        console.print("[red]❌ Docker is not installed or not running. Please install Docker first.[/red]")
+        return
+
+    # Check if docker-compose is available
+    compose_check = run_command(["docker", "compose", "version"], console, check=False)
+    if not compose_check:
+        console.print("[red]❌ Docker Compose is not available. Please install Docker Compose.[/red]")
+        return
+
+    confirm_q = [{"type": "confirm", "message": "Ready to launch Neo4j in Docker?", "name": "proceed", "default": True}]
+    if not prompt(confirm_q).get("proceed"):
+        return
+
+    try:
+        # Pull the image first
+        console.print("[cyan]Pulling Neo4j Docker image...[/cyan]")
+        pull_process = run_command(["docker", "pull", "neo4j:5.21"], console, check=True)
+        if not pull_process:
+            console.print("[yellow]⚠️ Could not pull image, but continuing anyway...[/yellow]")
+
+        # Start containers
+        console.print("[cyan]Starting Neo4j container...[/cyan]")
+        docker_process = run_command(["docker", "compose", "up", "-d"], console, check=True)
+        
+        if docker_process:
+            console.print("[bold green]🚀 Neo4j Docker container started successfully![/bold green]")
+            
+            # Wait for Neo4j to be ready
+            console.print("[cyan]Waiting for Neo4j to be ready (this may take 30-60 seconds)...[/cyan]")
+            
+            # Try to connect for up to 2 minutes
+            max_attempts = 24  # 24 * 5 seconds = 2 minutes
+            for attempt in range(max_attempts):
+                time.sleep(5)
+                
+                # Check if container is still running
+                status_check = run_command(["docker", "compose", "ps", "-q", "neo4j"], console, check=False)
+                if not status_check or not status_check.stdout.strip():
+                    console.print("[red]❌ Neo4j container stopped unexpectedly. Check logs with: docker compose logs neo4j[/red]")
+                    return
+                
+                # Try to connect
+                health_check = run_command([
+                    "docker", "exec", "neo4j-cgc", "cypher-shell", 
+                    "-u", "neo4j", "-p", password, 
+                    "RETURN 'Connection successful' as status"
+                ], console, check=False)
+                
+                if health_check and health_check.returncode == 0:
+                    console.print("[bold green]✅ Neo4j is ready and accepting connections![/bold green]")
+                    break
+                    
+                if attempt < max_attempts - 1:
+                    console.print(f"[yellow]Still waiting... (attempt {attempt + 1}/{max_attempts})[/yellow]")
+            else:
+                console.print("[red]❌ Neo4j did not become ready within 2 minutes. Check logs with: docker compose logs neo4j[/red]")
+                return
+
+            # Generate MCP configuration
+            creds = {
+                "uri": "neo4j://localhost:7687",  # Use neo4j:// protocol for Neo4j 5.x
+                "username": "neo4j",
+                "password": password
+            }
+            _generate_mcp_json(creds)
+            
+            console.print("\n[bold green]🎉 Setup complete![/bold green]")
+            console.print("Neo4j is running at:")
+            console.print("  • Web interface: http://localhost:7474")
+            console.print("  • Bolt connection: neo4j://localhost:7687")
+            console.print("\n[cyan]Useful commands:[/cyan]")
+            console.print("  • Stop: docker compose down")
+            console.print("  • Restart: docker compose restart")
+            console.print("  • View logs: docker compose logs neo4j")
+            
+    except Exception as e:
+        console.print(f"[bold red]❌ Failed to start Neo4j Docker container:[/bold red] {e}")
+        console.print("[cyan]Try checking the logs with: docker compose logs neo4j[/cyan]")
+
+def setup_local_binary():
+    """Automates the installation and configuration of Neo4j on Ubuntu/Debian."""
+    os_name = platform.system()
+    console.print(f"Detected Operating System: [bold yellow]{os_name}[/bold yellow]")
+
+    if os_name != "Linux" or not os.path.exists("/etc/debian_version"):
+        console.print("[yellow]Automated installer is designed for Debian-based systems (like Ubuntu).[/yellow]")
+        console.print(f"For other systems, please follow the manual installation guide: [bold blue]https://neo4j.com/docs/operations-manual/current/installation/[/bold blue]")
+        return
+
+    console.print("[bold]Starting automated Neo4j installation for Ubuntu/Debian.[/bold]")
+    console.print("[yellow]This will run several commands with 'sudo'. You will be prompted for your password.[/yellow]")
+    confirm_q = [{"type": "confirm", "message": "Do you want to proceed?", "name": "proceed", "default": True}]
+    if not prompt(confirm_q).get("proceed"):
+        return
+
+    NEO4J_VERSION = "1:5.21.0" 
+
+    install_commands = [
+        ("Creating keyring directory", ["sudo", "mkdir", "-p", "/etc/apt/keyrings"]),
+        ("Adding Neo4j GPG key", "wget -qO- https://debian.neo4j.com/neotechnology.gpg.key | sudo gpg --dearmor --yes -o /etc/apt/keyrings/neotechnology.gpg", True),
+        ("Adding Neo4j repository", "echo 'deb [signed-by=/etc/apt/keyrings/neotechnology.gpg] https://debian.neo4j.com stable 5' | sudo tee /etc/apt/sources.list.d/neo4j.list > /dev/null", True),
+        ("Updating apt sources", ["sudo", "apt-get", "-qq", "update"]),
+        (f"Installing Neo4j ({NEO4J_VERSION}) and Cypher Shell", ["sudo", "apt-get", "install", "-qq", "-y", f"neo4j={NEO4J_VERSION}", "cypher-shell"])
+    ]
+
+    for desc, cmd, use_shell in [(c[0], c[1], c[2] if len(c) > 2 else False) for c in install_commands]:
+        console.print(f"\n[bold]Step: {desc}...[/bold]")
+        if not run_command(cmd, console, shell=use_shell):
+            console.print(f"[bold red]Failed on step: {desc}. Aborting installation.[/bold]")
+            return
+            
+    console.print("\n[bold green]Neo4j installed successfully![/bold green]")
+    
+    console.print("\n[bold]Please set the initial password for the 'neo4j' user.""")
+    
+    new_password = ""
+    while True:
+        questions = [
+            {"type": "password", "message": "Enter a new password for Neo4j:", "name": "password"},
+            {"type": "password", "message": "Confirm the new password:", "name": "password_confirm"},
+        ]
+        passwords = prompt(questions)
+        if not passwords: return # User cancelled
+        new_password = passwords.get("password")
+        if new_password and new_password == passwords.get("password_confirm"):
+            break
+        console.print("[red]Passwords do not match or are empty. Please try again.[/red]")
+
+    console.print("\n[bold]Stopping Neo4j to set the password...""")
+    if not run_command(["sudo", "systemctl", "stop", "neo4j"], console):
+        console.print("[bold red]Could not stop Neo4j service. Aborting.[/bold red]")
+        return
+        
+    console.print("\n[bold]Setting initial password using neo4j-admin...""")
+    pw_command = ["sudo", "-u", "neo4j", "neo4j-admin", "dbms", "set-initial-password", new_password]
+    if not run_command(pw_command, console, check=True):
+        console.print("[bold red]Failed to set the initial password. Please check the logs.[/bold red]")
+        run_command(["sudo", "systemctl", "start", "neo4j"], console)
+        return
+    
+    console.print("\n[bold]Starting Neo4j service...""")
+    if not run_command(["sudo", "systemctl", "start", "neo4j"], console):
+        console.print("[bold red]Failed to start Neo4j service after setting password.[/bold red]")
+        return
+
+    console.print("\n[bold]Enabling Neo4j service to start on boot...""")
+    if not run_command(["sudo", "systemctl", "enable", "neo4j"], console):
+        console.print("[bold yellow]Could not enable Neo4j service. You may need to start it manually after reboot.[/bold yellow]")
+
+    console.print("[bold green]Password set and service started.[/bold green]")
+    
+    console.print("\n[yellow]Waiting 10 seconds for the database to become available...""")
+    time.sleep(10)
+
+    creds = {
+        "uri": "neo4j://localhost:7687",
+        "username": "neo4j",
+        "password": new_password
+    }
+    _generate_mcp_json(creds)
+    console.print("\n[bold green]All done! Your local Neo4j instance is ready to use.[/bold green]")
