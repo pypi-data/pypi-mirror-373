@@ -1,0 +1,18 @@
+## security_baseline/checklist/__init__.py
+__all__ = [
+    "root_mfa",
+    "root_usage",
+    "root_access_key",
+    "iam_user_mfa",
+    "iam_password_policy",
+    "direct_attached_policy",
+    "alternate_contacts",
+    "trail_enabled",
+    "multi_region_trail",
+    "account_level_bucket_public_access",
+    "bucket_public_access",
+    "cloudwatch_alarm_configuration",
+    "multi_region_instance_usage",
+    "guardduty_enabled",
+    "trusted_advisor",
+]
