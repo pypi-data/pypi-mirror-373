@@ -1,0 +1,101 @@
+![Build Status](https://gitlab.cern.ch/cms-dqmdc/libraries/python-libdc3/badges/develop/pipeline.svg)
+![Coverage](https://gitlab.cern.ch/cms-dqmdc/libraries/python-libdc3/badges/develop/coverage.svg)
+![Latest Release](https://gitlab.cern.ch/cms-dqmdc/libraries/python-libdc3/-/badges/release.svg)
+[![PyPI version](https://badge.fury.io/py/libdc3.png)](https://badge.fury.io/py/libdc3)
+
+# libdc3
+
+Library designed to implement all operations needed for DC3 application and at the same time be human-usable through python scripts or notebooks.
+
+## Installation
+
+To install libdc3, simply
+
+```bash
+$ pip install libdc3
+```
+
+## Environment variables
+
+This library depends heavily on `runregistry` python package, so it is needed to set `SSO_CLIENT_ID` and `SSO_CLIENT_SECRET` in your environment.
+
+The interface with `brilcalc` is done via SSH or standard python subprocess if `brilconda` environment is available under the `/cvmfs` location. If executing in an environment without `brilconda`, you need to configure the `dc3_config` object with your LXPlus credentials (recommended via environment variables).
+
+Last but not least, in order to successfully communicate with `DQMGUI` and `T0` endpoints a valid CERN Grid certificate is needed. Again, the `dc3_config` object should be configured with paths to the grid certificated and key (that should be opened).
+
+## SWAN setup
+
+1. Configure your SWAN environment using `Software stack 105a` and select the option `Use Python packages installed on CERNBox`
+2. Create a SWAN project with any name you like and upload all example notebooks to it
+3. Open SWAN terminal and create a `.env` file under your project directory and add the following variables: `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET`, `AUTH_CERT`, `AUTH_CERT_KEY`
+4. On any notebook, create a new cell and add `pip install libdc3`.
+
+## Development
+
+Install the dependencies and the package using `uv`:
+
+```shell
+uv sync --all-groups
+uv run pre-commit install
+uv pip install -e .
+```
+
+### Running tests
+
+Run tests with `pytest`:
+
+```shell
+uv run pytest tests
+```
+
+#### Tox
+
+Tox is pre-configured in `tox.ini`, so you can run the following to test against multiple python versions locally:
+
+```bash
+uv run tox
+```
+
+**[asdf](https://asdf-vm.com/) users**
+
+tox requires multiple versions of Python to be installed. Using `asdf`, you have multiple versions installed, but they aren’t normally exposed to the current shell. You can use the following command to expose multiple versions of Python in the current directory:
+
+```bash
+asdf set python 3.12.9 3.11.10 3.10.13 3.9.19
+```
+
+This will use `3.12.9` by default (if you just run `python`), but it will also put `python3.11`, `python3.10` and `python3.9` symlinks in your path so you can run those too (which is exactly what tox is looking for).
+
+### Releasing the package on PyPI
+
+The package is available in PyPI at [libdc3](https://pypi.org/project/libdc3/), under the [cmsdqm](https://pypi.org/org/cms-dqm/) organization. You'll need at leat Mantainer rights to be able to push new versions.
+
+#### CI
+
+Do not worry. The GitLab CI is configured to automatically publish the package on PyPI and the release notes in GitLab whever a tag is pushed to the repo.
+
+> [!NOTE]
+> For this to work the CI/CD variables named `UV_PUBLISH_TOKEN`, `GITLAB_TOKEN` should be registered in gitlab. The `UV_PUBLISH_TOKEN` is a api token access of CMSDQM organization and the `GITLAB_TOKEN` is a Project Access Token with api read/write rights, which is needed to read merge requests using the `glab-cli`.
+> https://gitlab.cern.ch/cms-dqmdc/libraries/python-libdc3/-/settings/access_tokens
+
+#### Manual
+
+If you want to follow the manual approach, you need to first build and then publish.
+
+##### Build
+
+You can use uv to build the package using:
+
+```bash
+uv build
+```
+
+The build system will automatically update the package version based on the git tag of the current commit.
+
+##### Publish
+
+Provided you have already generate a PyPI api token in your account or in CMDQM org, you can publish using:
+
+```bash
+UV_PUBLISH_TOKEN=... uv publish
+```

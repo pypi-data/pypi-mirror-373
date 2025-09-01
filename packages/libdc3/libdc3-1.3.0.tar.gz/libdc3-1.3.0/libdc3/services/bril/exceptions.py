@@ -1,0 +1,2 @@
+class BrilcalcError(Exception):
+    pass
