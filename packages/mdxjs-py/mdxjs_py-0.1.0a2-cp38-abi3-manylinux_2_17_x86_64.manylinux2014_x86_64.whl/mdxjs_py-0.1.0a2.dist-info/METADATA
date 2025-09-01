@@ -1,0 +1,307 @@
+Metadata-Version: 2.4
+Name: mdxjs-py
+Version: 0.1.0a2
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Programming Language :: Rust
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: Text Processing :: Markup
+Classifier: Typing :: Typed
+License-File: LICENSE
+Summary: Python bindings for mdxjs-rs - Fast MDX to JavaScript compilation via Rust
+Keywords: mdx,markdown,jsx,compiler,rust,mdxjs
+Home-Page: https://github.com/SamDc73/mdxjs-py
+License: MIT
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown; charset=UTF-8; variant=GFM
+Project-URL: Homepage, https://github.com/SamDc73/mdxjs-py
+Project-URL: Documentation, https://github.com/SamDc73/mdxjs-py#readme
+Project-URL: Repository, https://github.com/SamDc73/mdxjs-py
+Project-URL: Issues, https://github.com/SamDc73/mdxjs-py/issues
+Project-URL: Changelog, https://github.com/SamDc73/mdxjs-py/blob/main/CHANGELOG.md
+
+# mdxjs-py
+
+Python bindings for [mdxjs-rs](https://github.com/wooorm/mdxjs-rs), a Rust implementation of MDX.
+
+**⚠️ Alpha Software**: This package is in early development. The API may change between versions.
+
+## Features
+
+- Fast MDX compilation via Rust (10-100x faster than Node.js subprocess)
+- Simple Python API mirroring @mdx-js/mdx
+- Zero dependencies (beyond the compiled extension)
+- Helpful error messages with line/column information
+- Full MDX 2 support via mdxjs-rs
+
+## Installation
+
+```bash
+pip install mdxjs-py
+```
+
+**Note**: Currently only Linux x86_64 wheels are provided. For other platforms, you'll need Rust installed to build from source:
+
+```bash
+# Install Rust first
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Then install from PyPI (will compile automatically)
+pip install mdxjs-py
+```
+
+## Usage
+
+### Basic Compilation
+
+```python
+from mdxjs_py import compile
+
+# Compile MDX to JavaScript
+mdx_content = """
+# Hello World
+
+This is **MDX** content with <Button onClick={() => alert('hi!')}>JSX</Button>!
+"""
+
+try:
+    js_output = compile(mdx_content)
+    print(js_output)
+except ValueError as e:
+    print(f"MDX compilation failed: {e}")
+```
+
+### Validation
+
+Use `compile()` to validate MDX syntax:
+
+```python
+from mdxjs_py import compile
+
+def validate_mdx(content: str) -> tuple[bool, str | None]:
+    """Validate MDX content.
+
+    Returns:
+        (is_valid, error_message)
+    """
+    try:
+        compile(content)
+        return True, None
+    except ValueError as e:
+        return False, str(e)
+
+# Example usage
+content = "<Button>Unclosed tag"
+is_valid, error = validate_mdx(content)
+if not is_valid:
+    print(f"Invalid MDX: {error}")
+    # Output: Invalid MDX: Expected a closing tag for `<Button>`
+```
+
+### Configuration Options
+
+```python
+from mdxjs_py import compile
+
+# With options (matches @mdx-js/mdx API)
+js_output = compile(
+    mdx_content,
+    development=True,  # Enable development mode
+    jsx_runtime="automatic",  # or "classic"
+    jsx_import_source="react",  # for automatic runtime
+)
+```
+
+## API Reference
+
+### `compile(source: str, **options) -> str`
+
+Compile MDX source to JavaScript. API-compatible with @mdx-js/mdx.
+
+**Parameters:**
+
+- `source` (str): The MDX source code to compile
+- `development` (bool, optional): Enable development mode
+- `jsx` (bool, optional): Keep JSX (default: False, compiles to JS)
+- `jsx_runtime` (str, optional): "automatic" or "classic"
+- `jsx_import_source` (str, optional): Package for automatic JSX runtime
+- `pragma` (str, optional): JSX pragma for classic runtime
+- `pragma_frag` (str, optional): JSX pragma fragment for classic runtime
+- `pragma_import_source` (str, optional): Pragma import source
+- `provider_import_source` (str, optional): Provider import source
+
+**Returns:**
+
+- `str`: Compiled JavaScript code
+
+**Raises:**
+
+- `ValueError`: If MDX compilation fails with detailed error message
+
+### `compile_sync(source: str, **options) -> str`
+
+Synchronous version of `compile()` (alias for compatibility).
+
+### `is_available() -> bool`
+
+Check if the Rust module is built and available.
+
+## Common Use Cases
+
+### 1. Validate User-Generated MDX
+
+```python
+def process_user_mdx(content: str) -> dict:
+    """Process and validate user MDX content."""
+    try:
+        js_output = compile(content)
+        return {
+            "success": True,
+            "output": js_output
+        }
+    except ValueError as e:
+        # Extract line/column from error
+        error_str = str(e)
+        return {
+            "success": False,
+            "error": error_str,
+            "hint": "Check for unclosed tags or invalid JSX"
+        }
+```
+
+### 2. MDX Syntax Checking in CI/CD
+
+```python
+import glob
+from pathlib import Path
+from mdxjs_py import compile
+
+def check_all_mdx_files(directory: str) -> bool:
+    """Validate all MDX files in a directory."""
+    all_valid = True
+
+    for mdx_path in Path(directory).glob("**/*.mdx"):
+        try:
+            with open(mdx_path, 'r') as f:
+                compile(f.read())
+            print(f"✅ {mdx_path}")
+        except ValueError as e:
+            print(f"❌ {mdx_path}: {e}")
+            all_valid = False
+
+    return all_valid
+```
+
+### 3. Pre-process MDX for Frontend
+
+```python
+def prepare_mdx_for_frontend(content: str, max_retries: int = 3) -> str:
+    """Validate and prepare MDX for frontend rendering."""
+    for attempt in range(max_retries):
+        try:
+            # Validate compilation
+            compile(content)
+            return content
+        except ValueError as e:
+            if attempt == max_retries - 1:
+                # Return with warning comment
+                return f"<!-- MDX validation warning: {e} -->\n{content}"
+            # Could attempt to fix common issues here
+            content = fix_common_mdx_issues(content)
+
+    return content
+```
+
+## Performance
+
+Benchmarked on an Intel i7-9750H:
+
+```python
+import time
+from mdxjs_py import compile
+
+content = "# Heading\n\nParagraph with **bold** text.\n\n" * 100
+
+# Single compilation
+start = time.time()
+compile(content)
+print(f"Single: {(time.time() - start) * 1000:.2f}ms")
+# Result: ~0.5ms
+
+# Bulk compilation
+start = time.time()
+for _ in range(1000):
+    compile(content)
+print(f"1000x: {time.time() - start:.2f}s")
+# Result: ~0.5s (vs ~50s with Node.js subprocess)
+```
+
+## Development
+
+### Building from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/SamDc73/mdxjs-py
+cd mdxjs-py
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate
+
+# Install build dependencies
+pip install maturin pytest
+
+# Build and install locally
+maturin develop --release
+
+# Run tests
+pytest tests/
+```
+
+### Architecture
+
+This is a minimal Python binding to mdxjs-rs, designed for:
+
+- **Zero overhead** - Direct 1:1 binding to mdxjs-rs functions
+- **API compatibility** - Matches @mdx-js/mdx compile() API
+- **Simplicity** - No abstraction layers, just the binding
+
+## Credits
+
+This package is a thin Python wrapper around:
+
+- **[mdxjs-rs](https://github.com/wooorm/mdxjs-rs)** by [Titus Wormer](https://github.com/wooorm) - The Rust MDX implementation that does all the heavy lifting
+- Built with **[PyO3](https://pyo3.rs)** - Rust bindings for Python
+- Packaged with **[maturin](https://maturin.rs)** - Build and publish Rust Python extensions
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+This package is MIT licensed, same as mdxjs-rs.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
+
+## Support
+
+- 🐛 [Report bugs](https://github.com/SamDc73/mdxjs-py/issues)
+- 💡 [Request features](https://github.com/SamDc73/mdxjs-py/issues)
+- 📖 [Documentation](https://github.com/SamDc73/mdxjs-py#readme)
+
