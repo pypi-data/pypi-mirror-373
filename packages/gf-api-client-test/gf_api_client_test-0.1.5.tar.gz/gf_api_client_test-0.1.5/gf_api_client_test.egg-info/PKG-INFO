@@ -1,0 +1,192 @@
+Metadata-Version: 2.4
+Name: gf-api-client-test
+Version: 0.1.5
+Summary: 广发证券开放平台 API 客户端(测试）
+Author: gf_gaoxinzhe
+Author-email: gao89622@163.com
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: requests>=2.31.0
+Requires-Dist: pandas>=2.0.0
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: license-file
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# 广发证券 API 客户端
+
+这是一个用于访问广发证券开放平台 API 的 Python 客户端实现。
+
+## 功能特点
+
+- 支持自动分页获取数据
+- 可以返回 DataFrame 或原始数据格式
+- 实现了完整的 API 签名认证
+- 提供了灵活的条件构建器
+- 包含错误处理和请求重试机制
+
+## 安装
+
+```bash
+pip install gf-api-client
+```
+
+## 使用示例
+
+```python
+from gf_api_client import APIConfig, GFAPIClient, Condition
+
+# API配置
+config = APIConfig(
+    key="your_key_here",
+    app_id="your_app_id_here"
+)
+
+# 创建API客户端
+client = GFAPIClient(config)
+
+# 查询参数
+secu_ids = ['000948.SH']
+fields = ['cir_mval', 'pric_open']
+endpoint = "/dsp/ds/service/news/news_idx_mkt_quot_gfzh_nc"
+conditions = [
+    Condition.in_list("secu_id", secu_ids),
+    Condition.gt("trd_dt", '20240101')
+]
+
+# 执行查询
+result = client.query(endpoint, conditions, fields, auto_paging=True, return_dataframe=True)
+print(result)
+```
+
+## 条件构建器
+
+提供了多种条件构建方法：
+
+- `eq`: 等于
+- `lt`: 小于
+- `gt`: 大于
+- `le`: 小于等于
+- `ge`: 大于等于
+- `begin_with`: 以...开始
+- `end_with`: 以...结束
+- `contain`: 包含
+- `in_list`: 在列表中
+- `or_conditions`: 或条件
+
+## 条件构建器使用示例
+
+`Condition` 类提供了多种条件构建方法，以下是每个方法的详细示例：
+
+### 1. 等于条件 (eq)
+```python
+# 查询股票代码等于 000001.SZ 的数据
+condition = Condition.eq("secu_id", "000001.SZ")
+# 结果: "eq,secu_id,'000001.SZ'"
+```
+
+### 2. 小于条件 (lt)
+```python
+# 查询价格小于 10 的数据
+condition = Condition.lt("price", 10)
+# 结果: "lt,price,10"
+```
+
+### 3. 大于条件 (gt)
+```python
+# 查询日期大于 2024-01-01 的数据
+condition = Condition.gt("trd_dt", "20240101")
+# 结果: "gt,trd_dt,'20240101'"
+```
+
+### 4. 小于等于条件 (le)
+```python
+# 查询成交量小于等于 1000000 的数据
+condition = Condition.le("volume", 1000000)
+# 结果: "le,volume,1000000"
+```
+
+### 5. 大于等于条件 (ge)
+```python
+# 查询市值大于等于 1000000000 的数据
+condition = Condition.ge("market_value", 1000000000)
+# 结果: "ge,market_value,1000000000"
+```
+
+### 6. 以...开始条件 (begin_with)
+```python
+# 查询以 "沪" 开头的股票名称
+condition = Condition.begin_with("stock_name", "沪")
+# 结果: "beginWith,stock_name,'沪'"
+```
+
+### 7. 以...结束条件 (end_with)
+```python
+# 查询以 "银行" 结尾的股票名称
+condition = Condition.end_with("stock_name", "银行")
+# 结果: "endWith,stock_name,'银行'"
+```
+
+### 8. 包含条件 (contain)
+```python
+# 查询名称中包含 "科技" 的股票
+condition = Condition.contain("stock_name", "科技")
+# 结果: "contain,stock_name,'科技'"
+```
+
+### 9. 在列表中条件 (in_list)
+```python
+# 查询多个股票代码的数据
+secu_ids = ["000001.SZ", "000002.SZ", "000003.SZ"]
+condition = Condition.in_list("secu_id", secu_ids)
+# 结果: "in,secu_id,'000001.SZ;000002.SZ;000003.SZ'"
+```
+
+### 10. 或条件 (or_conditions)
+```python
+# 查询沪深300或上证50的股票
+condition1 = Condition.eq("index_code", "000300.SH")  # 沪深300
+condition2 = Condition.eq("index_code", "000016.SH")  # 上证50
+condition = Condition.or_conditions(condition1, condition2)
+# 结果: "or,eq#index_code#'000300.SH',eq#index_code#'000016.SH'"
+```
+
+### 组合条件示例
+```python
+# 组合多个条件：查询 2024年1月1日 之后的 沪深300 成分股的数据
+conditions = [
+    Condition.gt("trd_dt", "20240101"),
+    Condition.eq("index_code", "000300.SH")
+]
+
+result = client.query(
+    endpoint="/your/endpoint",
+    conditions=conditions,
+    fields=["secu_id", "stock_name", "close_price"]
+)
+```
+
+## 注意事项
+
+- 条件值如果是字符串类型，会自动添加单引号
+- 数值类型（整数、浮点数）不会添加引号
+- 日期格式推荐使用 "YYYYMMDD" 格式
+- 多个条件可以组合使用，形成一个条件列表
+- 使用 `or_conditions` 时，内部的逗号会被替换为 '#' 符号
+
+## 依赖要求
+
+- Python >= 3.6
+- requests >= 2.31.0
+- pandas >= 2.0.0
+
+
