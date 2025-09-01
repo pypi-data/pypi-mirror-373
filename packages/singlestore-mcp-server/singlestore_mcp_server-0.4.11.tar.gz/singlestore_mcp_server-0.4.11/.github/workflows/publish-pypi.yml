@@ -1,0 +1,92 @@
+name: Publish Python Package
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'src/version.py' ]  # Only trigger when version file changes
+  workflow_dispatch:  # Manual triggering
+
+jobs:
+  check-version-bump:
+    runs-on: ubuntu-latest
+    outputs:
+      should-publish: ${{ steps.version-check.outputs.should-publish }}
+      new-version: ${{ steps.version-check.outputs.new-version }}
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 2  # Need to compare with previous commit
+
+    - name: Check for version bump
+      id: version-check
+      run: |
+        # Get current version
+        CURRENT_VERSION=$(python -c "exec(open('src/version.py').read()); print(__version__)")
+        echo "Current version: $CURRENT_VERSION"
+
+        # Check if version.py was changed in this push
+        if git diff --name-only HEAD~1 HEAD | grep -q "^src/version\.py$"; then
+          echo "Version file was changed in this push"
+
+          # Get previous version
+          git checkout HEAD~1 -- src/version.py
+          PREV_VERSION=$(python -c "exec(open('src/version.py').read()); print(__version__)")
+          git checkout HEAD -- src/version.py
+
+          echo "Previous version: $PREV_VERSION"
+          echo "Current version: $CURRENT_VERSION"
+
+          # Simple version comparison
+          if [ "$CURRENT_VERSION" != "$PREV_VERSION" ]; then
+            echo "Version changed: $PREV_VERSION to $CURRENT_VERSION"
+            echo "Will publish to PyPI"
+            echo "should-publish=true" >> $GITHUB_OUTPUT
+            echo "new-version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "Version unchanged, skipping publication"
+            echo "should-publish=false" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "Version file unchanged, skipping publication"
+          echo "should-publish=false" >> $GITHUB_OUTPUT
+        fi
+
+  publish:
+    needs: check-version-bump
+    if: needs.check-version-bump.outputs.should-publish == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write  # OIDC authentication with PyPI
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+
+    - name: Install dependencies
+      run: |
+        uv sync --dev
+
+    - name: Lint and format with Ruff
+      run: |
+        uv run ruff check src/ tests/
+        uv run ruff format --check src/ tests/
+
+    - name: Build package
+      run: |
+        uv run python -m build
+
+    - name: Publish package to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        password: ${{ secrets.PYPI_API_KEY }}

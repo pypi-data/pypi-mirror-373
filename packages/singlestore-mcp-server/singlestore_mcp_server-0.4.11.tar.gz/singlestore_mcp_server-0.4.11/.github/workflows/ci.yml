@@ -1,0 +1,150 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**/*.py'
+      - 'tests/**/*.py'
+      - 'pyproject.toml'
+      - 'requirements.txt'
+      - 'uv.lock'
+  pull_request:
+    paths:
+      - 'src/**/*.py'
+      - 'tests/**/*.py'
+      - 'pyproject.toml'
+      - 'requirements.txt'
+      - 'uv.lock'
+
+jobs:
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+
+      - name: Lint and format with Ruff
+        run: |
+          uv run ruff check src/ tests/
+          uv run ruff format --check src/ tests/
+
+  changelog-check:
+    name: Changelog Check
+    runs-on: ubuntu-latest
+    if: contains(github.event.head_commit.modified, 'src/version.py') || contains(github.event.pull_request.changed_files, 'src/version.py')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check changelog exists and has correct date
+        run: |
+          # Get current version
+          CURRENT_VERSION=$(python -c "exec(open('src/version.py').read()); print(__version__)")
+          echo "Current version: $CURRENT_VERSION"
+
+          # Check if changelog file exists
+          CHANGELOG_FILE="changelog/$CURRENT_VERSION.md"
+          if [ ! -f "$CHANGELOG_FILE" ]; then
+            echo "❌ Changelog file missing: $CHANGELOG_FILE"
+            echo "Please create a changelog file for version $CURRENT_VERSION"
+            exit 1
+          fi
+
+          echo "✅ Changelog file found: $CHANGELOG_FILE"
+
+          # Check if changelog has today's date
+          TODAY=$(date +"%Y-%m-%d")
+          echo "Today's date: $TODAY"
+
+          # Look for date in changelog (assuming format like "## [1.0.0] - 2024-01-15" or "Released: 2024-01-15")
+          if grep -q "$TODAY" "$CHANGELOG_FILE"; then
+            echo "✅ Changelog contains today's date"
+          else
+            echo "❌ Changelog does not contain today's date ($TODAY)"
+            echo "Please update the changelog with the current date"
+            echo "Changelog content:"
+            head -10 "$CHANGELOG_FILE"
+            exit 1
+          fi
+
+  unit-test:
+    name: Unit Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+
+      - name: Run unit tests
+        run: |
+          uv run pytest tests/unit
+
+  integration-test:
+    name: Integration Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+
+      - name: Run integration tests
+        env:
+          MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
+        run: |
+          uv run pytest tests/integration
