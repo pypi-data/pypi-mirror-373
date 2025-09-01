@@ -1,0 +1,246 @@
+<!--
+Generated using warp terminal with "Claude" AI engine using the following prompt: 
+Create a file named index.html. The file should contain a javascript script.
+The script must look inside a subdirectory named archive and list its content.
+For each subdirectory that it finds in form rendu_<version>, where version has
+the format x.y.z, it should create a link that points to an index.html file
+contained in the subfolder.
+
+I'll create an HTML file with JavaScript that scans the `archive` directory for subdirectories matching the `rendu_<version>` pattern and creates links to their `index.html` files.
+-->
+
++<!DOCTYPE html>
++<html lang="en">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <title>Archive Directory Listing</title>
++    <style>
++        body {
++            font-family: Arial, sans-serif;
++            max-width: 800px;
++            margin: 0 auto;
++            padding: 20px;
++        }
++        h1 {
++            color: #333;
++            border-bottom: 2px solid #ddd;
++            padding-bottom: 10px;
++        }
++        .archive-list {
++            list-style-type: none;
++            padding: 0;
++        }
++        .archive-list li {
++            margin: 10px 0;
++            padding: 10px;
++            background-color: #f5f5f5;
++            border-radius: 5px;
++        }
++        .archive-list a {
++            color: #007bff;
++            text-decoration: none;
++            font-weight: bold;
++        }
++        .archive-list a:hover {
++            text-decoration: underline;
++        }
++        .error {
++            color: #dc3545;
++            background-color: #f8d7da;
++            border: 1px solid #f5c6cb;
++            border-radius: 5px;
++            padding: 10px;
++            margin: 10px 0;
++        }
++        .loading {
++            color: #6c757d;
++            font-style: italic;
++        }
++    </style>
++</head>
++<body>
++    <h1>Archive Directory Listing</h1>
++    <div id="content">
++        <p class="loading">Loading archive contents...</p>
++    </div>
++
++    <script>
++        async function listArchiveDirectories() {
++            const contentDiv = document.getElementById('content');
++            
++            try {
++                // Check if the File System Access API is available
++                if (!('showDirectoryPicker' in window)) {
++                    // Fallback: Use a static approach that works with file:// protocol
++                    displayStaticListing();
++                    return;
++                }
++
++                // For modern browsers with File System Access API
++                const directoryHandle = await window.showDirectoryPicker({
++                    mode: 'read',
++                    startIn: 'documents'
++                });
++
++                // Look for archive directory
++                let archiveHandle;
++                try {
++                    archiveHandle = await directoryHandle.getDirectoryHandle('archive');
++                } catch (error) {
++                    throw new Error('Archive directory not found');
++                }
++
++                const rendus = [];
++                const versionPattern = /^rendu_(\d+\.\d+\.\d+)$/;
++
++                for await (const [name, handle] of archiveHandle.entries()) {
++                    if (handle.kind === 'directory') {
++                        const match = name.match(versionPattern);
++                        if (match) {
++                            const version = match[1];
++                            
++                            // Check if index.html exists in the subdirectory
++                            try {
++                                await handle.getFileHandle('index.html');
++                                rendus.push({
++                                    name: name,
++                                    version: version,
++                                    path: `archive/${name}/index.html`
++                                });
++                            } catch (error) {
++                                // index.html doesn't exist, skip this directory
++                            }
++                        }
++                    }
++                }
++
++                displayResults(rendus);
++
++            } catch (error) {
++                displayError(error.message);
++            }
++        }
++
++        function displayStaticListing() {
++            // This function provides a fallback when File System Access API is not available
++            // It will attempt to fetch the directory listing from the server
++            const contentDiv = document.getElementById('content');
++            
++            // Since we can't dynamically list directories in a static context,
++            // we'll provide instructions for manual setup
++            contentDiv.innerHTML = `
++                <div class="error">
++                    <h3>Dynamic Directory Listing Not Available</h3>
++                    <p>This page requires a web server or modern browser with File System Access API support to automatically list directories.</p>
++                    <p><strong>To use this page:</strong></p>
++                    <ol>
++                        <li>Serve this file from a web server (e.g., using <code>python -m http.server</code>)</li>
++                        <li>Or manually create links below for your rendu_x.y.z directories</li>
++                    </ol>
++                </div>
++                
++                <h3>Manual Directory Links</h3>
++                <p>If you have rendu directories in the archive folder, you can manually add them here:</p>
++                <ul class="archive-list" id="manual-links">
++                    <!-- Example entries - replace with your actual directories -->
++                    <!-- <li><a href="archive/rendu_1.0.0/index.html">Version 1.0.0 (rendu_1.0.0)</a></li> -->
++                    <!-- <li><a href="archive/rendu_1.1.0/index.html">Version 1.1.0 (rendu_1.1.0)</a></li> -->
++                </ul>
++                
++                <script>
++                    // Attempt to fetch directory listing if served from a server
++                    fetch('archive/')
++                        .then(response => response.text())
++                        .then(html => {
++                            // Try to parse directory listing from Apache/nginx directory index
++                            const parser = new DOMParser();
++                            const doc = parser.parseFromString(html, 'text/html');
++                            const links = Array.from(doc.querySelectorAll('a'));
++                            
++                            const versionPattern = /^rendu_(\\\d+\\\.\\\d+\\\.\\\d+)\\/$/;
++                            const rendus = [];
++                            
++                            links.forEach(link => {
++                                const href = link.getAttribute('href');
++                                const match = href ? href.match(versionPattern) : null;
++                                if (match) {
++                                    const version = match[1];
++                                    rendus.push({
++                                        name: href.slice(0, -1), // Remove trailing slash
++                                        version: version,
++                                        path: 'archive/' + href + 'index.html'
++                                    });
++                                }
++                            });
++                            
++                            if (rendus.length > 0) {
++                                displayResults(rendus);
++                            }
++                        })
++                        .catch(() => {
++                            // Server-side directory listing not available
++                        });
++                </script>
++            `;
++        }
++
++        function displayResults(rendus) {
++            const contentDiv = document.getElementById('content');
++            
++            if (rendus.length === 0) {
++                contentDiv.innerHTML = `
++                    <div class="error">
++                        <p>No rendu directories found in the archive folder.</p>
++                        <p>Looking for directories matching pattern: rendu_x.y.z (where x, y, z are numbers)</p>
++                    </div>
++                `;
++                return;
++            }
++
++            // Sort by version (semantic versioning)
++            rendus.sort((a, b) => {
++                const versionA = a.version.split('.').map(num => parseInt(num, 10));
++                const versionB = b.version.split('.').map(num => parseInt(num, 10));
++                
++                for (let i = 0; i < 3; i++) {
++                    if (versionA[i] !== versionB[i]) {
++                        return versionB[i] - versionA[i]; // Descending order (newest first)
++                    }
++                }
++                return 0;
++            });
++
++            const listHTML = rendus.map(rendu => 
++                `<li><a href="${rendu.path}">Version ${rendu.version} (${rendu.name})</a></li>`
++            ).join('');
++
++            contentDiv.innerHTML = `
++                <h3>Found ${rendus.length} archive version(s):</h3>
++                <ul class="archive-list">
++                    ${listHTML}
++                </ul>
++            `;
++        }
++
++        function displayError(message) {
++            const contentDiv = document.getElementById('content');
++            contentDiv.innerHTML = `
++                <div class="error">
++                    <h3>Error</h3>
++                    <p>${message}</p>
++                    <p>Make sure the 'archive' directory exists and contains subdirectories named 'rendu_x.y.z'.</p>
++                </div>
++            `;
++        }
++
++        // Initialize the directory listing when the page loads
++        document.addEventListener('DOMContentLoaded', function() {
++            // Small delay to ensure the page is fully rendered
++            setTimeout(listArchiveDirectories, 100);
++        });
++    </script>
++</body>
++</html>
+
+	UpdatedFiles: [user_edited false, file /home/mattia/index.html]
