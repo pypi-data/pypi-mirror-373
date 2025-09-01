@@ -1,0 +1,403 @@
+name: Release to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Version bump type'
+        required: true
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: 'Dry run (do not publish)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  id-token: write  # CRITICAL: Required for trusted publishing
+  pull-requests: write
+
+jobs:
+  release:
+    name: Release Package
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/iam-mcp-server/
+    outputs:
+      version: ${{ steps.check_release.outputs.version }}
+      tag_name: ${{ steps.check_release.outputs.tag_name }}
+      release_created: ${{ steps.check_release.outputs.needed }}
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+        
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        version: "latest"
+        enable-cache: true
+        
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras --dev
+        
+    - name: Configure Git
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        
+    - name: Get current version from git tags
+      id: current_version
+      run: |
+        # Get the latest git tag, fallback to 0.0.0 if no tags exist
+        CURRENT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0")
+        echo "current=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+        echo "Current version: $CURRENT_VERSION"
+        
+    - name: Determine next version (auto mode)
+      if: inputs.version_bump == 'auto'
+      id: auto_version
+      run: |
+        echo "Using semantic-release to determine version bump..."
+        NEXT_VERSION=$(uv run semantic-release --noop version --print 2>/dev/null | tail -1 || echo "")
+        if [ -z "$NEXT_VERSION" ] || [ "$NEXT_VERSION" = "${{ steps.current_version.outputs.current }}" ]; then
+          echo "No version bump needed based on commits"
+          echo "next=none" >> $GITHUB_OUTPUT
+        else
+          echo "next=$NEXT_VERSION" >> $GITHUB_OUTPUT
+          echo "Next version: $NEXT_VERSION"
+        fi
+        
+    - name: Determine next version (manual mode)
+      if: inputs.version_bump != 'auto'
+      id: manual_version
+      run: |
+        BUMP_TYPE="${{ inputs.version_bump }}"
+        echo "Manual version bump: $BUMP_TYPE"
+        NEXT_VERSION=$(uv run semantic-release --noop version --$BUMP_TYPE --print 2>/dev/null | tail -1)
+        echo "next=$NEXT_VERSION" >> $GITHUB_OUTPUT
+        echo "Next version: $NEXT_VERSION"
+        
+    - name: Check if release needed
+      id: check_release
+      run: |
+        if [ "${{ inputs.version_bump }}" = "auto" ]; then
+          NEXT_VERSION="${{ steps.auto_version.outputs.next }}"
+        else
+          NEXT_VERSION="${{ steps.manual_version.outputs.next }}"
+        fi
+        
+        if [ "$NEXT_VERSION" = "none" ] || [ -z "$NEXT_VERSION" ]; then
+          echo "No release needed"
+          echo "needed=false" >> $GITHUB_OUTPUT
+        else
+          echo "Release needed: $NEXT_VERSION"
+          echo "needed=true" >> $GITHUB_OUTPUT
+          echo "version=$NEXT_VERSION" >> $GITHUB_OUTPUT
+          echo "tag_name=v$NEXT_VERSION" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Stop if no release needed
+      if: steps.check_release.outputs.needed == 'false'
+      run: |
+        echo "::notice::No version bump required based on commit history"
+        exit 0
+        
+    - name: Run tests before release
+      if: steps.check_release.outputs.needed == 'true'
+      run: |
+        echo "Running full test suite before release..."
+        make pipeline
+        
+    - name: Verify no uncommitted changes
+      if: steps.check_release.outputs.needed == 'true'
+      run: |
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "Error: Uncommitted changes after running tests"
+          git status --porcelain
+          exit 1
+        fi
+        
+    - name: Pre-validate build (dry run)
+      if: steps.check_release.outputs.needed == 'true'
+      run: |
+        echo "Pre-validating build without git tag..."
+        uv build
+        uv run twine check dist/*
+        echo "Build validation successful"
+        rm -rf dist/  # Clean up pre-validation artifacts
+        
+    - name: Create and push git tag
+      if: steps.check_release.outputs.needed == 'true' && !inputs.dry_run
+      id: create_tag
+      run: |
+        TAG_NAME="${{ steps.check_release.outputs.tag_name }}"
+        
+        # Create the release tag
+        git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
+        
+        # Push the tag only (no version commit needed)
+        git push origin "$TAG_NAME"
+        
+        # Mark that we created the tag for cleanup purposes
+        echo "created=true" >> $GITHUB_OUTPUT
+        echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+        
+    - name: Build package
+      if: steps.check_release.outputs.needed == 'true'
+      run: |
+        echo "Building package..."
+        uv build
+        
+    - name: Check package
+      if: steps.check_release.outputs.needed == 'true'
+      run: |
+        echo "Checking package integrity..."
+        uv run twine check dist/*
+        
+    - name: Test install package
+      if: steps.check_release.outputs.needed == 'true'
+      run: |
+        echo "Testing package installation in fresh environment..."
+        # Create a temporary virtual environment for testing
+        python -m venv /tmp/test_env
+        source /tmp/test_env/bin/activate
+        pip install dist/*.whl
+        python -c "import mcp_server_iam; print('Package imported successfully')"
+        python -c "from mcp_server_iam import __version__; print(f'Package version: {__version__}')"
+        # Test entry point
+        which mcp-server-iam
+        deactivate
+        rm -rf /tmp/test_env
+        
+    - name: Dry run summary
+      if: steps.check_release.outputs.needed == 'true' && inputs.dry_run
+      run: |
+        echo "::notice::DRY RUN COMPLETE"
+        echo "::notice::Would release version: ${{ steps.check_release.outputs.version }}"
+        echo "::notice::Package built successfully and passed all checks"
+        ls -la dist/
+        
+    - name: Check PyPI package doesn't exist
+      if: steps.check_release.outputs.needed == 'true' && !inputs.dry_run
+      run: |
+        VERSION="${{ steps.check_release.outputs.version }}"
+        echo "Checking if iam-mcp-server==$VERSION already exists on PyPI..."
+        
+        # Check if this version exists on PyPI
+        if pip index versions iam-mcp-server | grep -q "$VERSION"; then
+          echo "ERROR: Package iam-mcp-server==$VERSION already exists on PyPI"
+          echo "This indicates a previous partial release. Please:"
+          echo "1. Check PyPI: https://pypi.org/project/iam-mcp-server/"
+          echo "2. Verify git tags are in sync"
+          echo "3. If needed, increment version manually"
+          exit 1
+        fi
+        echo "Version $VERSION not found on PyPI, safe to proceed"
+        
+    - name: Publish to PyPI
+      if: steps.check_release.outputs.needed == 'true' && !inputs.dry_run
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        verbose: true
+        attestations: true
+        skip-existing: false  # Fail if package already exists
+        # No username/password needed - uses OIDC trusted publishing
+        
+    - name: Create GitHub Release
+      if: steps.check_release.outputs.needed == 'true' && !inputs.dry_run
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.check_release.outputs.tag_name }}
+        name: Release ${{ steps.check_release.outputs.tag_name }}
+        body: |
+          Release ${{ steps.check_release.outputs.tag_name }}
+          
+          ## Changes
+          This release was automatically generated based on commit history.
+          
+          ## Installation
+          ```bash
+          pip install iam-mcp-server==${{ steps.check_release.outputs.version }}
+          ```
+          
+          Or with uvx:
+          ```bash
+          uvx --from iam-mcp-server@${{ steps.check_release.outputs.version }} mcp-server-iam
+          ```
+        draft: false
+        prerelease: false
+        
+    - name: Success summary
+      if: steps.check_release.outputs.needed == 'true' && !inputs.dry_run
+      run: |
+        echo "::notice::✅ Successfully released version ${{ steps.check_release.outputs.version }}"
+        echo "::notice::📦 Package available at: https://pypi.org/project/iam-mcp-server/${{ steps.check_release.outputs.version }}/"
+        echo "::notice::🏷️ Git tag created: ${{ steps.check_release.outputs.tag_name }}"
+        echo "::notice::🚀 GitHub release created: https://github.com/alejandrogarcia-hub/iam-mcp-server/releases/tag/${{ steps.check_release.outputs.tag_name }}"
+        
+    # CLEANUP: Remove git tag if workflow fails after tag creation
+    - name: Cleanup git tag on failure
+      if: failure() && steps.create_tag.outputs.created == 'true' && !inputs.dry_run
+      run: |
+        TAG_NAME="${{ steps.create_tag.outputs.tag_name }}"
+        echo "::warning::Workflow failed after creating tag $TAG_NAME"
+        echo "::notice::Cleaning up: removing git tag $TAG_NAME"
+        
+        # Remove local tag
+        git tag -d "$TAG_NAME" 2>/dev/null || true
+        
+        # Remove remote tag
+        git push origin --delete "$TAG_NAME" 2>/dev/null || true
+        
+        echo "::notice::✅ Git tag $TAG_NAME removed successfully"
+        echo "::notice::You can safely re-run the workflow"
+        
+    - name: Failure cleanup instructions
+      if: failure() && steps.check_release.outputs.needed == 'true' && !inputs.dry_run
+      run: |
+        echo "::error::❌ Release workflow failed!"
+        if [ "${{ steps.create_tag.outputs.created }}" = "true" ]; then
+          echo "::notice::🧹 Git tag cleanup attempted automatically"
+        fi
+        echo "::notice::If PyPI package was published but git operations failed:"
+        echo "::notice::1. Check PyPI: https://pypi.org/project/iam-mcp-server/"
+        echo "::notice::2. Check git tags: git tag -l 'v*'"
+        echo "::notice::3. Manual cleanup may be required before next release"
+        echo "::notice::4. Contact maintainer if unsure about state"
+  
+  build-dxt:
+    name: Build DXT Extension
+    runs-on: ubuntu-latest
+    needs: release
+    if: needs.release.outputs.release_created == 'true' && !inputs.dry_run
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ needs.release.outputs.tag_name }}  # Checkout the release tag
+    
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install uv package manager
+      uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+        cache-dependency-glob: |
+          pyproject.toml
+          requirements*.txt
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    
+    - name: Install dxt CLI
+      run: npm install -g @anthropic-ai/dxt
+    
+    - name: Install dependencies
+      run: |
+        uv venv
+        uv pip sync pyproject.toml
+    
+    - name: Update manifest.json versions temporarily
+      run: |
+        # Create a backup of original manifest.json
+        cp manifest.json manifest.json.backup
+        
+        # Update both version fields in manifest.json
+        python -c "
+        import json
+        
+        version = '${{ needs.release.outputs.version }}'
+        
+        # Read manifest.json
+        with open('manifest.json', 'r') as f:
+            manifest = json.load(f)
+        
+        # Update main version field
+        manifest['version'] = version
+        
+        # Update SETUPTOOLS_SCM_PRETEND_VERSION in env
+        if 'server' in manifest and 'mcp_config' in manifest['server'] and 'env' in manifest['server']['mcp_config']:
+            manifest['server']['mcp_config']['env']['SETUPTOOLS_SCM_PRETEND_VERSION'] = version
+        
+        # Write back
+        with open('manifest.json', 'w') as f:
+            json.dump(manifest, f, indent=2)
+            f.write('\n')  # Add newline at end of file
+        
+        print(f'Updated manifest.json to version {version}')
+        "
+        
+        # Verify the update
+        echo "Updated manifest.json versions:"
+        jq '.version, .server.mcp_config.env.SETUPTOOLS_SCM_PRETEND_VERSION' manifest.json
+    
+    - name: Build DXT extension with version
+      env:
+        SETUPTOOLS_SCM_PRETEND_VERSION: ${{ needs.release.outputs.version }}
+      run: |
+        echo "Building DXT for version: ${{ needs.release.outputs.version }}"
+        
+        # Create dxt directory if it doesn't exist
+        mkdir -p dxt
+        
+        # Build using makefile with version override
+        make dxt
+        
+        # Verify DXT was created
+        ls -la dxt/
+        
+        # Extract actual version from DXT filename
+        DXT_FILE=$(ls dxt/*.dxt | head -1)
+        echo "DXT file created: $DXT_FILE"
+    
+    - name: Restore original manifest.json
+      if: always()  # Always restore, even if build fails
+      run: |
+        # Restore the original manifest.json
+        if [ -f manifest.json.backup ]; then
+          mv manifest.json.backup manifest.json
+          echo "Restored original manifest.json"
+        fi
+    
+    - name: Upload DXT to GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ needs.release.outputs.tag_name }}
+        files: |
+          dxt/*.dxt
+        fail_on_unmatched_files: true
+    
+    - name: DXT Build Summary
+      run: |
+        echo "## DXT Extension Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Version**: ${{ needs.release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Tag**: ${{ needs.release.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Status**: ✅ Successfully built and uploaded to release" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "The DXT extension has been added to the GitHub release." >> $GITHUB_STEP_SUMMARY
+        echo "Users can download it from: https://github.com/alejandrogarcia-hub/iam-mcp-server/releases/tag/${{ needs.release.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
