@@ -1,0 +1,118 @@
+"""Module for filtering structure files and their contents."""
+
+import logging
+from collections.abc import Collection, Generator
+from dataclasses import dataclass
+from pathlib import Path
+from shutil import copyfile
+
+from dask.distributed import Client
+from distributed.deploy.cluster import Cluster
+from tqdm.auto import tqdm
+
+from protein_quest.parallel import configure_dask_scheduler, dask_map_with_progress
+from protein_quest.pdbe.io import (
+    nr_residues_in_chain,
+    write_single_chain_pdb_file,
+)
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ChainFilterStatistics:
+    input_file: Path
+    chain_id: str
+    passed: bool = False
+    output_file: Path | None = None
+    discard_reason: Exception | None = None
+
+
+def filter_file_on_chain(
+    file_and_chain: tuple[Path, str], output_dir: Path, out_chain: str = "A"
+) -> ChainFilterStatistics:
+    input_file, chain_id = file_and_chain
+    try:
+        output_file = write_single_chain_pdb_file(input_file, chain_id, output_dir, out_chain=out_chain)
+        return ChainFilterStatistics(
+            input_file=input_file,
+            chain_id=chain_id,
+            output_file=output_file,
+            passed=True,
+        )
+    except Exception as e:  # noqa: BLE001 - error is handled downstream
+        return ChainFilterStatistics(input_file=input_file, chain_id=chain_id, discard_reason=e)
+
+
+def filter_files_on_chain(
+    file2chains: Collection[tuple[Path, str]],
+    output_dir: Path,
+    out_chain: str = "A",
+    scheduler_address: str | Cluster | None = None,
+) -> list[ChainFilterStatistics]:
+    """Filter mmcif/PDB files by chain.
+
+    Args:
+        file2chains: Which chain to keep for each PDB file.
+            First item is the PDB file path, second item is the chain ID.
+        output_dir: The directory where the filtered files will be written.
+        out_chain: Under what name to write the kept chain.
+        scheduler_address: The address of the Dask scheduler.
+
+    Returns:
+        Result of the filtering process.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    scheduler_address = configure_dask_scheduler(
+        scheduler_address,
+        name="filter-chain",
+    )
+
+    with Client(scheduler_address) as client:
+        return dask_map_with_progress(
+            client, filter_file_on_chain, file2chains, output_dir=output_dir, out_chain=out_chain
+        )
+
+
+@dataclass
+class ResidueFilterStatistics:
+    """Statistics for filtering files based on residue count in a specific chain.
+
+    Parameters:
+        input_file: The path to the input file.
+        residue_count: The number of residues.
+        passed: Whether the file passed the filtering criteria.
+        output_file: The path to the output file, if passed.
+    """
+
+    input_file: Path
+    residue_count: int
+    passed: bool
+    output_file: Path | None
+
+
+def filter_files_on_residues(
+    input_files: list[Path], output_dir: Path, min_residues: int, max_residues: int, chain: str = "A"
+) -> Generator[ResidueFilterStatistics]:
+    """Filter PDB/mmCIF files by number of residues in given chain.
+
+    Args:
+        input_files: The list of input PDB/mmCIF files.
+        output_dir: The directory where the filtered files will be written.
+        min_residues: The minimum number of residues in chain.
+        max_residues: The maximum number of residues in chain.
+        chain: The chain to count residues of.
+
+    Yields:
+        Objects containing information about the filtering process for each input file.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for input_file in tqdm(input_files, unit="file"):
+        residue_count = nr_residues_in_chain(input_file, chain=chain)
+        passed = min_residues <= residue_count <= max_residues
+        if passed:
+            output_file = output_dir / input_file.name
+            copyfile(input_file, output_file)
+            yield ResidueFilterStatistics(input_file, residue_count, True, output_file)
+        else:
+            yield ResidueFilterStatistics(input_file, residue_count, False, None)
