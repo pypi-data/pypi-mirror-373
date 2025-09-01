@@ -1,0 +1,105 @@
+#🧠 liquidnn
+
+A PyTorch implementation of Liquid Neural Networks (LNNs) and their hybrids (LTC, CNN, RNN, LSTM variants).
+This library brings continuous-time dynamics into deep learning architectures using learnable time constants.
+
+##✨ Features
+
+🔹 LiquidNeuralNetwork – stacked liquid neurons
+
+🔹 LTCLayer – Liquid Time-Constant layer
+
+🔹 LiquidCNN – CNN + Liquid update
+
+🔹 LiquidRNN – RNN + Liquid update
+
+🔹 LiquidLSTM – LSTM + Liquid update (with bidirectional support)
+
+🔹 HDNN - Height Dimensioned Neural Networks
+
+🔹 Per-neuron learnable τ (time constants) with stability clamping
+
+##📦 Installation
+From PyPI (after publishing):
+
+```bash
+pip install liquidnn
+```
+```bash
+##🚀 Quick Start (all models in one script)
+
+Copy-paste this script to test every model in liquidnn:
+
+import torch
+from liquidnn import (
+    LiquidNeuralNetwork,
+    LTCLayer,
+    LiquidCNN,
+    LiquidRNN,
+    LiquidLSTM,
+    HDNN
+)
+
+# 1. LiquidNeuralNetwork
+x = torch.randn(4, 10, 8)  # batch=4, seq_len=10, input_size=8  
+
+model = LiquidNeuralNetwork(input_size=8, hidden_size=16,num_layers=2)  
+out = model(x)   
+print("LiquidNeuralNetwork output:", out.shape)  # [4, 16]   
+
+# 2. LTCLayer    
+x = torch.randn(5, 20, 10)  # batch=5, seq_len=20, input_size=10    
+ltc = LTCLayer(input_size=10, hidden_size=32, num_layers=2)    
+out = ltc(x)    
+print("LTCLayer output:", out.shape)  # [5, 32]    
+
+# 3. LiquidCNN    
+x = torch.randn(8, 1, 28, 28)  # MNIST-like input    
+model = LiquidCNN(input_channels=1, hidden_size=64, num_layers_liq=2, num_layers_conv=2)    
+out = model(x)    
+print("LiquidCNN output:", out.shape)  # [8, 64]    
+
+# 4. LiquidRNN    
+x = torch.randn(15, 4, 12)  # seq_len=15, batch=4, input_size=12    
+model = LiquidRNN(input_size=12, hidden_size=32, num_layers_liq=2, num_layers_rnn=1)    
+out = model(x)    
+print("LiquidRNN output:", out.shape)  # [4, 32]    
+
+# 5. LiquidLSTM    
+x = torch.randn(3, 12, 10)  # batch=3, seq_len=12, input_size=10    
+model = LiquidLSTM(input_size=10, hidden_size=32,    
+                   num_layers_liq=2, num_layers_lstm=1,    
+                   batch_first=True, bidirectional=False)    
+out = model(x)    
+print("LiquidLSTM output:", out.shape)  # [3, 32]   
+
+
+#HDNN
+model = HDNN(input_dim=10, hidden_dim=32, output_dim=2, height=3, depth=2)
+x = torch.randn(5, 10)
+out = model(x)
+print("HDNN output:", out.shape )      #[5,2]
+
+
+```
+
+##📚 Architectures
+
+LiquidNeuralNetwork: Stacked liquid neurons
+
+LTCLayer: Continuous-time RNN update rule
+
+LiquidCNN: Convolutional backbone + LTC dynamics
+
+LiquidRNN: RNN + Liquid refinement
+
+LiquidLSTM: LSTM + Liquid refinement
+
+Install dependencies:
+
+pip install torch
+
+
+##🌟 Contribute
+
+PRs and issues are welcome! If you try new liquidized architectures, feel free to share 🚀
