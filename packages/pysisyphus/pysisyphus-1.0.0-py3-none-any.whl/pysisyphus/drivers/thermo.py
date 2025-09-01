@@ -1,0 +1,49 @@
+import argparse
+import warnings
+import sys
+
+from pysisyphus.config import p_DEFAULT, T_DEFAULT
+from pysisyphus.thermo import (
+    can_thermoanalysis,
+    get_thermoanalysis_from_hess_h5,
+    print_thermoanalysis,
+)
+
+
+def parse_args(args):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("hess_h5", help="HDF5 Hessian file from pysisyphus.")
+    parser.add_argument("-T", default=T_DEFAULT, type=float, help="Temperature")
+    parser.add_argument("-p", default=p_DEFAULT, type=float, help="Pressure")
+    parser.add_argument("--pg", default="c1", help="Point group.")
+    parser.add_argument(
+        "--calorie",
+        action="store_true",
+        help="Output in kcal mol⁻¹ instead of kJ mol⁻¹.",
+    )
+    parser.add_argument("--kind", default="qrrho", choices=("qrrho", "rrho"))
+
+    return parser.parse_args(args)
+
+
+def run_thermo():
+    if not can_thermoanalysis:
+        warnings.warn(
+            "'thermoanalysis' package not found!\nPlease install it from "
+            "https://github.com/eljost/thermoanalysis, e.g. via\n\n\t"
+            "python -m pip install git+https://github.com/eljost/thermoanalysis\n\n"
+            "Exiting!"
+        )
+        return
+
+    args = parse_args(sys.argv[1:])
+    hess_h5 = args.hess_h5
+    T = args.T
+    p = args.p
+    point_group = args.pg
+    unit = "calorie" if args.calorie else "joule"
+    kind = args.kind
+    thermo = get_thermoanalysis_from_hess_h5(
+        hess_h5, T=T, p=p, point_group=point_group, kind=kind
+    )
+    print_thermoanalysis(thermo, unit=unit)
