@@ -1,0 +1,96 @@
+**Hikvision NVR Clip Downloader**
+A robust, flexible Python library for searching and downloading recorded video clips from a Hikvision NVR using the **ISAPI** endpoints.
+
+This library simplifies the process of retrieving video footage by handling authentication, time-based search, and precise trimming, ensuring you get exactly the clip you need.
+
+**✨ Key Features**
+Robust Authentication: Utilizes requests with HTTPDigestAuth for secure communication.
+
+**Flexible Parameters:** Easily specify the camera channel and stream type (main/sub).
+
+**Time-Based Downloads:** Search and download clips based on a precise start and end time range.
+
+**Intelligent Trimming:** The library automatically trims the downloaded video chunks to the exact duration requested by the user, even if the requested clip spans across multiple recording chunks on the NVR.
+
+**Resilient Downloads:** Supports resumable (idempotent) downloads with built-in retries and exponential backoff for reliable operation.
+
+**Clean Output:** Converts downloaded video streams to the widely compatible .mp4 format.
+
+**Highly Configurable:** Provides sensible defaults while allowing you to override port, scheme, and other parameters.
+
+**🚀 Getting Started**
+These instructions will get you a copy of the project up and running on your local machine.
+
+**Prerequisites**
+Python 3.6+
+
+FFmpeg (must be installed and available in your system's PATH)
+
+**Installation**
+Create and activate a virtual environment:
+
+Bash
+python -m venv venv
+source venv/bin/activate  # On macOS/Linux
+venv\Scripts\activate      # On Windows
+Install dependencies:
+
+Bash
+pip install -r requirements.txt
+
+
+**💻 Usage**
+Run the script from your terminal, providing the required arguments.
+
+Example Command
+Bash
+
+python hikvision_nvr_downloader.py 192.168.1.4 admin yourpassword 2025-08-24T10:00:00Z 2025-08-24T10:05:00Z --camera 1 --stream main --out ./downloads
+Arguments
+**host:** The NVR's IP address or hostname (e.g., 192.168.1.4).
+
+**username:** The NVR login username (e.g., admin).
+
+**password:** The NVR login password.
+
+**start:** The start time of the clip in ISO 8601 format (e.g., 2025-08-24T10:00:00Z).
+
+**end:** The end time of the clip in ISO 8601 format (e.g., 2025-08-24T10:05:00Z).
+
+Optional Arguments
+**--camera:** The camera number (defaults to 1).
+
+**--stream:** The stream type (main or sub, defaults to main).
+
+**--port:** The ISAPI port on the NVR (defaults to 80).
+
+**--scheme:** The protocol (http or https, defaults to http).
+
+**--out:** The output directory for the downloaded file (defaults to .).
+
+--verbose: Enables verbose logging for troubleshooting.
+
+**Notes**
+The maximum clip duration is 2 hours.
+
+The NVR must be reachable over HTTP on the same network.
+
+Timezones: The library assumes times are in the UTC (Z) timezone. If you provide a timezone-naive datetime object in your code, the library will assume the local timezone.
+
+Track IDs: On most Hikvision NVRs, the track IDs follow a convention: trackID = N*100 + 1 for the main stream and trackID = N*100 + 2 for the sub stream.
+
+**🤝 Contributing**
+We welcome contributions! If you would like to help improve this project, please follow these steps:
+
+Fork the repository.
+
+Create a new branch for your feature or bug fix.
+
+Commit your changes with a clear and descriptive message.
+
+Push your branch to your forked repository.
+
+Submit a pull request describing your changes.
+
+**📄 License**
+This project is licensed under the MIT License.
