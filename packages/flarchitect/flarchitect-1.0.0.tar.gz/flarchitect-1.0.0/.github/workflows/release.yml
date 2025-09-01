@@ -1,0 +1,101 @@
+name: Upload Python Package
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  detect-version:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+      new: ${{ steps.diff.outputs.new }}
+      old: ${{ steps.diff.outputs.old }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Detect version change in pyproject.toml
+        id: diff
+        shell: bash
+        run: |
+            set -euo pipefail
+        
+            NEW_VERSION=$(python - <<'PY'
+            import pathlib, tomllib
+            print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])
+            PY
+                )
+            
+                # Try to read version from previous commit; leave empty if no parent/file
+                OLD_VERSION=$(
+                  python - <<'PY'
+            import subprocess, tomllib
+            try:
+                blob = subprocess.check_output(["git", "show", "HEAD^:pyproject.toml"])
+                print(tomllib.loads(blob.decode())["project"]["version"])
+            except Exception:
+                pass
+            PY
+                )
+            
+                if [[ "${NEW_VERSION}" != "${OLD_VERSION:-}" ]]; then
+                  echo "changed=true" >> "$GITHUB_OUTPUT"
+                else
+                  echo "changed=false" >> "$GITHUB_OUTPUT"
+                fi
+                echo "new=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+                echo "old=${OLD_VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Summary
+        run: |
+          echo "New:   ${{ steps.diff.outputs.new }}"
+          echo "Old:   ${{ steps.diff.outputs.old }}"
+          echo "Changed? ${{ steps.diff.outputs.changed }}"
+
+  release-build:
+    needs: detect-version
+    if: needs.detect-version.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Build release distributions
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
+          python -m build
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+
+  pypi-publish:
+    needs:
+      - detect-version
+      - release-build
+    if: needs.detect-version.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      # mandatory for PyPI Trusted Publishing
+      id-token: write
+    environment:
+      name: pypi
+      # option: set your project URL to show in the deployment view
+      # url: https://pypi.org/project/YOURPROJECT/
+    steps:
+      - name: Retrieve release distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+      - name: Publish release distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
