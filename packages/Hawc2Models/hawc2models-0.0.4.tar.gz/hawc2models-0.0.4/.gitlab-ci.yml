@@ -1,0 +1,83 @@
+image: continuumio/anaconda3
+
+test_code: 
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  script:
+  - pip install -e .[test]
+  - pytest tests --cov-report term-missing:skip-covered --cov-report xml:coverage.xml --cov=src --durations=5
+  tags:  
+  - docker,shared
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+
+
+
+# ===== Check code style =====
+check_code_style:  # name the job what we like
+  script:
+  - pip install -e . --user
+  # run pycodestyle ignoring:
+  # Line too long (82 > 79 characters) (E501)
+  # Line break occurred after a binary operator (W504) (Must be after, W504, or before, W503)
+  - pycodestyle --ignore=E501,W504 src
+  tags:  # only runners with this tag can do the job [3]
+  - docker,shared
+  rules:
+  - if: $CI_COMMIT_BRANCH == "master"
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+
+
+# pages:
+#     stage: deploy
+#     image: python:3.11-bullseye
+#     before_script:
+#         - export PATH="/home/gitlab-runner/.local/bin:$PATH"
+#     script:
+#     - apt-get update
+#     # - apt-get -y install pandoc # installs old pandoc
+#     - wget https://github.com/jgm/pandoc/releases/download/3.1.12.2/pandoc-3.1.12.2-1-amd64.deb
+#     - dpkg -i pandoc-3.1.12.2-1-amd64.deb
+#     - pip install -e .[docs,tests]
+#     - python -c "from wetb.utils.installer import install_hawc2_dtu_license; install_hawc2_dtu_license()"
+#     - cd doc
+#     - make html
+#     - mv _build/html/ ../public/
+#     artifacts:
+#         expire_in: 1h
+#         paths:
+#             - public
+#     rules:
+#     - if: $CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED
+#     - if:  $CI_PIPELINE_SOURCE == "merge_request_event"
+#       when: manual
+#       allow_failure: true
+#     - when: never
+#     tags:
+#     - docker,shared
+        
+pypi_linux:
+  stage:
+    deploy
+  script:
+    - apt-get update
+    - pip install --upgrade pip
+    - pip install -e . --upgrade
+    - pip install --upgrade build
+    - pip install --upgrade twine packaging
+    - python3 -m build
+    - twine upload dist/* -u $TWINE_USERNAME -p $TWINE_PASSWORD
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED
+    - if:  $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+      allow_failure: true
+    - when: never
+  tags:
+  - docker,shared
