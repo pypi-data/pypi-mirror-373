@@ -1,0 +1,2 @@
+class mwbotLoginError(Exception):
+    pass
