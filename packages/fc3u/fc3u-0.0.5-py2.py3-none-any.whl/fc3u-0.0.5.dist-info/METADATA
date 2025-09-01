@@ -1,0 +1,148 @@
+Metadata-Version: 2.4
+Name: fc3u
+Version: 0.0.5
+Summary: Vegetation fractional cover estimates via a TensorFlow-trained MLP model
+Home-page: https://gitlab.com/jrsrp/themes/cover/fractionalcover3
+Author: Borevitz Labs Australian National University
+Author-email: Yasar Adeel Ansari <u6737670@anu.edu.au>
+Maintainer: Yasar Adeel Ansari
+Maintainer-email: yasar.ansari@anu.edu.au
+License: MIT
+Project-URL: Documentation, https://jrsrp.gitlab.io/themes/cover/fractionalcover/
+Platform: linux
+Platform: macOS
+Classifier: Development Status :: 4 - Beta
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE.txt
+License-File: AUTHORS.rst
+Requires-Dist: numpy<2
+Requires-Dist: tensorflow
+Provides-Extra: rsc
+Requires-Dist: rsc; extra == "rsc"
+Requires-Dist: coloredlogs; extra == "rsc"
+Requires-Dist: click; extra == "rsc"
+Provides-Extra: testing
+Requires-Dist: pytest; extra == "testing"
+Requires-Dist: pytest-cov; extra == "testing"
+Dynamic: license-file
+
+# FC3U
+
+Stands for Fractional Cover 3 Universal. This has been forked from [fractionalcover3](https://gitlab.com/jrsrp/themes/cover/fractionalcover3/-/tree/master?ref_type=heads) package to add support to apple's silicon macs.
+
+```
+@misc{scarthp2022,
+  title={JRSRP} {F}ractional {C}over 3.0,
+  author={Peter Scarth, Robert Denham, Fiona Watson},
+  year={2022},
+  month={08},
+  howpublished={\url{https://gitlab.com/jrsrp/themes/cover/fractionalcover3}},
+  doi={10.5281/zenodo.7008343}
+}
+```
+
+
+Vegetation fractional cover package.
+
+
+## Description
+
+Vegetation fractional cover represents the exposed proportion of green, non-green, and bare cover within each pixel.
+Landsat-scale ground cover information is important for soil erosion and nutrient flux estimates into the stream
+network, as well as assessing the impact of human activities.
+
+The fractional cover v3.0 model is a Multi Layer Perceptron (neural network) model architecture that uses surface 
+reflectance to estimate the three cover fractions of bare ground, photosynthetic vegetation (PV) and non-photosynthetic 
+vegetation (NPV). The MLP model was trained with Tensorflow using Landsat TM, ETM+ and OLI surface reflectance and 
+a collection of 4000 field observations of overstorey and ground cover. The field observations covered a wide 
+variety of vegetation, soil and climate types across Australia, collected between 1997 and 2018 following the 
+procedure outlined in:
+
+Muir, J., Schmidt, M., Tindall, D., Trevithick, R., Scarth, P. and Stewart, J.B., 2011. _Field measurement of 
+fractional ground cover: a technical handbook supporting ground cover monitoring for Australia_. 
+Australian Bureau of Agricultural and Resource Economics and Sciences (ABARES): Canberra, Australia.
+
+
+
+## Installation:
+
+```
+python>=3.8
+numpy
+tflite; on non apple silicon machines
+tensorflow; on apple silicon
+```
+
+install numpy, followed by gdal
+
+
+The package comes with two scripts to produce fractional cover images on RSC standard
+landsat surface reflectance and Sentinel2 Surface Reflectance. To use these scripts, you
+will require some additional dependencies, which you can install if you have access
+to them using the `rsc` option. For example:
+
+```
+# install numpy, then gdal first
+python -m pip install numpy
+python -m pip install gdal==$(gdal-config --version)
+python -m pip install fractionalcover3[rsc]  --pre rsc
+```
+
+Not all of the dependencies are on PyPI, so you may need to manually install 
+these from source first. The Raster Processing package `rios`, is
+available from github (check their
+[documentation](http://www.rioshome.org/en/latest/) ), but the `rsc` package
+is internal to the [JRSRP](https://www.jrsrp.org.au/). Contact the authors for
+more information on access.
+
+While the scripts won't function without these packages, they are included in
+case they are useful templates for writing similar scripts to operate on
+complete images.
+
+
+## Basic Usage
+
+The main function in the package is `unmix_fractional_cover`, which takes
+a numpy 3d array for surface reflectance (scaled between 0 and 1), and
+produces a 3d array of fractional cover. The output has 3 bands, one for
+each bare, green and non-green components.
+
+The unmixing uses a tensorflow model. This is supplied as a
+`tflite.Interpreter` object. There are four models provided with the package,
+each at varying levels of complexity. These can be selected by number, with 1
+the simplest and 4 the most complex.
+
+The simplest example might look like:
+
+```python
+from fractionalcover3.unmixcover import unmix_fractional_cover
+from fractionalcover3 import data
+import numpy as np
+inref = np.array([562, 825, 1088, 2056, 2951, 2187]) * 0.0001
+inref.shape = (6, 1, 1)
+
+# use the default model provided
+fractions = unmix_fractional_cover(inref,
+                                       fc_model=data.get_model()
+                                  )
+for i,fraction in enumerate(['bare','green','dry']):
+  print(fraction, fractions[i,0,0])
+print('total', fractions.sum())
+```
+
+Output should be:
+
+```python
+bare 0.12142971
+green 0.23126282
+dry 0.6459608
+total 0.99865335
+```
+
+
+
+
+
