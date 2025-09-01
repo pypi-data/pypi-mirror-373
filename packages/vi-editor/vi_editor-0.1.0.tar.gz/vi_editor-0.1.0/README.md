@@ -1,0 +1,106 @@
+# VI Editor
+
+## A simple VI editor using Tkinter
+
+# Table of Contents
+
+- [About](#about)
+- [How to Run](#how-to-run)
+- [Documentation](#documentation)
+- [License](#license)
+- [Feedback and Contributions](#feedback-and-contributions)
+
+# About
+
+This is a desktop application on the popular Linux text editor VI.
+It is written in python using the Tkinter module. It is a clone containing a fraction of the commands in the original version
+
+# How to Run
+
+You can run the editor in two ways:-
+
+### Option 1: Install package from PyPI (pip)
+
+```bash
+  # Install package with pip
+  pip install vi_editor
+  
+  # Run directly from terminal
+  vi_editor
+```
+Or run from a python file.
+```python
+  from vi_editor import run
+  run()
+```
+
+### Option 2: Build from source (GitHub)
+
+- First you need Python interpreter. You can install from [Install Python](https://www.python.org/downloads/)
+- Run the following commands
+
+```bash
+    # Open a terminal (Command Prompt or PowerShell for Windows, Terminal for macOS or Linux)
+
+    # Ensure git is installed on your system
+    git clone https://github.com/AdityaKK0407/vi_editor.git
+
+    # Navigate to project directory
+    cd vi_editor
+```
+
+- Alternatively you can download the project from GitHub and save it in a directory of your choice.
+
+```bash
+  python main.py
+```
+
+# Documentation
+
+### Insert Mode
+
+- i - Insert at cursor
+- a - Insert after cursor
+- A - Insert at end of line
+- o - Insert at next line
+
+### Command Mode
+
+- dd - Delete a single line
+- ndd - Delete n lines
+- C - Delete line from cursor and enter insert mode
+- D - Delete line from cursor
+- x - Delete a single character
+- r - Replace single character
+- R - Replace continuously
+- s - Substitute single character (enter insert mode)
+- S - Substitute entire line (enter insert mode)
+- cw - Change word
+- dw - Delete word
+- cc - Change entire line
+
+### Miscellaneous
+
+- yy - Yank line
+- p - Put line
+- u - Undo
+- w - Move to beginning of word
+- b - Move to end of word
+- 0 - Move to beginning of line
+- $ - Move to end of line
+- h - Move left
+- j - Move down
+- k - Move up
+- l - Move right
+
+# License
+
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+
+# Feedback and Contributions
+
+I’ve worked to include all the essential features and make the text editor as proper as possible.  
+If you spot bugs, have suggestions for improvements, or want to request new features, please share your feedback.
+
+You can contribute by opening an issue or joining the discussions.  
+Your support is greatly appreciated, and I look forward to hearing your thoughts.
