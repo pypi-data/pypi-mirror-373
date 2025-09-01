@@ -1,0 +1,97 @@
+' Copyright 2013-2022 CS GROUP
+' Licensed to CS GROUP (CS) under one or more
+' contributor license agreements.  See the NOTICE file distributed with
+' this work for additional information regarding copyright ownership.
+' CS licenses this file to You under the Apache License, Version 2.0
+' (the "License"); you may not use this file except in compliance with
+' the License.  You may obtain a copy of the License at
+'
+'   http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+@startuml
+
+  skinparam svek                                true
+  skinparam NoteBackgroundColor                 #F3EFEB
+  skinparam NoteBorderColor                     #691616
+  skinparam NoteFontColor                       #691616
+  skinparam SequenceActorBorderColor            #6A584B
+  skinparam SequenceActorBackgroundColor        #F3EFEB/CCC9C5
+  skinparam SequenceParticipantBackgroundColor  #F3EFEB/CCC9C5
+  skinparam SequenceParticipantBorderColor      #6A584B
+  skinparam SequenceLifeLineBackgroundColor     #CCC9C5/F3EFEB
+  skinparam SequenceLifeLineBorderColor         #6A584B
+  skinparam SequenceArrowColor                  #6A584B
+  skinparam SequenceBorderColor                 #6A584B
+  skinparam SequenceFontSize                    11
+
+  hide footbox
+
+  actor       "UserMain" as A
+  participant "Rugged" as R
+  participant "SensorMeanPlaneCrossing" as P
+  participant "SensorPixelCrossing" as X
+  participant "SpacecraftToObservedBody" as S
+  participant "ExtendedEllipsoid" as E
+  participant "Transform" as T
+  participant "Math" as M
+
+  activate A
+    A  -> R : inverseLocation
+    activate R
+      R  -> P : getMeanPlaneFinder
+      activate P
+        P -> S : getTransform(each line)
+        note left
+           transforms are computed
+           only once and reused
+           across successive inverse
+           location calls
+        end note
+        activate S
+          S -> T : create
+          activate T
+          deactivate T
+        deactivate S
+      deactivate P
+      R -> E : transform(φ, λ, h)
+      activate E
+        E --> R : x, y, z
+      deactivate E
+      R -> P : findCrossing(ground target)
+      activate P
+        P -> T : interpolate
+        activate T
+        deactivate T
+        note left
+           algorithm converges
+           in 2 or 3 iterations
+        end note
+        P -> T : interpolate
+        activate T
+        deactivate T
+        P --> R : target direction at mean plane crossing\n(with time derivative)
+      deactivate P
+      R -> X : create(target direction at crossing time)
+      activate X
+      deactivate X
+      R -> X : locatePixel
+      activate X
+        X -> M : solve f(x) = 0
+        activate M
+          M --> X : x₀
+        deactivate M
+        X --> R : coarse pixel crossing
+      deactivate X
+      R -> R : fix line, considering closest pixel position
+      R -> R : fix pixel
+      R --> A : accurate line/pixel
+    deactivate R
+  deactivate A
+
+@enduml

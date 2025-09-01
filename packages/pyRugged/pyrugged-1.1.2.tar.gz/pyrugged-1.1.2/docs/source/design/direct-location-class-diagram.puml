@@ -1,0 +1,79 @@
+' Copyright 2013-2022 CS GROUP
+' Licensed to CS GROUP (CS) under one or more
+' contributor license agreements.  See the NOTICE file distributed with
+' this work for additional information regarding copyright ownership.
+' CS licenses this file to You under the Apache License, Version 2.0
+' (the "License"); you may not use this file except in compliance with
+' the License.  You may obtain a copy of the License at
+'
+'   http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+@startuml
+
+  skinparam svek                  true
+  skinparam ClassBackgroundColor  #F3EFEB/CCC9C5
+  skinparam ClassArrowColor       #691616
+  skinparam ClassBorderColor      #691616
+  skinparam NoteBackgroundColor   #F3EFEB
+  skinparam NoteBorderColor       #691616
+  skinparam NoteFontColor         #691616
+  skinparam ClassFontSize         11
+
+  package rugged #ECEBD8 {
+
+    package raster #DDEBD8 {
+      interface Tile {
+        +interpolateElevation(φ, λ)
+        +pixelIntersection(NormalizedGeodeticPoint, los, φ index, λ index)
+      }
+    }
+
+    package intersection #DDEBD8 {
+      interface IntersectionAlgorithm {
+        +intersection(ellipsoid, position, los)
+        +refineIntersection(ellipsoid, position, los, closeGuess)
+      }
+      Tile <-- IntersectionAlgorithm : evaluate DEM
+    }
+
+    package utils #DDEBD8 {
+
+      class ExtendedEllipsoid {
+        +pointAtLatitude(position, los, φ, closereference)
+        +pointAtLongitude(position, los, λ)
+        +pointAtAltitude(position, los, h)
+        +pointOnGround(position, los)
+      }
+      class SpacecraftToObservedBody
+      IntersectionAlgorithm --> ExtendedEllipsoid : compute grid points crossings
+    }
+
+    package api #DDEBD8 {
+      class Rugged {
+        +directLocation(sensorName, line)
+      }
+      IntersectionAlgorithm "1" <--o Rugged : delegate DEM intersection
+      ExtendedEllipsoid <-- Rugged : convert geodetic points
+      SpacecraftToObservedBody <-- Rugged : convert positions/directions
+    }
+
+    package linesensor #DDEBD8 {
+      class LineSensor
+      Rugged --> LineSensor : getLOS(date, pixel)
+      Rugged --> LineSensor : getDate(line)
+    }
+
+  }
+
+  package mission.specific #C4D2C5 {
+    class UserMain #D5E0D5/E2EBE2
+    UserMain -->  Rugged 
+  }
+
+@enduml

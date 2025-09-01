@@ -1,0 +1,92 @@
+' Copyright 2013-2022 CS GROUP
+' Licensed to CS GROUP (CS) under one or more
+' contributor license agreements.  See the NOTICE file distributed with
+' this work for additional information regarding copyright ownership.
+' CS licenses this file to You under the Apache License, Version 2.0
+' (the "License"); you may not use this file except in compliance with
+' the License.  You may obtain a copy of the License at
+'
+'   http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+@startuml
+
+  skinparam svek                                true
+  skinparam NoteBackgroundColor                 #F3EFEB
+  skinparam NoteBorderColor                     #691616
+  skinparam NoteFontColor                       #691616
+  skinparam SequenceActorBorderColor            #6A584B
+  skinparam SequenceActorBackgroundColor        #F3EFEB/CCC9C5
+  skinparam SequenceParticipantBackgroundColor  #F3EFEB/CCC9C5
+  skinparam SequenceParticipantBorderColor      #6A584B
+  skinparam SequenceLifeLineBackgroundColor     #CCC9C5/F3EFEB
+  skinparam SequenceLifeLineBorderColor         #6A584B
+  skinparam SequenceArrowColor                  #6A584B
+  skinparam SequenceBorderColor                 #6A584B
+  skinparam SequenceFontSize                    11
+
+  hide footbox
+
+  actor       "UserMain" as A
+  participant "Rugged" as R
+  participant "LineSensor" as LS
+  participant "SpacecraftToObservedBody" as S
+  participant "ExtendedEllipsoid" as E
+  participant "IntersectionAlgorithm" as G
+  participant "Tile" as T
+
+  activate A
+     A  -> R : directLocation(name, number)
+     activate R
+       R -> LS : apply time stamping model
+       R -> S : get transforms at line date
+       R -> R : loop over line pixels pₖ
+       activate R
+         R -> R : fix aberration of light
+         R -> E : approximate point on ground
+         R -> R : fix speed of light delay in transforms
+         R -> G : intersection(ellipsoid, line-of-sight)
+         activate G
+           G -> E  : grid points crossings
+           G -> T : elevation(φₖ, λₖ)
+           activate T
+             T -> A : DEM callback
+             A --> T : DEM raw data cell
+             T --> G : h(φₖ, λₖ)
+           deactivate T
+           G -> E  : grid points crossings
+           G -> T : elevation(φₖ, λₖ)
+           activate T
+             T --> G : h(φₖ, λₖ)
+           deactivate T
+           G -> E  : grid points crossings
+           G -> T : elevation(φₖ, λₖ)
+           activate T
+             T --> G : h(φₖ, λₖ)
+           deactivate T
+           G -> T  : pixel intersection(los)
+           activate T
+             T --> G : φₖ, λₖ, hₖ
+           deactivate T
+           G --> R : φₖ, λₖ, hₖ
+         deactivate G
+         R -> R : refine speed of light delay in transforms
+         R -> G : refine intersection(ellipsoid, line-of-sight)
+         activate G
+           G -> T  : refine pixel intersection(los)
+           activate T
+             T --> G : φₖ, λₖ, hₖ
+           deactivate T
+         deactivate G
+         R --> R : array(φₖ, λₖ, hₖ)
+       deactivate R
+       R --> A : array(φₖ, λₖ, hₖ)
+     deactivate R
+  deactivate A
+
+@enduml

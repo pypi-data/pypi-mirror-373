@@ -1,0 +1,120 @@
+# included templates
+include:
+  # Python template
+  # - project: "to-be-continuous/python" # https://gitlab.cloud-espace.si.c-s.fr/to-be-continuous/python/-/blob/6.1.3/templates/gitlab-ci-python.yml?ref_type=tags
+  #   ref: "6.1.3"
+  #   file: "templates/gitlab-ci-python.yml"
+  - "templates/gitlab-ci-python.yml"
+#   # SonarQube template
+#   - project: "to-be-continuous/sonar"
+#     ref: "2.0.1"
+#     file: "templates/gitlab-ci-sonar.yml"
+
+# secret variables
+# (define the variables below in your GitLab group/project variables)
+# SONAR_AUTH_TOKEN: SonarQube authentication [token](https://docs.sonarqube.org/latest/user-guide/user-token/) (depends on your authentication method)
+# SONAR_LOGIN: SonarQube login (depends on your authentication method)
+# SONAR_PASSWORD: SonarQube password (depends on your authentication method)
+# SONAR_GITLAB_TOKEN: GitLab API access token. When set, activates the [Sonar GitLab plugin](https://github.com/gabrie-allaigre/sonar-gitlab-plugin/#plugins-properties) integration, and enables SonarQube [Pull Request Analysis](https://docs.sonarqube.org/latest/analysis/pull-request/)
+
+# variables
+variables:
+  PYLINT_ENABLED: "true"
+  PYTEST_ENABLED: "true"
+  PYTEST_ARGS: "-s "
+  PYTHON_EXTRA_DEPS: dev
+  PYTHON_PACKAGE_ENABLED: 'true'
+  PYTHON_PUBLISH_ENABLED: 'true'
+  # PIP_INDEX_URL: "https://packages.hygie.cloud-espace.si.c-s.fr/repository/pypi/simple"
+  # PIP_OPTS: "--trusted-host packages.hygie.cloud-espace.si.c-s.fr"
+  # SONAR_URL: "http://outils-qualite.cloud-espace.si.c-s.fr:9010"
+  #
+  # Go to the asgard-build-environment Gitlab Settings -> CI/CD -> Token Access -> Expand -> add "geolib/pyrugged"
+  PYTHON_IMAGE: registry.eopf.copernicus.eu/geolib/asgard-build-environment:latest
+  # Idem in the Orekit-JCC Gitlab Settings (to download the orekit-jcc whl)
+  PIP_INDEX_URL: "https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.eopf.copernicus.eu/api/v4/projects/94/packages/pypi/simple"
+
+# your pipeline stages
+stages:
+  - build
+  - test
+  - package-build
+  - package-test
+  - infra
+  - deploy
+  - acceptance
+  - publish
+  - infra-prod
+  - production
+
+py-lint:
+  allow_failure: true
+  script:
+    - mkdir -p -m 777 reports
+    - install_requirements
+    - _pip install -e .
+    - _pip install pylint_gitlab # codeclimate reports
+    # run pylint and generate reports all at once
+    - _run pylint --ignore=.cache --output-format=colorized,pylint_gitlab.GitlabCodeClimateReporter:reports/py-lint.codeclimate.json,parseable:reports/py-lint.parseable.txt ${PYLINT_ARGS} ${PYLINT_FILES:-$(find pyrugged tests -type f -name "*.py")}
+    - echo " " >> reports/py-lint.codeclimate.json # no empty files
+    - echo " " >> reports/py-lint.parseable.txt
+
+py-pytest:
+  image: $PYTHON_IMAGE
+  script:
+    - mkdir -p -m 777 reports
+    - install_requirements
+    - _pip install -e .
+    - _pip install pytest pytest-cov coverage
+    - _python -m pytest --junit-xml=reports/TEST-pytests.xml --cov --cov-report term  --cov-report xml:reports/py-coverage.cobertura.xml ${PYTEST_ARGS}
+
+py-publish:
+  extends: .python-base
+  stage: publish
+  script:
+    - |
+      log_info "--- publish distribution packages..."
+      if [[ "$pkg_system" == "poetry" ]]
+      then
+        poetry config repositories.user_defined  "$PYTHON_REPOSITORY_URL"
+        poetry publish ${TRACE+--verbose} --username "$PYTHON_REPOSITORY_USERNAME" --password "$PYTHON_REPOSITORY_PASSWORD" --repository user_defined
+      else
+        pip install --upgrade pip
+        # shellcheck disable=SC2086
+        pip install ${PIP_OPTS} pkginfo==1.12.1.2 twine>=6.1.0
+        twine upload ${TRACE+--verbose} --username "$PYTHON_REPOSITORY_USERNAME" --password "$PYTHON_REPOSITORY_PASSWORD" --repository-url "$PYTHON_REPOSITORY_URL" dist/*
+      fi
+  rules:
+    # exclude if $PYTHON_PUBLISH_ENABLED not set
+    - if: '$PYTHON_PUBLISH_ENABLED != "true"'
+      when: never
+    # on production or integration branch: manual, non blocking
+    - if: '$CI_COMMIT_REF_NAME =~ $PROD_REF || $CI_COMMIT_REF_NAME =~ $INTEG_REF'
+      when: manual
+      allow_failure: true
+    - if: $CI_COMMIT_TAG
+      when: manual
+
+
+# based on https://gitlab.eopf.copernicus.eu/cpm/eopf-cpm/-/blob/2.5.9/.gitlab-ci.yml#L385
+#
+# `pip wheel` build a whl file named "*-linux_x86_64.whl" however pypi refuses it:
+# twine upload ERROR HTTPError: 400 Bad Request from https://upload.pypi.org/legacy/
+# Binary wheel 'asgard_eopf-0.8.1-cp311-cp311-linux_x86_64.whl' has an unsupported platform tag 'linux_x86_64'.
+# https://github.com/pypa/manylinux
+# https://peps.python.org/pep-0599/
+# https://github.com/pypa/auditwheel
+# -> fix using `auditwheel repair`
+deploy-package-pypi:
+  extends: .python-base
+  stage: publish
+  script:
+    - pip install auditwheel twine
+    - python -m auditwheel repair dist/py*ugged-*-linux*.whl
+    - >-
+      TWINE_PASSWORD=${PYPI_TOKEN}
+      TWINE_USERNAME=__token__
+      python -m twine upload --skip-existing wheelhouse/py*ugged-*.manylinux*.whl
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: manual

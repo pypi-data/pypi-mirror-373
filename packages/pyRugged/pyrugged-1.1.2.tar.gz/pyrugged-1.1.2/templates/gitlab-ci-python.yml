@@ -1,0 +1,905 @@
+# =========================================================================================
+# Copyright (C) 2021 Orange & contributors
+#
+# This program is free software; you can redistribute it and/or modify it under the terms
+# of the GNU Lesser General Public License as published by the Free Software Foundation;
+# either version 3 of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+# without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+# See the GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License along with this
+# program; if not, write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth
+# Floor, Boston, MA  02110-1301, USA.
+# =========================================================================================
+# default workflow rules: Merge Request pipelines
+workflow:
+  rules:
+    # prevent branch pipeline when an MR is open (prefer MR pipeline)
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - when: always
+
+# test job prototype: implement adaptive pipeline rules
+.test-policy:
+  rules:
+    # on tag: auto & failing
+    - if: $CI_COMMIT_TAG
+    # on ADAPTIVE_PIPELINE_DISABLED: auto & failing
+    - if: '$ADAPTIVE_PIPELINE_DISABLED == "true"'
+    # on production or integration branch(es): auto & failing
+    - if: '$CI_COMMIT_REF_NAME =~ $PROD_REF || $CI_COMMIT_REF_NAME =~ $INTEG_REF'
+    # early stage (dev branch, no MR): manual & non-failing
+    - if: '$CI_MERGE_REQUEST_ID == null && $CI_OPEN_MERGE_REQUESTS == null'
+      when: manual
+      allow_failure: true
+    # Draft MR: auto & non-failing
+    - if: '$CI_MERGE_REQUEST_TITLE =~ /^Draft:.*/'
+      allow_failure: true
+    # else (Ready MR): auto & failing
+    - when: on_success
+
+variables:
+  # variabilized tracking image
+  TBC_TRACKING_IMAGE: "$CI_REGISTRY/to-be-continuous/tools/tracking:master"
+
+  # Change pip's cache directory to be inside the project directory since we can
+  # only cache local items.
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  # Poetry support: force virtualenv not in project dir & use local cache dir
+  POETRY_CACHE_DIR: "$CI_PROJECT_DIR/.cache/poetry"
+  POETRY_VIRTUALENVS_IN_PROJECT: "false"
+  PIPENV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pipenv"
+
+  PYTHON_IMAGE: "registry.hub.docker.com/library/python:3"
+  # Default Python project root directory
+  PYTHON_PROJECT_DIR: .
+
+  PYTHON_REQS_FILE: requirements.txt
+  PYTHON_EXTRA_REQS_FILES: "requirements-dev.txt"
+
+  # default production ref name (pattern)
+  PROD_REF: '/^(master|main)$/'
+  # default integration ref name (pattern)
+  INTEG_REF: '/^develop$/'
+
+  # compileall
+  PYTHON_COMPILE_ARGS: "*"
+
+  BANDIT_ARGS: "--recursive ."
+
+  # Safety tool
+  SAFETY_ARGS: "--full-report"
+
+  # Trivy tool
+  PYTHON_TRIVY_IMAGE: "registry.hub.docker.com/aquasec/trivy:latest"
+  PYTHON_TRIVY_ARGS: "--vuln-type library"
+
+  PYTHON_SBOM_OPTS: "--select-catalogers python"
+
+  PYTHON_RELEASE_NEXT: "minor"
+
+  # By default, publish on the Packages registry of the project
+  # https://docs.gitlab.com/ee/user/packages/pypi_repository/#authenticate-with-a-ci-job-token
+  PYTHON_REPOSITORY_URL: ${CI_SERVER_URL}/api/v4/projects/${CI_PROJECT_ID}/packages/pypi
+  PYTHON_REPOSITORY_USERNAME: 'gitlab-ci-token'
+  PYTHON_REPOSITORY_PASSWORD: $CI_JOB_TOKEN
+
+.python-scripts: &python-scripts |
+  # BEGSCRIPT
+  set -e
+
+  function log_info() {
+      echo -e "[\\e[1;94mINFO\\e[0m] $*"
+  }
+
+  function log_warn() {
+      echo -e "[\\e[1;93mWARN\\e[0m] $*"
+  }
+
+  function log_error() {
+      echo -e "[\\e[1;91mERROR\\e[0m] $*"
+  }
+
+  function assert_defined() {
+    if [[ -z "$1" ]]
+    then
+      log_error "$2"
+      exit 1
+    fi
+  }
+
+  function install_ca_certs() {
+    certs=$1
+    if [[ -z "$certs" ]]
+    then
+      return
+    fi
+
+    # import in system
+    if echo "$certs" >> /etc/ssl/certs/ca-certificates.crt
+    then
+      log_info "CA certificates imported in \\e[33;1m/etc/ssl/certs/ca-certificates.crt\\e[0m"
+    fi
+    if echo "$certs" >> /etc/ssl/cert.pem
+    then
+      log_info "CA certificates imported in \\e[33;1m/etc/ssl/cert.pem\\e[0m"
+    fi
+
+    # import in Java keystore (if keytool command found)
+    if command -v keytool > /dev/null
+    then
+      # shellcheck disable=SC2046
+      javahome=${JAVA_HOME:-$(dirname $(readlink -f $(command -v java)))/..}
+      # shellcheck disable=SC2086
+      keystore=${JAVA_KEYSTORE_PATH:-$(ls -1 $javahome/jre/lib/security/cacerts 2>/dev/null || ls -1 $javahome/lib/security/cacerts 2>/dev/null || echo "")}
+      if [[ -f "$keystore" ]]
+      then
+        storepass=${JAVA_KEYSTORE_PASSWORD:-changeit}
+        nb_certs=$(echo "$certs" | grep -c 'END CERTIFICATE')
+        log_info "importing $nb_certs certificates in Java keystore \\e[33;1m$keystore\\e[0m..."
+        for idx in $(seq 0 $((nb_certs - 1)))
+        do
+          # TODO: use keytool option -trustcacerts ?
+          if echo "$certs" | awk "n==$idx { print }; /END CERTIFICATE/ { n++ }" | keytool -noprompt -import -alias "imported CA Cert $idx" -keystore "$keystore" -storepass "$storepass"
+          then
+            log_info "... CA certificate [$idx] successfully imported"
+          else
+            log_warn "... Failed importing CA certificate [$idx]: abort"
+            return
+          fi
+        done
+      else
+        log_warn "Java keystore \\e[33;1m$keystore\\e[0m not found: could not import CA certificates"
+      fi
+    fi
+
+    # variable REQUESTS_CA_BUNDLE for Python if Python installed
+    if command -v python > /dev/null
+    then
+      export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+      log_info "Python requests \\e[33;1m\$REQUESTS_CA_BUNDLE\\e[0m variable set"
+    fi
+  }
+
+  function unscope_variables() {
+    _scoped_vars=$(env | awk -F '=' "/^scoped__[a-zA-Z0-9_]+=/ {print \$1}" | sort)
+    if [[ -z "$_scoped_vars" ]]; then return; fi
+    log_info "Processing scoped variables..."
+    for _scoped_var in $_scoped_vars
+    do
+      _fields=${_scoped_var//__/:}
+      _condition=$(echo "$_fields" | cut -d: -f3)
+      case "$_condition" in
+      if) _not="";;
+      ifnot) _not=1;;
+      *)
+        log_warn "... unrecognized condition \\e[1;91m$_condition\\e[0m in \\e[33;1m${_scoped_var}\\e[0m"
+        continue
+      ;;
+      esac
+      _target_var=$(echo "$_fields" | cut -d: -f2)
+      _cond_var=$(echo "$_fields" | cut -d: -f4)
+      _cond_val=$(eval echo "\$${_cond_var}")
+      _test_op=$(echo "$_fields" | cut -d: -f5)
+      case "$_test_op" in
+      defined)
+        if [[ -z "$_not" ]] && [[ -z "$_cond_val" ]]; then continue;
+        elif [[ "$_not" ]] && [[ "$_cond_val" ]]; then continue;
+        fi
+        ;;
+      equals|startswith|endswith|contains|in|equals_ic|startswith_ic|endswith_ic|contains_ic|in_ic)
+        # comparison operator
+        # sluggify actual value
+        _cond_val=$(echo "$_cond_val" | tr '[:punct:]' '_')
+        # retrieve comparison value
+        _cmp_val_prefix="scoped__${_target_var}__${_condition}__${_cond_var}__${_test_op}__"
+        _cmp_val=${_scoped_var#"$_cmp_val_prefix"}
+        # manage 'ignore case'
+        if [[ "$_test_op" == *_ic ]]
+        then
+          # lowercase everything
+          _cond_val=$(echo "$_cond_val" | tr '[:upper:]' '[:lower:]')
+          _cmp_val=$(echo "$_cmp_val" | tr '[:upper:]' '[:lower:]')
+        fi
+        case "$_test_op" in
+        equals*)
+          if [[ -z "$_not" ]] && [[ "$_cond_val" != "$_cmp_val" ]]; then continue;
+          elif [[ "$_not" ]] && [[ "$_cond_val" == "$_cmp_val" ]]; then continue;
+          fi
+          ;;
+        startswith*)
+          if [[ -z "$_not" ]] && [[ "$_cond_val" != "$_cmp_val"* ]]; then continue;
+          elif [[ "$_not" ]] && [[ "$_cond_val" == "$_cmp_val"* ]]; then continue;
+          fi
+          ;;
+        endswith*)
+          if [[ -z "$_not" ]] && [[ "$_cond_val" != *"$_cmp_val" ]]; then continue;
+          elif [[ "$_not" ]] && [[ "$_cond_val" == *"$_cmp_val" ]]; then continue;
+          fi
+          ;;
+        contains*)
+          if [[ -z "$_not" ]] && [[ "$_cond_val" != *"$_cmp_val"* ]]; then continue;
+          elif [[ "$_not" ]] && [[ "$_cond_val" == *"$_cmp_val"* ]]; then continue;
+          fi
+          ;;
+        in*)
+          if [[ -z "$_not" ]] && [[ "__${_cmp_val}__" != *"__${_cond_val}__"* ]]; then continue;
+          elif [[ "$_not" ]] && [[ "__${_cmp_val}__" == *"__${_cond_val}__"* ]]; then continue;
+          fi
+          ;;
+        esac
+        ;;
+      *)
+        log_warn "... unrecognized test operator \\e[1;91m${_test_op}\\e[0m in \\e[33;1m${_scoped_var}\\e[0m"
+        continue
+        ;;
+      esac
+      # matches
+      _val=$(eval echo "\$${_target_var}")
+      log_info "... apply \\e[32m${_target_var}\\e[0m from \\e[32m\$${_scoped_var}\\e[0m${_val:+ (\\e[33;1moverwrite\\e[0m)}"
+      _val=$(eval echo "\$${_scoped_var}")
+      export "${_target_var}"="${_val}"
+    done
+    log_info "... done"
+  }
+
+  function guess_build_system() {
+    case "${PYTHON_BUILD_SYSTEM:-auto}" in
+    auto)
+      ;;
+    poetry*)
+      log_info "--- Build system explictly declared: ${PYTHON_BUILD_SYSTEM}"
+      return
+      ;;
+    setuptools*)
+      log_info "--- Build system explictly declared: ${PYTHON_BUILD_SYSTEM}"
+      return
+      ;;
+    pipenv*)
+      log_info "--- Build system explictly declared: ${PYTHON_BUILD_SYSTEM}"
+      return
+      ;;
+    reqfile)
+      log_info "--- Build system explictly declared: requirements file"
+      return
+      ;;
+    *)
+      log_warn "--- Unknown declared build system: \\e[33;1m${PYTHON_BUILD_SYSTEM}\\e[0m: please read template doc"
+      ;;
+    esac
+
+    if [[ -f "${PYTHON_REQS_FILE}" ]]
+    then
+      log_info "--- Build system auto-detected: requirements file"
+      export PYTHON_BUILD_SYSTEM="reqfile"
+      return
+    fi
+
+    if [[ -f "pyproject.toml" ]]
+    then
+      # that might be PEP 517 if a build-backend is specified
+      # otherwise it might be only used as configuration file for development tools...
+      build_backend=$(sed -rn 's/^build-backend *= *"([^"]*)".*/\1/p' pyproject.toml)
+
+      if [[ "$build_backend" ]]
+      then
+        case "$build_backend" in
+        poetry.core.masonry.api)          
+          log_info "--- Build system auto-detected: PEP 517 with Poetry backend"
+          export PYTHON_BUILD_SYSTEM="poetry"
+          return
+          ;;
+        setuptools.build_meta)          
+          log_info "--- Build system auto-detected: PEP 517 with Setuptools backend"
+          export PYTHON_BUILD_SYSTEM="setuptools"
+          return
+          ;;
+        *)
+          log_error "--- Build system auto-detected: PEP 517 with unsupported backend \\e[33;1m${build_backend}\\e[0m: please read template doc"
+          exit 1
+          ;;
+        esac
+      fi
+    fi
+
+    if [[ -f "setup.py" ]]
+    then
+      log_info "--- Build system auto-detected: Setuptools (legacy)"
+      export PYTHON_BUILD_SYSTEM="setuptools"
+    elif [[ -f "Pipfile" ]]
+    then
+      log_info "--- Build system auto-detected: Pipenv"
+      export PYTHON_BUILD_SYSTEM="pipenv"
+    else
+      log_error "--- Build system auto-detect failed: please read template doc"
+      exit 1
+    fi
+  }
+
+  # install requirements
+  function install_requirements() {
+    case "$PYTHON_BUILD_SYSTEM" in
+    poetry*)
+      if  [[ ! -f "poetry.lock" ]]; then
+        log_warn "Using Poetry but \\e[33;1mpoetry.lock\\e[0m file not found: you shall commit it with your project files"
+      fi
+      # shellcheck disable=SC2086
+      pip install ${PIP_OPTS} "$PYTHON_BUILD_SYSTEM"
+      poetry install ${PYTHON_EXTRA_DEPS:+--extras "$PYTHON_EXTRA_DEPS"}
+      ;;
+    setuptools*)
+      # shellcheck disable=SC2086
+      pip install ${PIP_OPTS} "$PYTHON_BUILD_SYSTEM"
+      # shellcheck disable=SC2086
+      pip install ${PIP_OPTS} ".${PYTHON_EXTRA_DEPS:+[$PYTHON_EXTRA_DEPS]}"
+      ;;
+    pipenv*)
+      # shellcheck disable=SC2086
+      pip install ${PIP_OPTS} "$PYTHON_BUILD_SYSTEM"
+      if  [[ ! -f "Pipfile.lock" ]]; then
+        log_warn "Using Pipenv but \\e[33;1mPipfile.lock\\e[0m file not found: you shall commit it with your project files"
+        pipenv install --dev --system
+      else
+        pipenv sync --dev --system
+      fi
+      ;;
+    reqfile)
+      if [[ -f "${PYTHON_REQS_FILE}" ]]; then
+        log_info "--- installing main requirements from \\e[33;1m${PYTHON_REQS_FILE}\\e[0m"
+        # shellcheck disable=SC2086
+        pip install ${PIP_OPTS} -r "${PYTHON_REQS_FILE}"
+        # shellcheck disable=SC2086
+        found_reqs_files=$(eval ls -1 $PYTHON_EXTRA_REQS_FILES 2>/dev/null || echo "")
+        # shellcheck disable=SC2116
+        for extrareqsfile in $(echo "$found_reqs_files"); do
+          log_info "--- installing extra requirements from \\e[33;1m${extrareqsfile}\\e[0m"
+          # shellcheck disable=SC2086
+          pip install ${PIP_OPTS} -r "${extrareqsfile}"
+        done
+      else
+        log_warn "--- requirements build system defined, but no ${PYTHON_REQS_FILE} file found"
+      fi
+      ;;
+    esac
+  }
+
+  function _run() {
+    if [[ "${PYTHON_BUILD_SYSTEM}" =~ poetry.* ]]
+    then
+      # shellcheck disable=SC2086
+      if ! command -v poetry > /dev/null; then pip install ${PIP_OPTS} poetry; fi
+      poetry run "$@"
+    else
+      "$@"
+    fi
+  }
+
+  function _python() {
+    _run python "$@"
+  }
+
+  function _pip() {
+    # shellcheck disable=SC2086
+    _run pip ${PIP_OPTS} "$@"
+  }
+
+  function _package() {
+    case "$PYTHON_BUILD_SYSTEM" in
+    poetry)
+      # shellcheck disable=SC2086
+      if ! command -v poetry > /dev/null; then pip install ${PIP_OPTS} poetry; fi
+      poetry build
+      ;;
+    *)
+      # shellcheck disable=SC2086
+      pip install ${PIP_OPTS} build
+      python -m build
+      ;;
+    esac
+  }
+
+  function configure_scm_auth() {
+    git_base_url=$(echo "$CI_REPOSITORY_URL" | cut -d\@ -f2)
+    if [[ -n "${GIT_USERNAME}" ]] && [[ -n "${GIT_PASSWORD}" ]]; then
+      log_info "--- using https protocol with SCM credentials from env (\$GIT_USERNAME and \$GIT_PASSWORD)..."
+      export git_auth_url="https://${GIT_USERNAME}:${GIT_PASSWORD}@${git_base_url}"
+    elif [[ -n "${GIT_PRIVATE_KEY}" ]]; then
+      log_info "--- using ssh protocol with SSH key from env (\$GIT_PRIVATE_KEY)..."
+      mkdir -m 700 "${HOME}/.ssh"
+      ssh-keyscan -H "${CI_SERVER_HOST}" >> ~/.ssh/known_hosts
+      eval "$(ssh-agent -s)"
+      # Handle file variable
+      if [[ -f "${GIT_PRIVATE_KEY}" ]]; then
+        tr -d '\r' < "${GIT_PRIVATE_KEY}" | ssh-add -
+      else
+        echo "${GIT_PRIVATE_KEY}" | tr -d '\r' | ssh-add -
+      fi
+      export git_auth_url="git@${git_base_url/\//:}"
+    else
+      log_error "--- Please specify either \$GIT_USERNAME and \$GIT_PASSWORD or \$GIT_PRIVATE_KEY variables to enable release (see doc)."
+      exit 1
+    fi
+  }
+
+  function _release() {
+    # 0: guess packaging system
+    if [[ -f "pyproject.toml" ]]
+    then
+      # that might be PEP 517 if a build-backend is specified
+      # otherwise it might be only used as configuration file for development tools...
+      build_backend=$(sed -rn 's/^build-backend *= *"([^"]*)".*/\1/p' pyproject.toml)
+      if [[ "$build_backend" ]]
+      then
+        case "$build_backend" in
+        poetry.core.masonry.api)
+          log_info "--- Packaging system auto-detected: Poetry"
+          pkg_system="poetry"
+          ;;
+        setuptools.build_meta)
+          log_info "--- Packaging system auto-detected: Setuptools (PEP 517)"
+          pkg_system="setuptools"
+          ;;
+        *)
+          log_error "--- Unsupported PEP 517 backend \\e[33;1m${build_backend}\\e[0m: abort"
+          exit 1
+          ;;
+        esac
+      fi
+    fi
+
+    if [[ -z "$pkg_system" ]]
+    then
+      if [[ -f "setup.py" ]]
+      then
+        log_info "--- Packaging system auto-detected: Setuptools (legacy)"
+        pkg_system="setuptools"
+      else
+        log_error "--- Couldn't find any supported packaging system: abort"
+        exit 1
+      fi
+    fi
+
+    # 1: retrieve next release info from semantic-release
+    if [ "$SEMREL_INFO_ON" ] && [ "$PYTHON_SEMREL_RELEASE_DISABLED" != "true" ]
+    then
+      if [ -z "$SEMREL_INFO_NEXT_VERSION" ]
+      then
+        log_info "[semantic-release] no new version to release: skip"
+        exit 0
+      else
+        py_cur_version="$SEMREL_INFO_LAST_VERSION"
+        py_next_version="$SEMREL_INFO_NEXT_VERSION"
+        py_release_part="$SEMREL_INFO_NEXT_VERSION_TYPE"
+        log_info "[semantic-release] new ($py_release_part) release required \\e[1;94m${py_cur_version}\\e[0m → \\e[1;94m${py_next_version}\\e[0m"
+      fi
+    fi
+
+    # 2: bumpversion (+ Git commit & tag)
+    if [[ "$pkg_system" == "poetry" ]]
+    then
+      # shellcheck disable=SC2086
+      if ! command -v poetry > /dev/null; then pip install ${PIP_OPTS} poetry; fi
+      if [[ -z "$py_next_version" ]]
+      then
+        py_cur_version=$(poetry version --short)
+        py_next_version="$PYTHON_RELEASE_NEXT"
+      fi
+      log_info "[Poetry] change version \\e[1;94m${py_cur_version}\\e[0m → \\e[1;94m${py_next_version}\\e[0m"
+      poetry version ${TRACE+--verbose} "$py_next_version"
+      # eval exact next version
+      py_next_version=$(poetry version --short)
+      git add pyproject.toml
+      git commit -m "chore(python-release): $py_cur_version → $py_next_version [ci skip]"
+      git tag "$py_next_version"
+    else
+      # Setuptools / bumpversion
+      # shellcheck disable=SC2086
+      pip install ${PIP_OPTS} bumpversion
+      py_commit_message="chore(python-release): {current_version} → {new_version} [ci skip]"
+      if [[ "$py_next_version" ]]
+      then
+        # explicit release version (semantic-release)
+        log_info "[Setuptools] bumpversion \\e[1;94m${py_cur_version}\\e[0m → \\e[1;94m${py_next_version}\\e[0m"
+        # create cfg in case it doesn't exist - will be updated by bumpversion
+        touch .bumpversion.cfg
+        bumpversion ${TRACE+--verbose} --current-version "$py_cur_version" --commit --message "$py_commit_message" --tag --tag-name "{new_version}" "$py_release_part"
+      elif [[ -f "setup.py" ]]
+      then
+        # retrieve current version from setup.py
+        py_cur_version=$(python setup.py --version)
+        py_release_part="$PYTHON_RELEASE_NEXT"
+        log_info "[Setuptools] bumpversion ($py_release_part) from \\e[1;94m${py_cur_version}\\e[0m"
+        bumpversion ${TRACE+--verbose} --current-version "$py_cur_version" --commit --message "$py_commit_message" --tag --tag-name "{new_version}" "$py_release_part" setup.py
+      elif [[ -f ".bumpversion.cfg" ]]
+      then
+        # current version shall be set in .bumpversion.cfg
+        py_release_part="$PYTHON_RELEASE_NEXT"
+        log_info "[bumpversion] increase \\e[1;94m${py_release_part}\\e[0m"
+        bumpversion ${TRACE+--verbose} --commit --message "$py_commit_message" --tag --tag-name "{new_version}" "$py_release_part"
+      else
+        log_error "--- setup.py or .bumpversion.cfg file required to retrieve current version: cannot perform release"
+        exit 1
+      fi
+    fi
+
+    # 3: Git commit, tag and push
+    log_info "--- git push commit and tag..."
+    git push "$git_auth_url" "$CI_COMMIT_REF_NAME"
+    git push "$git_auth_url" --tags
+
+    # 4: build new version distribution
+    log_info "--- build distribution packages..."
+    if [[ "$pkg_system" == "poetry" ]]
+    then
+      poetry build ${TRACE+--verbose}
+    else
+      # shellcheck disable=SC2086
+      pip install ${PIP_OPTS} build
+      rm -rf dist
+      python -m build
+    fi
+
+    # 5: publish packages
+    log_info "--- publish distribution packages..."
+    if [[ "$pkg_system" == "poetry" ]]
+    then
+      poetry config repositories.user_defined  "$PYTHON_REPOSITORY_URL"
+      poetry publish ${TRACE+--verbose} --username "$PYTHON_REPOSITORY_USERNAME" --password "$PYTHON_REPOSITORY_PASSWORD" --repository user_defined
+    else
+      # shellcheck disable=SC2086
+      pip install ${PIP_OPTS} twine
+      twine upload ${TRACE+--verbose} --username "$PYTHON_REPOSITORY_USERNAME" --password "$PYTHON_REPOSITORY_PASSWORD" --repository-url "$PYTHON_REPOSITORY_URL" dist/*
+    fi
+  }
+
+  unscope_variables
+
+  # ENDSCRIPT
+
+###############################################################################################
+#                                      Generic python job                                     #
+###############################################################################################
+.python-base:
+  image: $PYTHON_IMAGE
+  # services: # https://gitlab.cloud-espace.si.c-s.fr/to-be-continuous/tools/tracking
+  #   - name: "$TBC_TRACKING_IMAGE"
+  #     command: ["--service", "python", "6.1.3"]
+  # Cache downloaded dependencies and plugins between builds.
+  # To keep cache across branches add 'key: "$CI_JOB_NAME"'
+  cache:
+    key: "$CI_COMMIT_REF_SLUG-python"
+    paths:
+      - ${PIP_CACHE_DIR}
+      - ${POETRY_CACHE_DIR}
+      - ${PIPENV_CACHE_DIR}
+  before_script:
+    - *python-scripts
+    - install_ca_certs "${CUSTOM_CA_CERTS:-$DEFAULT_CA_CERTS}"
+    - cd ${PYTHON_PROJECT_DIR}
+    - git config --global --add safe.directory $(pwd)
+    - guess_build_system
+
+###############################################################################################
+#                                      stages definition                                      #
+###############################################################################################
+stages:
+  - build
+  - test
+  - publish
+
+###############################################################################################
+#                                      build stage                                             #
+###############################################################################################
+# build Python packages as artifacts
+py-package:
+  extends: .python-base
+  stage: build
+  script:
+    - _package
+  artifacts:
+    expire_in: 1 month
+    paths:
+      - $PYTHON_PROJECT_DIR/dist/*
+  rules:
+    - if: '$PYTHON_PACKAGE_ENABLED == "true"'
+
+py-lint:
+  extends: .python-base
+  stage: build
+  script:
+    - mkdir -p -m 777 reports
+    - install_requirements
+    - _pip install pylint_gitlab # codeclimate reports
+    # run pylint and generate reports all at once
+    - _run pylint --ignore=.cache --output-format=colorized,pylint_gitlab.GitlabCodeClimateReporter:reports/py-lint.codeclimate.json,parseable:reports/py-lint.parseable.txt ${PYLINT_ARGS} ${PYLINT_FILES:-$(find -type f -name "*.py")}
+  artifacts:
+    name: "$CI_JOB_NAME artifacts from $CI_PROJECT_NAME on $CI_COMMIT_REF_SLUG"
+    expire_in: 1 day
+    when: always
+    reports:
+      codequality: $PYTHON_PROJECT_DIR/reports/py-lint.codeclimate.json
+    paths:
+      - "$PYTHON_PROJECT_DIR/reports/py-lint.*"
+  rules:
+    # exclude if $PYLINT_ENABLED not set
+    - if: '$PYLINT_ENABLED != "true"'
+      when: never
+    - !reference [.test-policy, rules]
+
+py-compile:
+  extends: .python-base
+  stage: build
+  script:
+    - install_requirements
+    - _python -m compileall $PYTHON_COMPILE_ARGS
+  rules:
+    # skip when one of unit test framework is enabled
+    - if: '$UNITTEST_ENABLED == "true" || $PYTEST_ENABLED == "true" || $NOSETESTS_ENABLED == "true"'
+      when: never
+    - !reference [.test-policy, rules]
+
+###############################################################################################
+#                                      test stage                                             #
+###############################################################################################
+py-unittest:
+  extends: .python-base
+  stage: build
+  script:
+    - mkdir -p -m 777 reports
+    - install_requirements
+    # code coverage
+    - _pip install coverage
+    # JUnit XML report
+    - _pip install unittest-xml-reporting
+    - _run coverage run -m xmlrunner discover -o "reports/" $UNITTEST_ARGS
+    - _run coverage report -m
+    - _run coverage xml -o "reports/py-coverage.cobertura.xml"
+  coverage: /^TOTAL.+?(\d+\%)$/
+  artifacts:
+    name: "$CI_JOB_NAME artifacts from $CI_PROJECT_NAME on $CI_COMMIT_REF_SLUG"
+    expire_in: 1 day
+    when: always
+    reports:
+      junit:
+        - "$PYTHON_PROJECT_DIR/reports/TEST-*.xml"
+      coverage_report:
+        coverage_format: cobertura
+        path: "$PYTHON_PROJECT_DIR/reports/py-coverage.cobertura.xml"
+    paths:
+      - "$PYTHON_PROJECT_DIR/reports/TEST-*.xml"
+      - "$PYTHON_PROJECT_DIR/reports/py-coverage.*"
+  rules:
+    # skip if $UNITTEST_ENABLED not set
+    - if: '$UNITTEST_ENABLED != "true"'
+      when: never
+    - !reference [.test-policy, rules]
+
+py-pytest:
+  extends: .python-base
+  stage: build
+  script:
+    - mkdir -p -m 777 reports
+    - install_requirements
+    - _pip install pytest pytest-cov coverage
+    - _python -m pytest --junit-xml=reports/TEST-pytests.xml --cov --cov-report term  --cov-report xml:reports/py-coverage.cobertura.xml ${PYTEST_ARGS}
+  coverage: /^TOTAL.+?(\d+\%)$/
+  artifacts:
+    name: "$CI_JOB_NAME artifacts from $CI_PROJECT_NAME on $CI_COMMIT_REF_SLUG"
+    expire_in: 1 day
+    when: always
+    reports:
+      junit:
+        - "$PYTHON_PROJECT_DIR/reports/TEST-*.xml"
+      coverage_report:
+        coverage_format: cobertura
+        path: "$PYTHON_PROJECT_DIR/reports/py-coverage.cobertura.xml"
+    paths:
+      - "$PYTHON_PROJECT_DIR/reports/TEST-*.xml"
+      - "$PYTHON_PROJECT_DIR/reports/py-coverage.*"
+  rules:
+    # skip if $PYTEST_ENABLED not set
+    - if: '$PYTEST_ENABLED != "true"'
+      when: never
+    - !reference [.test-policy, rules]
+
+py-nosetests:
+  extends: .python-base
+  stage: build
+  script:
+    - mkdir -p -m 777 reports
+    - install_requirements
+    - _run nosetests --with-xunit --xunit-file=reports/TEST-nosetests.xml --with-coverage --cover-erase --cover-xml --cover-xml-file=reports/py-coverage.cobertura.xml ${NOSETESTS_ARGS}
+  coverage: /^TOTAL.+?(\d+\%)$/
+  artifacts:
+    name: "$CI_JOB_NAME artifacts from $CI_PROJECT_NAME on $CI_COMMIT_REF_SLUG"
+    expire_in: 1 day
+    when: always
+    reports:
+      junit:
+        - "$PYTHON_PROJECT_DIR/reports/TEST-*.xml"
+      coverage_report:
+        coverage_format: cobertura
+        path: "$PYTHON_PROJECT_DIR/reports/py-coverage.cobertura.xml"
+    paths:
+      - "$PYTHON_PROJECT_DIR/reports/TEST-*.xml"
+      - "$PYTHON_PROJECT_DIR/reports/py-coverage.*"
+  rules:
+    # skip if $NOSETESTS_ENABLED not set
+    - if: '$NOSETESTS_ENABLED != "true"'
+      when: never
+    - !reference [.test-policy, rules]
+
+# Bandit (SAST)
+py-bandit:
+  extends: .python-base
+  stage: test
+  # force no dependencies
+  dependencies: []
+  script:
+    - mkdir -p -m 777 reports
+    - install_requirements
+    - _pip install bandit
+    # CSV (for SonarQube)
+    - |
+      if [[ "$SONAR_HOST_URL" ]]
+      then
+        _run bandit ${TRACE+--verbose} --exit-zero --format csv --output reports/py-bandit.bandit.csv ${BANDIT_ARGS}
+      fi
+    # JSON (for DefectDojo)
+    - |
+      if [[ "$DEFECTDOJO_BANDIT_REPORTS" ]]
+      then
+        _run bandit ${TRACE+--verbose} --exit-zero --format json --output reports/py-bandit.bandit.json ${BANDIT_ARGS}
+      fi
+    - _run bandit ${TRACE+--verbose} ${BANDIT_ARGS}
+  artifacts:
+    when: always
+    name: "$CI_JOB_NAME artifacts from $CI_PROJECT_NAME on $CI_COMMIT_REF_SLUG"
+    expire_in: 1 day
+    paths:
+      - "$PYTHON_PROJECT_DIR/reports/py-bandit.*"
+  rules:
+    # exclude if $BANDIT_ENABLED not set
+    - if: '$BANDIT_ENABLED != "true"'
+      when: never
+    - !reference [.test-policy, rules]
+
+# Safety (dependency check)
+py-safety:
+  extends: .python-base
+  stage: test
+  # force no dependencies
+  dependencies: []
+  script:
+    - mkdir -p -m 777 reports
+    - install_requirements
+    - _pip install safety
+    - _pip freeze | _run safety check --stdin ${SAFETY_ARGS}
+  rules:
+    # exclude if $SAFETY_ENABLED not set
+    - if: '$SAFETY_ENABLED != "true"'
+      when: never
+    - !reference [.test-policy, rules]
+
+# Trivy (dependency check)
+py-trivy:
+  extends: .python-base
+  stage: test
+  # force no dependencies
+  dependencies: []
+  script:
+    - mkdir -p -m 777 reports
+    - install_requirements
+    - apt-get update
+    - apt-get install -y wget apt-transport-https gnupg lsb-release
+    - wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | apt-key add -
+    - echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | tee -a /etc/apt/sources.list.d/trivy.list
+    - apt-get update
+    - apt-get install trivy
+    - |
+      if [[ "$PYTHON_BUILD_SYSTEM" =~ poetry.* ]]
+      then
+        # When using Poetry, `pip freeze` outputs a requirements.txt with @file URLs for each wheel
+        # These @file URLs in requirements.txt are not supported by Trivy
+        # So instead of simply using pip freeze, we use `poetry export`
+        poetry export -f requirements.txt --without-hashes --output reports/requirements.txt
+      else
+        _pip freeze | tee ./reports/requirements.txt
+      fi
+      if [[ -f "./requirements.txt" ]]
+      then
+        sort -u ./requirements.txt | grep -v "^[  ]*$" > ./requirements.txt.sorted
+        sort -u ./reports/requirements.txt | grep -v "^[  ]*$" > ./requirements.txt.generated.sorted
+        if [[ $(diff ./requirements.txt.sorted ./requirements.txt.generated.sorted) ]]
+        then
+          log_warn "The ./requirements.txt file does not match the ./reports/requirements.txt file generated via pip freeze. Make sure to include all dependencies with pinned versions in ./requirements.txt and re-commit the file."
+        fi
+      fi
+      if [ $(trivy fs ${PYTHON_TRIVY_ARGS} --format table --exit-code 0 ./reports/ | grep -c "Number of language-specific files: 0") -eq 1 ]; then
+        log_error "Could not find a file listing all dependencies with their versions."
+        exit 1
+      fi
+      if [[ "$DEFECTDOJO_TRIVY_REPORTS" ]]
+      then
+        trivy fs ${PYTHON_TRIVY_ARGS} --exit-code 0 --list-all-pkgs --format json --output reports/py-trivy.trivy.json ./reports/
+      fi
+      trivy fs ${PYTHON_TRIVY_ARGS} --format table ./reports/
+  artifacts:
+    name: "$CI_JOB_NAME artifacts from $CI_PROJECT_NAME on $CI_COMMIT_REF_SLUG"
+    expire_in: 1 day
+    when: always
+    paths:
+      - "$PYTHON_PROJECT_DIR/reports/py-trivy.*"
+      - "$PYTHON_PROJECT_DIR/reports/requirements.txt"
+  rules:
+    # exclude if $PYTHON_TRIVY_ENABLED not set
+    - if: '$PYTHON_TRIVY_ENABLED != "true"'
+      when: never
+    - !reference [.test-policy, rules]
+
+py-sbom:
+  extends: .python-base
+  stage: test
+  # force no dependency
+  dependencies: []
+  needs: []
+  script:
+    - mkdir -p -m 777 reports
+    - install_requirements
+    - |
+      case "$PYTHON_BUILD_SYSTEM" in
+        setuptools* | reqfile)
+          _pip freeze > "${PYTHON_REQS_FILE}"
+          ;;
+      esac
+    - |
+      if [[ -z "$PYTHON_SBOM_SYFT_URL" ]]
+      then
+        log_info "Syft version unset: retrieve latest version..."
+          PYTHON_SBOM_SYFT_URL=$(python3 -c 'import json,sys,urllib.request;s = urllib.request.urlopen("https://api.github.com/repos/anchore/syft/releases?per_page=1");resp=json.load(s);print(next(filter(lambda a: a["browser_download_url"].endswith("_linux_amd64.tar.gz"),resp[0]["assets"]))["browser_download_url"]);')
+        log_info "... use latest Syft version: \\e[32m$PYTHON_SBOM_SYFT_URL\\e[0m"
+      fi
+      python_sbom_syft="$PIP_CACHE_DIR/syft-$(echo "$PYTHON_SBOM_SYFT_URL" | md5sum | cut -d" " -f1)"
+      if [ ! -f $python_sbom_syft ]; then
+        python3 -c 'import urllib.request;urllib.request.urlretrieve("'$PYTHON_SBOM_SYFT_URL'","syft.tar.gz")'
+        tar zxf syft.tar.gz syft
+        mkdir -p $PIP_CACHE_DIR
+        mv ./syft $python_sbom_syft
+      fi
+    - $python_sbom_syft dir:. $PYTHON_SBOM_OPTS -o cyclonedx-json > reports/py-sbom.cyclonedx.json
+    - chmod a+r reports/py-sbom.cyclonedx.json
+  artifacts:
+    name: "Python SBOM from $CI_PROJECT_NAME on $CI_COMMIT_REF_SLUG"
+    expire_in: 1 week
+    when: always
+    paths:
+      - "$PYTHON_PROJECT_DIR/reports/py-sbom.cyclonedx.json"
+  rules:
+    # exclude if disabled
+    - if: '$PYTHON_SBOM_DISABLED == "true"'
+      when: never
+    - !reference [.test-policy, rules]
+
+# (manual from master branch): triggers a release (tag creation)
+py-release:
+  extends: .python-base
+  stage: publish
+  script:
+    - git config --global user.email "$GITLAB_USER_EMAIL"
+    - git config --global user.name "$GITLAB_USER_LOGIN"
+    - git checkout -B $CI_COMMIT_REF_NAME
+    - configure_scm_auth
+    - _release
+  artifacts:
+    paths:
+      - $PYTHON_PROJECT_DIR/dist/*
+  rules:
+    # exclude if $PYTHON_RELEASE_ENABLED not set
+    - if: '$PYTHON_RELEASE_ENABLED != "true"'
+      when: never
+    # on production or integration branch: manual, non blocking
+    - if: '$CI_COMMIT_REF_NAME =~ $PROD_REF || $CI_COMMIT_REF_NAME =~ $INTEG_REF'
+      when: manual
+      allow_failure: true

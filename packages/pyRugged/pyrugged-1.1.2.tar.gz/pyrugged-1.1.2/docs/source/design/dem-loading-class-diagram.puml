@@ -1,0 +1,77 @@
+' Copyright 2013-2022 CS GROUP
+' Licensed to CS GROUP (CS) under one or more
+' contributor license agreements.  See the NOTICE file distributed with
+' this work for additional information regarding copyright ownership.
+' CS licenses this file to You under the Apache License, Version 2.0
+' (the "License"); you may not use this file except in compliance with
+' the License.  You may obtain a copy of the License at
+'
+'   http://www.apache.org/licenses/LICENSE-2.0
+'
+' Unless required by applicable law or agreed to in writing, software
+' distributed under the License is distributed on an "AS IS" BASIS,
+' WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+' See the License for the specific language governing permissions and
+' limitations under the License.
+
+@startuml
+
+  skinparam svek                  true
+  skinparam ClassBackgroundColor  #F3EFEB/CCC9C5
+  skinparam ClassArrowColor       #691616
+  skinparam ClassBorderColor      #691616
+  skinparam NoteBackgroundColor   #F3EFEB
+  skinparam NoteBorderColor       #691616
+  skinparam NoteFontColor         #691616
+  skinparam ClassFontSize         11
+
+  package org.orekit.rugged #ECEBD8 {
+
+    package raster #DDEBD8 {
+      interface UpdatableTile {
+        +setGeometry(φ₀, λ₀, δφ, δλ, rows, columns)
+        +setElevation(i, j, h)
+      }
+      interface TileUpdater {
+        +updateTile(φ, λ, UpdatableTile)
+      }
+      TileUpdater --> UpdatableTile : updates
+
+      interface "TileFactory<T extends Tile>" as TileFactory_T_ {
+        +T createTile()
+      }
+      class "TilesCache<T extends Tile>" as TilesCache_T_ {
+        + T getTile(φ, λ)
+      }
+      interface Tile {
+        + double interpolateElevation(φ, λ)
+      }
+      UpdatableTile <|.. Tile
+      Tile <|-- SimpleTile
+      TilesCache_T_ "1" o--> "*" Tile
+      TilesCache_T_  "1" o--> "1" TileUpdater : triggers
+      TilesCache_T_ "1" o--> "1" TileFactory_T_ : triggers
+    }
+
+    package intersection.duvenhage #DDEBD8 {
+      TileFactory_T_ <|-- MinMaxTreeTileFactory
+      SimpleTile     <|-- MinMaxTreeTile
+      MinMaxTreeTileFactory  -left-> MinMaxTreeTile : creates
+      note left
+        tile extended with Duvenhage
+        specific min/max kd-tree
+      end note
+    }
+
+  }
+
+  package mission.specific #C4D2C5 {
+    class MissionSpecificDEM #D5E0D5/E2EBE2
+    TileUpdater <|-- MissionSpecificDEM
+    note top #E2EBE2
+      user provides DEM loading
+      by implementing TileUpdater
+    end note
+  }
+
+@enduml
