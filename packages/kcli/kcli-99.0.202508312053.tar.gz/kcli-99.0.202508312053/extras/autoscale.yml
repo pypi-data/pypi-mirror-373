@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kcli
+  namespace: kcli-infra
+  labels:
+    app: kcli
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kcli
+  template:
+    metadata:
+      labels:
+        app: kcli
+    spec:
+      serviceAccountName: autoapprover
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/ctlplane
+        operator: Exists
+      containers:
+      - name: kcli
+        image: quay.io/karmab/kcli:latest
+        command:
+        - /usr/local/bin/python3
+        - /root/kcli/autoscale.py
+        env:
+        - name: AUTOSCALE_CLUSTER
+          value: "mykube"
+        - name: AUTOSCALE_CLUSTERTYPE
+          value: "generic"
+        - name: AUTOSCALE_WORKERS
+          value: "1"
+        - name: AUTOSCALE_MAXIMUM
+          value: "9999"
+        - name: AUTOSCALE_MINIMUM
+          value: "2"
+        - name: PYTHONUNBUFFERED
+          value: "true"
+        volumeMounts:
+        - mountPath: /root/.kcli
+          name: kcli-conf
+        - mountPath: /root/.ssh
+          name: kcli-ssh
+      volumes:
+      - configMap:
+          defaultMode: 0700
+          name: kcli-conf
+        name: kcli-conf
+      - configMap:
+          defaultMode: 0700
+          name: kcli-ssh
+        name: kcli-ssh

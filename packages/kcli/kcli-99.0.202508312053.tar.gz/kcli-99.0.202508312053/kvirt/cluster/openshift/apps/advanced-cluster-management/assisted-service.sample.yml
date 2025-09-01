@@ -1,0 +1,121 @@
+apiVersion: hive.openshift.io/v1
+kind: ClusterImageSet
+metadata:
+  name: openshift-v${MINOR}
+  namespace: multicluster-engine
+spec:
+  releaseImage: ${RELEASE}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: assisted-service-config
+  namespace: multicluster-engine
+  labels:
+    app: assisted-service
+data:
+{% if not assisted_converged_flow %}
+  ALLOW_CONVERGED_FLOW: "false"
+{% endif %}
+  LOG_LEVEL: "debug"
+{% if assisted_disable_validations %}
+  DISABLED_HOST_VALIDATIONS: belongs-to-majority-group,belongs-to-machine-cidr,ntp-synced,release-domain-name-resolved-correctly,dns-wildcard-not-configured
+{% endif %}
+{% if disconnected_url != None %}
+  PUBLIC_CONTAINER_REGISTRIES: "quay.io,registry.ci.openshift.org,registry.redhat.io"
+{% endif %}
+---
+apiVersion: agent-install.openshift.io/v1beta1
+kind: AgentServiceConfig
+metadata:
+  namespace: multicluster-engine
+  name: agent
+  annotations:
+    unsupported.agent-install.openshift.io/assisted-service-configmap: 'assisted-service-config'
+spec:
+  databaseStorage:
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: {{ assisted_pvc_size }}Gi
+  filesystemStorage:
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: {{ assisted_pvc_size }}Gi
+{% if disconnected_url != None %}
+  mirrorRegistryRef:
+    name: "custom-registries"
+{% endif %}
+  osImages:
+    - openshiftVersion: "${MINOR}"
+      url: "$RHCOS_ISO"
+      rootFSUrl: "$RHCOS_ROOTFS"
+      cpuArchitecture: "x86_64"
+      version: "${RHCOS_VERSION}"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  creationTimestamp: null
+  name: assisted-deployment-ssh-private-key
+  namespace: multicluster-engine
+type: Opaque
+stringData:
+  ssh-privatekey: |
+${SSH_PRIV_KEY}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: assisted-deployment-pull-secret
+  namespace: multicluster-engine
+stringData:
+  .dockerconfigjson: '${PULLSECRET}'
+  type: kubernetes.io/dockerconfigjson
+{% if disconnected_url != None %}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-registries
+  namespace: multicluster-engine
+  labels:
+    app: assisted-service
+data:
+  ca-bundle.crt: |
+${CA_CERT}
+  registries.conf: |
+    unqualified-search-registries = ["registry.access.redhat.com", "docker.io"]
+
+    [[registry]]
+      prefix = ""
+      location = "quay.io/openshift-release-dev/ocp-v4.0-art-dev"
+      mirror-by-digest-only = true
+
+      [[registry.mirror]]
+        location = "{{ disconnected_url }}/openshift-release-dev/ocp-v4.0-art-dev"
+
+      [[registry.mirror]]
+        location = "{{ disconnected_url }}/openshift/release"
+
+    [[registry]]
+      prefix = ""
+      location = "quay.io/openshift-release-dev"
+      mirror-by-digest-only = true
+
+      [[registry.mirror]]
+        location = "{{ disconnected_url }}/openshift-release-dev"
+
+    [[registry]]
+      prefix = ""
+      location = "registry.ci.openshift.org/ocp/release"
+      mirror-by-digest-only = true
+
+      [[registry.mirror]]
+        location = "{{ disconnected_url }}/openshift-release-dev"
+
+${REGISTRIES}
+{% endif %}

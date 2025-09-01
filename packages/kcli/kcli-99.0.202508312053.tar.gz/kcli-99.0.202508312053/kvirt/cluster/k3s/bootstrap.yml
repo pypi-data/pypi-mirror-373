@@ -1,0 +1,31 @@
+{% set all_files = files|default([]) %}
+{% set all_scripts = ["bootstrap.sh"] %}
+{% if config_type not in ['aws', 'azure', 'gcp', 'ibm', 'hcloud'] and api_ip != None %}
+{% do all_files.append("keepalived.conf") %}
+{% do all_scripts.append("keepalived.sh") %}
+{% endif %}
+
+{% if extra_ctlplane_networks %}
+ {% set extra_networks = extra_ctlplane_networks %}
+{% endif %}
+{% if extra_ctlplane_disks %}
+ {% set extra_disks = extra_ctlplane_disks %}
+{% endif %}
+{{cluster}}-ctlplane-0:
+ image: {{ image }}
+{% if kubevirt_disk_size != None and config_type == 'kubevirt' %}
+ kubevirt_disk_size: {{ kubevirt_disk_size }}
+{% endif %}
+ wait: true
+ enableroot: true
+ pool: {{ pool or config_pool }}
+ keys: {{ keys }}
+ numcpus: {{ ctlplane_numcpus | default(numcpus, numcpus) }}
+ memory: {{ ctlplane_memory | default(memory, memory) }}
+ nets: {{ [network] + extra_networks }}
+ disks: {{ [disk_size] + extra_disks }}
+ files: {{ all_files }}
+ scripts: {{ all_scripts }}
+ finishfiles:
+ - origin: /root/kubeconfig
+   path: ~/.kcli/clusters/{{ cluster }}/auth/kubeconfig

@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: install-apps
+  namespace: kcli-infra
+  labels:
+    app: kcli
+spec:
+  backoffLimit: 45
+  template:
+   spec:
+    serviceAccountName: autoapprover
+    restartPolicy: OnFailure
+    initContainers:
+    - name: wait-for-console
+      image: {{ registry }}/karmab/kubectl:multi
+      command:
+      - "/bin/sh"
+      - "-c"
+      - |
+        #!/bin/sh
+        until [ "$CLUSTER_VERSION" == "Completed" ] ; do
+          CLUSTER_VERSION=$(kubectl get clusterversion version -o jsonpath='{.status.history[0].state}')
+          sleep 30
+        done
+    containers:
+    - name: install-apps
+      image: {{ registry }}/karmab/kcli:latest
+      command:
+      - "/bin/sh"
+      - "-c"
+      - |
+        #!/bin/sh
+        kcli download oc
+        export PATH=.:$PATH
+        echo {{ overrides_string|base64 }} | base64 -d > ./params.yml
+        {% for app in overrides.apps %}
+        kcli create app openshift {{ app }} --pf ./params.yml
+        {% endfor %}

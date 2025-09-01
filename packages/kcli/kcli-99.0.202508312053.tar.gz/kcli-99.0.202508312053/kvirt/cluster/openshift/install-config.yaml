@@ -1,0 +1,160 @@
+{% if not cluster_networks %}
+{% set cluster_network_ipv4 = {"cidr": cluster_network_ipv4, "hostPrefix": 23} %}
+{% set cluster_network_ipv6 = {"cidr": cluster_network_ipv6, "hostPrefix": 64} %}
+{% set cluster_networks = [cluster_network_ipv4] + [cluster_network_ipv6] if dualstack|default(False) else [cluster_network_ipv6] if ipv6 else [cluster_network_ipv4] %} 
+{% endif %}
+{% if not service_networks %}
+{% set service_network_ipv4 = [service_network_ipv4] %}
+{% set service_network_ipv6 = [service_network_ipv6] %}
+{% set service_networks = service_network_ipv4 + service_network_ipv6 if dualstack|default(False) else service_network_ipv6 if ipv6 else service_network_ipv4 %}
+{% endif %}
+{% set machine_cidr_ipv4 = [machine_cidr|default("10.0.0.0/16")] %}
+{% set machine_cidr_ipv6 = ["fc00::/48"] %}
+{% set machine_cidrs = machine_cidr_ipv4 + machine_cidr_ipv6 if dualstack|default(False) else machine_cidr_ipv6 if ipv6 else machine_cidr_ipv4 %}
+{% set sno_disk = sno_disk|default('sda', true)|diskpath %}
+apiVersion: v1
+{% if fips %}
+fips: True
+{% endif %}
+{% if cpu_partitioning %}
+CPUPartitioningMode: AllNodes
+{% endif %}
+{% if minimal_capability or additional_capabilities %}
+capabilities:
+  baselineCapabilitySet: None
+{% if additional_capabilities %}
+  additionalEnabledCapabilities:  {{ additional_capabilities }}
+{% endif %}
+{% endif %}
+baseDomain: {{ domain }}
+{% if config_type in ['aws', 'gcp'] %}
+credentialsMode: Mint
+{% endif %}
+{% if http_proxy != None %}
+proxy:
+    httpProxy: {{ 'http://' + http_proxy if 'http' not in http_proxy else http_proxy }}
+    httpsProxy: {{ 'http://' + http_proxy if 'http' not in http_proxy else http_proxy }}
+{% if no_proxy != None %}
+    noProxy: {{ no_proxy }}
+{% endif %}
+{% endif %}
+compute:
+- name: worker
+  replicas: {{ 0 if sno or sno_vm else workers }}
+controlPlane:
+  name: master
+  replicas: {{ 1 if sno or sno_vm else ctlplanes }}
+{% if techpreview %}
+featureSet: TechPreviewNoUpgrade
+{% elif ctlplanes == 2 %}
+  fencing:
+    credentials:
+{% for num in range(0, 2) %}
+    - hostname: {{ cluster }}-ctlplane-{{ num }}.{{ domain }}
+      address: https://{{ ksushy_ip }}:{{ ksushy_port }}/redfish/v1/Systems/{{ config_client }}/{{ cluster }}-ctlplane-{{ num }}
+      username: {{ bmc_user|default('dummy') }}
+      password: {{ bmc_password|default('dummy') }}
+      certificateVerification: Disabled
+{% endfor %}
+featureSet: DevPreviewNoUpgrade
+{% endif %}
+metadata:
+  name: {{ cluster }}
+networking:
+  networkType: {{ network_type }}
+{% if network_type == 'OVNKubernetes' %}
+  machineNetwork:
+{% for cidr in machine_cidrs %}
+  - cidr: {{ cidr }}
+{% endfor %}
+{% endif %}
+  clusterNetwork:
+{% for network in cluster_networks %}
+  - cidr: {{ network['cidr'] }}
+    hostPrefix: {{ network['hostPrefix'] }}
+{% endfor %}
+  serviceNetwork:
+{% for network in service_networks %}
+  - {{ network }}
+{% endfor %}
+platform:
+{% if config_type == 'vsphere'  and not esx|default(False) %}
+{% set vmfolder = 'vm/%s' % config_basefolder if config_basefolder is defined else 'vm/%s' % cluster %}
+{% if not config_restricted|default(False) %}
+{% set vmfolder = vmfolder + '/' + cluster %}
+{% endif  %}
+  vsphere:
+{% if vsphere_legacy|default(False) %}
+    vcenter: {{ config_host }}
+    username: {{ config_user }}
+    password: {{ config_password }}
+    datacenter: {{ config_datacenter }}
+    defaultDatastore: {{ config_pool }}
+    folder: /{{ config_datacenter}}/{{ vmfolder }}
+{% else %}
+    failureDomains:
+    - name: default
+      region: default
+      server: {{ config_host }}
+      topology:
+        computeCluster: /{{ config_datacenter }}/host/{{ config_cluster }}
+        datacenter: {{ config_datacenter }}
+        datastore: /{{ config_datacenter }}/datastore/{{ config_pool }}
+        networks:
+        - {{ network|replace('default', 'VM Network') }}
+        folder: /{{ config_datacenter}}/{{ vmfolder }}
+      zone: default
+    vcenters:
+    - datacenters:
+      - {{ config_datacenter }}
+      server: {{ config_host }}
+      user: {{ config_user }}
+      password: {{ config_password }}
+      port: 443
+{% endif %}
+{% elif config_type == 'aws' %}
+  aws:
+    region: {{ config_region }}
+{% elif config_type == 'gcp' %}
+  gcp:
+    projectID: {{ config_project }}
+    region: {{ config_region }}
+{% elif config_type == 'azure' %}
+  azure:
+    baseDomainResourceGroupName: {{ config_resourcegroup|default('kcli') }}
+    resourceGroupName: {{ config_resourcegroup|default('kcli') }}
+{% if '-' in network %}
+{% set vnet = network.split('-')[0] %}
+    networkResourceGroupName: {{ config_resourcegroup|default('kcli') }}
+    virtualNetwork: {{ vnet }}
+    controlPlaneSubnet: {{ subnet_ctlplane|default(network) }}
+    computeSubnet: {{ subnet_worker|default(network) }}
+{% endif %}
+    region: {{ config_location }}
+{% else %}
+  none: {}
+{% endif %}
+{% if sno or sno_vm %}
+BootstrapInPlace:
+  InstallationDisk: {{ sno_disk }}
+{% endif %}
+{% if ca != None %}
+additionalTrustBundle: |
+ {{ ca | replace('\n', '\n ') }}
+{% endif %}
+pullSecret: '{{ pull_secret }}'
+sshKey: |
+  {{ pub_key }}
+{% if disconnected_url != None %}
+imageContentSources:
+- mirrors:
+  - {{ disconnected_url }}/openshift-release-dev/ocp-v4.0-art-dev
+  - {{ disconnected_url }}/openshift/release
+  source: quay.io/openshift-release-dev/ocp-v4.0-art-dev
+- mirrors:
+  - {{ disconnected_url }}/openshift-release-dev
+  source: quay.io/openshift-release-dev
+- mirrors:
+  - {{ disconnected_url }}/{{ 'origin' if okd else 'openshift-release-dev' }}
+  source: registry.ci.openshift.org/{{ 'origin' if okd else 'ocp/release' }}
+{% endif %}

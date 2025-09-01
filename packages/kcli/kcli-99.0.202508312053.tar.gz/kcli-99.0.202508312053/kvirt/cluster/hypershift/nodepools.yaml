@@ -1,0 +1,52 @@
+{% if manifests|default([]) %}
+{% for entry in manifests %}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ entry.name }}
+  namespace: {{ namespace }}
+data:
+  config: {{ entry.data }}
+---
+{% endfor %}
+{% endif %}
+---
+{% for nodepool in nodepools %}
+apiVersion: hypershift.openshift.io/v1beta1
+kind: NodePool
+metadata:
+  name: {{ nodepool.name }}
+  namespace: {{ namespace }}
+spec:
+  clusterName: {{ cluster }}
+  management:
+    autoRepair: false
+    upgradeType: InPlace
+  platform:
+{% if platform == 'kubevirt' %}
+    kubevirt:
+      compute:
+        cores: {{ numcpus|default(8) }}
+        memory: {{ memory|default(6144) }}Mi
+      rootVolume:
+        persistent:
+          size: {{ disk_size|default(30) }}Gi
+        type: Persistent
+    type: KubeVirt
+{% else %}
+    type: {{ 'Agent' if platform == 'assisted' else 'None' }}
+{% endif %}
+  release:
+    image: {{ nodepool.image|default(nodepool_image) }}
+  replicas: {{ workers if nodepool.name == cluster else 0 }}
+{% if nodepool.name == cluster and manifests|default([]) %}
+  config:
+{% for entry in manifests %}
+  - name: {{ entry.name }}
+{% endfor %}
+{% endif %}
+status:
+  conditions: null
+  replicas: {{ workers if nodepool.name == cluster else 0 }}
+---
+{% endfor %}

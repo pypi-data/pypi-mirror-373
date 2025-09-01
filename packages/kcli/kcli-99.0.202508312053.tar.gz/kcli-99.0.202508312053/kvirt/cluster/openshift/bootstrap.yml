@@ -1,0 +1,58 @@
+{% if flavor_bootstrap != None %}
+{% set flavor = flavor_bootstrap %}
+{% endif %}
+{{ cluster }}-bootstrap:
+ image: {{ image }}
+ pool: {{ pool or config_pool }}
+ enableroot: false 
+ notify: false
+ keys: {{ keys }}
+ numcpus: {{ bootstrap_numcpus | default(numcpus, numcpus) }}
+ flavor: {{ flavor }}
+ memory: {{ bootstrap_memory | default(memory, memory) }}
+{% if kubevirt_api_service %}
+ reservedns: true
+{% endif %}
+ nets:
+ - name: {{ network }}
+{% if bootstrap_mac != None %}
+   mac: {{ bootstrap_mac }}
+{% endif %}
+ disks:
+ - size: {{ disk_size }}
+{% if coredns or mdns or keepalived or ipv6 %}
+ files:
+{% endif %}
+{% if coredns %}
+ - path: /etc/NetworkManager/dispatcher.d/99-kcli-forcedns
+   origin: 99-kcli-forcedns
+   mode: 755
+ - path: /etc/kubernetes/manifests/coredns.yml
+   origin: staticpods/coredns.yml
+ - path: /etc/kubernetes/Corefile
+   origin: Corefile
+{% endif %}
+{% if mdns %}
+ - path: /etc/kubernetes/manifests/mdns.yml
+   origin: staticpods/mdns.yml
+ - path: /etc/kubernetes/config.hcl.templ
+   origin: config.hcl.templ
+{% endif %}
+{% if kubevirt_api_service %}
+ - path: /etc/kubernetes/manifests/haproxy.yml
+   origin: staticpods/haproxy.yml
+ - path: /etc/kubernetes/haproxy.cfg
+   origin: haproxy.cfg.kubevirt
+{% elif keepalived %}
+ - path: /etc/kubernetes/manifests/keepalived.yml
+   origin: staticpods/keepalived.yml
+ - path: /etc/kubernetes/keepalived.conf
+   origin: keepalived.conf
+{% endif %}
+{% if ipv6 %}
+ - path: /etc/default/nodeip-configuration
+   content: {{ api_ip }}
+{% endif %}
+{% if files|default([]) %}
+ extra_files: {{ files }}
+{% endif %}
