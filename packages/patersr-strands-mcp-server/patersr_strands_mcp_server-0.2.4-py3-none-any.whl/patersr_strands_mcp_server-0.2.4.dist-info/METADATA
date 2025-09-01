@@ -1,0 +1,440 @@
+Metadata-Version: 2.4
+Name: patersr-strands-mcp-server
+Version: 0.2.4
+Summary: MCP server for Strands Agent SDK documentation search and project assistance
+Project-URL: Homepage, https://github.com/robpaterson/strands-mcp-server
+Project-URL: Repository, https://github.com/robpaterson/strands-mcp-server
+Project-URL: Issues, https://github.com/robpaterson/strands-mcp-server/issues
+Author-email: Rob Paterson <your-email@example.com>
+License: MIT
+License-File: LICENSE
+Keywords: agents,documentation,llm,mcp,strands
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.11
+Requires-Dist: aiofiles>=23.2.0
+Requires-Dist: boto3>=1.34.0
+Requires-Dist: click>=8.1.0
+Requires-Dist: faiss-cpu>=1.12.0
+Requires-Dist: fastmcp>=0.1.0
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: mcp>=1.0.0
+Requires-Dist: numpy<2.0.0
+Requires-Dist: platformdirs<4.0.0,>=3.0.0
+Requires-Dist: pydantic>=2.5.0
+Provides-Extra: dev
+Requires-Dist: black>=23.12.0; extra == 'dev'
+Requires-Dist: mypy>=1.8.0; extra == 'dev'
+Requires-Dist: pytest-asyncio>=0.21.0; extra == 'dev'
+Requires-Dist: pytest>=7.4.0; extra == 'dev'
+Requires-Dist: ruff>=0.1.8; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# Strands MCP Server
+
+[![Build Status](https://github.com/strands-agents/strands-mcp-server/workflows/CI/badge.svg)](https://github.com/strands-agents/strands-mcp-server/actions)
+[![PyPI version](https://badge.fury.io/py/strands-mcp-server.svg)](https://badge.fury.io/py/strands-mcp-server)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+
+A Model Context Protocol (MCP) server that provides semantic search capabilities for the Strands Agent SDK documentation. This server enables AI assistants and development tools to access up-to-date Strands SDK documentation through intelligent search and retrieval.
+
+## Features
+
+- **Semantic Documentation Search**: Fast, intelligent search across Strands SDK documentation
+- **Bundled Cache**: Pre-built documentation cache for immediate availability
+- **Background Updates**: Automatic documentation updates with configurable intervals
+- **Fast Startup**: Instant search capabilities using bundled cache
+- **GitHub Integration**: Fetches latest documentation from Strands repositories
+- **Health Monitoring**: Built-in health checks and error handling
+- **MCP Compatible**: Works with any MCP-compatible client (Claude Desktop, Kiro IDE, etc.)
+
+## Quick Start
+
+### Installation
+
+```bash
+# Install from PyPI
+pip install strands-mcp-server
+
+# Or install with uv (recommended)
+uv add strands-mcp-server
+```
+
+### Basic Usage
+
+#### With Claude Desktop
+
+Add to your Claude Desktop MCP configuration (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "strands-docs": {
+      "command": "python",
+      "args": ["-m", "strands_mcp.main"],
+      "env": {
+        "GITHUB_TOKEN": "your_github_token_here"
+      }
+    }
+  }
+}
+```
+
+#### With Kiro IDE
+
+Add to your Kiro MCP configuration (`.kiro/settings/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "strands-docs": {
+      "command": "uvx",
+      "args": ["strands-mcp-server@latest"],
+      "env": {
+        "GITHUB_TOKEN": "your_github_token_here"
+      },
+      "disabled": false,
+      "autoApprove": ["search_documentation", "list_documentation"]
+    }
+  }
+}
+```
+
+#### Direct Usage
+
+```bash
+# Run the MCP server directly
+python -m strands_mcp.main
+
+# Or with uvx
+uvx strands-mcp-server@latest
+```
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `GITHUB_TOKEN` | GitHub personal access token for API access | Recommended | None |
+| `CACHE_DIR` | Directory for storing cached documentation | No | User cache dir |
+| `LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | No | INFO |
+| `UPDATE_INTERVAL` | Background update interval in hours | No | 24 |
+
+### GitHub Token Setup
+
+A GitHub token is recommended to avoid API rate limits when fetching documentation.
+
+#### Creating a GitHub Token
+
+1. Go to [GitHub Settings > Developer settings > Personal access tokens](https://github.com/settings/tokens)
+2. Click "Generate new token (classic)"
+3. Give it a descriptive name like "Strands MCP Server"
+4. Select scopes: `public_repo` (for accessing public repositories)
+5. Click "Generate token"
+6. Copy the token (you won't see it again!)
+
+#### Setting the Token
+
+**Quick Setup (Recommended):**
+```bash
+# Use the built-in setup utility
+strands-setup-token
+
+# Or with pip/uvx
+pip install strands-mcp-server
+strands-setup-token
+```
+
+**Manual Setup:**
+```bash
+# Option 1: Environment variable
+export GITHUB_TOKEN=ghp_your_token_here
+
+# Option 2: In your shell profile (.bashrc, .zshrc, etc.)
+echo 'export GITHUB_TOKEN=ghp_your_token_here' >> ~/.zshrc
+
+# Option 3: In MCP configuration (see examples above)
+```
+
+**For Production/CI:**
+- Use GitHub repository secrets (see [GitHub Secrets Setup Guide](docs/GITHUB_SECRETS_SETUP.md))
+- Use environment-specific secret management
+- Never commit tokens to source control
+
+## Available Tools
+
+The MCP server provides the following tools:
+
+### `search_documentation`
+Search Strands SDK documentation using semantic search.
+
+**Parameters:**
+- `query` (string): Search query
+- `limit` (integer, optional): Maximum results (default: 10, max: 50)
+- `min_score` (number, optional): Minimum relevance score (default: 0.3)
+
+**Example:**
+```json
+{
+  "name": "search_documentation",
+  "arguments": {
+    "query": "how to create a multi-agent workflow",
+    "limit": 5,
+    "min_score": 0.5
+  }
+}
+```
+
+### `list_documentation`
+Browse available documentation sections and documents.
+
+**Parameters:**
+- `section_filter` (string, optional): Filter by section name
+- `limit` (integer, optional): Maximum results (default: 20, max: 100)
+
+**Example:**
+```json
+{
+  "name": "list_documentation",
+  "arguments": {
+    "section_filter": "multi-agent",
+    "limit": 10
+  }
+}
+```
+
+### Health Check Tools
+
+- `health_check`: Check server health status
+- `readiness_check`: Check if server is ready to serve requests
+- `liveness_check`: Check if server is alive and responsive
+
+## Development
+
+### Prerequisites
+
+- Python 3.11 or higher
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip
+- Git
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/strands-agents/strands-mcp-server.git
+cd strands-mcp-server
+
+# Install dependencies with uv
+uv sync
+
+# Or with pip
+pip install -e ".[dev]"
+
+# Set up pre-commit hooks (optional)
+pre-commit install
+```
+
+### Setting Up GitHub Token
+
+For development, you'll need a GitHub token to avoid rate limits:
+
+```bash
+# Use the setup utility (recommended)
+uv run strands-setup-token
+
+# Or set manually
+export GITHUB_TOKEN=your_token_here
+```
+
+### Building Documentation Cache
+
+The server includes a bundled documentation cache, but you can rebuild it:
+
+```bash
+# Build with GitHub token (recommended)
+GITHUB_TOKEN=your_token python scripts/build_bundled_cache.py --force
+
+# Build without token (rate limited)
+python scripts/build_bundled_cache.py --force
+
+# Verbose output
+python scripts/build_bundled_cache.py --force --verbose
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov=strands_mcp --cov-report=html
+
+# Run specific test categories
+uv run pytest tests/unit/          # Unit tests only
+uv run pytest tests/integration/   # Integration tests only
+```
+
+### Code Quality
+
+```bash
+# Format code
+uv run black src/ tests/
+
+# Lint code
+uv run ruff check src/ tests/
+
+# Type checking
+uv run mypy src/
+```
+
+## CI/CD and GitHub Token Access
+
+### Repository Secrets
+
+For automated builds and deployments, configure these GitHub repository secrets:
+
+1. Go to your repository Settings > Secrets and variables > Actions
+2. Add the following secrets:
+
+| Secret Name | Description | Value |
+|-------------|-------------|-------|
+| `GITHUB_TOKEN` | GitHub token for documentation access | `ghp_your_token_here` |
+| `PYPI_API_TOKEN` | PyPI token for package publishing | `pypi-your_token_here` |
+
+### GitHub Actions Workflows
+
+The repository includes automated workflows:
+
+#### Build and Test (`ci.yml`)
+- Runs on every push and pull request
+- Tests across multiple Python versions
+- Builds documentation cache
+- Runs code quality checks
+
+#### Publish to PyPI (`publish.yml`)
+- Runs on new releases
+- Builds and publishes package to PyPI
+- Uses trusted publishing (no manual tokens needed)
+
+#### Update Documentation Cache (`update-cache.yml`)
+- Runs daily to update bundled documentation
+- Creates pull requests with updated cache
+- Ensures documentation stays current
+
+### Manual Workflow Triggers
+
+You can manually trigger workflows:
+
+```bash
+# Trigger cache update
+gh workflow run update-cache.yml
+
+# Trigger build and test
+gh workflow run ci.yml
+
+# Trigger publish (requires release)
+gh workflow run publish.yml
+```
+
+## Architecture
+
+### Cache Hierarchy
+
+The server uses a multi-level cache system:
+
+1. **Bundled Cache**: Pre-built cache included in the package
+2. **User Cache**: Local cache updated in the background
+3. **Memory Cache**: In-memory cache for frequently accessed data
+
+### Documentation Sources
+
+- **Primary**: [Strands Agent SDK Documentation](https://github.com/strands-agents/docs)
+- **Fallback**: Bundled cache included with the package
+- **Updates**: Automatic background updates from GitHub
+
+## Troubleshooting
+
+### Common Issues
+
+#### "No documentation found" or empty search results
+- Check if GitHub token is configured correctly
+- Verify internet connectivity
+- Try rebuilding the cache: `python scripts/build_bundled_cache.py --force`
+
+#### Rate limit errors
+- Add a GitHub token to your configuration
+- Check token permissions (needs `public_repo` scope)
+- Wait for rate limit to reset (usually 1 hour)
+
+#### MCP connection issues
+- Verify MCP client configuration
+- Check server logs for error messages
+- Ensure Python path is correct in MCP config
+
+#### Import or module errors
+- Reinstall the package: `pip install --force-reinstall strands-mcp-server`
+- Check Python version compatibility (3.11+ required)
+- Verify virtual environment activation
+
+### Debug Mode
+
+Enable debug logging for troubleshooting:
+
+```bash
+# Environment variable
+export LOG_LEVEL=DEBUG
+
+# Or in MCP configuration
+{
+  "env": {
+    "LOG_LEVEL": "DEBUG"
+  }
+}
+```
+
+### Getting Help
+
+- **Issues**: [GitHub Issues](https://github.com/strands-agents/strands-mcp-server/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/strands-agents/strands-mcp-server/discussions)
+- **Documentation**: [Strands Agent SDK Docs](https://github.com/strands-agents/docs)
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### Development Workflow
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes
+4. Add tests for new functionality
+5. Run tests and ensure they pass
+6. Commit your changes: `git commit -m 'Add amazing feature'`
+7. Push to your branch: `git push origin feature/amazing-feature`
+8. Open a Pull Request
+
+### Code Standards
+
+- Follow PEP 8 style guidelines
+- Add type hints for all functions
+- Write docstrings for public APIs
+- Include tests for new features
+- Update documentation as needed
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a detailed history of changes.
+
+---
+
+**Built with ❤️ for the Strands Agent SDK community**
