@@ -1,0 +1,3 @@
+
+class DropItem(Exception):
+    pass
