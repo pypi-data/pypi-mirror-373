@@ -1,0 +1,127 @@
+.. _spkg_mpc:
+
+mpc: Arithmetic of complex numbers with arbitrarily high precision and correct rounding
+=======================================================================================
+
+Description
+-----------
+
+From https://www.multiprecision.org/mpc: GNU MPC is a C library for the
+arithmetic of complex numbers with arbitrarily high precision and
+correct rounding of the result. It extends the principles of the
+IEEE-754 standard for fixed precision real floating point numbers to
+complex numbers, providing well-defined semantics for every operation.
+At the same time, speed of operation at high precision is a major design
+goal.
+
+License
+-------
+
+LGPLv3+ for the code and GFDLv1.3+ (with no invariant sections) for the
+documentation.
+
+
+Upstream Contact
+----------------
+
+The MPC website is located at https://www.multiprecision.org/mpc .
+
+The MPC team can be contacted via the MPC mailing list: mpc-discuss@inria.fr
+
+Special Update/Build Instructions
+---------------------------------
+
+-  mpc_mul_faster.patch: Patch from Paul Zimmermann to speed up MPC
+   multiplication (for small precisions) by reducing overhead in MPFR
+   operations.
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(MP_LIBRARY)
+- :ref:`spkg_mpfr`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    1.3.1
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Alpine:
+
+   .. CODE-BLOCK:: bash
+
+       $ apk add mpc1 mpc1-dev
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install mpc
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install libmpc-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install libmpc libmpc-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/mpc
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-libs/mpc
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install libmpc
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr libmpc
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install mpc-devel
+
+.. tab:: pyodide:
+
+   install the following packages: libmpc
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install libmpc-devel
+
+# See https://repology.org/project/gnumpc/versions, https://repology.org/project/libmpc/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

@@ -1,0 +1,91 @@
+.. _spkg_perl_cpan_polymake_prereq:
+
+perl_cpan_polymake_prereq: Represents all Perl packages that are prerequisites for polymake
+===========================================================================================
+
+Description
+-----------
+
+This script package represents all Perl packages that are prerequisites
+for polymake.
+
+License
+-------
+
+Various free software licenses
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Alpine:
+
+   .. CODE-BLOCK:: bash
+
+       $ apk add perl-term-readkey perl-dev perl-file-slurp perl-json \
+             perl-xml-writer perl-xml-libxslt
+
+.. tab:: cpan:
+
+   .. CODE-BLOCK:: bash
+
+       $ cpan -i XML::Writer XML::LibXML XML::LibXSLT File::Slurp JSON SVG \
+             Term::ReadKey
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install libxml-libxslt-perl libxml-writer-perl \
+             libxml2-dev libperl-dev libfile-slurp-perl libjson-perl \
+             libsvg-perl libterm-readkey-perl libterm-readline-gnu-perl
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install perl-ExtUtils-Embed perl-File-Slurp perl-JSON \
+             perl-Term-ReadLine-Gnu perl-TermReadKey perl-XML-Writer \
+             perl-XML-LibXML perl-XML-LibXSLT perl-SVG
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install textproc/p5-XML-Writer textproc/p5-XML-LibXML \
+             textproc/p5-XML-LibXSLT devel/p5-File-Slurp converters/p5-JSON \
+             textproc/p5-SVG devel/p5-Term-ReadKey
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge XML-Writer XML-LibXML XML-LibXSLT File-Slurp \
+             dev-perl/Term-ReadLine-Gnu dev-perl/TermReadKey JSON SVG
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install perl-File-Slurp perl-JSON perl-SVG \
+             perl-Term-ReadKey perl-XML-LibXML perl-XML-LibXSLT \
+             perl-XML-Writer
+
+
+If the system package is installed, ``./configure`` will check if it can be used.

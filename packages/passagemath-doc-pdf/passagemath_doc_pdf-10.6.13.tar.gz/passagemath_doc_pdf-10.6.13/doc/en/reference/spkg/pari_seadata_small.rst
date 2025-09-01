@@ -1,0 +1,74 @@
+.. _spkg_pari_seadata_small:
+
+pari_seadata_small: PARI data package needed by ellap for large primes (small version)
+======================================================================================
+
+Description
+-----------
+
+PARI package "seadata_small": Needed by ellap for large primes. This
+"small" one is a much smaller version that should be suitable for primes
+up to 350 bits. These polynomials were extracted from the ECHIDNA
+databases and computed by David R. Kohel.
+
+License
+-------
+
+GPL version 2+
+
+
+Upstream Contact
+----------------
+
+http://pari.math.u-bordeaux.fr/
+
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    20090618.p0
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S pari-seadata
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install pari-seadata-small
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/pari_seadata
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install pari-seadata
+
+# See https://repology.org/project/pari-seadata-small/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

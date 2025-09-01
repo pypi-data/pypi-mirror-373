@@ -1,0 +1,155 @@
+.. _spkg_qhull:
+
+qhull: Compute convex hulls, Delaunay triangulations, Voronoi diagrams
+======================================================================
+
+Description
+-----------
+
+From the README.txt of Qhull:
+
+Qhull computes convex hulls, Delaunay triangulations, Voronoi diagrams,
+furthest-site Voronoi diagrams, and halfspace intersections about a
+point. It runs in 2-d, 3-d, 4-d, or higher. It implements the Quickhull
+algorithm for computing convex hulls. Qhull handles round-off errors
+from floating point arithmetic. It can approximate a convex hull.
+
+The program includes options for hull volume, facet area, partial hulls,
+input transformations, randomization, tracing, multiple output formats,
+and execution statistics.
+
+Further notes:
+
+The qhull library is already shipped with the Python library scipy (from
+version 1.4), see
+
+-  http://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.ConvexHull.html
+-  http://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.Delaunay.html
+-  http://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.Voronoi.html
+
+There is also the Python interface Pyhull available on PyPI
+https://pypi.python.org/pypi/pyhull (see also documentation at
+http://pythonhosted.org/pyhull/).
+
+
+Upstream Contact
+----------------
+
+http://www.qhull.org/html
+
+C. Bradford Barber bradb@shore.net or qhull@qhull.org
+
+Dependencies
+------------
+
+Can be compiled with Qt support, but the Sage version currently doesn't
+try to do this.
+
+License
+-------
+
+Not a standard license, but Sage compatible. See the COPYING.txt file in
+the source directory for details.
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- :ref:`spkg_cmake`
+- :ref:`spkg_ninja_build`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    2020-src-8.0.2
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Alpine:
+
+   .. CODE-BLOCK:: bash
+
+       $ apk add qhull-dev qhull
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S qhull
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install qhull
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install qhull-bin libqhull-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install qhull qhull-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/qhull
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge media-libs/qhull
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install qhull
+
+.. tab:: MacPorts:
+
+   No package needed.
+
+.. tab:: mingw-w64:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S \$\{MINGW_PACKAGE_PREFIX\}-qhull
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr qhull
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install qhull-devel
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install qhull libqhull-devel
+
+# See https://repology.org/project/qhull/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

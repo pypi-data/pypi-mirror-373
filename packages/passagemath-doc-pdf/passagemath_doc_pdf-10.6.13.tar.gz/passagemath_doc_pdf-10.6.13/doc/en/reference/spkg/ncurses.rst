@@ -1,0 +1,137 @@
+.. _spkg_ncurses:
+
+ncurses: Classic terminal output library
+========================================
+
+Description
+-----------
+
+Ncurses (new curses, pronounced "enn-curses") started as a freely
+distributable "clone" of System V Release 4.0 (SVr4) curses. It has
+outgrown the "clone" description, and now contains many features which
+are not in SVr4 curses. Curses is a pun on the term "cursor
+optimization". It is a library of functions that manage an application's
+display on character-cell terminals (e.g., VT100).
+
+The name "ncurses" was first used as the name of the curses library in
+Pavel Curtis's pcurses, dated 1982. It was apparently developed on a BSD
+4.4 system, at Cornell. Parts of pcurses are readily identifiable in
+ncurses, including the basics for the terminfo compiler (named compile
+in that package):
+
+-  the Caps, used to define the terminfo capabilities
+-  awk scripts MKcaptab.awk, MKnames.awk
+-  the library modules used for the terminfo compiler.
+
+Besides ncurses, parts of pcurses still survive in 2010, in recognizable
+form in Solaris.
+
+Website: http://invisible-island.net/ncurses
+
+License
+-------
+
+-  MIT-style
+
+
+Upstream Contact
+----------------
+
+-  bug-ncurses@gnu.org
+
+Special Update/Build Instructions
+---------------------------------
+
+None
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    6.3
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Alpine:
+
+   .. CODE-BLOCK:: bash
+
+       $ apk add ncurses-dev
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install ncurses
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install libncurses5-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install ncurses-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install devel/ncurses
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install ncurses
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install ncurses
+
+.. tab:: mingw-w64:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S \$\{MINGW_PACKAGE_PREFIX\}-ncurses
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install pkgconfig\(ncurses\) pkgconfig\(ncursesw\)
+
+.. tab:: Slackware:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo slackpkg install ncurses
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install ncurses-devel
+
+# See https://repology.org/project/ncurses/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

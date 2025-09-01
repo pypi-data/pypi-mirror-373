@@ -1,0 +1,146 @@
+.. _spkg_ipython:
+
+ipython: Interactive computing environment with an enhanced interactive Python shell
+====================================================================================
+
+Description
+-----------
+
+Interactive computing environment with an enhanced interactive Python shell
+
+From the IPython website:
+
+IPython is a multiplatform, Free Software project (BSD licensed) that
+offers:
+
+-  An enhanced Python shell designed for efficient interactive
+   work. It includes many enhancements over the default Python shell,
+   including the ability for controlling interactively all major GUI
+   toolkits in a non-blocking manner.
+
+-  A library to build customized interactive environments using Python
+   as the basic language (but with the possibility of having extended
+   or alternate syntaxes).
+
+-  A system for interactive distributed and parallel computing (this is
+   part of IPython's new development).
+
+License
+-------
+
+BSD
+
+
+Upstream Contact
+----------------
+
+http://ipython.org
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+- :ref:`spkg_decorator`
+- :ref:`spkg_exceptiongroup`
+- :ref:`spkg_jedi`
+- :ref:`spkg_matplotlib_inline`
+- :ref:`spkg_pexpect`
+- :ref:`spkg_pickleshare`
+- :ref:`spkg_prompt_toolkit`
+- :ref:`spkg_pygments`
+- :ref:`spkg_pyzmq`
+- :ref:`spkg_stack_data`
+- :ref:`spkg_tornado`
+- :ref:`spkg_traitlets`
+- :ref:`spkg_wcwidth`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    8.37.0
+
+src/pyproject.toml::
+
+    ipython >=7.13.0
+
+version_requirements.txt::
+
+    ipython
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S ipython
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install ipython
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install python3-ipython
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python3-ipython
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install devel/ipython
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-python/ipython
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install ipython
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install py-ipython
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install python3\$\{PYTHON_MINOR\}-ipython
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install python3-ipython
+
+# See https://repology.org/project/ipython/versions
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

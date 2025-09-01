@@ -1,0 +1,103 @@
+.. _spkg_primesieve:
+
+primesieve: CLI program and C/C++ library for generating primes 
+===============================================================
+
+Description
+-----------
+
+A CLI program and C/C++ library for quickly generating prime numbers.
+https://github.com/kimwalisch/primesieve
+
+A dependency of the standard spkg primecount.
+
+License
+-------
+
+BSD-2-clause
+
+Upstream Contact
+----------------
+
+- https://github.com/kimwalisch/primesieve
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- :ref:`spkg_cmake`
+- :ref:`spkg_ninja_build`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    12.9
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Alpine:
+
+   .. CODE-BLOCK:: bash
+
+       $ apk add primesieve-dev primesieve
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S primesieve
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install primesieve
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install libprimesieve-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install primesieve-devel primesieve
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge sci-mathematics/primesieve
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install primesieve
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install primesieve
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install primesieve-devel
+
+# See https://repology.org/project/primesieve/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

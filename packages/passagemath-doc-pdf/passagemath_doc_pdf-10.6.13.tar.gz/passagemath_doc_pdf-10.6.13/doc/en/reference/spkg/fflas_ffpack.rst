@@ -1,0 +1,107 @@
+.. _spkg_fflas_ffpack:
+
+fflas_ffpack: Dense linear algebra over word-size finite fields
+===============================================================
+
+Description
+-----------
+
+FFLAS-FFPACK is a LGPL-2.1+ source code library for dense linear algebra
+over word-size finite fields.
+
+http://linbox-team.github.io/fflas-ffpack/
+
+License
+-------
+
+LGPL V2.1 or later
+
+
+Upstream Contact
+----------------
+
+-  <ffpack-devel@googlegroups.com>
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(BLAS)
+- $(MP_LIBRARY)
+- :ref:`spkg_givaro`
+- :ref:`spkg_gsl`
+- :ref:`spkg_pkgconf`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    2.5.0+sage-2024-05-18b
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S fflas-ffpack
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install fflas-ffpack
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install fflas-ffpack
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install fflas-ffpack-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/fflas-ffpack
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge sci-libs/fflas-ffpack
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr fflas-ffpack
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install pkgconfig\(fflas-ffpack\)
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install fflas-ffpack
+
+# See https://repology.org/project/fflas-ffpack/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

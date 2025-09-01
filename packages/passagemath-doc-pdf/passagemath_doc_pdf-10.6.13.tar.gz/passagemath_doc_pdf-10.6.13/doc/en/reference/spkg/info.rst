@@ -1,0 +1,105 @@
+.. _spkg_info:
+
+info: stand-alone Info documentation reader
+===========================================
+
+Description
+-----------
+
+GNU Info is the stand-alone "info" reader that is part of the GNU
+Texinfo suite of tools. Several packages (Maxima, Singular, ...)
+install documentation in "info" format, which can be read either
+with Emacs, the stand-alone "info" reader, and some other software.
+In particular, the interactive help system of ``singular_console()``
+uses the ``info`` program in environments in which a web browser is
+not available; if ``info`` is not installed, it falls back to a
+basic pager with limited capabilities.
+
+Website: https://www.gnu.org/software/texinfo/manual/info-stnd/info-stnd.html
+
+
+License
+-------
+
+GPL-3+ (``info/*.c`` comments in the source repository)
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- :ref:`spkg_ncurses`
+- :ref:`spkg_xz`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    7.2
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install texinfo
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install texinfo
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install texinfo info
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge sys-apps/texinfo
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install texinfo
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install texinfo
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr texinfo
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install texinfo
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install texinfo
+
+# See https://repology.org/project/texinfo/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

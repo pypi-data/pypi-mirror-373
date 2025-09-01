@@ -1,0 +1,75 @@
+.. _spkg_hatchling:
+
+hatchling: Modern, extensible Python build backend
+==================================================
+
+Description
+-----------
+
+Modern, extensible Python build backend
+
+License
+-------
+
+MIT
+
+Upstream Contact
+----------------
+
+https://pypi.org/project/hatchling/
+
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- :ref:`spkg_editables`
+- :ref:`spkg_packaging`
+- :ref:`spkg_pathspec`
+- :ref:`spkg_pip`
+- :ref:`spkg_pluggy`
+- :ref:`spkg_tomli`
+- :ref:`spkg_trove_classifiers`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    1.25.0
+
+version_requirements.txt::
+
+    hatchling
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install hatchling
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python3-hatchling
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-python/hatchling
+
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

@@ -1,0 +1,46 @@
+.. _spkg_database_stein_watkins_mini:
+
+database_stein_watkins_mini: Database of elliptic curves (small version)
+========================================================================
+
+Description
+-----------
+
+The Stein-Watkins database of elliptic curves (small version)
+
+See http://modular.math.washington.edu/papers/stein-watkins/
+
+This is an optional package, not included by default.
+
+License
+-------
+
+Public Domain
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    20070827
+
+Equivalent System Packages
+--------------------------
+
+# See https://repology.org/project/database-stein-watkins-mini/versions
+
+However, these system packages will not be used for building Sage
+because ``spkg-configure.m4`` has not been written for this package;
+see :issue:`27330` for more information.

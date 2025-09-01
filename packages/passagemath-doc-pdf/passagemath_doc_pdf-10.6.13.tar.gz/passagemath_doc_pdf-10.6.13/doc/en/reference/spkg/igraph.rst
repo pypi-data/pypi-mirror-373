@@ -1,0 +1,121 @@
+.. _spkg_igraph:
+
+igraph: A library for creating and manipulating graphs
+======================================================
+
+Description
+-----------
+
+igraph is a library for creating and manipulating graphs. It is intended
+to be as powerful (ie. fast) as possible to enable the analysis of large
+graphs.
+
+License
+-------
+
+GPL version 2
+
+
+Upstream Contact
+----------------
+
+http://igraph.org/c/
+
+Dependencies
+------------
+
+igraph can optionally use libxml2 for providing a GraphML importer.
+
+
+Special Update/Build Instructions
+---------------------------------
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- $(BLAS)
+- $(MP_LIBRARY)
+- :ref:`spkg_cmake`
+- :ref:`spkg_glpk`
+- :ref:`spkg_ninja_build`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    0.10.15
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S igraph
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install igraph
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install libigraph-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install igraph igraph-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/igraph
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-libs/igraph
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install igraph
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install igraph
+
+.. tab:: mingw-w64:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S \$\{MINGW_PACKAGE_PREFIX\}-igraph
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install igraph-devel
+
+# See https://repology.org/project/igraph/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

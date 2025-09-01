@@ -1,0 +1,88 @@
+.. _spkg__sagemath:
+
+_sagemath: Downstream package of Sage in distributions
+======================================================
+
+SageMath is available from various distributions and can be installed
+by package managers.
+
+This dummy package records the names of the system packages that
+should be installed to provide a standard installation of SageMath,
+including documentation and Jupyter.
+
+
+Downstream Contact
+------------------
+
+See `wiki page Distribution <https://github.com/sagemath/sage/wiki/Distribution>`_
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S sagemath sagemath-doc
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install sage
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install sagemath sagemath-doc sagemath-jupyter
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install sagemath
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/sage
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install sage
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr sage
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install sagemath
+
+# See https://repology.org/project/sagemath/versions
+

@@ -1,0 +1,99 @@
+.. _spkg_jupyterlab:
+
+jupyterlab: JupyterLab computational environment
+================================================
+
+Description
+-----------
+
+JupyterLab computational environment
+
+License
+-------
+
+Copyright (c) 2015-2022 Project Jupyter Contributors All rights reserved.  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Semver File License:  The semver.py file is from https://github.com/podhmo/python-semver which is licensed under the "MIT" license.  See the semver.py file for details.
+
+Upstream Contact
+----------------
+
+https://pypi.org/project/jupyterlab/
+
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+- :ref:`spkg_async_lru`
+- :ref:`spkg_httpx`
+- :ref:`spkg_importlib_metadata`
+- :ref:`spkg_ipykernel`
+- :ref:`spkg_jinja2`
+- :ref:`spkg_jupyter_core`
+- :ref:`spkg_jupyter_lsp`
+- :ref:`spkg_jupyter_server`
+- :ref:`spkg_jupyterlab_server`
+- :ref:`spkg_notebook_shim`
+- :ref:`spkg_packaging`
+- :ref:`spkg_pip`
+- :ref:`spkg_tomli`
+- :ref:`spkg_tornado`
+- :ref:`spkg_traitlets`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    4.1.3
+
+version_requirements.txt::
+
+    jupyterlab
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install jupyterlab
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install jupyterlab
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install jupyterlab
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install py-jupyterlab
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install jupyterlab
+
+# See https://repology.org/project/jupyterlab/versions, https://repology.org/project/python:jupyterlab/versions
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

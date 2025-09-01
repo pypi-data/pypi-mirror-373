@@ -1,0 +1,86 @@
+.. _spkg_pari_seadata:
+
+pari_seadata: PARI data package needed by ellap for large primes (full version)
+===============================================================================
+
+Description
+-----------
+
+Needed by ellap for large primes. These polynomials were extracted from
+the ECHIDNA databases and computed by David R. Kohel. This covers finite
+fields of cardinality q up to 750 bits. PARI/GP 2.9 contains fallback
+code to go on when all modular polynomials in the database have been
+exhausted and can handle larger fields (with an important slowdown).
+
+License
+-------
+
+GNU General Public License (GPL version 2 or any later version).
+
+
+Upstream Contact
+----------------
+
+http://pari.math.u-bordeaux.fr/
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    20090618
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S pari-seadata
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install pari-seadata
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install pari-seadata
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/pari_seadata
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install pari-seadata
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install pari-seadata
+
+# See https://repology.org/project/pari-seadata/versions, https://repology.org/project/pari-seadata-big/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

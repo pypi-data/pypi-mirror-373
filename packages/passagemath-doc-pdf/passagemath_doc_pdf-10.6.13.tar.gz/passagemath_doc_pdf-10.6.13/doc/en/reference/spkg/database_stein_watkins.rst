@@ -1,0 +1,46 @@
+.. _spkg_database_stein_watkins:
+
+database_stein_watkins: Database of elliptic curves (full version)
+==================================================================
+
+Description
+-----------
+
+The Stein-Watkins database of elliptic curves (full version)
+
+See http://modular.math.washington.edu/papers/stein-watkins/
+
+This is an optional (huge) package, not included by default.
+
+License
+-------
+
+Public Domain
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    20110713
+
+Equivalent System Packages
+--------------------------
+
+# See https://repology.org/project/database-stein-watkins/versions
+
+However, these system packages will not be used for building Sage
+because ``spkg-configure.m4`` has not been written for this package;
+see :issue:`27330` for more information.

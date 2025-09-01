@@ -1,0 +1,115 @@
+.. _spkg__develop:
+
+\_develop: Represents system packages recommended for development
+=================================================================
+
+Description
+-----------
+
+Script package representing a list of system packages recommended for developers.
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- :ref:`spkg__bootstrap`
+- :ref:`spkg_git`
+- :ref:`spkg_github_cli`
+- :ref:`spkg_pytest`
+- :ref:`spkg_pytest_xdist`
+
+Version Information
+-------------------
+
+
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Alpine:
+
+   .. CODE-BLOCK:: bash
+
+       $ apk add gnupg-gpgconf openssh-client
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S gnupg openssh
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install openssh pycodestyle esbonio
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install gpgconf openssh-client
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install gnupg2 openssh
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install security/gnupg security/openssh-portable
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge app-crypt/gnupg net-misc/openssh
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install gnupg
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install gnupg2
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr gnupg openssh
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install gpg2 openssh
+
+.. tab:: Slackware:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo slackpkg install gnupg2 openssh
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install gnupg2 openssh
+
+# See https://repology.org/project/gnupg/versions, https://repology.org/project/openssh/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

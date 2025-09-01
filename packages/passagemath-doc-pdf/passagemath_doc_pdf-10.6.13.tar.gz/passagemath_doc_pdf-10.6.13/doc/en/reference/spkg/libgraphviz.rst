@@ -1,0 +1,118 @@
+.. _spkg_libgraphviz:
+
+libgraphviz: Graph visualization software (callable library)
+============================================================
+
+Description
+-----------
+
+Graphviz is open source graph visualization software. It has several main graph layout programs.
+They take descriptions of graphs in a simple text language, and make diagrams in several useful formats.
+
+This script package represents the callable library.
+
+License
+-------
+
+Eclipse Public License 1.0
+
+Upstream Contact
+----------------
+
+https://graphviz.org/about/
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Alpine:
+
+   .. CODE-BLOCK:: bash
+
+       $ apk add graphviz-dev
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S graphviz
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install graphviz
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install libgraphviz-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install graphviz graphviz-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install graphics/graphviz
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install graphviz
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install graphviz
+
+.. tab:: mingw-w64:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S \$\{MINGW_PACKAGE_PREFIX\}-graphviz
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr graphviz
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install graphviz
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install graphviz
+
+# See https://repology.org/project/graphviz/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

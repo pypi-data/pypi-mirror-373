@@ -1,0 +1,101 @@
+.. _spkg_normaliz:
+
+normaliz: Computations in affine monoids, vector configurations, lattice polytopes, and rational cones
+======================================================================================================
+
+Description
+-----------
+
+Normaliz is a tool for computations in affine monoids, vector
+configurations, lattice polytopes, and rational cones.
+
+For more details see http://www.mathematik.uni-osnabrueck.de/normaliz/
+
+License
+-------
+
+-  GPL v3
+
+
+Upstream Contact
+----------------
+
+-  normaliz@uos.de
+-  Winfried Bruns <wbruns@uos.de>
+-  Christof Söger <csoeger@uos.de>
+-  see also https://www.normaliz.uni-osnabrueck.de/home/contact/
+
+   and https://github.com/Normaliz
+
+Special Update/Build Instructions
+---------------------------------
+
+-  The spkg currently disables features that require packages SCIP and
+   CoCoA, for which we don't have packages (yet).
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- $(MP_LIBRARY)
+- :ref:`spkg_e_antic`
+- :ref:`spkg_flint`
+- :ref:`spkg_libnauty`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    3.10.5
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S normaliz
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install normaliz
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install libnormaliz-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install libnormaliz libnormaliz-devel
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge sci-mathematics/normaliz
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install normaliz-devel
+
+# See https://repology.org/project/normaliz/versions, https://repology.org/project/libnormaliz/versions
+
+However, these system packages will not be used for building Sage
+because ``spkg-configure.m4`` has not been written for this package;
+see :issue:`27330` for more information.

@@ -1,0 +1,49 @@
+.. _spkg_psutil:
+
+psutil: Cross-platform lib for process and system monitoring in Python.
+=======================================================================
+
+Description
+-----------
+
+Cross-platform lib for process and system monitoring in Python.
+
+License
+-------
+
+BSD-3-Clause
+
+Upstream Contact
+----------------
+
+https://pypi.org/project/psutil/
+
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    7.0.0
+
+version_requirements.txt::
+
+    psutil
+
+Equivalent System Packages
+--------------------------
+
+(none known)
