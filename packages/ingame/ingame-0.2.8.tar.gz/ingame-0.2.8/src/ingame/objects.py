@@ -1,0 +1,74 @@
+import tkinter as tk
+from typing import Optional, Any, override
+from .core import Screen
+
+class Object:
+    """
+    Base object class
+    """
+
+    def __init__(
+        self
+    ) -> None: ...
+
+    def destroy(
+        self
+    ) -> None: ...
+
+class Button(Object):
+    """
+    Creates a Button on the given Screen, packs it with optional args,
+    and provides a destroy() method for cleanup.
+    """
+
+    button_obj: tk.Button
+
+    def __init__(
+        self,
+        screen_obj: Screen,
+        /,
+        packargs: Optional[dict[Any, Optional[Any]]] = None,
+        **kwargs: Any
+    ) -> None:
+        if packargs is None:
+            packargs = {}
+
+        self.button_obj = tk.Button(screen_obj.root, **kwargs)
+        self.button_obj.pack(**{k: v for k, v in packargs.items() if v is not None})
+
+    @override
+    def destroy(
+        self
+    ) -> None:
+        """Destroy button"""
+
+        self.button_obj.destroy()
+
+class Text(Object):
+    """
+    Creates a Label on the given Screen, packs it with optional args,
+    and provides a destroy() method for cleanup.
+    """
+
+    text_obj: tk.Label
+
+    def __init__(
+        self,
+        screen_obj: Screen,
+        /,
+        packargs: Optional[dict[Any, Optional[Any]]] = None,
+        **kwargs: Any
+    ) -> None:
+        if packargs is None:
+            packargs = {}
+
+        self.text_obj = tk.Label(screen_obj.root, **kwargs)
+        self.text_obj.pack(**{k: v for k, v in packargs.items() if v is not None})
+
+    @override
+    def destroy(
+        self
+    ) -> None:
+        """Destroy text"""
+
+        self.text_obj.destroy()
