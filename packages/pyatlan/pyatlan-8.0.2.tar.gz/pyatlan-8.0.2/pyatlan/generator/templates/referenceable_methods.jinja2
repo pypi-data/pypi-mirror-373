@@ -1,0 +1,158 @@
+
+    def __init__(__pydantic_self__, **data: Any) -> None:
+        super().__init__(**data)
+        __pydantic_self__.__fields_set__.update(["attributes", "type_name"])
+
+    @root_validator(pre=True)
+    def parse_custom_attributes(cls, values):
+        if "attributes" in values:
+            attributes = values["attributes"]
+            if "__customAttributes" in attributes:
+                # Pop the __customAttributes from attributes
+                custom_attributes = attributes.pop("__customAttributes")
+                try:
+                    # Try to parse the JSON string if it's a string
+                    if isinstance(custom_attributes, str):
+                        custom_attributes = loads(custom_attributes)
+                    # Add the parsed custom attributes to the Column
+                    values["custom_attributes"] = custom_attributes
+                except JSONDecodeError:
+                    pass
+        return values
+
+    def json(self, *args, **kwargs) -> str:
+        client = kwargs.get("client")
+        if (
+            not self._metadata_proxy
+            and client
+            and not hasattr(client, "_async_session")
+        ):
+            # Only handle synchronous clients in the json() method
+            self._metadata_proxy = CustomMetadataProxy(
+                client=client,  # type: ignore[arg-type]
+                business_attributes=self.business_attributes,
+            )
+            self.business_attributes = self._metadata_proxy.business_attributes
+        return super().json(**kwargs)
+
+    async def json_async(self, *args, **kwargs) -> str:
+        """
+        Async version of json() method for use with AsyncAtlanClient.
+        This properly handles async metadata proxy and sets business_attributes.
+        """
+        from pyatlan.model.aio.custom_metadata import AsyncCustomMetadataProxy
+
+        client = kwargs.get("client")
+        if (
+            not self._async_metadata_proxy
+            and client
+            and hasattr(client, "_async_session")
+        ):
+            # Only handle asynchronous clients in the json_async() method
+            self._async_metadata_proxy = AsyncCustomMetadataProxy(
+                client=client,  # type: ignore[arg-type]
+                business_attributes=self.business_attributes,
+            )
+            # Get the business attributes asynchronously and set them
+            business_attrs = await self._async_metadata_proxy.business_attributes()
+            self.business_attributes = business_attrs
+        return super().json(**kwargs)
+
+    def validate_required(self):
+        if not self.create_time or self.created_by:
+            self.attributes.validate_required()
+
+    def get_custom_metadata(self, client: AtlanClient, name: str) -> CustomMetadataDict:
+        if not self._metadata_proxy:
+            self._metadata_proxy = CustomMetadataProxy(
+                business_attributes=self.business_attributes, client=client
+            )
+        return self._metadata_proxy.get_custom_metadata(name=name)
+
+    def set_custom_metadata(
+        self, client: AtlanClient, custom_metadata: CustomMetadataDict
+    ):
+        if not self._metadata_proxy:
+            self._metadata_proxy = CustomMetadataProxy(
+                business_attributes=self.business_attributes, client=client
+            )
+        return self._metadata_proxy.set_custom_metadata(custom_metadata=custom_metadata)
+
+    def flush_custom_metadata(self, client: AtlanClient):
+        if not self._metadata_proxy:
+            self._metadata_proxy = CustomMetadataProxy(
+                business_attributes=self.business_attributes, client=client
+            )
+        self.business_attributes = self._metadata_proxy.business_attributes
+
+
+    async def get_custom_metadata_async(self, client: AsyncAtlanClient, name: str):
+        """
+        Async version of get_custom_metadata.
+
+        :param client: async Atlan client to use for the request
+        :param name: human-readable name of the custom metadata set to retrieve
+        :returns: the requested custom metadata set, or an empty one if none exists
+        """
+        from pyatlan.model.aio.custom_metadata import AsyncCustomMetadataProxy
+
+        if not self._async_metadata_proxy:
+            self._async_metadata_proxy = AsyncCustomMetadataProxy(
+                business_attributes=self.business_attributes, client=client
+            )
+        return await self._async_metadata_proxy.get_custom_metadata(name=name)
+
+    async def set_custom_metadata_async(
+        self, client: AsyncAtlanClient, custom_metadata
+    ):
+        """
+        Async version of set_custom_metadata.
+
+        :param client: async Atlan client to use for the request
+        :param custom_metadata: the custom metadata to set on this asset
+        """
+        from pyatlan.model.aio.custom_metadata import AsyncCustomMetadataProxy
+
+        if not self._async_metadata_proxy:
+            self._async_metadata_proxy = AsyncCustomMetadataProxy(
+                business_attributes=self.business_attributes, client=client
+            )
+        return await self._async_metadata_proxy.set_custom_metadata(
+            custom_metadata=custom_metadata
+        )
+
+    async def flush_custom_metadata_async(self, client: AsyncAtlanClient):
+        """
+        Async version of flush_custom_metadata.
+
+        :param client: async Atlan client to use for the request
+        """
+        from pyatlan.model.aio.custom_metadata import AsyncCustomMetadataProxy
+
+        if not self._async_metadata_proxy:
+            self._async_metadata_proxy = AsyncCustomMetadataProxy(
+                business_attributes=self.business_attributes, client=client
+            )
+        self.business_attributes = (
+            await self._async_metadata_proxy.business_attributes()
+        )
+
+    @classmethod
+    def __get_validators__(cls):
+        yield cls._convert_to_real_type_
+
+    @classmethod
+    def _convert_to_real_type_(cls, data):
+        return Asset._convert_to_real_type_(data)
+
+    @classmethod
+    def can_be_archived(self) -> bool:
+        """
+        Indicates if an asset can be archived via the asset.delete_by_guid method.
+        :returns: True if archiving is supported
+        """
+        return True
+
+    @property
+    def atlan_tag_names(self) -> List[str]:
+        return self.classification_names or []
