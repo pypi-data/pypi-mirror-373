@@ -1,0 +1,30 @@
+apiVersion: local.storage.openshift.io/v1
+kind: LocalVolume
+metadata:
+  name: {{ localstorage_name }}
+  namespace: {{ namespace }}
+spec:
+  nodeSelector:
+    nodeSelectorTerms:
+    - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+{% if localstorage_nodes %}
+{% set nodes = localstorage_nodes %}
+{% elif odf_nodes is defined %}
+{% set nodes = odf_nodes %}
+{% else %}
+{% set nodes = 99|defaultnodes(cluster, domain, ctlplanes,workers) %}
+{% endif %}
+{% for node in nodes %}
+          - {{ node }}
+{% endfor %}
+  storageClassDevices:
+    - storageClassName: {{ localstorage_storageclass }}
+      volumeMode: {{ localstorage_volumemode | capitalize }}
+      fsType: {{ localstorage_fstype }}
+      devicePaths:
+{% for disk in localstorage_disks %}
+      - /dev/{{ disk | replace('/dev/', '') }}
+{% endfor %}

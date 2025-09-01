@@ -1,0 +1,61 @@
+{% for num in range(0, workers|int) %}
+{% if worker_network != None %}
+{% set default_network = worker_network %}
+{% else %}
+{% set default_network = network %}
+{% endif %}
+{% if extra_worker_networks %}
+{% set extra_networks = extra_worker_networks %}
+{% endif %}
+{% if extra_worker_disks %}
+{% set extra_disks = extra_worker_disks %}
+{% endif %}
+{% if flavor_worker != None %}
+{% set flavor = flavor_worker %}
+{% endif %}
+
+{{ cluster }}-worker-{{ num }}:
+ domain: {{ domain }} 
+ image: {{ image }}
+ pool: {{ pool or config_pool }}
+ keys: {{ keys }}
+ flavor: {{ flavor }}
+ enableroot: false 
+ notify: false
+ numcpus: {{ worker_numcpus | default(numcpus, numcpus) }}
+ memory: {{ worker_memory | default(memory, memory) }}
+ autostart: {{ autostart }}
+{% if kvm_forcestack %}
+ cmdline: {{ 'ip=dhcp6' if ':' in api_ip else 'ip=dhcp' }}
+{% endif %}
+{% if kubevirt_api_service %}
+ reservedns: true
+{% endif %}
+ nets: {{ [network] + extra_networks }}
+ disks: {{ [disk_size] + extra_disks }}
+{% if coredns or mdns or keepalived %}
+ files:
+{% endif %}
+{% if coredns %}
+ - path: /etc/NetworkManager/dispatcher.d/99-kcli-forcedns
+   origin: 99-kcli-forcedns
+   mode: 755
+ - path: /etc/kubernetes/manifests/coredns.yml
+   origin: staticpods/coredns.yml
+ - path: /etc/kubernetes/Corefile
+   origin: Corefile
+{% endif %}
+{% if mdns %}
+ - path: /etc/kubernetes/manifests/mdns.yml
+   origin: staticpods/mdns.yml
+ - path: /etc/kubernetes/config.hcl.templ
+   origin: config.hcl.templ
+{% endif %}
+{% if ipv6 %}
+ - path: /etc/NetworkManager/conf.d/kcli-ipv6.conf
+   origin: kcli-ipv6.conf.j2
+{% endif %}
+{% if files|default([]) %}
+ extra_files: {{ files }}
+{% endif %}
+{% endfor %}

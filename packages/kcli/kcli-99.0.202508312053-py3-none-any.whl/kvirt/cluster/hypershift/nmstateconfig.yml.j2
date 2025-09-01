@@ -1,0 +1,52 @@
+{% set dns_servers = dns if dns is defined else nets[0]['dns']|default([nets[0]['gateway']]) %}
+{% set vlan = nets[0]['vlan'] if 'vlan' in nets[0] else 0 %}
+apiVersion: agent-install.openshift.io/v1beta1
+kind: NMStateConfig
+metadata:
+ name: {{ name }}
+ labels:
+   cluster-name: {{ namespace }}-{{ cluster }}
+ spec:
+ config:
+    interfaces:
+    - macAddress: {{ mac }}
+      name: {{ nic|default('ens3') }}
+    networkConfig:
+      dns-resolver:
+        config:
+          server:
+{% for entry in dns_servers %}
+          - {{ entry }}
+{% endfor %}
+      interfaces:
+      - ethernet:
+          auto-negotiation: true
+          duplex: full
+          speed: 1000
+{% for int in nets %}
+  {{ '      ipv6' if '::' in int['ip'] else '      ipv4' }}:
+          address:
+          - ip: {{ int['ip'] }}
+            prefix-length: {{ int['netmask'] }}
+          enabled: true
+{% endfor %}
+        mac-address: {{ mac }}
+        mtu: 1500
+        name: {{ "%s.%d" % (nic|default('ens3'), vlan) if vlan != 0 else  nic|default('ens3') }}
+        state: up
+        type: {{ "vlan" if vlan != 0 else 'ethernet' }}
+{% if vlan != 0 %}
+        vlan:
+          base-iface: {{ nic|default('ens3') }}
+          id: {{ vlan }}
+{% endif %}
+      routes:
+        config:
+{% for int in nets %}
+        - destination: {{ '::/0' if '::' in int['ip'] else '0.0.0.0/0' }}
+          next-hop-address: {{ int['gateway']  }}
+          next-hop-interface: {{ "%s.%d" % (nic|default('ens3'), vlan) if vlan != 0 else  nic|default('ens3') }}
+{% if not '::' in int['ip'] %}
+          table-id: 254
+{% endif %}
+{% endfor %}
