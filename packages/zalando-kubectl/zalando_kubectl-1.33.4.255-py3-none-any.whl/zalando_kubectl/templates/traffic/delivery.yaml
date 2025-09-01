@@ -1,0 +1,32 @@
+version: "2017-09-20"
+dependencies:
+- id: image
+  type: docker
+  ref: container-registry-test.zalando.net/teapot/training-example
+  # If you want this pipeline to be triggered whenever the image gets updated,
+  # set this to true.
+  autostart_on_update: false
+
+pipeline:
+- id: deployment
+  desc: Deploy to $cluster_id
+  type: deploy
+  target: $cluster_id
+  sources:
+    - dir: deploy/apply
+      template_vars:
+        APPLICATION: example-traffic
+        IMAGE: container-registry-test.zalando.net/teapot/training-example:master-44
+        REPLICAS: "3"
+        # This environment variable is used in the example application for
+        # this template. You can remove it when adapting it for your
+        # project.
+        COLOR: "green"
+
+- id: traffic100
+  desc: Switch traffic
+  type: traffic
+  target: $cluster_id
+  stackset: example-traffic
+  stack_version: "#{CDP_BUILD_VERSION}"
+  target_percentage: 100
