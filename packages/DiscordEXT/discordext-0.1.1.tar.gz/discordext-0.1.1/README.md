@@ -1,0 +1,1 @@
+DiscordEXT is meant to be a helper to install DiscordEXT which is an addon for discord.
