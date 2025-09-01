@@ -1,0 +1,211 @@
+from abc import ABC, abstractmethod
+from typing import Annotated
+
+from func_validator import (
+    validate_func_args,
+    MustBeNonNegative,
+    MustBePositive,
+)
+
+from geolysis.foundation import Foundation
+from geolysis.utils import arctan, round_, tan
+
+
+class UltimateBearingCapacity(ABC):
+    def __init__(
+            self,
+            friction_angle: float,
+            cohesion: float,
+            moist_unit_wgt: float,
+            foundation_size: Foundation,
+            apply_local_shear: bool = False,
+    ) -> None:
+        r"""
+
+        $$
+        q_u = cN_c s_c d_c i_c + qN_q s_q d_q i_q
+              + 0.5 \gamma B N_{\gamma} s_{\gamma} d_{\gamma} i_{\gamma}
+        $$
+
+        - $q_u$ (kPa): Ultimate bearing capacity
+        - $c$ (kPa): Cohesion of soil
+        - $q$ (kPa): Overburden pressure of soil
+        - $\gamma$ (kN/m³): Unit weight of soil
+        - $B$ (m): Width of foundation footing
+        - $N_c$, $N_q$, $N_{\gamma}$: Bearing capacity factors
+        - $s_c$, $s_q$, $s_{\gamma}$: Shape factors
+        - $d_c$, $d_q$, $d_{\gamma}$: Depth factors
+        - $i_c$, $i_q$, $i_{\gamma}$: Inclination factors
+
+        :param friction_angle: Internal angle of friction for general
+                               shear failure (degrees).
+        :param cohesion: Cohesion of soil ($kPa$).
+        :param moist_unit_wgt: Moist unit weight of soil ($kN/m^3$).
+        :param foundation_size: Size of the foundation.
+        :param apply_local_shear: Indicate whether bearing capacity
+                                  failure is general shear or local
+                                  shear failure.
+        """
+        self.friction_angle = friction_angle
+        self.cohesion = cohesion
+        self.moist_unit_wgt = moist_unit_wgt
+        self.foundation_size = foundation_size
+        self.apply_local_shear = apply_local_shear
+
+    @property
+    def friction_angle(self) -> float:
+        r"""Return friction angle for local shear in the case of local shear
+        failure or general shear in the case of general shear failure.
+
+        In the case of local shear failure:
+
+        $$
+        \phi' = \tan^{-1} \left(\frac{2}{3} \tan \phi\right)
+        $$
+
+        """
+        if self.apply_local_shear:
+            return arctan((2.0 / 3.0) * tan(self._friction_angle))
+        return self._friction_angle
+
+    @friction_angle.setter
+    @validate_func_args
+    def friction_angle(self, val: Annotated[float, MustBeNonNegative]):
+        self._friction_angle = val
+
+    @property
+    def cohesion(self) -> float:
+        r"""Return cohesion for local shear in the case of local shear failure
+        or general shear in the case of general shear failure.
+
+        In the case of local shear failure:
+
+        $$
+        C^{'} = \dfrac{2}{3} \cdot C
+        $$
+        """
+        if self.apply_local_shear:
+            return (2.0 / 3.0) * self._cohesion
+        return self._cohesion
+
+    @cohesion.setter
+    @validate_func_args
+    def cohesion(self, val: Annotated[float, MustBeNonNegative]):
+        self._cohesion = val
+
+    @property
+    def moist_unit_wgt(self) -> float:
+        """Moist unit weight of soil ($kN/m^3$)."""
+        return self._moist_unit_wgt
+
+    @moist_unit_wgt.setter
+    @validate_func_args
+    def moist_unit_wgt(self, val: Annotated[float, MustBePositive]):
+        self._moist_unit_wgt = val
+
+    @property
+    def load_angle(self):
+        """Inclination of the applied load with the  vertical."""
+        return self.foundation_size.load_angle
+
+    @property
+    def s_c(self) -> float:
+        return 1.0
+
+    @property
+    def s_q(self) -> float:
+        return 1.0
+
+    @property
+    def s_gamma(self) -> float:
+        return 1.0
+
+    @property
+    def d_c(self) -> float:
+        return 1.0
+
+    @property
+    def d_q(self) -> float:
+        return 1.0
+
+    @property
+    def d_gamma(self) -> float:
+        return 1.0
+
+    @property
+    def i_c(self) -> float:
+        return 1.0
+
+    @property
+    def i_q(self) -> float:
+        return 1.0
+
+    @property
+    def i_gamma(self) -> float:
+        return 1.0
+
+    def _cohesion_term(self, coef: float = 1.0) -> float:
+        return coef * self.cohesion * self.n_c * self.s_c * self.d_c * self.i_c
+
+    def _surcharge_term(self) -> float:
+        depth = self.foundation_size.depth
+        water_level = self.foundation_size.ground_water_level
+
+        if water_level is None:
+            water_corr = 1.0  # water correction
+        else:
+            # water level above the base of the foundation
+            a = max(depth - water_level, 0.0)
+            water_corr = min(1 - 0.5 * a / depth, 1)
+
+        # effective overburden pressure (surcharge)
+        eop = self.moist_unit_wgt * depth
+        return eop * self.n_q * self.s_q * self.d_q * self.i_q * water_corr
+
+    def _embedment_term(self, coef: float = 0.5) -> float:
+        depth = self.foundation_size.depth
+        width = self.foundation_size.effective_width
+        water_level = self.foundation_size.ground_water_level
+
+        if water_level is None:
+            # water correction
+            water_corr = 1.0
+        else:
+            #: b -> water level below the base of the foundation
+            b = max(water_level - depth, 0)
+            water_corr = min(0.5 + 0.5 * b / width, 1)
+
+        return (
+                coef
+                * self.moist_unit_wgt
+                * width
+                * self.n_gamma
+                * self.s_gamma
+                * self.d_gamma
+                * self.i_gamma
+                * water_corr
+        )
+
+    @round_(ndigits=2)
+    def bearing_capacity(self) -> float:
+        """Calculates the ultimate bearing capacity."""
+        return (
+                self._cohesion_term(1.0)
+                + self._surcharge_term()
+                + self._embedment_term(0.5)
+        )
+
+    @property
+    @abstractmethod
+    def n_c(self) -> float:
+        ...
+
+    @property
+    @abstractmethod
+    def n_q(self) -> float:
+        ...
+
+    @property
+    @abstractmethod
+    def n_gamma(self) -> float:
+        ...
