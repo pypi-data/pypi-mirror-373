@@ -1,0 +1,78 @@
+"""Client example demonstrating how to call {{ toolkit_name }} tools via HTTP.
+
+This script uses the langchain-tool-client SDK to make calls to the math and text tools
+served by this toolkit. Run this after starting your toolkit server with:
+    langchain tools serve
+
+Usage:
+    python client_example.py [server_url]
+    
+    server_url: Optional URL of the toolkit server (default: http://localhost:8000)
+"""
+
+import asyncio
+import sys
+from typing import Optional
+
+from langchain_tool_client import get_client
+
+
+async def main():
+    """Demonstrate calling math and text tools via streamable HTTP."""
+    # Get server URL from command line or use default
+    server_url = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000"
+    
+    print(f"🚀 Connecting to {{ toolkit_name }} toolkit at {server_url}")
+    print("📡 Using HTTP protocol")
+    
+    # Create HTTP client (direct HTTP calls)
+    client = get_client(url=server_url, mcp=False)
+    
+    try:
+        # Check server health
+        health = await client.health()
+        print(f"✅ Server health: {health.get('status', 'unknown')}")
+        
+        # List available tools
+        print("\n🔧 Available tools:")
+        tools = await client.tools.list()
+        for tool in tools:
+            print(f"  • {tool['name']}: {tool['description']}")
+        
+        # Call math tools
+        print("\n➕ Testing math tools:")
+        
+        # Test add function
+        add_result = await client.tools.call("add", {"a": 15, "b": 27})
+        print(f"  add(15, 27) = {add_result['value']}")
+        
+        # Test subtract function  
+        sub_result = await client.tools.call("subtract", {"a": 100, "b": 23})
+        print(f"  subtract(100, 23) = {sub_result['value']}")
+        
+        # Call text tools
+        print("\n📝 Testing text tools:")
+        
+        # Test reverse function
+        reverse_result = await client.tools.call("reverse", {"text": "Hello {{ toolkit_name }}!"})
+        print(f"  reverse('Hello {{ toolkit_name }}!') = '{reverse_result['value']}'")
+        
+        # Test uppercase function
+        upper_result = await client.tools.call("uppercase", {"text": "hello world"})
+        print(f"  uppercase('hello world') = '{upper_result['value']}'")
+        
+        print("\n🎉 All tool calls completed successfully!")
+        
+    except ImportError as e:
+        print(f"❌ Missing dependency: {e}")
+        print("📦 Install langchain-tool-client with: pip install langchain-tool-client")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        print("💡 Make sure your toolkit server is running:")
+        print("   langchain tools serve")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
