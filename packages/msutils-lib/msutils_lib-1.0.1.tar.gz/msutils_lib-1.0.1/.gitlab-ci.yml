@@ -1,0 +1,52 @@
+stages:
+  - sync
+  - build
+  - test
+  - publish
+
+workflow:
+  rules:
+    - if: $CI_PROJECT_NAMESPACE == "platforme-ia"
+
+include:
+  - project: 'platforme-ia/templates'
+    ref: 'main'
+    file: '.gitlab-ci-template.yml'
+
+build_wheel:
+  extends: .reusable_python_build
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - python -c "import ms_utils"
+
+lint:
+  extends: .reusable_python_lint
+
+format:
+  extends: .reusable_python_format
+
+pytest:
+  extends: .reusable_pytest
+
+sync_to_remote:
+  extends: .reusable_sync_to_remote
+  variables:
+    REMOTE_GROUP_URL: "gitlab.datax.iliad.fr/ai-toolbox"
+    REMOTE_REPO_ACCESS_TOKEN: $REMOTE_REPO_ACCESS_TOKEN
+    REMOTE_REPO_USERNAME: $REMOTE_REPO_USERNAME
+    REMOTE_REPO: "ms_utils"
+
+publish_pypi:
+  image: python:3.12
+  tags: [docker]
+  stage: publish
+  when: manual
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - python -m pip install --upgrade pip
+    - pip install build twine
+    - echo "Version to publish $CI_COMMIT_TAG"
+    - python -m build
+    - twine upload dist/* -u "__token__" -p "$MSUTILS_PYPI_TOKEN"
