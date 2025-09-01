@@ -1,0 +1,13 @@
+from __future__ import annotations
+
+from typing import Protocol, Any
+
+
+class AlgorithmFactoryProtocol(Protocol):
+    def get_algo_session(self, *, algo_session_info: dict) -> Any: ...
+
+    def get_notification_manager(self, *, algo_session: Any) -> Any: ...
+
+    def get_order_broker_manager(self, *, algorithm: Any, api: Any, algo_session: Any, notification_manager: Any) -> Any: ...
+
+    def get_chart_manager(self, *, algorithm: Any) -> Any: ...
