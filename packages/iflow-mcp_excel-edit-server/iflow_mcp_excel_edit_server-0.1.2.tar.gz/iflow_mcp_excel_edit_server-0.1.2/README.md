@@ -1,0 +1,116 @@
+# Excel Edit Server
+
+A Model Context Protocol (MCP) server that provides Excel file editing and analysis capabilities for Large Language Models (LLMs).
+
+## Features
+
+- **Excel File Reading**: Extract and analyze Excel file structure including formulas, merged cells, and data validation
+- **Automatic Formatting**: Beautify Excel files with optimized row heights and column widths
+- **Formula Analysis**: Detect and report formulas used in worksheets
+- **Merged Cell Handling**: Intelligent processing of merged cells with proper height calculation
+- **Data Validation Support**: Read and analyze data validation rules
+- **Conditional Formatting**: Extract conditional formatting information
+- **Text Processing**: Remove citation markers and format text content
+
+## Tools Provided
+
+- `excel_read`: Read and extract the structure of Excel files, including formulas, merged cells, and formatting
+- `excel_modify`: Beautify Excel files by optimizing row heights and column widths based on content
+
+## Excel Analysis Features
+
+### Data Structure Analysis
+- Complete worksheet structure extraction
+- Cell values and formulas detection
+- Merged cell range identification
+- Data validation rules analysis
+
+### Formatting Information
+- Conditional formatting rules extraction
+- Filter and sort state detection
+- Cell styling and alignment analysis
+- Font and formatting properties
+
+### Content Processing
+- Automatic text wrapping calculation
+- Multi-language text width estimation (Chinese/English)
+- Citation marker removal (【†】, [†] patterns)
+- Row height optimization based on content
+
+## Configuration Options
+
+- `--workspace-path`: Set the workspace directory (default: ./workspace)
+
+## Server Configuration
+
+To use this server with MCP clients, add the following configuration to your MCP settings:
+
+For development or when using `uv`:
+
+```json
+{
+  "mcpServers": {
+    "excel-edit-server": {
+      "command": "uv",
+      "args": ["--directory", "directory_of_excel-edit-server", "run", "excel-edit-server", "--workspace-path", "/path/to/your/workspace"],
+      "env": {}
+    }
+  }
+}
+```
+
+## Usage Examples
+
+### Reading Excel File Structure
+```python
+# Read Excel file and extract structure
+content = await excel_read("/path/to/spreadsheet.xlsx")
+# Returns markdown-formatted structure with tables, formulas, and formatting info
+```
+
+### Beautifying Excel Files
+```python
+# Optimize row heights and column widths
+await excel_modify("/path/to/spreadsheet.xlsx")
+# File is automatically saved with improved formatting
+```
+
+## Advanced Features
+
+### Intelligent Row Height Calculation
+- Considers font size and text content
+- Handles wrapped text and multi-line content
+- Processes merged cells with vertical spanning
+- Supports Chinese and English character width estimation
+
+### Formula Processing
+- Extracts all formulas from worksheets
+- Reports formula locations and expressions
+- Handles complex formula structures
+
+### Data Validation Analysis
+- Reads validation rules and constraints
+- Extracts error messages and prompts
+- Reports validation ranges and types
+
+## Safety Features
+
+- **File Validation**: Checks for file existence before operations
+- **Error Handling**: Comprehensive error reporting with detailed messages
+- **Backup Safety**: Non-destructive reading operations
+- **Format Preservation**: Maintains original Excel formatting while optimizing layout
+
+## Supported Excel Features
+
+- Multiple worksheets
+- Merged cells (horizontal and vertical)
+- Formulas and calculations
+- Data validation rules
+- Conditional formatting
+- Auto filters and sorting
+- Pivot tables (detection)
+- Cell styling and fonts
+
+## License
+
+MIT License - see LICENSE file for details.
