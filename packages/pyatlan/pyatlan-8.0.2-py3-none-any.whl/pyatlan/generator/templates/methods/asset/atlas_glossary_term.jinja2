@@ -1,0 +1,118 @@
+
+    @root_validator()
+    def _set_qualified_name_fallback(cls, values):
+        guid = values.get("guid")
+        attributes = values.get("attributes")
+        unique_attributes = values.get("unique_attributes")
+        if attributes and not attributes.qualified_name:
+            # If the qualified name is present inside
+            # unique attributes (in case of a related entity)
+            # Otherwise, set the qualified name to the GUID
+            # to avoid collisions when creating glossary object
+            attributes.qualified_name = (
+                unique_attributes and unique_attributes.get("qualifiedName")
+            ) or guid
+        return values
+
+    @classmethod
+    @init_guid
+    def creator(
+        cls,
+        *,
+        name: StrictStr,
+        anchor: Optional[AtlasGlossary] = None,
+        glossary_qualified_name: Optional[StrictStr] = None,
+        glossary_guid: Optional[StrictStr] = None,
+        categories: Optional[List[AtlasGlossaryCategory]] = None,
+    ) -> AtlasGlossaryTerm:
+        validate_required_fields(["name"], [name])
+        return cls(
+            attributes=AtlasGlossaryTerm.Attributes.create(
+                name=name,
+                anchor=anchor,
+                glossary_qualified_name=glossary_qualified_name,
+                glossary_guid=glossary_guid,
+                categories=categories,
+            )
+        )
+
+    @classmethod
+    @init_guid
+    def create(
+        cls,
+        *,
+        name: StrictStr,
+        anchor: Optional[AtlasGlossary] = None,
+        glossary_qualified_name: Optional[StrictStr] = None,
+        glossary_guid: Optional[StrictStr] = None,
+        categories: Optional[List[AtlasGlossaryCategory]] = None,
+    ) -> AtlasGlossaryTerm:
+        warn(
+            (
+                "This method is deprecated, please use 'creator' "
+                "instead, which offers identical functionality."
+            ),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return cls.creator(
+            name=name,
+            anchor=anchor,
+            glossary_qualified_name=glossary_qualified_name,
+            glossary_guid=glossary_guid,
+            categories=categories,
+        )
+
+    def trim_to_required(self) -> AtlasGlossaryTerm:
+        if self.anchor is None or not self.anchor.guid:
+            raise ValueError("anchor.guid must be available")
+        return self.create_for_modification(
+            qualified_name=self.qualified_name or "",
+            name=self.name or "",
+            glossary_guid=self.anchor.guid,
+        )
+
+    @classmethod
+    @init_guid
+    def updater(
+        cls: type[SelfAsset],
+        qualified_name: str = "",
+        name: str = "",
+        glossary_guid: str = "",
+    ) -> SelfAsset:
+        validate_required_fields(
+            ["name", "qualified_name", "glossary_guid"],
+            [name, qualified_name, glossary_guid],
+        )
+        glossary = AtlasGlossary()
+        glossary.guid = glossary_guid
+        return cls(
+            attributes=cls.Attributes(
+                qualified_name=qualified_name, name=name, anchor=glossary
+            )
+        )
+
+    @classmethod
+    def create_for_modification(
+        cls,
+        qualified_name: str = "",
+        name: str = "",
+        glossary_guid: str = "",
+    ) -> AtlasGlossaryTerm:
+        warn(
+            (
+                "This method is deprecated, please use 'updater' "
+                "instead, which offers identical functionality."
+            ),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return cls.updater(
+            qualified_name=qualified_name, name=name, glossary_guid=glossary_guid
+        )
+
+    ANCHOR: ClassVar[KeywordField] = KeywordField("anchor", "__glossary")
+    """Glossary in which the term is contained, searchable by the qualifiedName of the glossary."""
+
+    CATEGORIES: ClassVar[KeywordField] = KeywordField("categories", "__categories")
+    """Categories in which the term is organized, searchable by the qualifiedName of the category."""

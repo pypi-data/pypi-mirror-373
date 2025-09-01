@@ -1,0 +1,119 @@
+
+    @classmethod
+    def can_be_archived(self) -> bool:
+        """
+        Indicates if an asset can be archived via the asset.delete_by_guid method.
+        :returns: True if archiving is supported
+        """
+        return False
+
+    @root_validator()
+    def _set_qualified_name_fallback(cls, values):
+        guid = values.get("guid")
+        attributes = values.get("attributes")
+        unique_attributes = values.get("unique_attributes")
+        if attributes and not attributes.qualified_name:
+            # If the qualified name is present inside
+            # unique attributes (in case of a related entity)
+            # Otherwise, set the qualified name to the GUID
+            # to avoid collisions when creating glossary object
+            attributes.qualified_name = (
+                unique_attributes and unique_attributes.get("qualifiedName")
+            ) or guid
+        return values
+
+    @classmethod
+    @init_guid
+    def creator(
+        cls,
+        *,
+        name: StrictStr,
+        anchor: Optional[AtlasGlossary] = None,
+        glossary_qualified_name: Optional[StrictStr] = None,
+        glossary_guid: Optional[StrictStr] = None,
+        parent_category: Optional[AtlasGlossaryCategory] = None,
+    ) -> AtlasGlossaryCategory:
+        validate_required_fields(["name"], [name])
+        return cls(
+            attributes=AtlasGlossaryCategory.Attributes.create(
+                name=name,
+                anchor=anchor,
+                glossary_qualified_name=glossary_qualified_name,
+                glossary_guid=glossary_guid,
+                parent_category=parent_category,
+            )
+        )
+
+    @classmethod
+    @init_guid
+    def create(
+        cls,
+        *,
+        name: StrictStr,
+        anchor: AtlasGlossary,
+        parent_category: Optional[AtlasGlossaryCategory] = None,
+    ) -> AtlasGlossaryCategory:
+        warn(
+            (
+                "This method is deprecated, please use 'creator' "
+                "instead, which offers identical functionality."
+            ),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return cls.creator(name=name, anchor=anchor, parent_category=parent_category)
+
+    def trim_to_required(self) -> AtlasGlossaryCategory:
+        # The backend raises an exception unless the `glossary_guid` is provided.
+        # Providing the `glossary_qualified_name` won't work
+        if self.anchor is None or not self.anchor.guid:
+            raise ValueError("anchor.guid must be available")
+        return self.updater(
+            qualified_name=self.qualified_name or "",
+            name=self.name or "",
+            glossary_guid=self.anchor.guid,
+        )
+
+    @classmethod
+    @init_guid
+    def updater(
+        cls: type[SelfAsset],
+        qualified_name: str = "",
+        name: str = "",
+        glossary_guid: str = "",
+    ) -> SelfAsset:
+        validate_required_fields(
+            ["name", "qualified_name", "glossary_guid"],
+            [name, qualified_name, glossary_guid],
+        )
+        glossary = AtlasGlossary.ref_by_guid(glossary_guid)
+        return cls(
+            attributes=cls.Attributes(
+                qualified_name=qualified_name, name=name, anchor=glossary
+            )
+        )
+
+    @classmethod
+    def create_for_modification(
+        cls,
+        qualified_name: str = "",
+        name: str = "",
+        glossary_guid: str = "",
+    ) -> AtlasGlossaryCategory:
+        warn(
+            (
+                "This method is deprecated, please use 'updater' "
+                "instead, which offers identical functionality."
+            ),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return cls.updater(
+            qualified_name=qualified_name, name=name, glossary_guid=glossary_guid
+        )
+
+    ANCHOR: ClassVar[KeywordField] = KeywordField("anchor", "__glossary")
+    """Glossary in which the category is contained, searchable by the qualifiedName of the glossary."""
+
+    PARENT_CATEGORY: ClassVar[KeywordField] = KeywordField("parentCategory", "__parentCategory")
+    """Parent category in which a subcategory is contained, searchable by the qualifiedName of the category."""

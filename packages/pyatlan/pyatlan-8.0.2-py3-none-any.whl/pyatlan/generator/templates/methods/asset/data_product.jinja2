@@ -1,0 +1,103 @@
+
+    @classmethod
+    @init_guid
+    def creator(
+        cls,
+        *,
+        name: StrictStr,
+        domain_qualified_name: StrictStr,
+        asset_selection: IndexSearchRequest,
+    ) -> DataProduct:
+        attributes = DataProduct.Attributes.create(
+            name=name,
+            domain_qualified_name=domain_qualified_name,
+            asset_selection=asset_selection,
+        )
+        return cls(attributes=attributes)
+
+    @classmethod
+    @init_guid
+    def create(
+        cls,
+        *,
+        name: StrictStr,
+        domain_qualified_name: StrictStr,
+        asset_selection: IndexSearchRequest,
+    ) -> DataProduct:
+        warn(
+            (
+                "This method is deprecated, please use 'creator' "
+                "instead, which offers identical functionality."
+            ),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return cls.creator(
+            name=name,
+            domain_qualified_name=domain_qualified_name,
+            asset_selection=asset_selection,
+        )
+
+    @classmethod
+    @init_guid
+    def updater(
+        cls,
+        qualified_name: str = "",
+        name: str = "",
+        asset_selection: Optional[IndexSearchRequest] = None,
+    ) -> DataProduct:
+        validate_required_fields(
+            ["name", "qualified_name"],
+            [name, qualified_name],
+        )
+        # Split the data product qualified_name to extract data mesh info
+        fields = qualified_name.split("/")
+        if len(fields) < 5:
+            raise ValueError(f"Invalid data product qualified_name: {qualified_name}")
+        product = cls(
+            attributes=cls.Attributes(
+                qualified_name=qualified_name,
+                name=name,
+            )
+        )
+        if asset_selection:
+            product.data_product_assets_d_s_l = (
+                DataProductsAssetsDSL.get_asset_selection(asset_selection)
+            )
+        return product
+
+    @classmethod
+    def create_for_modification(
+        cls: type[SelfAsset],
+        qualified_name: str = "",
+        name: str = "",
+    ) -> SelfAsset:
+        warn(
+            (
+                "This method is deprecated, please use 'updater' "
+                "instead, which offers identical functionality."
+            ),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return cls.updater(
+            qualified_name=qualified_name,
+            name=name,
+        )
+
+    def get_assets(self, client: AtlanClient):
+        """
+        Retrieves list of all assets linked to the provided data product.
+
+        :param client: connectivity to an Atlan tenant
+        :raises InvalidRequestError: if DataProduct asset DSL cannot be found (does not exist) in Atlan
+        :raises AtlanError: if there is an issue interacting with the API
+        :returns: instance of `IndexSearchResults` with list of all assets linked to the provided data product
+        """
+        dp_dsl = self.data_product_assets_d_s_l
+        if not dp_dsl:
+            raise ErrorCode.MISSING_DATA_PRODUCT_ASSET_DSL.exception_with_parameters()
+        json_object = json.loads(dp_dsl)
+        request = IndexSearchRequest(**json_object.get("query", {}))
+        response = client.asset.search(request)
+        return response
