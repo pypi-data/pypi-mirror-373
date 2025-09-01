@@ -1,0 +1,136 @@
+Metadata-Version: 2.4
+Name: file-keeper
+Version: 0.1.0a4
+Summary: Abstraction level for object storages.
+Author-email: DataShades <datashades@linkdigital.com.au>, Sergey Motornyuk <sergey.motornyuk@linkdigital.com.au>
+Maintainer-email: DataShades <datashades@linkdigital.com.au>
+License: AGPL-3.0
+Project-URL: Homepage, https://github.com/DataShades/file-keeper
+Project-URL: Documentation, https://datashades.github.io/file-keeper/
+Project-URL: Changelog, https://datashades.github.io/file-keeper/changelog/
+Keywords: file management,cloud,filesystem,DAL,storage,file
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: typing_extensions
+Requires-Dist: pluggy
+Requires-Dist: python-magic
+Provides-Extra: test
+Requires-Dist: pytest-cov; extra == "test"
+Requires-Dist: pytest-faker; extra == "test"
+Requires-Dist: responses; extra == "test"
+Requires-Dist: werkzeug; extra == "test"
+Requires-Dist: faker; extra == "test"
+Provides-Extra: docs
+Requires-Dist: mkdocs; extra == "docs"
+Requires-Dist: mkdocs-material; extra == "docs"
+Requires-Dist: pymdown-extensions; extra == "docs"
+Requires-Dist: mkdocstrings[python]; extra == "docs"
+Provides-Extra: dev
+Requires-Dist: pytest-cov; extra == "dev"
+Requires-Dist: pytest-faker; extra == "dev"
+Requires-Dist: responses; extra == "dev"
+Requires-Dist: mkdocs; extra == "dev"
+Requires-Dist: mkdocs-material; extra == "dev"
+Requires-Dist: pymdown-extensions; extra == "dev"
+Requires-Dist: mkdocstrings[python]; extra == "dev"
+Provides-Extra: user-config
+Requires-Dist: platformdirs; extra == "user-config"
+Provides-Extra: azure
+Requires-Dist: azure-storage-blob; extra == "azure"
+Requires-Dist: urllib3; extra == "azure"
+Provides-Extra: gcs
+Requires-Dist: google-cloud-storage; extra == "gcs"
+Requires-Dist: urllib3; extra == "gcs"
+Provides-Extra: libcloud
+Requires-Dist: apache-libcloud; extra == "libcloud"
+Requires-Dist: cryptography; extra == "libcloud"
+Provides-Extra: opendal
+Requires-Dist: opendal; extra == "opendal"
+Provides-Extra: redis
+Requires-Dist: redis; extra == "redis"
+Provides-Extra: s3
+Requires-Dist: boto3; extra == "s3"
+Requires-Dist: boto3-stubs[essential]; extra == "s3"
+Requires-Dist: urllib3; extra == "s3"
+Provides-Extra: sqlalchemy
+Requires-Dist: sqlalchemy; extra == "sqlalchemy"
+
+[![Tests](https://github.com/DataShades/file-keeper/actions/workflows/test.yml/badge.svg)](https://github.com/DataShades/file-keeper/actions/workflows/test.yml)
+
+# file-keeper
+
+Abstraction layer for reading, writing and managing file-like objects.
+
+The package implements drivers for a number of storage types(local filesystem,
+redis, AWS S3, etc.) and defines a set of tools to simplify building your own
+drivers for storage you are using.
+
+Read the [documentation](https://datashades.github.io/file-keeper/) for a full
+user guide.
+
+
+## Usage
+
+Initialize storage pointing to `/tmp/example` folder:
+
+```python
+import os
+from file_keeper import make_storage
+
+storage = make_storage("sandbox", {
+    "type": "file_keeper:fs",
+    "path": "/tmp/example",
+    # this option creates the folder if it does not exist.
+    # Without it storage raises an error if folder is missing
+    "initialize": True,
+})
+assert os.path.isdir("/tmp/example")
+```
+
+Upload file into the storage initialized in the previous step and play with it
+a bit:
+
+```python
+from file_keeper import make_upload
+upload = make_upload(b"hello world")
+
+# save the data and verify its presence in the system
+result = storage.upload("hello.txt", upload)
+assert result.size == 11
+assert os.path.isfile("/tmp/example/hello.txt")
+
+# change location of the file
+moved_result = storage.move("moved-hello.txt", result, storage)
+assert not os.path.exists("/tmp/example/hello.txt")
+assert os.path.isfile("/tmp/example/moved-hello.txt")
+
+# read the file
+assert storage.content(moved_result) == b"hello world"
+
+# remove the file
+storage.remove(moved_result)
+assert not os.path.exists("/tmp/example/moved-hello.txt")
+```
+
+## Development
+
+Install `dev` extras:
+
+```sh
+pip install -e '.[dev]'
+```
+
+Run unittests:
+```sh
+pytest
+```
+
+Run typecheck:
+```sh
+pyright
+```
+
+
+## License
+
+[AGPL](https://www.gnu.org/licenses/agpl-3.0.en.html)
