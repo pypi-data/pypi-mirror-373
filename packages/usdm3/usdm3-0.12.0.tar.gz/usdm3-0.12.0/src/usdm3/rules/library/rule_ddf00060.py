@@ -1,0 +1,17 @@
+from .rule_template import RuleTemplate
+
+
+class RuleDDF00060(RuleTemplate):
+    """
+    DDF00060: The value for each timing must be a non-negative duration specified in ISO 8601 format.
+
+    Applies to: Timing
+    Attributes: value
+    """
+
+    def __init__(self):
+        super().__init__(
+            "DDF00060",
+            RuleTemplate.ERROR,
+            "The value for each timing must be a non-negative duration specified in ISO 8601 format.",
+        )
