@@ -1,0 +1,59 @@
+name: Nightly Tutorial Run
+
+on:
+  schedule:
+    # Run at 2:00 AM UTC every day
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allows manual triggering
+
+permissions:
+  contents: write
+
+jobs:
+  execute-tutorials:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120  # Set explicit 2-hour timeout
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Create and register Jupyter kernel for notebooks
+        run: |
+            uv venv .venv
+            source .venv/bin/activate
+            uv pip install ipykernel
+            python -m ipykernel install --user --name=natural-pdf-project-venv
+
+      - name: Install dependencies
+        run: |
+          source .venv/bin/activate
+          uv pip install nox nox-uv
+          uv pip install --upgrade nbclient jupyter_core
+          # Install the project in editable mode with all dependencies,
+          # including those needed for notebooks and nox sessions.
+          uv pip install -e .[all,dev]
+
+      - name: Execute notebooks and run tutorial tests
+        run: |
+          source .venv/bin/activate
+          echo "Starting at $(date)"
+          nox --non-interactive -s docs
+          echo "Completed at $(date)"
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name 'github-actions'
+          git config --global user.email 'github-actions@github.com'
+          git add .
+          git commit -m "docs: update executed notebooks [skip ci]" || echo "No changes to commit"
+          git push
