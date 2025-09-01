@@ -1,0 +1,46 @@
+name: Tests
+
+on:
+  push:
+    branches: [ '*' ]
+  pull_request:
+    branches: [ '*' ]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install .[dev,test]
+    - name: Run pytest
+      run: |
+        pytest --cov=src/easybench tests/
+
+  test-summary:
+    runs-on: ubuntu-latest
+    if: always()
+    needs: test
+    steps:
+      - name: Check job results
+        run: |
+          result="${{ needs.test.result }}"
+          if [[ "$result" == "success" || "$result" == "skipped" ]]; then
+            echo "✅ All matrix jobs passed"
+            exit 0
+          else
+            echo "❌ Some matrix jobs failed"
+            exit 1
+          fi
