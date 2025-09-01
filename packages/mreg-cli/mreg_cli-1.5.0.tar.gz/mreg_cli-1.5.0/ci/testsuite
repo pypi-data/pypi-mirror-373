@@ -1,0 +1,522 @@
+##### Tests: Zone
+#   - zone creation
+#   - zone info
+#   - zone list
+#   - set/update ns, soa, ttl
+zone create example.org hostmaster@example.org ns1.example.org  # should require force because ns1 is unknown
+zone create example.org hostmaster@example.org ns1.example.org -force
+zone info example.org |! Serialnumber # Serialnumber includes the date: https://github.com/unioslo/mreg/blob/master/mreg/utils.py#L78
+zone list -forward
+zone set_ns example.org ns2.example.org  #  requires force because ns2 is unknown
+zone set_ns example.org ns2.example.org -force
+zone set_soa example.org -email hostperson@example.org -serialno 12345 -refresh 360 -retry 1800 -expire 2400 -soa-ttl 1800
+zone set_default_ttl example.org 60    # should fail, must be >= 300
+zone set_default_ttl example.org 300
+
+
+##### Tests: Network
+#    - list used/unused IPv4 addresses
+#    - pick next unused address
+#    - set number of reserved addresses
+network create -network 10.0.2.0/28 -desc "TinyNet"
+network list_used_addresses 10.0.2.0/28
+network list_unused_addresses 10.0.2.0/28
+network set_reserved 10.0.2.0/28 8
+host add tinyhost -ip 10.0.2.0/28 -contact tinyhost@example.org
+network list_used_addresses 10.0.2.0/28
+network list_unused_addresses 10.0.2.0/28
+host remove tinyhost
+network remove 10.0.2.0/28 -force
+# ipv6
+network create -network 2001:db8::/64 -desc "Lorem ipsum dolor sit amet"
+network list_used_addresses 2001:db8::/64
+network list_unused_addresses 2001:db8::/64
+network set_reserved 2001:db8::/64 50
+host add tinyhost -ip 2001:db8::/64 -contact me@example.org
+host info tinyhost | 2001
+host info tinyhost |! example.org
+host remove tinyhost
+network remove 2001:db8::/64 -f
+
+
+##### Tests: Network
+#    - frozen network
+#    - excluded ip ranges
+#    - network info
+#    - setting network category, location, vlan
+network create -network 10.0.1.0/24 -desc "Frozzzen"        # frozen network
+network set_frozen 10.0.1.0/24
+host add somehost -ip 10.0.1.0/24 -contact support@example.org  # should require force, because net's frozen
+network add_excluded_range 10.0.1.0/24 10.0.1.20 10.0.1.30
+host add somehost -ip 10.0.1.20 -contact support@example.org -force # should fail because ip is in excluded range
+host add somehost -ip 10.0.1.0/24 -contact support@example.org -force
+network list_used_addresses 10.0.1.0/24
+network set_description 10.0.1.0/24 "Frozen but has one host"
+network set_category 10.0.1.0/24 cat1
+network set_location 10.0.1.0/24 loc1
+network set_vlan 10.0.1.0/24 1234
+network info 10.0.1.0/24
+network find -network 10.0.1.0/24 -description '*one host*' -vlan 1234 -frozen 1 -reserved 6 -dns_delegated 0 -category Yellow -location Somewhere
+host set_contact somehost "new-support@example.org"
+host history somehost
+host a_add somehost 10.0.1.0/24  # should require force, because the network is frozen
+host a_add somehost 10.0.1.0/24 -force
+host remove somehost # requires force because host has 2 ip addresses
+host remove somehost -force
+network unset_frozen 10.0.1.0/24
+host add otherhost -ip 10.0.1.20 -contact support@example.org  # fails because reserved range
+network remove_excluded_range 10.0.1.0/24 10.0.1.20 10.0.1.30
+host add otherhost -ip 10.0.1.20 -contact support@example.org  # should not need force now that net is unfrozen
+host remove otherhost
+
+# IPv6
+network create -network 2001:db8::/64 -desc "Lorem ipsum dolor sit amet"
+network set_frozen 2001:db8::/64
+host add somehost -ip 2001:db8::/64 -contact m@example.org  # should require force, because the network is frozen
+network add_excluded_range 2001:db8::/64 2001:db8::20 2001:db8::30
+host add somehost -ip 2001:db8::20 -contact support@example.org -force # should fail, because the address is in a reserved range
+host add somehost -ip 2001:db8::/64 -contact support@example.org -force
+network set_description 2001:db8::/64 "Frozen but has one host"
+network info 2001:db8::/64
+host aaaa_add somehost 2001:db8::/64  # should require force, because the network is frozen
+host aaaa_add somehost 2001:db8::/64 -force
+host remove somehost -force
+network unset_frozen 2001:db8::/64
+
+# Test handling of network and broadcast address arguments
+## IPv4
+### Adding/changing A-records for an existing host
+host add somehost -contact support@example.org
+host a_add somehost 10.0.1.0 # should require force because it is a network address
+host a_add somehost 10.0.1.0 -force
+host a_remove somehost 10.0.1.0 # force not required for removal
+host a_add somehost 10.0.1.255 # force again (broadcast address)
+host a_add somehost 10.0.1.255 -force
+host a_change -old 10.0.1.255 -new 10.0.1.0 somehost # changing to network address, requires force
+host a_change -old 10.0.1.255 -new 10.0.1.0 somehost -force
+host remove somehost -force # cleanup
+
+### Adding A-records for a new host
+host add somehost -ip 10.0.1.0 # requires force because it is a network address
+host add somehost -ip 10.0.1.1 -force
+host remove somehost -force -override ipaddress
+host add somehost -ip 10.0.1.255 # requires force because it is a broadcast address
+host add somehost -ip 10.0.1.255 -force
+host a_remove somehost 10.0.1.255 # cleanup
+
+## IPv6
+### Adding/changing AAAA-records for an existing host
+host aaaa_add somehost 2001:db8:: # should require force because it is a network address
+host aaaa_add somehost 2001:db8:: -force
+host aaaa_remove somehost 2001:db8:: # force not required for removal
+host aaaa_add somehost 2001:db8::ffff:ffff:ffff:ffff # force again (broadcast address)
+host aaaa_add somehost 2001:db8::ffff:ffff:ffff:ffff -force
+host aaaa_change -old 2001:db8::ffff:ffff:ffff:ffff -new 2001:db8:: somehost # changing to network address, requires force
+host aaaa_change -old 2001:db8::ffff:ffff:ffff:ffff -new 2001:db8:: somehost -force
+host aaaa_remove somehost 2001:db8::ffff:ffff:ffff:ffff # force not required for removal
+host remove somehost -force -override ipaddress# cleanup
+
+### Adding AAAA-records for a new host
+host add somehost -ip 10.0.1.0 # requires force because it is a network address
+host add somehost -ip 10.0.1.1 -force
+host remove somehost -force -override ipaddress
+host add somehost -ip 10.0.1.255 # requires force because it is a broadcast address
+host add somehost -ip 10.0.1.255 -force
+
+# Cleanup
+host remove somehost -force
+network remove 10.0.1.0/24 -f
+network remove 2001:db8::/64 -f
+
+
+##### Tests: Hostgroups
+#   - create, delete groups
+#   - add/remove hosts to/from groups
+#   - add groups to other groups
+#   - add/remove owners
+group create mygroup "This describes the group"
+host add testhost1
+host add testhost2
+group host_add mygroup testhost1
+group host_add mygroup testhost2
+group owner_add mygroup myself
+group host_remove mygroup testhost2
+group info mygroup
+group history mygroup
+group create yourgroup "meh"
+group group_add mygroup yourgroup
+group info mygroup
+group group_remove mygroup yourgroup
+group owner_add mygroup anotherowner
+group owner_remove mygroup myself
+group history mygroup
+group delete mygroup     # fails because the group contains testhost1, must force
+group delete mygroup -force
+group delete yourgroup
+host remove testhost1
+host remove testhost2
+
+
+##### Tests: Delegations
+#   - create, delete, list
+#   - set delegation comment
+zone delegation_create example.org wut.example.org ns2.example.org -force
+zone delegation_comment_set example.org wut.example.org "This is a comment"
+zone delegation_list example.org
+host add testhost.wut.example.org   #  should fail: host is in delegation, should require force
+host add testhost.wut.example.org -force  # should work
+host remove testhost.wut.example.org
+zone delegation_comment_remove example.org wut.example.org
+zone delegation_delete example.org wut.example.org
+
+
+##### Tests: Policy
+#   - create/delete atoms
+#   - create/delete roles
+#   - add/remove hosts from policies
+#   - rename
+#   - set description
+policy atom_create apple "Here's the description"
+policy atom_create -created 2018-07-07 orange "Round and orange"
+policy list_atoms *
+policy list_atoms ppl
+policy role_create fruit "5 a day"
+policy list_roles *
+policy list_roles fru
+policy add_atom fruit apple
+policy add_atom fruit orange
+policy info orange
+policy info fruit
+policy list_members fruit
+policy atom_history apple
+policy atom_delete apple  # Should fail because 'apple' is used in role 'fruit'
+policy remove_atom fruit apple
+policy atom_history apple
+policy atom_delete apple
+policy set_description orange "Juicy"
+policy rename orange tangerine
+host add foo
+host info foo
+policy host_add tangerine foo # should fail, tangerine is an atom, not a role
+policy host_add fruit foo
+policy list_hosts fruit
+policy host_list foo
+host info foo
+policy host_remove fruit foo
+policy remove_atom fruit banana # should fail
+policy remove_atom fruit tangerine
+policy role_delete vegetables  # fails, that role doesn't exist
+policy role_history fruit
+policy role_delete fruit
+policy atom_delete tangerine
+host remove foo
+
+
+##### Tests: Network permissions
+#   - add/remove permissions for network ranges
+permission network_add 10.0.0.0/24 somegroup "[abc]+.uio.no"
+permission network_list
+permission network_remove 10.0.0.0/24 othergroup "[abc]*.uio.no"  # fails, no match
+permission network_remove 10.0.0.0/24 somegroup "[abc]+.uio.no"
+
+
+##### Tests: DHCP
+#   - associate / disassociate ip with mac address
+network create -network 10.0.0.0/24 -desc foo -vlan 1234
+host add foo
+host a_add foo 10.0.0.5
+dhcp assoc 1.2.3.4 aa:bb:cc:dd:ee:ff  # doesn't work, because ip addr doesn't exist
+dhcp assoc 10.0.0.5 aa:bb:cc:dd:ee:ff
+dhcp disassoc 1.2.3.4    # ip addr dosnt exst
+dhcp disassoc 10.0.0.5
+dhcp assoc meh 11:22:33:44:55:66  # host not found
+dhcp assoc foo aa:bb:cc:dd:ee:ff
+dhcp disassoc foo
+dhcp disassoc meh   # host not found
+host a_remove foo 10.0.0.5
+dhcp assoc foo aa:bb:cc:dd:ee:ff # doesn't work, because the host doesn't have any ip addresses
+
+# Test handling of multiple IPs on a host
+host a_add foo 10.0.0.5
+host a_add foo 10.0.0.6 -f
+dhcp assoc foo aa:bb:cc:dd:ee:ff # should fail, two IPs of same type
+host a_remove foo 10.0.0.6
+network create -network 2001:db8::/64 -desc "foo_ipv6" -vlan 1234
+network create -network 2001:db9::/64 -desc "notfoo_ipv6" -vlan 1235
+host aaaa_add foo 2001:db9::5 -f
+dhcp assoc foo aa:bb:cc:dd:ee:ff # should fail, the host has two IPs of different types on different VLANs.
+host aaaa_remove foo 2001:db9::5
+host aaaa_add foo 2001:db8::5 -f
+dhcp assoc foo aa:bb:cc:dd:ee:ff # should work, the host now has two IPs of different types on the same VLAN.
+host info foo # should work and show both IPs
+host remove foo -f
+network remove 10.0.0.0/24 -f
+network remove 2001:db8::/64 -f
+network remove 2001:db9::/64 -f
+
+
+##### Tests: host
+#   - all the host sub-commands
+network create -network 10.0.0.0/24 -desc "lorem ipsum"
+network create -network 2001:db8::/64 -desc "dolor sit amet"
+host add foo -ip 10.0.0.10 -contact hi@ho.com -comment "meh" -macaddress 11:22:33:aa:bb:cc
+host info foo
+host find -name *oo*
+host find -contact hi*
+host find -comment meh
+host find -name f* -contact h* -comment m*
+host rename foo bar
+host set_comment bar 'This is the comment'
+host set_contact bar "I'm the contact"   # fails because invalid email address
+host set_contact bar me@example.org
+# IPv4 management
+host a_add bar 10.0.0.12  # must force
+host a_add bar 10.0.0.12 -f
+host a_add bar 10.0.0.13 -macaddress 11:22:33:44:55:66 -force
+host a_change -old 10.0.0.12 -new 10.0.0.14 bar
+host a_change -old 10.0.0.13 -new 10.0.0.15 bar   # has mac addr, should keep it assigned to the new ip
+host a_remove bar 10.0.0.13
+host add baz
+host a_move -ip 10.0.0.10 -fromhost bar -tohost baz
+host a_show baz
+# IPv6 management
+host aaaa_add bar 2001:db8::/64  # must force
+host aaaa_add bar 2001:db8::11 -f
+host aaaa_add bar 2001:db8::12 -macaddress 11:22:33:44:55:67 -f
+host remove bar # should fail, because it has multiple addresses, must force
+host aaaa_show bar
+host aaaa_change -old 2001:db8::11 -new 2001:db8::13 bar
+host aaaa_change -old 2001:db8::12 -new 2001:db8::14 bar  # has mac addr, should keep it assigned to the new ip
+host aaaa_remove bar 2001:db8::13
+host aaaa_move -ip 2001:db8::14 -fromhost bar -tohost baz
+host a_show baz
+# CNAME
+host cname_add bar fubar
+host remove bar # should fail, because it has a cname record, must force and override with 'cname'
+host cname_show bar
+host cname_remove bar fubar
+# HINFO
+host hinfo_add baz x86 Win
+host hinfo_show baz
+host hinfo_remove baz
+# LOC
+host loc_add baz "52 22 23.000 N 4 53 32.000 E -2.00m 0.00m 10000m 10m"
+host loc_show baz
+host loc_remove baz
+# MX
+host mx_add baz 10 mail.example.org
+host mx_show baz
+host remove baz # Should fail, because it has an MX record, must force and override with 'mx'
+host mx_remove baz 10 mail.example.org
+# NAPTR
+host naptr_add -name baz -preference 16384 -order 3 -flag u -service "SIP" -regex "[abc]+" -replacement "wonk"
+host naptr_show baz
+host naptr_remove -name baz -preference 16384 -order 3 -flag u -service "sip" -regex "[abc]+" -replacement "wonk"
+# PTR
+host ptr_add 10.0.0.20 baz.example.org
+host ptr_show 10.0.0.20
+host add clover
+host ptr_change -ip 10.0.0.20 -old baz -new clover
+host ptr_remove 10.0.0.20 clover
+network
+# SRV
+host srv_add -name "whatever" -priority 1 -weight 1 -port 80 -host baz  # doesn't work
+host srv_add -name "_sip._tcp.example.org" -priority 10 -weight 5 -port 3456 -host baz.example.org
+host srv_show "_sip._tcp.example.org"
+host srv_remove -name "_sip._tcp.example.org" -priority 10 -weight 5 -port 3456 -host baz.example.org
+# SSHFP
+host sshfp_add bar 1 1 12345678abcde
+host sshfp_show bar
+host sshfp_remove -fingerprint 394875985 bar   # not found
+host sshfp_remove bar
+# ttl
+host ttl_set bar 3600
+host ttl_show bar
+host ttl_remove bar
+# TXT
+host txt_add bar "Lorem ipsum dolor sit amet"
+host txt_show bar
+host txt_remove bar "Whatever"   # no match
+host txt_remove bar "Lorem ipsum dolor sit amet"
+# wildcard
+host add *.example.org -force
+host remove *.example.org
+# cleanup
+host remove bar -f
+host remove baz -f
+host remove clover
+# assigning mac to a host directly should work
+host add -ip 10.0.0.0/24 -macaddress aa:bb:cc:cc:bb:aa directok
+# assigning mac to a host directly when the mac is already taken should fail
+host add -ip 10.0.0.0/24 -macaddress aa:bb:cc:cc:bb:aa directfail
+host remove directok
+
+# Test handling of overrides
+# MX
+host add foo -ip 10.0.0.10 -contact "foo@example.org"
+host mx_add foo 10 mail.example.org
+host remove foo # Should fail, because it has an MX record, must force and override with 'mx'
+host remove foo -force -override mx
+
+# PTR
+host add foo -ip 10.0.0.10 -contact "foo@example.org"
+host ptr_add 10.0.0.11 foo.example.org
+host remove foo # Should fail, because it has a PTR record, must force and override with 'ptr'
+host remove foo -force -override ptr
+
+# NAPTR
+host add foo -ip 10.0.0.10 -contact "foo@example.org"
+host naptr_add -name foo -preference 16384 -order 3 -flag u -service "SIP" -regex "[abc]+" -replacement "wonk"
+host remove foo
+host remove foo -force -override naptr
+
+# SRV
+host add foo -ip 10.0.0.10 -contact "foo@example.org"
+host srv_add -name "_sip._tcp.example.org" -priority 10 -weight 5 -port 3456 -host foo.example.org
+host remove foo # Should fail, because it has an SRV record, must force and override with 'srv'
+host remove foo -force -override srv
+
+# CNAME
+host add foo -ip 10.0.0.10 -contact "foo@example.org"
+host cname_add foo fubar
+host remove foo # Should fail, because it has a CNAME record, must force and override with 'cname'
+host remove foo -force -override cname
+
+# All of the above
+host add foo -ip 10.0.0.10 -contact "foo@example.org"
+host mx_add foo 10 mail.example.org
+host ptr_add 10.0.0.11 foo.example.org
+host naptr_add -name foo -preference 16384 -order 3 -flag u -service "SIP" -regex "[abc]+" -replacement "wonk"
+host srv_add -name "_sip._tcp.example.org" -priority 10 -weight 5 -port 3456 -host foo.example.org
+host cname_add foo fubar
+host remove foo # Should fail, because it has multiple records, must force and override with everything.
+host remove foo -force -override mx,ptr,naptr,srv,cname
+
+
+network remove 10.0.0.0/24 -f
+network remove 2001:db8::/64 -f
+
+
+##### Tests: Label admin
+#   - create, delete, list
+#   - rename, change description
+#   - add/remove labels to roles
+#   - add/remove labels to permissions
+label add postit 'This is a label'
+label list
+label info postit
+label rename postit mylabel
+label set_description mylabel 'This is the new description'
+label remove mylabel
+# Roles
+label add postit 'A label again'
+policy role_create myrole 'This is the description'
+policy label_add postit myrole
+policy list_roles *
+policy info myrole
+label info postit
+policy label_remove postit myrole
+policy role_delete myrole
+# Permissions
+permission network_add 192.168.0.0/16 mygroup .*
+permission label_add 192.168.0.0/16 mygroup .* postit
+permission network_list
+label info postit
+permission label_remove 192.168.0.0/16 mygroup .* postit
+permission network_list
+permission network_remove 192.168.0.0/16 mygroup .*
+label remove postit
+
+
+##### Tests: Network Policy
+network create -network 10.0.2.0/28 -desc "TinyNet"
+network policy_attribute_create foo "Foo attribute"
+network policy_attribute_create bar "Bar attribute"
+network policy_attribute_create baz "Baz attribute"
+network policy_create SecurePolicy "Secure policy for a network" -attribute foo -attribute bar
+network policy_create Autoconfigure "Automatic host configuration" -attribute baz
+network policy_create NoICMP "ICMP disallowed" # no attributes
+network policy_list
+network policy_info SecurePolicy
+network policy_info Autoconfigure
+network policy_add 10.0.2.0/28 SecurePolicy
+network policy_add 10.0.2.0/28 Autoconfigure # requires force
+network policy_add 10.0.2.0/28 Autoconfigure -force
+network info 10.0.2.0/28
+network policy_delete Autoconfigure # requires force
+network policy_delete Autoconfigure -force
+network info 10.0.2.0/28
+network policy_list
+network policy_add 10.0.2.0/28 SecurePolicy
+network policy_rename SecurePolicy InsecurePolicy
+network policy_list
+network info 10.0.2.0/28
+network policy_set_description InsecurePolicy "Insecure policy for a network"
+network policy_attribute_add InsecurePolicy baz
+network policy_attribute_set_description baz "Baz attribute (new)"
+network policy_attribute_list
+network policy_attribute_remove InsecurePolicy foo
+network policy_info InsecurePolicy
+network policy_attribute_delete bar # requires force (in use)
+network policy_attribute_delete bar -force
+
+# Communities
+host add tinyhost -ip 10.0.2.0/28 -macaddress 11:22:33:aa:bb:cc -contact tinyhost@example.org
+network community_create 10.0.2.0/28 guests "Guest hosts."
+network community_create 10.0.2.0/28 lab "Lab hosts."
+network community_list 10.0.2.0/28
+network community_host_add tinyhost guests
+host info tinyhost
+network community_host_add tinyhost lab
+host info tinyhost
+# TODO: test network community_host_add with specific IP address on host with multiple IPs
+network community_info 10.0.2.0/28 guests
+network community_info 10.0.2.0/28 lab
+
+# Custom communtiy mapping prefix
+network policy_create CustomPrefix "Custom community mapping prefix" -prefix "custom" # no attributes
+network create -network 10.0.3.0/24 -desc "CustomPrefixNet" -policy CustomPrefix # add policy during creation
+network policy_info CustomPrefix
+network community_create 10.0.3.0/24 foo "Foo community"
+network community_info 10.0.3.0/24 foo
+network policy_set_prefix CustomPrefix "newprefix"
+network community_info 10.0.3.0/24 foo
+network policy_unset_prefix CustomPrefix
+network community_info 10.0.3.0/24 foo
+network remove 10.0.3.0/24 -force
+network policy_delete CustomPrefix
+
+## Rename community
+network community_rename 10.0.2.0/28 lab labequipment
+network community_set_description 10.0.2.0/28 labequipment "Lab equipment (expensive)"
+network community_info 10.0.2.0/28 labequipment
+
+## Add another host to a community before displaying communities with hosts
+host add tinierhost -ip 10.0.2.0/28 -contact tinierhost@example.org
+network community_host_add tinierhost guests
+network community_list 10.0.2.0/28 -hosts
+
+## Attempt to add host from other network to community (fails)
+network create -network 10.0.0.0/24 -desc "MediumNet"
+host add mediumhost -ip 10.0.0.0/24 -macaddress 11:22:34:aa:bb:cd -contact mediumhost@example.org
+network community_host_add mediumhost labequipment # fails, community not found in network
+host remove mediumhost -force
+network remove 10.0.0.0/24
+
+## Delete community (remove host from community first)
+network community_delete 10.0.2.0/28 labequipment # fails
+network community_host_remove tinyhost labequipment
+network community_delete 10.0.2.0/28 labequipment
+
+## Delete community with hosts (force)
+network community_delete 10.0.2.0/28 guests # fails
+network community_delete 10.0.2.0/28 guests -force
+
+## Clean up community resources
+host remove tinyhost
+host remove tinierhost
+network remove 10.0.2.0/28 -force
+
+##### Tests: Zone
+#    - Zone removal
+zone delete example.org

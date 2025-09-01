@@ -1,0 +1,201 @@
+name: build mreg-cli
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+*'
+
+concurrency:
+  group: build-mreg-cli-${{ github.head_ref }}
+
+env:
+  UV_FROZEN: 1
+
+jobs:
+  build_pypi:
+    name: Build wheels and source distribution
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      
+      # https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/accessing-contextual-information-about-workflow-runs#determining-when-to-use-contexts
+      - name: Exit if not on master branch
+        if: ${{ github.ref == 'refs/heads/master' }}
+        run: exit -1
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install build dependencies
+        run: uv sync
+
+      - name: Build source distribution
+        run: uv build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pypi_artifacts
+          path: dist/*
+          if-no-files-found: error
+
+  build_pyinstaller:
+    name: Build pyinstaller binary
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-13 # only non-large x86 macOS runner image available
+          - macos-latest
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            container: redhat/ubi8:latest
+          - os: windows-latest
+            platform: win-x86_64
+          - os: macos-13
+            platform: macos-x86_64
+          - os: macos-latest
+            platform: macos-arm64
+        python-version:
+          - '3.12'
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+
+    steps:
+      - name: Install RHEL 8 dependencies
+        if: contains(matrix.container, 'redhat/ubi8')
+        run: dnf install -y git binutils
+
+      - name: Ensure git is available
+        run: git --version
+      
+      - uses: actions/checkout@v4
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install build dependencies
+        run: uv sync --group ci
+
+      - name: Run PyInstaller with Tox
+        run: uv run tox
+      
+      - name: Set platform binary names
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          BASE_NAME="mreg-cli-${VERSION}-${{ matrix.platform }}"
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            echo "BINARY_NAME=${BASE_NAME}.exe" >> $GITHUB_ENV
+            echo "SOURCE_NAME=dist/mreg-cli.exe" >> $GITHUB_ENV
+          else
+            echo "BINARY_NAME=${BASE_NAME}" >> $GITHUB_ENV
+            echo "SOURCE_NAME=dist/mreg-cli" >> $GITHUB_ENV
+          fi
+
+      - name: Rename binary
+        shell: bash
+        run: mv "${{ env.SOURCE_NAME }}" "dist/${{ env.BINARY_NAME }}"
+      
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BINARY_NAME }}
+          path: dist/${{ env.BINARY_NAME }}
+          if-no-files-found: error
+          
+  publish_pypi:
+    name: Publish PyPI release
+    needs:
+      - build_pypi
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pypi_artifacts
+          path: dist
+
+      - name: Push build artifacts to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+  
+  publish_github:
+    name: Publish GitHub release
+    needs:
+      - build_pyinstaller
+      - publish_pypi
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download PyInstaller binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mreg-cli-*
+          path: dist
+          merge-multiple: true
+    
+      - name: Download wheel and source distributions
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pypi_artifacts
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA256 checksums
+        id: sha
+        run: |
+          cd dist
+          echo "checksums<<EOF" >> $GITHUB_OUTPUT
+          sha256sum * >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          body: |
+            Release ${{ github.ref_name }}
+            
+            ## Binary Downloads
+            
+            Platform | Architecture | Download
+            ---------|--------------|----------
+            Linux | x86_64 | [mreg-cli-${{ github.ref_name }}-linux-x86_64](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/mreg-cli-${{ github.ref_name }}-linux-x86_64)
+            Windows | x86_64 | [mreg-cli-${{ github.ref_name }}-win-x86_64.exe](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/mreg-cli-${{ github.ref_name }}-win-x86_64.exe)
+            macOS | x86_64 | [mreg-cli-${{ github.ref_name }}-macos-x86_64](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/mreg-cli-${{ github.ref_name }}-macos-x86_64)
+            macOS | ARM64 | [mreg-cli-${{ github.ref_name }}-macos-arm64](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/mreg-cli-${{ github.ref_name }}-macos-arm64)
+            
+            ## PyPI Package
+
+            ### uv
+
+            ```bash
+            uv tool install mreg-cli==${{ github.ref_name }}
+            ```
+
+            ### pipx
+
+            ```bash
+            pipx install mreg-cli==${{ github.ref_name }}
+            ```
+
+            ### pip
+
+            ```bash
+            pip install mreg-cli==${{ github.ref_name }}
+            ```
+            
+            ## SHA256 Checksums
+            ```
+            ${{ steps.sha.outputs.checksums }}
+            ```
+          draft: false
+          prerelease: false
