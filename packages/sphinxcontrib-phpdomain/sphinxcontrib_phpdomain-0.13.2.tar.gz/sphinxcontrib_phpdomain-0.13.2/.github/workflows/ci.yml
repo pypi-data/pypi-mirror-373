@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  build:
+    if: endsWith(github.head_ref || github.ref_name, '.changes') == false
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.10', '3.11', '3.12']
+      fail-fast: false
+
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python }}
+
+    - name: Install tools
+      run: |
+        sudo apt -y install libxml2-utils
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-test.txt
+        pip install .
+
+    - name: Build Unit Tests
+      run: |
+        cd test/unit
+        make clean
+        make html SPHINXOPTS='-W'
+        make comparehtml
+
+    - name: Apply Coding Style
+      if: matrix.python == '3.11'
+      run: |
+        pip install black
+        python -m black --diff --check .
+
+    - name: Push Unit Tests Output
+      if: failure() && github.repository_owner != 'markstory' && matrix.python == '3.11'
+      uses: stefanzweifel/git-auto-commit-action@v4
+      with:
+        branch: ${{ github.head_ref || github.ref_name }}.changes
+        create_branch: true
+        push_options: '--force'
+        commit_message: Unit Tests Changes
+        commit_user_name: Bot
+        commit_user_email: bot@example.com
+        commit_author: Bot <bot@example.com>
+
+    - name: Build myst integration tests
+      run: |
+        cd test/myst
+        make html SPHINXOPTS='-W'
+
+    - name: Build Unit Tests with toc show_parents=hide
+      run: |
+        cd test/unit
+        make html SPHINXOPTS='-W -D toc_object_entries_show_parents=hide'
+
+    - name: Build Unit Tests with toc show_parents=domain
+      run: |
+        cd test/unit
+        make html SPHINXOPTS='-W -D toc_object_entries_show_parents=domain'
+
+    - name: Build Unit Tests with toc show_parents=all
+      run: |
+        cd test/unit
+        make html SPHINXOPTS='-W -D toc_object_entries_show_parents=all'
