@@ -1,0 +1,46 @@
+# CurlSession
+```
+pip install curl-session
+```
+
+Initialize from a curl command string and get equivalent `requests.Session` and `httpx.Client` objects with the same headers, cookies, proxies, TLS options, and redirect/http2 behavior.
+
+## Usage
+
+```python
+from curl_session import CurlSession
+
+curl = 'curl -H "Accept: application/json" -b "a=1; b=2" https://example.com/api'
+cs = CurlSession(curl)
+
+# httpx
+with cs.get_httpx_client() as client:
+    r = client.get(cs._parsed.url)  # provide a URL as in original curl if needed
+    print(r.text)
+
+# requests
+with cs.get_requests_session() as s:
+    r = s.get(cs._parsed.url)
+    print(r.text)
+
+# run original curl
+cp = cs.run()
+print(cp.stdout)
+```
+
+## Tests
+
+- Install deps
+
+```sh
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pytest -q
+```
+
+## Notes
+
+- This is a pragmatic parser covering common curl flags for headers, cookies, data, proxies, TLS, auth, redirect, and http2 options.
+- If `--cookie` is a filename, it's ignored for safety. Provide explicit cookie strings instead.
+- Timeouts and other runtime-only flags are intentionally not persisted to the session defaults.
