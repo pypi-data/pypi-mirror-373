@@ -1,0 +1,399 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://synapse-sdk.com/schemas/plugin-config.json",
+  "title": "Synapse SDK Plugin Configuration",
+  "description": "JSON Schema for validating Synapse SDK plugin config.yaml files",
+  "type": "object",
+  "required": ["name", "code", "version", "category"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Human-readable name of the plugin",
+      "minLength": 1
+    },
+    "code": {
+      "type": "string",
+      "description": "Unique identifier for the plugin",
+      "minLength": 1,
+      "pattern": "^[a-z0-9_-]+$"
+    },
+    "version": {
+      "type": "string",
+      "description": "Version of the plugin following semantic versioning",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[a-zA-Z0-9-]+(?:\\.[a-zA-Z0-9-]+)*)?$"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of what the plugin does"
+    },
+    "readme": {
+      "type": "string",
+      "description": "Path to the README file",
+      "default": "README.md"
+    },
+    "category": {
+      "type": "string",
+      "description": "Category of the plugin",
+      "enum": [
+        "neural_net",
+        "export",
+        "upload",
+        "smart_tool",
+        "post_annotation",
+        "pre_annotation",
+        "data_validation"
+      ]
+    },
+    "package_manager": {
+      "type": "string",
+      "description": "Package manager to use for dependencies",
+      "enum": ["pip", "uv"],
+      "default": "pip"
+    },
+    "data_type": {
+      "type": "string",
+      "description": "Primary data type the plugin works with",
+      "enum": ["image", "text", "video", "pcd", "audio"]
+    },
+    "task": {
+      "type": "string",
+      "description": "Primary task type (legacy field, use tasks array instead)"
+    },
+    "tasks": {
+      "type": "array",
+      "description": "Array of tasks the plugin supports",
+      "items": {
+        "type": "string",
+        "pattern": "^(image|text|video|pcd|audio)\\.(object_detection|classification|segmentation|regression|generation|translation|analysis)$"
+      },
+      "uniqueItems": true
+    },
+    "annotation_category": {
+      "type": "string",
+      "description": "Annotation category for smart tools",
+      "enum": ["image", "text", "video", "pcd", "audio"]
+    },
+    "annotation_type": {
+      "type": "string",
+      "description": "Type of annotation for smart tools",
+      "enum": ["polygon", "bbox", "point", "line", "mask", "keypoint", "text"]
+    },
+    "smart_tool": {
+      "type": "string",
+      "description": "Type of smart tool",
+      "enum": ["interactive_segmentation", "auto_labeling", "assisted_annotation"]
+    },
+    "actions": {
+      "type": "object",
+      "description": "Configuration for plugin actions",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["entrypoint"],
+        "additionalProperties": false,
+        "properties": {
+          "entrypoint": {
+            "type": "string",
+            "description": "Python module path to the action implementation",
+            "pattern": "^[a-zA-Z_][a-zA-Z0-9_.]*\\.[a-zA-Z_][a-zA-Z0-9_]*$"
+          },
+          "method": {
+            "type": "string",
+            "description": "Execution method for the action",
+            "enum": ["job", "task", "restapi"],
+            "default": "job"
+          },
+          "dataset": {
+            "type": "string",
+            "description": "Dataset parameter name for training actions",
+            "default": "dataset"
+          },
+          "directory": {
+            "type": "string",
+            "description": "Directory path for gradio or other UI-based actions"
+          },
+          "model": {
+            "type": "object",
+            "description": "Model configuration for smart tools",
+            "additionalProperties": true,
+            "properties": {
+              "neural_net__plugin__code": {
+                "type": "string",
+                "description": "Neural network plugin code to use"
+              }
+            }
+          },
+          "endpoints": {
+            "type": "array",
+            "description": "REST API endpoints configuration",
+            "items": {
+              "type": "object",
+              "required": ["method"],
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "type": "string",
+                  "enum": ["get", "post", "put", "patch", "delete"],
+                  "description": "HTTP method"
+                },
+                "path": {
+                  "type": "string",
+                  "description": "Endpoint path"
+                }
+              }
+            }
+          },
+          "hyperparameters": {
+            "type": "object",
+            "description": "Hyperparameter configuration for training",
+            "additionalProperties": false,
+            "properties": {
+              "ui_schema": {
+                "type": "string",
+                "description": "FormKit schema for hyperparameter UI (YAML string)"
+              },
+              "ui_schemas": {
+                "type": "array",
+                "description": "Array of FormKit schema objects for hyperparameters",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "metrics": {
+            "type": "object",
+            "description": "Metrics configuration for training monitoring",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "oneOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "description": "Display name for the metric"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "visualizations": {
+            "type": "object",
+            "description": "Visualization configuration for training monitoring",
+            "additionalProperties": {
+              "type": "object",
+              "required": ["type"],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Display name for the visualization"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["image_grid_group", "line_chart", "scatter_plot"],
+                  "description": "Type of visualization"
+                },
+                "options": {
+                  "type": "object",
+                  "description": "Visualization-specific options",
+                  "properties": {
+                    "group_name": {
+                      "type": "string",
+                      "description": "Name for grouping visualizations"
+                    },
+                    "thumbnail_size": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "minItems": 2,
+                      "maxItems": 2,
+                      "description": "Thumbnail dimensions [width, height]"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "options": {
+            "type": "object",
+            "description": "Action-specific options",
+            "additionalProperties": true,
+            "properties": {
+              "visualize": {
+                "type": "boolean",
+                "description": "Whether to enable visualization for training",
+                "default": false
+              }
+            }
+          },
+          "supported_data_type": {
+            "type": "string",
+            "description": "Primary data type supported by upload plugins",
+            "enum": ["image", "text", "video", "pcd", "audio"]
+          },
+          "ui_schema": {
+            "type": "string",
+            "description": "FormKit schema for action-specific UI options (YAML string)"
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "category": {
+            "const": "neural_net"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data_type": {
+            "type": "string"
+          },
+          "tasks": {
+            "type": "array",
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "category": {
+            "const": "smart_tool"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "annotation_category": {
+            "type": "string"
+          },
+          "annotation_type": {
+            "type": "string"
+          },
+          "smart_tool": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "category": {
+            "const": "upload"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "actions": {
+            "type": "object",
+            "properties": {
+              "upload": {
+                "type": "object",
+                "properties": {
+                  "supported_data_type": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "examples": [
+    {
+      "name": "YOLO Object Detection",
+      "code": "yolo11",
+      "version": "0.1.0",
+      "description": "YOLO v11 object detection plugin",
+      "category": "neural_net",
+      "package_manager": "uv",
+      "data_type": "image",
+      "tasks": ["image.object_detection"],
+      "actions": {
+        "train": {
+          "entrypoint": "plugin.train.train",
+          "dataset": "dataset",
+          "hyperparameters": {
+            "ui_schema": "# FormKit schema YAML"
+          },
+          "metrics": {
+            "epoch": ["loss", "miou"]
+          },
+          "options": {
+            "visualize": false
+          }
+        },
+        "inference": {
+          "method": "restapi",
+          "endpoints": [
+            {
+              "method": "get"
+            }
+          ]
+        },
+        "deployment": {
+          "entrypoint": "plugin.inference.MockNetInference"
+        }
+      }
+    },
+    {
+      "name": "Smart Segmentation Tool",
+      "code": "sam2-tool",
+      "version": "1.0.0",
+      "description": "Interactive segmentation smart tool",
+      "category": "smart_tool",
+      "annotation_category": "image",
+      "annotation_type": "polygon",
+      "smart_tool": "interactive_segmentation",
+      "actions": {
+        "auto_label": {
+          "entrypoint": "plugin.auto_label.MyAutoLabel",
+          "model": {
+            "neural_net__plugin__code": "sam2"
+          },
+          "ui_schema": "# FormKit schema for auto_label"
+        }
+      }
+    },
+    {
+      "name": "Data Export Plugin",
+      "code": "coco-export",
+      "version": "1.0.0",
+      "description": "Export annotations in COCO format",
+      "category": "export",
+      "actions": {
+        "export": {
+          "entrypoint": "plugin.export.export"
+        }
+      }
+    }
+  ]
+}

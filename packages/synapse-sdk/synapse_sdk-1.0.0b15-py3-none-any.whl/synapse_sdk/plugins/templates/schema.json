@@ -1,0 +1,484 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://synapse.sh/schemas/plugin-config.json",
+    "title": "Synapse Plugin Configuration",
+    "description": "JSON Schema for validating Synapse plugin config.yaml files",
+    "type": "object",
+    "required": ["name", "code", "version", "category"],
+    "additionalProperties": false,
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "Human-readable name of the plugin",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "code": {
+        "type": "string",
+        "description": "Unique identifier for the plugin",
+        "pattern": "^[a-z0-9_-]+$",
+        "minLength": 1,
+        "maxLength": 50
+      },
+      "version": {
+        "type": "string",
+        "description": "Semantic version of the plugin",
+        "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?(\\+[a-zA-Z0-9.-]+)?$"
+      },
+      "description": {
+        "type": "string",
+        "description": "Brief description of plugin functionality",
+        "maxLength": 500
+      },
+      "readme": {
+        "type": "string",
+        "description": "Path to README file relative to plugin root",
+        "default": "README.md"
+      },
+      "category": {
+        "$ref": "#/$defs/PluginCategory"
+      },
+      "package_manager": {
+        "type": "string",
+        "description": "Package manager for plugin dependencies",
+        "enum": ["pip", "uv"],
+        "default": "pip"
+      },
+      "data_type": {
+        "type": "string",
+        "description": "Primary data type handled by the plugin",
+        "enum": ["image", "text", "video", "pcd", "audio"]
+      },
+      "tasks": {
+        "type": "array",
+        "description": "List of tasks this plugin can perform",
+        "items": {
+          "type": "string",
+          "pattern": "^[a-z]+\\.[a-z_]+$",
+          "description": "Task in format: data_type.task_name"
+        },
+        "uniqueItems": true
+      },
+      "supported_data_type": {
+        "type": "array",
+        "description": "Data types supported by upload plugins",
+        "items": {
+          "type": "string",
+          "enum": ["image", "text", "video", "pcd", "audio"]
+        },
+        "uniqueItems": true
+      },
+      "annotation_category": {
+        "type": "string",
+        "description": "Annotation category for smart tools",
+        "enum": ["object_detection", "classification", "segmentation", "keypoint", "text"]
+      },
+      "annotation_type": {
+        "type": "string",
+        "description": "Specific annotation type for smart tools",
+        "enum": ["bbox", "polygon", "point", "line", "mask", "label"]
+      },
+      "smart_tool": {
+        "type": "string",
+        "description": "Type of smart tool implementation",
+        "enum": ["interactive", "automatic", "semi_automatic"]
+      },
+      "actions": {
+        "type": "object",
+        "description": "Available actions for this plugin",
+        "patternProperties": {
+          "^[a-z_]+$": {
+            "$ref": "#/$defs/ActionConfig"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "allOf": [
+      {
+        "if": {
+          "properties": {
+            "category": { "const": "neural_net" }
+          }
+        },
+        "then": {
+          "required": ["data_type", "tasks"],
+          "properties": {
+            "actions": {
+              "type": "object",
+              "patternProperties": {
+                "^(train|inference|test|deployment|gradio|tune)$": {
+                  "$ref": "#/$defs/ActionConfig"
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "category": { "const": "smart_tool" }
+          }
+        },
+        "then": {
+          "required": ["annotation_category", "annotation_type", "smart_tool"],
+          "properties": {
+            "actions": {
+              "type": "object",
+              "patternProperties": {
+                "^(auto_label)$": {
+                  "$ref": "#/$defs/ActionConfig"
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "category": { "const": "upload" }
+          }
+        },
+        "then": {
+          "required": ["supported_data_type"],
+          "properties": {
+            "actions": {
+              "type": "object",
+              "patternProperties": {
+                "^(upload)$": {
+                  "$ref": "#/$defs/ActionConfig"
+                }
+              }
+            }
+          }
+        }
+      }
+    ],
+    "$defs": {
+      "PluginCategory": {
+        "type": "string",
+        "description": "Category classification for the plugin",
+        "enum": [
+          "neural_net",
+          "export",
+          "upload",
+          "smart_tool",
+          "post_annotation",
+          "pre_annotation",
+          "data_validation"
+        ]
+      },
+      "RunMethod": {
+        "type": "string",
+        "description": "Execution method for the action",
+        "enum": ["job", "task", "restapi"],
+        "default": "job"
+      },
+      "ActionConfig": {
+        "type": "object",
+        "description": "Configuration for a plugin action",
+        "required": ["entrypoint"],
+        "additionalProperties": false,
+        "properties": {
+          "entrypoint": {
+            "type": "string",
+            "description": "Python module path to action implementation",
+            "pattern": "^[a-zA-Z_][a-zA-Z0-9_.]*$"
+          },
+          "method": {
+            "$ref": "#/$defs/RunMethod"
+          },
+          "dataset": {
+            "type": "string",
+            "description": "Dataset identifier for the action"
+          },
+          "endpoints": {
+            "type": "array",
+            "description": "REST API endpoints for restapi method",
+            "items": {
+              "$ref": "#/$defs/EndpointConfig"
+            }
+          },
+          "hyperparameters": {
+            "$ref": "#/$defs/HyperparametersSchema"
+          },
+          "metrics": {
+            "$ref": "#/$defs/MetricsConfig"
+          },
+          "visualizations": {
+            "$ref": "#/$defs/VisualizationsConfig"
+          },
+          "options": {
+            "type": "object",
+            "description": "Additional configuration options",
+            "additionalProperties": true
+          },
+          "ui_schema": {
+            "type": "object",
+            "description": "FormKit UI schema for action parameters",
+            "additionalProperties": true
+          }
+        }
+      },
+      "EndpointConfig": {
+        "type": "object",
+        "description": "REST API endpoint configuration",
+        "required": ["method", "path"],
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "type": "string",
+            "description": "HTTP method",
+            "enum": ["GET", "POST", "PUT", "DELETE", "PATCH"]
+          },
+          "path": {
+            "type": "string",
+            "description": "API endpoint path",
+            "pattern": "^/.*"
+          },
+          "description": {
+            "type": "string",
+            "description": "Endpoint description"
+          }
+        }
+      },
+      "HyperparametersSchema": {
+        "type": "object",
+        "description": "FormKit schema for hyperparameter configuration",
+        "additionalProperties": true,
+        "properties": {
+          "$formkit": {
+            "type": "string",
+            "const": "group"
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/FormKitField"
+            }
+          }
+        }
+      },
+      "FormKitField": {
+        "type": "object",
+        "description": "FormKit field configuration",
+        "required": ["$formkit", "name"],
+        "properties": {
+          "$formkit": {
+            "type": "string",
+            "enum": ["text", "number", "select", "checkbox", "group", "list"]
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+          },
+          "label": {
+            "type": "string"
+          },
+          "help": {
+            "type": "string"
+          },
+          "value": {
+            "description": "Default value for the field"
+          },
+          "validation": {
+            "type": "string",
+            "description": "Validation rules"
+          },
+          "options": {
+            "type": "array",
+            "description": "Options for select fields",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": { "type": "string" },
+                "value": {}
+              }
+            }
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/FormKitField"
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "MetricsConfig": {
+        "type": "object",
+        "description": "Metrics tracking configuration",
+        "additionalProperties": false,
+        "properties": {
+          "epoch": {
+            "type": "array",
+            "description": "Per-epoch metrics to track",
+            "items": {
+              "type": "string"
+            }
+          },
+          "validation": {
+            "type": "array",
+            "description": "Validation metrics to track",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "VisualizationsConfig": {
+        "type": "object",
+        "description": "Training visualization configuration",
+        "additionalProperties": false,
+        "properties": {
+          "images": {
+            "$ref": "#/$defs/ImageVisualization"
+          },
+          "charts": {
+            "type": "array",
+            "description": "Chart visualizations",
+            "items": {
+              "$ref": "#/$defs/ChartVisualization"
+            }
+          }
+        }
+      },
+      "ImageVisualization": {
+        "type": "object",
+        "description": "Image grid visualization configuration",
+        "required": ["type"],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "image_grid"
+          },
+          "title": {
+            "type": "string",
+            "description": "Title for the image grid"
+          },
+          "columns": {
+            "type": "integer",
+            "description": "Number of columns in grid",
+            "minimum": 1,
+            "default": 3
+          },
+          "max_images": {
+            "type": "integer",
+            "description": "Maximum number of images to display",
+            "minimum": 1,
+            "default": 9
+          }
+        }
+      },
+      "ChartVisualization": {
+        "type": "object",
+        "description": "Chart visualization configuration",
+        "required": ["type", "title", "x_axis", "y_axis"],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["line", "bar", "scatter"]
+          },
+          "title": {
+            "type": "string",
+            "description": "Chart title"
+          },
+          "x_axis": {
+            "type": "string",
+            "description": "X-axis metric name"
+          },
+          "y_axis": {
+            "type": "string",
+            "description": "Y-axis metric name"
+          }
+        }
+      }
+    },
+    "examples": [
+      {
+        "name": "YOLO Object Detection",
+        "code": "yolo_detection",
+        "version": "1.0.0",
+        "description": "YOLO-based object detection model",
+        "category": "neural_net",
+        "package_manager": "uv",
+        "data_type": "image",
+        "tasks": ["image.object_detection"],
+        "actions": {
+          "train": {
+            "entrypoint": "plugin.train.train",
+            "method": "job",
+            "dataset": "coco",
+            "hyperparameters": {
+              "$formkit": "group",
+              "children": [
+                {
+                  "$formkit": "number",
+                  "name": "epochs",
+                  "label": "Epochs",
+                  "value": 100,
+                  "validation": "required|min:1"
+                },
+                {
+                  "$formkit": "number",
+                  "name": "batch_size",
+                  "label": "Batch Size",
+                  "value": 16,
+                  "validation": "required|min:1"
+                }
+              ]
+            }
+          },
+          "inference": {
+            "entrypoint": "plugin.inference.inference",
+            "method": "restapi",
+            "endpoints": [
+              {
+                "method": "POST",
+                "path": "/predict",
+                "description": "Run object detection inference"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "Auto Labeling Tool",
+        "code": "smart_labeler",
+        "version": "1.0.0",
+        "description": "Intelligent auto-labeling for object detection",
+        "category": "smart_tool",
+        "annotation_category": "object_detection",
+        "annotation_type": "bbox",
+        "smart_tool": "semi_automatic",
+        "actions": {
+          "auto_label": {
+            "entrypoint": "plugin.label.auto_label",
+            "method": "job"
+          }
+        }
+      },
+      {
+        "name": "Dataset Uploader",
+        "code": "dataset_upload",
+        "version": "1.0.0",
+        "description": "Upload datasets to cloud storage",
+        "category": "upload",
+        "supported_data_type": ["image", "video"],
+        "actions": {
+          "upload": {
+            "entrypoint": "plugin.upload.upload",
+            "method": "task",
+            "options": {
+              "chunk_size": 1024,
+              "parallel_uploads": 4
+            }
+          }
+        }
+      }
+    ]
+  }
