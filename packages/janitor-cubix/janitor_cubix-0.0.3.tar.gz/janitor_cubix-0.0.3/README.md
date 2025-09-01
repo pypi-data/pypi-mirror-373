@@ -1,0 +1,2 @@
+Janitor.GiveChore()
+Janitor.Clean()
