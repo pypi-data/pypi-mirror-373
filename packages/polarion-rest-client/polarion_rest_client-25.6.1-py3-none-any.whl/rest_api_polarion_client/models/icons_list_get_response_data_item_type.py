@@ -1,0 +1,8 @@
+from enum import Enum
+
+
+class IconsListGetResponseDataItemType(str, Enum):
+    ICONS = "icons"
+
+    def __str__(self) -> str:
+        return str(self.value)

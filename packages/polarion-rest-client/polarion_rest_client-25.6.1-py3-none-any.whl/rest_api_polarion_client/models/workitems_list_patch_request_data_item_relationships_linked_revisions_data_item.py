@@ -1,0 +1,91 @@
+from collections.abc import Mapping
+from typing import (
+    Any,
+    TypeVar,
+    Union,
+)
+
+from attrs import define as _attrs_define
+from attrs import field as _attrs_field
+
+from ..models.workitems_list_patch_request_data_item_relationships_linked_revisions_data_item_type import (
+    WorkitemsListPatchRequestDataItemRelationshipsLinkedRevisionsDataItemType,
+)
+from ..types import UNSET, Unset
+
+T = TypeVar(
+    "T", bound="WorkitemsListPatchRequestDataItemRelationshipsLinkedRevisionsDataItem"
+)
+
+
+@_attrs_define
+class WorkitemsListPatchRequestDataItemRelationshipsLinkedRevisionsDataItem:
+    """
+    Attributes:
+        type_ (Union[Unset, WorkitemsListPatchRequestDataItemRelationshipsLinkedRevisionsDataItemType]):
+        id (Union[Unset, str]):  Example: default/1234.
+    """
+
+    type_: Union[
+        Unset, WorkitemsListPatchRequestDataItemRelationshipsLinkedRevisionsDataItemType
+    ] = UNSET
+    id: Union[Unset, str] = UNSET
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        type_: Union[Unset, str] = UNSET
+        if not isinstance(self.type_, Unset):
+            type_ = self.type_.value
+
+        id = self.id
+
+        field_dict: dict[str, Any] = {}
+        field_dict.update(self.additional_properties)
+        field_dict.update({})
+        if type_ is not UNSET:
+            field_dict["type"] = type_
+        if id is not UNSET:
+            field_dict["id"] = id
+
+        return field_dict
+
+    @classmethod
+    def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        d = dict(src_dict)
+        _type_ = d.pop("type", UNSET)
+        type_: Union[
+            Unset,
+            WorkitemsListPatchRequestDataItemRelationshipsLinkedRevisionsDataItemType,
+        ]
+        if isinstance(_type_, Unset):
+            type_ = UNSET
+        else:
+            type_ = WorkitemsListPatchRequestDataItemRelationshipsLinkedRevisionsDataItemType(
+                _type_
+            )
+
+        id = d.pop("id", UNSET)
+
+        workitems_list_patch_request_data_item_relationships_linked_revisions_data_item = cls(
+            type_=type_,
+            id=id,
+        )
+
+        workitems_list_patch_request_data_item_relationships_linked_revisions_data_item.additional_properties = d
+        return workitems_list_patch_request_data_item_relationships_linked_revisions_data_item
+
+    @property
+    def additional_keys(self) -> list[str]:
+        return list(self.additional_properties.keys())
+
+    def __getitem__(self, key: str) -> Any:
+        return self.additional_properties[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        self.additional_properties[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        del self.additional_properties[key]
+
+    def __contains__(self, key: str) -> bool:
+        return key in self.additional_properties

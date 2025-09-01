@@ -1,0 +1,227 @@
+Metadata-Version: 2.4
+Name: polarion-rest-client
+Version: 25.6.1
+Summary: Polarion REST API client, wrappers & helpers
+Author-Email: emesika <emesika@redhat.com>
+License-Expression: MIT
+Requires-Python: >=3.9
+Requires-Dist: attrs>=23.1.0
+Requires-Dist: httpx>=0.23.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: openapi-python-client>=0.25.3
+Description-Content-Type: text/markdown
+
+# Polarion REST API Client
+
+This project provides an **auto-generated Python client** for the Polarion REST API.  
+It consumes the upstream OpenAPI JSON, applies a few deterministic fixes, validates the result, and generates importable Python code.
+
+- **Generator:** [`openapi-python-client`](https://github.com/openapi-generators/openapi-python-client)  
+- **Manager:** [`pdm`](https://pdm.fming.dev/latest/)  
+- **Target package (generated):** `rest_api_polarion_client` (under `autogen/`)  
+- **High-level wrappers:** will live under `src/polarion_rest_client/` (to be added later)
+
+---
+
+## 📂 Project Structure
+
+```text
+.
+├── autogen/                              # auto-generated client (committed)
+│   └── rest_api_polarion_client/
+├── codegen/                              # OpenAPI specs + generation config
+│   ├── polarion-openapi.json             # upstream Polarion REST spec (input)
+│   ├── polarion-openapi-clean.json       # cleaned spec (derived; usually gitignored)
+│   └── client-config.yaml                # openapi-python-client config (package_name, etc.)
+├── scripts/                              # helper scripts
+│   ├── clean_rest_spec.py                # applies Polarion-specific fixes to the spec
+│   ├── rest_json_validator.py            # JSON/OpenAPI validation
+│   ├── regenerate_polarion_rest_client.sh# end-to-end: clean → validate → generate → copy (no reformatting)
+│   └── set_version.py                    # helper to set package version
+├── src/
+│   └── polarion_rest_client/             # (future) high-level helpers wrapping autogen package
+├── tests/                                # tests for high-level code (and smoke for autogen)
+├── pyproject.toml                        # PDM/PEP 621 metadata
+└── README.md
+```
+
+---
+
+## ✅ Requirements
+
+- Python **3.9+**
+- [PDM](https://pdm.fming.dev/latest/) installed (`pipx install pdm` recommended)
+
+> We do **not** require global Node/npm. Generation is done via `openapi-python-client` (a Python package).
+
+---
+
+## ⚙️ Setup
+
+```bash
+# clone and enter the repo
+git clone https://gitlab.cee.redhat.com/automotive/pipe-x/polarion-rest-client.git
+
+# create & populate the PDM venv (runtime + dev deps)
+pdm install --dev
+```
+
+---
+
+## 🔧 Regeneration Workflow
+
+> The script runs everything for you: **clean → validate → generate → copy**.
+
+1) Place / update the upstream spec at:
+```
+codegen/polarion-openapi.json
+```
+
+2) Run the pipeline:
+```bash
+pdm run ./scripts/regenerate_polarion_rest_client.sh
+```
+
+What happens:
+- `clean_rest_spec.py` applies deterministic fixes:
+  - normalize `application/octet-stream` uploads to `string/binary`
+  - expand vendor `4XX-5XX` responses into concrete 4xx/5xx entries
+  - add missing `items` for certain array schemas in `jobsSingle*Response`
+  - relax nullability for specific error-source fields
+  - expand reference-only component schemas (e.g., `{"$ref": ...}`) into `allOf` so the generator can model them
+- `rest_json_validator.py` validates JSON syntax and OpenAPI structure
+- `openapi-python-client` generates the client into `.build/rest-client`
+- The generated package is copied into `autogen/rest_api_polarion_client/`
+
+3) Quick import sanity check:
+```bash
+python - <<'PY'
+import sys; sys.path.insert(0, "autogen")
+import rest_api_polarion_client as pkg
+print("import ok:", pkg.__name__)
+PY
+```
+
+---
+
+## 📦 Using the Generated Client
+
+> Until high-level wrappers are added, import the **generated** package directly.
+
+```python
+# example.py
+from rest_api_polarion_client import AuthenticatedClient
+from rest_api_polarion_client.api.projects import get_projects
+from rest_api_polarion_client.types import Response
+
+client = AuthenticatedClient(
+    base_url="https://polarion.example.com",  # your Polarion server
+    token="YOUR_TOKEN_HERE",                  # or configure via headers in client config
+)
+
+resp: Response = get_projects.sync(client=client)  # there will also be .async() variants
+print(resp.status_code)
+print(resp.parsed)  # typed model(s) if the endpoint is modeled
+```
+
+Run:
+```bash
+python example.py
+```
+
+> Endpoint modules and function names are generated from the spec; refer to `autogen/rest_api_polarion_client/api/` for the available calls.
+
+---
+
+## 🔖 Versioning
+
+- **Package version format:** `XX.YY.ZZ` where:
+  - `XX.YY` = Polarion server version (e.g., `25.06`)
+  - `ZZ`     = client patch (e.g., `01`, `02`, …)
+- **PEP 440 note:** PyPI displays `25.06.01` as `25.6.1`. Tag your releases with the original `v25.06.01` for clarity; the build will normalize for PyPI automatically.
+
+Use the helper to set the version in `pyproject.toml`:
+```bash
+pdm run python scripts/set_version.py 25.06.01
+```
+
+---
+
+## 🧪 Tests
+
+```bash
+pdm run pytest
+```
+
+### TODO
+
+- Add smoke tests for critical endpoints in `autogen/` (import, simple call building).
+- Add proper unit/integration tests for the upcoming **high-level** helpers under `src/polarion_rest_client/`.
+
+---
+
+## 🧩 Custom Templates (optional)
+
+You can override `openapi-python-client` Jinja templates to tweak emitted code (naming, default headers, timeouts, docstrings, etc.).
+
+- Place overrides under:
+```
+codegen/custom_templates/
+```
+- Use the **same relative paths** as the upstream templates.
+- The regeneration script automatically passes `--custom-template-path` when the folder exists.
+
+To discover the upstream templates path:
+```bash
+python - <<'PY'
+import importlib.resources as r, openapi_python_client as opc
+print((r.files(opc) / "templates").as_posix())
+PY
+```
+
+Copy only the files you want to override; the rest fall back to defaults.
+
+---
+
+
+> Keep `autogen/rest_api_polarion_client/**` **committed** so consumers get the client without needing the generator.
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions!
+
+1) Create a feature branch:
+```bash
+git checkout -b feature/my-feature
+```
+
+2) Run the full pipeline before committing:
+```bash
+pdm run ./scripts/regenerate_polarion_rest_client.sh
+```
+
+3) Run tests:
+```bash
+pdm run pytest
+```
+
+4) Commit only **necessary** changes (avoid manual edits to generated files).  
+5) Open a Merge Request / Pull Request with:
+   - a clear description
+   - references to issues
+   - test evidence when applicable
+
+**Code style:** Python idiomatic; scripts should be modular with clear docstrings.  
+```bash
+flake8 . --exclude ./venv  --max-line-length=120
+```
+**Commits:** try to follow [Conventional Commits](https://www.conventionalcommits.org/).
+
+---
+
+## 📄 License
+
+Licensed under the **MIT License**. See [LICENSE](./LICENSE) for details.
+
