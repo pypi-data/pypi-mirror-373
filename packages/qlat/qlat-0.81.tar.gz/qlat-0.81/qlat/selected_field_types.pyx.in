@@ -1,0 +1,268 @@
+# cython: binding=True, embedsignature=True, c_string_type=unicode, c_string_encoding=utf8
+
+{{py:
+type_name_list = [
+    'ColorMatrix',
+    'WilsonMatrix',
+    'NonRelWilsonMatrix',
+    'IsospinMatrix',
+    'SpinMatrix',
+    'WilsonVector',
+    'ComplexD',
+    'ComplexF',
+    'RealD',
+    'RealF',
+    'Long',
+    'Int',
+    'Int64t',
+    'Int32t',
+    'Int8t',
+    'Char',
+    ]
+}}
+
+from qlat_utils.all cimport *
+from . cimport everything as cc
+from cpython cimport Py_buffer
+from cpython.buffer cimport PyBUF_FORMAT
+from .geometry cimport *
+from .field_selection cimport *
+from .fields_io cimport *
+from .field_types cimport *
+from .selected_points_types cimport *
+
+import qlat_utils as q
+import numpy as np
+
+from .field_type_dict import selected_field_type_dict
+
+### -------------------------------------------------------------------
+
+{{for name in type_name_list}}
+
+cdef void set_field_sf_sp_{{name}}(SelectedField{{name}} self, SelectedPoints{{name}} other):
+    # psel may not have to be subset of fsel
+    cc.set_selected_field(self.xx, other.xx, self.fsel.xx, other.psel.xx)
+
+cdef void set_field_sf_sf_{{name}}(SelectedField{{name}} self, SelectedField{{name}} other):
+    # two fsel do not need to match
+    cc.set_selected_field(self.xx, other.xx, self.fsel.xx, other.fsel.xx)
+
+cdef void set_field_sf_f_{{name}}(SelectedField{{name}} self, Field{{name}} other):
+    cc.set_selected_field(self.xx, other.xx, self.fsel.xx)
+
+cdef class SelectedField{{name}}(SelectedFieldBase):
+
+    ctype = ElemType{{name}}
+
+    def __cinit__(self):
+        self.cdata = <cc.Long>&(self.xx)
+        self.view_count = 0
+
+    def __init__(self, *args):
+        """
+        SelectedField()
+        SelectedField(fsel)
+        SelectedField(fsel, multiplicity)
+        """
+        self.init_from_fsel(*args)
+
+    def init_from_fsel(self, FieldSelection fsel=None, cc.Int multiplicity=0):
+        self.fsel = fsel
+        if multiplicity > 0 and self.fsel is not None:
+            if self.view_count > 0:
+                raise ValueError("can't re-init while being viewed")
+            self.xx.init(self.fsel.xx, multiplicity)
+        else:
+            self.xx.init()
+
+    def __getbuffer__(self, Py_buffer *buffer, int flags):
+        cdef int ndim = 2 + ElemType{{name}}.ndim()
+        cdef Buffer buf = Buffer(self, ndim)
+        buf.format = ElemType{{name}}.format()
+        buf.itemsize = ElemType{{name}}.itemsize()
+        buf.buf = <char*>(self.xx.field.data())
+        cdef int multiplicity = self.xx.multiplicity
+        buf.set_dim_size(0, self.xx.n_elems)
+        buf.set_dim_size(1, multiplicity)
+        cdef cc.std_vector[Py_ssize_t] vec = ElemType{{name}}.shape()
+        cdef int dim_size = vec.size()
+        cdef int dim
+        for dim in range(dim_size):
+            buf.set_dim_size(2 + dim, vec[dim])
+        buf.update_strides_from_shape()
+        buf.set_buffer(buffer, flags)
+        self.view_count += 1
+
+    def release_buffer(self, Buffer buf):
+        assert buf.obj is self
+        self.view_count -= 1
+
+    def __imatmul__(self, other):
+        """
+        won't change self.fsel
+        """
+        if isinstance(other, SelectedField{{name}}):
+            # two fsel do not need to match
+            set_field_sf_sf_{{name}}(self, <SelectedField{{name}}>other)
+        elif isinstance(other, Field{{name}}):
+            set_field_sf_f_{{name}}(self, <Field{{name}}>other)
+        elif isinstance(other, SelectedPoints{{name}}):
+            # psel may not have to be subset of fsel
+            set_field_sf_sp_{{name}}(self, <SelectedPoints{{name}}>other)
+        else:
+            raise Exception(f"SelectedField{{name}} @= type mismatch {type(self)} {type(other)}")
+        return self
+
+    @q.timer
+    def copy(self, cc.Bool is_copying_data=True):
+        f = type(self)(self.fsel)
+        if is_copying_data:
+            f @= self
+        return f
+
+    @q.timer
+    def set_zero(self):
+        cc.set_zero(self.xx)
+
+    def swap(self, SelectedField{{name}} f1):
+        cdef FieldSelection fsel = self.psel
+        self.fsel = f1.psel
+        f1.fsel = fsel
+        cc.qswap(self.xx, f1.xx)
+
+    def swap_cast(self, SelectedFieldChar f1):
+        cdef FieldSelection fsel = self.fsel
+        self.fsel = f1.fsel
+        f1.fsel = fsel
+        cc.qswap_cast(self.xx, f1.xx)
+
+    def swap_sp_cast(self, SelectedPointsChar f1, Geometry geo):
+        """
+        Only swap data. Does NOT affect f1.psel and self.fsel at all.
+        """
+        cc.qswap_cast(self.xx, f1.xx, geo.xx)
+
+    @property
+    def n_elems(self):
+        cdef cc.Long x = self.xx.n_elems
+        return x
+
+    @property
+    def total_site(self):
+        cdef Coordinate total_site = Coordinate()
+        cc.assign_direct(total_site.xx, self.xx.get_geo().total_site())
+        return total_site
+
+    @property
+    def multiplicity(self):
+        return self.xx.multiplicity
+
+    @property
+    def sizeof_m(self):
+        return ElemType{{name}}.size()
+
+    @property
+    def geo(self):
+        cdef Geometry geo = Geometry()
+        cc.assign_direct(geo.xx, self.xx.get_geo())
+        return geo
+
+    def qnorm(self):
+        cdef cc.RealD x = cc.qnorm(self.xx)
+        return x
+
+    def qnorm_field(self):
+        cdef SelectedFieldRealD f_n = SelectedFieldRealD(self.fsel)
+        cc.qnorm_field(f_n.xx, self.xx)
+        return f_n
+
+    @q.timer
+    def set_rand(self, RngState rng, cc.RealD upper=1.0, cc.RealD lower=0.0):
+        return cc.set_u_rand(self.xx, self.fsel.xx, rng.xx, upper, lower)
+
+    @q.timer
+    def set_rand_g(self, RngState rng, cc.RealD center=0.0, cc.RealD sigma=1.0):
+        return cc.set_g_rand(self.xx, self.fsel.xx, rng.xx, center, sigma)
+
+    def shift(self, Coordinate shift=None, cc.Bool is_reflect=False):
+        """
+        return new shifted Field
+        self is not changed.
+        shift is the coordinate to shift the field (or None, which means no shift)
+        is_reflect determine whether to negate coordinate after shift
+        """
+        cdef SelectedField{{name}} f1 = self.copy(is_copying_data=False)
+        if shift is None:
+            if not is_reflect:
+                cc.assign_direct(f1.xx, self.xx)
+                return f1
+            shift = Coordinate()
+        f1.fsel = FieldSelection()
+        cc.field_shift(f1.xx, f1.fsel.xx, self.xx, self.fsel.xx, shift.xx, is_reflect)
+        return f1
+
+    def read_direct(self, const cc.std_string& fn):
+        cdef cc.Long total_bytes = cc.read_selected_field(self.xx, fn, self.fsel.xx)
+        if self.fsel is not None:
+            assert self.xx.n_elems == self.fsel.xx.n_elems
+        return total_bytes
+
+    def write_direct(self, const cc.std_string& fn):
+        assert self.fsel is not None
+        assert self.xx.n_elems == self.fsel.xx.n_elems
+        cdef cc.Long total_bytes = cc.write_selected_field(self.xx, fn, self.fsel.xx)
+        return total_bytes
+
+    def read_sfr_direct(self, ShuffledFieldsReader sfr, const cc.std_string& fn):
+        cdef cc.Long total_bytes = 0
+        cdef ShuffledBitSet sbs
+        if self.fsel is None:
+            if self.view_count > 0:
+                raise ValueError("can't re-init while being viewed")
+            self.fsel = FieldSelection()
+            total_bytes = cc.read(sfr.xx, fn, self.xx, self.fsel.xx)
+            if total_bytes == 0:
+                return 0
+        else:
+            sbs = sfr.get_cache_sbs(self.fsel)
+            total_bytes = cc.read(sfr.xx, fn, sbs.xx, self.xx)
+            if total_bytes == 0:
+                return 0
+            if sbs.xx.fsel.n_elems != self.fsel.xx.n_elems:
+                raise Exception(f"read_sfr_direct: sbs.xx.fsel.n_elems={sbs.xx.fsel.n_elems} ; self.fsel.xx.n_elems={self.fsel.xx.n_elems}")
+        if self.xx.n_elems != self.fsel.xx.n_elems:
+            raise Exception(f"read_sfr_direct: self.xx.n_elems={self.xx.n_elems} ; self.fsel.xx.n_elems={self.fsel.xx.n_elems}")
+        return total_bytes
+
+    def write_sfw_direct(self, ShuffledFieldsWriter sfw, const cc.std_string& fn, *, cc.Bool skip_if_exist=False):
+        if skip_if_exist:
+            if sfw.has(fn):
+                return 0
+        assert self.fsel is not None
+        assert self.xx.n_elems == self.fsel.xx.n_elems
+        cdef ShuffledBitSet sbs = sfw.get_cache_sbs(self.fsel)
+        if sbs.xx.fsel.n_elems != self.fsel.xx.n_elems:
+            raise Exception(f"write_sfw_direct: sbs.xx.fsel.n_elems={sbs.xx.fsel.n_elems} ; self.fsel.xx.n_elems={self.fsel.xx.n_elems}")
+        if self.xx.n_elems != self.fsel.xx.n_elems:
+            raise Exception(f"write_sfw_direct: self.xx.n_elems={self.xx.n_elems} ; self.fsel.xx.n_elems={self.fsel.xx.n_elems}")
+        cdef cc.Long total_bytes = cc.write(sfw.xx, fn, sbs.xx, self.xx)
+        return total_bytes
+
+    def __getstate__(self):
+        """
+        Only work when single node (or if all nodes has the same data).
+        """
+        return super().__getstate__()
+
+    def __setstate__(self, state):
+        """
+        Only work when single node (or if all nodes has the same data).
+        """
+        super().__setstate__(state)
+
+selected_field_type_dict[ElemType{{name}}] = SelectedField{{name}}
+
+{{endfor}}
+
+### -------------------------------------------------------------------

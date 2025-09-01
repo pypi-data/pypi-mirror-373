@@ -1,0 +1,328 @@
+# cython: binding=True, embedsignature=True, c_string_type=unicode, c_string_encoding=utf8
+
+{{py:
+type_name_list = [
+    'ColorMatrix',
+    'WilsonMatrix',
+    'NonRelWilsonMatrix',
+    'IsospinMatrix',
+    'SpinMatrix',
+    'WilsonVector',
+    'ComplexD',
+    'ComplexF',
+    'RealD',
+    'RealF',
+    'Long',
+    'Int',
+    'Int64t',
+    'Int32t',
+    'Int8t',
+    'Char',
+    ]
+type_name_for_glb_max_min_list = [
+    'RealD',
+    'RealF',
+    'Long',
+    'Int',
+    'Int64t',
+    'Int32t',
+    ]
+}}
+
+from qlat_utils.all cimport *
+from . cimport everything as cc
+from cpython cimport Py_buffer
+from cpython.buffer cimport PyBUF_FORMAT
+from .geometry cimport *
+from .field_selection cimport *
+from .fields_io cimport *
+from .selected_field_types cimport *
+from .selected_points_types cimport *
+
+import qlat_utils as q
+import numpy as np
+
+from .field_type_dict import field_type_dict
+
+### -------------------------------------------------------------------
+
+{{for name in type_name_list}}
+
+cdef void set_field_f_sp_{{name}}(Field{{name}} self, SelectedPoints{{name}} other):
+    cdef Geometry geo = other.psel.geo
+    cc.set_field_selected(self.xx, other.xx, geo.xx, other.psel.xx)
+
+cdef void set_field_f_sf_{{name}}(Field{{name}} self, SelectedField{{name}} other):
+    cc.set_field_selected(self.xx, other.xx, other.fsel.xx)
+
+def set_field_f_f_{{name}}(Field{{name}} self, Field{{name}} other):
+    cc.assign_direct(self.xx, other.xx)
+    # self.xx = other.xx
+
+cdef class Field{{name}}(FieldBase):
+
+    ctype = ElemType{{name}}
+
+    def __cinit__(self):
+        self.cdata = <cc.Long>&(self.xx)
+        self.view_count = 0
+
+    def __init__(self, *args):
+        self.init_from_geo(*args)
+
+    def init_from_geo(self, Geometry geo=None, cc.Int multiplicity=0):
+        if geo is None:
+            self.xx.init()
+            return
+        if self.view_count > 0:
+            raise ValueError("can't re-init while being viewed")
+        self.xx.init(geo.xx, multiplicity)
+
+    def __getbuffer__(self, Py_buffer *buffer, int flags):
+        cdef cc.Int ndim = 2 + ElemType{{name}}.ndim()
+        cdef Buffer buf = Buffer(self, ndim)
+        buf.format = ElemType{{name}}.format()
+        buf.itemsize = ElemType{{name}}.itemsize()
+        buf.buf = <char*>(self.xx.field.data())
+        cdef cc.Int multiplicity = self.xx.multiplicity
+        buf.set_dim_size(0, self.xx.field.size() // multiplicity)
+        buf.set_dim_size(1, multiplicity)
+        cdef cc.std_vector[Py_ssize_t] vec = ElemType{{name}}.shape()
+        cdef cc.Int dim_size = vec.size()
+        cdef cc.Int dim
+        for dim in range(dim_size):
+            buf.set_dim_size(2 + dim, vec[dim])
+        buf.update_strides_from_shape()
+        buf.set_buffer(buffer, flags)
+        self.view_count += 1
+
+    def release_buffer(self, Buffer buf):
+        assert buf.obj is self
+        self.view_count -= 1
+
+    def __imatmul__(self, other):
+        """
+        other can be Field, SelectedField, SelectedPoints
+        field geo does not change if already initialized
+        #
+        Preserve original data if not assigned.
+        """
+        if isinstance(other, Field{{name}}):
+            set_field_f_f_{{name}}(self, <Field{{name}}>other)
+        elif isinstance(other, SelectedField{{name}}):
+            set_field_f_sf_{{name}}(self, <SelectedField{{name}}>other)
+        elif isinstance(other, SelectedPoints{{name}}):
+            set_field_f_sp_{{name}}(self, <SelectedPoints{{name}}>other)
+        else:
+            raise Exception(f"Field{{name}} @= type mismatch {type(self)} {type(other)}")
+        return self
+
+    @q.timer
+    def copy(self, cc.Bool is_copying_data=True):
+        f = type(self)()
+        if is_copying_data:
+            f @= self
+        return f
+
+    @q.timer
+    def set_zero(self):
+        return cc.set_zero(self.xx)
+
+    def swap(self, Field{{name}} f1):
+        cc.qswap(self.xx, f1.xx)
+
+    def swap_cast(self, FieldChar f1):
+        cc.qswap_cast(self.xx, f1.xx)
+
+    def swap_sp_cast(self, SelectedPointsChar f1, Geometry geo):
+        """
+        Only swap data. Does NOT affect f1.psel at all.
+        """
+        cc.qswap_cast(self.xx, f1.xx, geo.xx)
+
+    @property
+    def total_site(self):
+        cdef Coordinate x = Coordinate()
+        cc.assign_direct(x.xx, self.xx.get_geo().total_site())
+        return x
+
+    @property
+    def n_sites(self):
+        cdef cc.Int multiplicity = self.xx.multiplicity
+        return self.xx.field.size() // multiplicity
+
+    @property
+    def multiplicity(self):
+        return self.xx.multiplicity
+
+    @property
+    def sizeof_m(self):
+        return ElemType{{name}}.size()
+
+    @property
+    def geo(self):
+        cdef Geometry geo = Geometry()
+        # cc.assign_direct(geo.xx, self.xx.get_geo())
+        geo.xx = self.xx.get_geo()
+        return geo
+
+    def qnorm(self):
+        return cc.qnorm(self.xx)
+
+    def qnorm_field(self):
+        cdef Geometry geo = self.geo
+        cdef FieldRealD f_n = FieldRealD(geo, 1)
+        cc.qnorm_field(f_n.xx, self.xx)
+        return f_n
+
+    @q.timer
+    def set_unit(self, cc.PyComplexD coef=1.0):
+        return cc.set_unit(self.xx, cc.ccpy_d(coef))
+
+    @q.timer
+    def set_rand(self, RngState rng, cc.RealD upper=1.0, cc.RealD lower=0.0):
+        return cc.set_u_rand(self.xx, rng.xx, upper, lower)
+
+    @q.timer
+    def set_rand_g(self, RngState rng, cc.RealD center=0.0, cc.RealD sigma=1.0):
+        return cc.set_g_rand(self.xx, rng.xx, center, sigma)
+
+    def glb_sum(self):
+        """
+        return SelectedPoints with n_points=1
+        """
+        from .c import get_psel_single
+        cdef PointsSelection psel = get_psel_single(self.total_site)
+        cdef SelectedPoints{{name}} sp = SelectedPoints{{name}}(psel, self.multiplicity)
+        cc.field_glb_sum(sp.xx, self.xx)
+        return sp
+
+    def glb_sum_tslice(self, *, cc.Int t_dir=3):
+        """
+        return SelectedPoints with n_points=total_site[t_dir]
+        """
+        from .c import get_psel_tslice
+        cdef PointsSelection psel = get_psel_tslice(self.total_site, t_dir=t_dir)
+        cdef SelectedPoints{{name}} sp = SelectedPoints{{name}}(psel, self.multiplicity)
+        cc.field_glb_sum_tslice(sp.xx, self.xx, t_dir)
+        return sp
+
+{{if (name in type_name_for_glb_max_min_list)}}
+
+    def glb_max(self):
+        """
+        return SelectedPoints with n_points=1
+        """
+        from .c import get_psel_single
+        cdef PointsSelection psel = get_psel_single(self.total_site)
+        cdef SelectedPoints{{name}} sp = SelectedPoints{{name}}(psel, self.multiplicity)
+        cc.field_glb_max(sp.xx, self.xx)
+        return sp
+
+    def glb_min(self):
+        """
+        return SelectedPoints with n_points=1
+        """
+        from .c import get_psel_single
+        cdef PointsSelection psel = get_psel_single(self.total_site)
+        cdef SelectedPoints{{name}} sp = SelectedPoints{{name}}(psel, self.multiplicity)
+        cc.field_glb_min(sp.xx, self.xx)
+        return sp
+
+{{endif}}
+
+    def get_elems_xg(self, xg_arr):
+        """
+        xg_arr can be xg_arr, xg_list, or xg
+        """
+        cdef PointsSelection psel = PointsSelection(self.total_site, xg_arr)
+        cdef SelectedPoints{{name}} sp = SelectedPoints{{name}}(psel, self.multiplicity)
+        sp @= self
+        return sp
+
+    def set_elems_xg(self, xg_arr, val):
+        """
+        xg_arr can be xg_arr, xg_list, or xg
+        """
+        cdef Geometry geo = self.geo
+        cdef PointsSelection psel = PointsSelection(self.total_site, xg_arr)
+        cdef SelectedPoints{{name}} sp = SelectedPoints{{name}}(psel, self.multiplicity)
+        np.asarray(sp).ravel()[:] = np.asarray(val).ravel()
+        self @= sp
+
+    def get_elem_xg(self, xg_arr, cc.Int m):
+        """
+        xg_arr can be xg_arr, xg_list, or xg
+        """
+        cdef Geometry geo = self.geo
+        cdef PointsSelection psel = PointsSelection(self.total_site, xg_arr)
+        cdef SelectedPoints{{name}} sp = SelectedPoints{{name}}(psel, 1)
+        cc.set_selected_points(sp.xx, self.xx, psel.xx, m)
+        return sp
+
+    def set_elem_xg(self, xg_arr, cc.Int m, val):
+        """
+        xg_arr can be xg_arr, xg_list, or xg
+        """
+        cdef Geometry geo = self.geo
+        cdef cc.Int multiplicity = self.multiplicity
+        cdef PointsSelection psel = PointsSelection(self.total_site, xg_arr)
+        cdef SelectedPoints{{name}} sp = SelectedPoints{{name}}(psel, 1)
+        np.asarray(sp).ravel()[:] = np.asarray(val).ravel()
+        cc.set_field_selected(self.xx, sp.xx, geo.xx, psel.xx, multiplicity, m)
+
+    def shift(self, Coordinate shift=None, cc.Bool is_reflect=False):
+        """
+        return new shifted Field
+        self is not changed.
+        #
+        shift is the coordinate to shift the field (or None, which means no shift)
+        roughly shifted_field[(xg + shift) % total_site] == original_field[xg]
+        #
+        is_reflect determine whether to negate coordinate after shift
+        """
+        cdef Field{{name}} f1 = self.copy(is_copying_data=False)
+        if shift is None:
+            cc.assign_direct(f1.xx, self.xx)
+        else:
+            cc.field_shift(f1.xx, self.xx, shift.xx)
+        if is_reflect:
+            cc.reflect_field(f1.xx)
+        return f1
+
+    def read_direct(self, const cc.std_string& fn, Coordinate new_size_node=None):
+        if new_size_node is None:
+            new_size_node = Coordinate()
+        return cc.read_field(self.xx, fn, new_size_node.xx)
+
+    def write_direct(self, const cc.std_string& fn, Coordinate new_size_node=None):
+        if new_size_node is None:
+            new_size_node = Coordinate()
+        return cc.write_field(self.xx, fn, new_size_node.xx)
+
+    def read_sfr_direct(self, ShuffledFieldsReader sfr, const cc.std_string& fn):
+        return cc.read(sfr.xx, fn, self.xx)
+
+    def write_sfw_direct(self, ShuffledFieldsWriter sfw, const cc.std_string& fn, *, cc.Bool skip_if_exist=False):
+        if skip_if_exist:
+            if sfw.has(fn):
+                return 0
+        return cc.write(sfw.xx, fn, self.xx)
+
+    def __getstate__(self):
+        """
+        Only work when single node (or if all nodes has the same data).
+        """
+        return super().__getstate__()
+
+    def __setstate__(self, state):
+        """
+        Only work when single node (or if all nodes has the same data).
+        """
+        super().__setstate__(state)
+
+field_type_dict[ElemType{{name}}] = Field{{name}}
+
+{{endfor}}
+
+### -------------------------------------------------------------------
