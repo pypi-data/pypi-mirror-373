@@ -1,0 +1,50 @@
+name: Build and Deploy Sphinx Documentation
+
+on:
+  push:
+    branches:
+      - master  # Trigger on push to the main branch
+  pull_request:
+    branches:
+      - master  # Trigger on pull requests to the main branch
+
+jobs:
+  sphinx-docs:
+    runs-on: ubuntu-latest
+    container:
+      image: ceciliogq/v1-phenomxpy-python310
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      # - name: Set up Python
+      #   uses: actions/setup-python@v4
+      #   with:
+      #     python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          /opt/conda/bin/activate python310
+          python -m pip install --upgrade pip
+          apt-get update
+          apt-get install -y make
+          pip install .          
+          pip install sphinx sphinx-rtd-theme numpydoc nbsphinx sphinx-tabs # Install Sphinx and theme
+          
+      - name: Check imports
+        run:
+          python -c "import phenomxpy.precession; print(phenomxpy.precession)"
+
+      - name: Build documentation
+        run: |
+          cd docs  # Go to the docs folder (adjust if your docs are elsewhere)
+          make clean
+          make html  # Build HTML pages
+          cd -
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          publish_dir: docs/build/html  # Folder where the Sphinx HTML output is located
+          github_token: ${{ secrets.GITHUB_TOKEN }}  # Automatically provided by GitHub for authentication

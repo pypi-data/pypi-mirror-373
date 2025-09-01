@@ -1,0 +1,100 @@
+# Copyright (C) 2023  Cecilio García Quirós
+# image: ceciliogq/v1-phenomxpy-python310
+# Official language image. Look for the different tagged releases at:
+# https://hub.docker.com/r/library/python/tags/
+image: python:3.11
+
+
+# Setup virtual environment
+before_script:
+  #- source activate python310
+  - pip install .
+  - pip install pytest pytest-cov
+  - pip install pandas
+  # gwsignal_wrapper requires lalsimulation
+  - pip install lalsuite gwpy astropy
+
+stages:
+  - test
+  - build_docs
+  - deploy
+
+# test:
+#   stage: test
+#   script:
+#   - source activate python310
+#   - pip install .
+#   - mamba install pytest
+#   - mamba install pandas
+#   - pytest test/test_coefficients.py
+#   - pytest test/test_phenomT.py
+#  - pytest test/test_options.py
+
+# Run unit tests and generate report
+pytest:
+  stage: test
+  script:
+    - pytest -v --junitxml=report.xml --cov=phenomxpy --cov-report=term --cov-report xml
+  coverage: '/TOTAL.*\s+(\d+%)$/'
+  artifacts:
+    when: always
+    paths:
+      - report.xml
+      - coverage.xml
+    expire_in: 10 days
+    reports:
+      junit: report.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+
+# Run black code formatter
+black:
+  stage: test
+  before_script:
+    - pip install "black[jupyter]"
+  script:
+    - black --check .
+
+# For runner with gpu support
+# image: mambaorg/micromamba:focal-cuda-11.3.1
+# unit-tests:
+# tags:
+#   - saas-linux-medium-amd64-gpu-standard
+#   script:
+#   - nvidia-smi
+#   - micromamba install numpy cupy numba scipy pytorch pytorch3d quaternion -c conda-forge -c nvidia
+#   - pip install .
+#   - pip install pandas
+#   - pytest test/test_coefficients.py
+#   - pytest test/test_phenomT.py
+
+
+# build_docs:
+#   stage: build_docs
+#   before_script:
+#     - apt-get update
+#     - apt-get install -y make
+#     - pip install sphinx sphinx-rtd-theme numpydoc nbsphinx sphinx-tabs  # Install sphinx dependencies
+#   script:
+#     - cd docs  # Navigate to your docs folder
+#     - make html  # Build the HTML documentation
+#   artifacts:
+#     paths:
+#       - docs/build/html  # Specify the path to the generated documentation
+
+# variables:
+#   SPHINX_OUTPUT_DIR: public/$CI_COMMIT_REF_NAME  # Use the branch name for the output directory
+
+# pages:
+#   stage: deploy
+#   dependencies:
+#   - build_docs
+#   script:
+#   - mkdir -p $SPHINX_OUTPUT_DIR
+#   - mv docs/build/html/* $SPHINX_OUTPUT_DIR
+#   artifacts:
+#     paths:
+#       - public  # Specify the public directory for Pages deployment
+#   only:
+#     - branches
