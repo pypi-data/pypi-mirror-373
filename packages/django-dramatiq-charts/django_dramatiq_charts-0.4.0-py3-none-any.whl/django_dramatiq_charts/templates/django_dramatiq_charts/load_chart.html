@@ -1,0 +1,88 @@
+{% extends "django_dramatiq_charts/base.html" %}
+
+{% block title %}Dramatiq task load chart{% endblock %}
+
+{% block description %}Dramatiq task load chart{% endblock %}
+
+{% block content %}
+    <form method="GET" class="filter_form">
+        {{ form.as_table }}
+        <nobr>
+            <button type="submit">Build chart</button>
+            <a href="."><i>Reset</i></a>
+            {% if cache_enabled %}
+                <a href="{% url 'ddc_clean_cache' %}"><i>Update cache</i></a>
+            {% endif %}
+        </nobr>
+    </form>
+    {% if empty_qs %}
+        <p class="msg">🔍 there is no data for the specified criteria</p>
+        <p class="text-center">{{ chart_title|safe }}</p>
+    {% elif categories %}
+        <div id='chart'></div>
+    {% else %}
+        <p class="msg">🖦 specify build criteria</p>
+    {% endif %}
+{% endblock %}
+
+{% block extrabottom %}
+    <script>
+        $("#id_status").select2({
+            placeholder: "All statuses",
+            multiple: true,
+        });
+        $("#id_actor").select2({
+            placeholder: "All actors",
+            multiple: true,
+        });
+        $("#id_queue").select2({
+            placeholder: "All queues",
+            multiple: true,
+        });
+
+        let z = ({{ working_actors_count|safe|default:'[]' }});
+        let x = ({{ dates|safe|default:'[]' }});
+        let y = ({{ categories|safe|default:'[]' }});
+        let text = z.map(function (z, i) {
+            return z.map(function (value, j) {
+                return ` Actor: ${y[i]} <br>` +
+                    ` Datetime: ${x[j]} <br>` +
+                    ` Count: ${value} `;
+            });
+        });
+        let data = [
+            {
+                z: z,
+                x: x,
+                y: y,
+                type: 'heatmap',
+                hoverongaps: false,
+                colorscale: [
+                    [0, '#a3d2db'],  // 69c3e8 a3d2db
+                    [1, '#01434b'],  // e31919 01434b
+                ],
+                hoverinfo: 'text',
+                text: text,
+            }
+        ];
+        let layout = {
+            title: {
+                text: "{{ chart_title|safe }}",
+                font: {
+                    size: 15,
+                }
+            },
+            xaxis: {
+                rangeslider: {},
+            },
+            yaxis: {
+                automargin: true,
+            },
+            height: {{ chart_height|safe|default:1 }},
+        };
+        let categories = ({{ categories|safe|default:'[]' }});
+        if (categories.length !== 0) {
+            Plotly.newPlot('chart', data, layout, {responsive: true});
+        }
+    </script>
+{% endblock %}
