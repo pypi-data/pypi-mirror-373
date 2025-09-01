@@ -1,0 +1,194 @@
+from unittest.mock import Mock, call, patch
+
+import pytest
+
+import marge.user
+from marge.approvals import Approvals, CustomApprovals
+from marge.gitlab import GET, POST, Api
+
+# testing this here is more convenient
+from marge.job import CannotMerge, _get_reviewer_names_and_emails
+from marge.merge_request import MergeRequest
+
+INFO = {
+    "id": 5,
+    "iid": 6,
+    "project_id": 1,
+    "title": "Approvals API",
+    "description": "Test",
+    "state": "opened",
+    "created_at": "2016-06-08T00:19:52.638Z",
+    "updated_at": "2016-06-08T21:20:42.470Z",
+    "detailed_merge_status": "mergeable",
+    "approvals_required": 3,
+    "approvals_left": 1,
+    "approved_by": [
+        {
+            "user": {
+                "name": "Administrator",
+                "username": "root",
+                "id": 1,
+                "state": "active",
+                "avatar_url": "".join(
+                    [
+                        "http://www.gravatar.com/avatar/",
+                        "e64c7d89f26bd1972efa854d13d7dd61?s=80\u0026d=identicon",
+                    ]
+                ),
+                "web_url": "http://localhost:3000/u/root",
+            }
+        },
+        {
+            "user": {
+                "name": "Roger Ebert",
+                "username": "ebert",
+                "id": 2,
+                "state": "active",
+            }
+        },
+    ],
+}
+USERS = {
+    1: {
+        "name": "Administrator",
+        "username": "root",
+        "id": 1,
+        "state": "active",
+        "email": "root@localhost",
+    },
+    2: {
+        "name": "Roger Ebert",
+        "username": "ebert",
+        "id": 2,
+        "state": "active",
+        "email": "ebert@example.com",
+    },
+}
+
+
+# pylint: disable=attribute-defined-outside-init
+class TestApprovals:
+    def setup_method(self, _method):
+        self.api = Mock(Api)
+        self.approvals = Approvals(api=self.api, info=INFO)
+
+    def test_fetch_from_merge_request(self):
+        api = self.api
+        api.call = Mock(return_value=INFO)
+
+        merge_request = MergeRequest(api, {"id": 74, "iid": 6, "project_id": 1234})
+        approvals = merge_request.fetch_approvals(Approvals)
+
+        api.call.assert_called_once_with(
+            GET("/projects/1234/merge_requests/6/approvals")
+        )
+        assert approvals.info == INFO
+
+    def test_properties(self):
+        assert self.approvals.project_id == 1
+        assert self.approvals.approvals_left == 1
+        assert self.approvals.approver_usernames == ["root", "ebert"]
+        assert not self.approvals.sufficient
+
+    def test_sufficiency(self):
+        good_approvals = Approvals(
+            api=self.api, info=dict(INFO, approvals_required=1, approvals_left=0)
+        )
+        assert good_approvals.sufficient
+
+    def test_custom_insufficient(self):
+        api = self.api
+        api.call = Mock(return_value=INFO)
+
+        merge_request = MergeRequest(api, {"id": 74, "iid": 6, "project_id": 1234})
+
+        def make_custom_approvals(api, info):
+            # Only require 2 approvers from the list, not actually achievable
+            return CustomApprovals(api, info, ["root"], 2)
+
+        approvals = merge_request.fetch_approvals(make_custom_approvals)
+
+        api.call.assert_called_once_with(
+            GET("/projects/1234/merge_requests/6/approvals")
+        )
+
+        assert approvals.info == INFO
+        assert approvals.approvals_left == 1
+        assert not approvals.sufficient
+
+    def test_custom_sufficient(self):
+        api = self.api
+        api.call = Mock(return_value=INFO)
+
+        merge_request = MergeRequest(api, {"id": 74, "iid": 6, "project_id": 1234})
+
+        def make_custom_approvals(api, info):
+            # Only require 1 approver from the list
+            return CustomApprovals(api, info, ["root"], 1)
+
+        approvals = merge_request.fetch_approvals(make_custom_approvals)
+
+        api.call.assert_called_once_with(
+            GET("/projects/1234/merge_requests/6/approvals")
+        )
+
+        assert approvals.info == INFO
+        assert approvals.approvals_left == 0
+        assert approvals.sufficient
+
+    def test_reapprove(self):
+        self.approvals.reapprove()
+        self.api.call.assert_has_calls(
+            [
+                call(
+                    POST(
+                        endpoint="/projects/1/merge_requests/6/approve",
+                        args={},
+                        extract=None,
+                    ),
+                    sudo=1,
+                ),
+                call(
+                    POST(
+                        endpoint="/projects/1/merge_requests/6/approve",
+                        args={},
+                        extract=None,
+                    ),
+                    sudo=2,
+                ),
+            ]
+        )
+
+    @patch("marge.user.User.fetch_by_id")
+    def test_get_reviewer_names_and_emails(self, user_fetch_by_id):
+        user_fetch_by_id.side_effect = lambda id, _: marge.user.User(
+            self.api, USERS[id]
+        )
+        assert _get_reviewer_names_and_emails(
+            commits=[], approvals=self.approvals, api=self.api
+        ) == ["Administrator <root@localhost>", "Roger Ebert <ebert@example.com>"]
+
+    @patch("marge.user.User.fetch_by_id")
+    def test_approvals_fails_when_same_author(self, user_fetch_by_id):
+        info = dict(INFO, approved_by=list(INFO["approved_by"]))
+        del info["approved_by"][1]
+        approvals = Approvals(self.api, info)
+        user_fetch_by_id.side_effect = lambda id, _: marge.user.User(
+            self.api, USERS[id]
+        )
+        commits = [{"author_email": "root@localhost"}]
+        with pytest.raises(CannotMerge):
+            _get_reviewer_names_and_emails(
+                commits=commits, approvals=approvals, api=self.api
+            )
+
+    @patch("marge.user.User.fetch_by_id")
+    def test_approvals_succeeds_with_independent_author(self, user_fetch_by_id):
+        user_fetch_by_id.side_effect = lambda id, _: marge.user.User(
+            self.api, USERS[id]
+        )
+        print(INFO["approved_by"])
+        commits = [{"author_email": "root@localhost"}]
+        assert _get_reviewer_names_and_emails(
+            commits=commits, approvals=self.approvals, api=self.api
+        ) == ["Administrator <root@localhost>", "Roger Ebert <ebert@example.com>"]

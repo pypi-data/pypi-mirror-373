@@ -1,0 +1,51 @@
+---
+{{- if .Values.marge_bot.schedule.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "marge-bot.fullname" . }}
+  labels:
+    {{- include "marge-bot.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.marge_bot.schedule.when | quote }}
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 -}}
+          {{- end }}
+          serviceAccountName: {{ include "marge-bot.serviceAccountName" . }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          restartPolicy: OnFailure
+          volumes:
+          - name: tmp
+            emptyDir: {}  
+          containers:
+          - name: {{ .Chart.Name }}-marge-bot-cronjob
+            securityContext:
+              {{- toYaml .Values.securityContext | nindent 16 }}
+            image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+            imagePullPolicy: {{ .Values.imagePullPolicy }}
+            volumeMounts:
+            - mountPoint: /tmp
+              name: tmp
+            env:
+              - name: MARGE_CLI
+                value: "true"
+            envFrom:
+              - configMapRef:
+                  name: {{ include "marge-bot.fullname" . }}
+              - secretRef:
+                  name: {{ include "marge-bot.fullname" . }}
+              - secretRef:
+                  name: {{ include "marge-bot.fullname" . }}-extrasecrets
+                  optional: true
+            resources:
+              {{- toYaml .Values.resources | nindent 16 }}
+  concurrencyPolicy: "Forbid"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  {{- end -}}

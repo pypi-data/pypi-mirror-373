@@ -1,0 +1,45 @@
+{{- if .Values.marge_bot.force }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ template "marge-bot.jobname" . }}
+  labels:
+    {{- include "marge-bot.labels" . | nindent 4 }}
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "marge-bot.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      volumes:
+      - name: tmp
+        emptyDir: {}    
+      containers:
+      - name: {{ .Chart.Name }}-marge-bot-job
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.imagePullPolicy }}
+        volumeMounts:
+        - mountPoint: /tmp
+          name: tmp
+        env:
+          - name: MARGE_CLI
+            value: "true"
+        envFrom:
+          - configMapRef:
+              name: {{ include "marge-bot.fullname" . }}
+          - secretRef:
+              name: {{ include "marge-bot.fullname" . }}
+          - secretRef:
+              name: {{ include "marge-bot.fullname" . }}-extrasecrets
+              optional: true
+        resources:
+          {{- toYaml .Values.resources | nindent 12 }}
+  backoffLimit: 4
+  {{- end -}}
