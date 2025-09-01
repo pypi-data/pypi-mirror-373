@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>API Resource Documentation</title>
+    <style>
+        :root {
+            --bg: #f5f7fa;
+            --paper: #ffffff;
+            --text: #333;
+            --primary: #2c7be5;
+            --accent: #f6c343;
+            --border: #dfe3e6;
+        }
+
+        html.dark {
+            --bg: #202328;
+            --paper: #2b2f36;
+            --text: #e4e7eb;
+            --primary: #58a6ff;
+            --accent: #ffb243;
+            --border: #40454e;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 40px 18px;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 2.4rem;
+            margin-bottom: 1.2em;
+            color: var(--primary);
+        }
+
+        h2 {
+            margin-top: 2em;
+            font-size: 1.6rem;
+            color: var(--primary);
+            border-bottom: 2px solid var(--primary);
+            padding-bottom: 6px;
+        }
+
+        h3, h4 {
+            margin-top: 1.2em;
+            font-weight: bold;
+        }
+
+        pre {
+            background: #272822;
+            color: #e8e8e8;
+            padding: 12px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 0.9rem;
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: var(--paper);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 24px;
+            margin-bottom: 40px;
+        }
+
+        .tag {
+            display: inline-block;
+            font-size: 0.75rem;
+            font-weight: bold;
+            padding: 3px 8px;
+            border-radius: 999px;
+            color: #fff;
+            margin-right: 4px;
+        }
+
+        .tag-get {
+            background: #28a745;
+        }
+
+        .tag-post {
+            background: #e67e22;
+        }
+
+        .tag-put {
+            background: #17a2b8;
+        }
+
+        .tag-delete {
+            background: #dc3545;
+        }
+
+        .tag-html {
+            background: #6c5ce7;
+        }
+
+        .tag-rest {
+            background: #8e44ad;
+        }
+
+        .tag-ws {
+            background: #c0392b;
+        }
+
+        .tag-na {
+            background: #95a5a6;
+        }
+
+        details.resource {
+            margin-bottom: 18px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--paper);
+        }
+
+        details.resource summary {
+            padding: 14px 20px;
+            cursor: pointer;
+            font-size: 1.05rem;
+        }
+
+        details.resource[open] summary {
+            border-bottom: 1px solid var(--border);
+        }
+
+        ul.param-list {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        ul.param-list li {
+            padding: 6px 0;
+            border-bottom: 1px dotted var(--border);
+        }
+
+        #themeBtn {
+            position: fixed;
+            right: 22px;
+            bottom: 22px;
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            background: var(--paper);
+            color: var(--primary);
+        }
+
+        html.dark #themeBtn {
+            color: var(--accent);
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>API Resource Documentation</h1>
+
+    <div class="card">
+        <h2>Overview</h2>
+        <p>This API provides REST, HTML and WebSocket interfaces, grouped by resource functionality.</p>
+        <h3>Standard JSON Response</h3>
+        <pre>{
+  "status": "OK" | "FAILED",
+  ...
+}</pre>
+    </div>
+
+    {% macro chip(text) -%}
+        <span class="tag tag-{{ text.lower() if text else 'na' }}">{{ text|upper }}</span>
+    {%- endmacro %}
+
+    {% macro param_list(params) -%}
+        <ul class="param-list">
+            {% for key, val in params.items() %}
+                <li>
+                    <strong>{{ key }}</strong>:
+                    <code>{{ val.type | replace("<class '", "") | replace("'>", "") }}</code>
+                    {% if val.default is defined %} (default: <code>{{ val.default }}</code>){% endif %}
+                    {% if val.note is defined %} — {{ val.note }}{% endif %}
+                    {% if val.validation is defined and val.validation.parameters %}
+                        — validation:
+                        {% for vk, vv in val.validation.parameters.items() %}
+                            {{ vk }}=<code>{{ vv }}</code>{% if not loop.last %}; {% endif %}
+                        {% endfor %}
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    {%- endmacro %}
+
+    {% macro render_api(name, api) -%}
+        <details class="resource">
+            <summary>{{ api.name }}</summary>
+            <div style="padding: 20px 24px;">
+                {% if api.description %}
+                    <p>{{ api.description | trim | replace('\n', '<br>') | safe }}</p>
+                {% endif %}
+
+                <h4>Access</h4>
+                <ul class="param-list">
+                    {% set http_rest = 'REST' in api.endpoints %}
+                    {% set http_html = 'HTML' in api.endpoints %}
+                    {% set has_http = http_rest or http_html %}
+
+                    {% if has_http %}
+                        <li>
+                            <strong>HTTP:</strong><br>
+                            {% if api.url is defined %}
+                                <div><strong>URL:</strong> <code>{{ api.url }}</code></div>
+                            {% endif %}
+                            <div><strong>Method:</strong> {{ chip(api.method or 'N/A') }}</div>
+                            {% if http_rest %}{{ chip('REST') }}{% endif %}
+                            {% if http_html %}{{ chip('HTML') }}{% endif %}
+                        </li>
+                    {% endif %}
+
+                    {% if 'WS' in api.endpoints %}
+                        <li>
+                            <strong>WebSocket:</strong><br>
+                            {% if api.command is defined %}
+                                <strong>Command:</strong> <code>{{ api.command }}</code>
+                            {% else %}
+                                <em>No command specified</em>
+                            {% endif %}
+                            {{ chip('WS') }}
+                        </li>
+                    {% endif %}
+                </ul>
+
+                {% if api.parameters %}
+                    <h4>Parameters</h4>
+                    {{ param_list(api.parameters) }}
+                {% endif %}
+
+                {% if api.cookies %}
+                    <h4>Cookies</h4>
+                    <ul class="param-list">
+                        {% for cname, cval in api.cookies.items() %}
+                            <li><strong>{{ cname }}</strong>: <code>{{ cval }}</code></li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+
+                <h4>Response</h4>
+                {% if api.response and api.response.parameters and api.response.parameters|length > 0 %}
+                    {{ param_list(api.response.parameters) }}
+                {% else %}
+                    <pre>{"status": "OK" | "FAILED"}</pre>
+                {% endif %}
+            </div>
+        </details>
+    {%- endmacro %}
+
+    {% macro recurse_group(name, node, level=1) %}
+        {% if '_value' in node %}
+            {{ render_api(name, node['_value']) }}
+        {% else %}
+            <section style="margin-left: {{ level * 16 }}px">
+                <h2>{{ name }}</h2>
+                {% for child_name, child_node in node.items() %}
+                    {{ recurse_group(child_name, child_node, level + 1) }}
+                {% endfor %}
+            </section>
+        {% endif %}
+    {% endmacro %}
+
+    {% for top_level, group in api_resources.items() %}
+        {{ recurse_group(top_level, group) }}
+    {% endfor %}
+</div>
+
+<button id="themeBtn" title="Toggle dark mode">☾</button>
+<script>
+    document.getElementById('themeBtn').addEventListener('click', function () {
+        document.documentElement.classList.toggle('dark');
+        this.textContent = document.documentElement.classList.contains('dark') ? '☀' : '☾';
+    });
+</script>
+</body>
+</html>
