@@ -1,0 +1,41 @@
+{{current_settings}}
+
+# Heroku settings.
+import os
+
+import dj_database_url
+
+DEBUG = os.getenv("DEBUG") == "TRUE"
+SECRET_KEY = os.getenv("SECRET_KEY")
+
+try:
+    ALLOWED_HOSTS.append("*")
+except NameError:
+    ALLOWED_HOSTS = ["*"]
+
+DATABASES = {
+    "default": dj_database_url.config(
+        env="DATABASE_URL",
+        conn_max_age=600,
+        conn_health_checks=True,
+        ssl_require=True,
+    ),
+}
+
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+STATIC_URL = "/static/"
+try:
+    STATICFILES_DIRS.append(os.path.join(BASE_DIR, "static"))
+except NameError:
+    STATICFILES_DIRS = [
+        os.path.join(BASE_DIR, "static"),
+    ]
+
+i = MIDDLEWARE.index("django.middleware.security.SecurityMiddleware")
+MIDDLEWARE.insert(i + 1, "whitenoise.middleware.WhiteNoiseMiddleware")
+
+STORAGES["staticfiles"]["BACKEND"] = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
+# Don't store the original (un-hashed filename) version of static files, to reduce slug size:
+# https://whitenoise.readthedocs.io/en/latest/django.html#WHITENOISE_KEEP_ONLY_HASHED_FILES
+WHITENOISE_KEEP_ONLY_HASHED_FILES = True
