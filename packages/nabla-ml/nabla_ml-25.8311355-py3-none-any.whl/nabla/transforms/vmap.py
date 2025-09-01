@@ -1,0 +1,163 @@
+# ===----------------------------------------------------------------------=== #
+# Nabla 2025
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ===----------------------------------------------------------------------=== #
+
+from collections.abc import Callable
+from typing import Any, Union
+
+from ..core.array import Array
+from .utils import (
+    _handle_args_consistently,
+    _map_pytree_with_axes,
+)
+
+
+def _check_in_axes_size(tree: Any, axes: Any) -> int:
+    """Check that all non-None axes have the same size and return that size."""
+    batch_sizes = []
+
+    def _collect_sizes(tree_part: Any, axes_part: Any) -> None:
+        if isinstance(tree_part, Array):
+            if axes_part is not None:
+                if len(tree_part.shape) == 0:
+                    raise ValueError(
+                        f"Cannot apply axis {axes_part} to scalar array with shape {tree_part.shape}. "
+                        f"Scalar arrays cannot be batched along a specific axis."
+                    )
+                axis = len(tree_part.shape) + axes_part if axes_part < 0 else axes_part
+                if axis >= len(tree_part.shape):
+                    raise ValueError(
+                        f"Axis {axes_part} out of bounds for array with shape {tree_part.shape}"
+                    )
+                batch_sizes.append(tree_part.shape[axis])
+        elif isinstance(tree_part, dict):
+            axes_map = axes_part if isinstance(axes_part, dict) else {k: axes_part for k in tree_part}
+            for k, v in tree_part.items():
+                _collect_sizes(v, axes_map.get(k))
+        elif isinstance(tree_part, (list, tuple)):
+            axes_list = axes_part if isinstance(axes_part, (list, tuple)) else [axes_part] * len(tree_part)
+            for t, a in zip(tree_part, axes_list):
+                _collect_sizes(t, a)
+
+    _collect_sizes(tree, axes)
+
+    if not batch_sizes:
+        return 1
+
+    first_size = batch_sizes[0]
+    if not all(size == first_size for size in batch_sizes[1:]):
+        raise ValueError(
+            f"Inconsistent batch sizes along specified axes: got sizes {batch_sizes}. "
+            f"All non-None axes must have the same size."
+        )
+    return first_size
+
+def _batch_array(array: Array, axis: int | None, batch_size: int) -> Array:
+    """Process a single array for batching in vmap."""
+    from nabla.ops.unary import incr_batch_dim_ctr
+    from nabla.ops.view import (
+        broadcast_to,
+        move_axis_to_front,
+        move_axis_to_front_of_batch_dims,
+        unsqueeze,
+    )
+    if axis is None:
+        batched = unsqueeze(array, [0])
+        if batch_size > 1:
+            new_shape = (batch_size,) + array.shape
+            batched = broadcast_to(batched, new_shape)
+    else:
+        batched = move_axis_to_front(array, axis) if axis != 0 else array
+    
+    res = incr_batch_dim_ctr(batched)
+    return move_axis_to_front_of_batch_dims(res, -1)
+
+def _unbatch_array(array: Array, axis: int | None) -> Array:
+    """Process a single array for unbatching in vmap."""
+    from nabla.ops.unary import decr_batch_dim_ctr
+    from nabla.ops.view import (
+        move_axis_from_front,
+        move_axis_from_front_of_batch_dims,
+        squeeze,
+    )
+    array = move_axis_from_front_of_batch_dims(array, -1)
+    unbatched = decr_batch_dim_ctr(array)
+
+    if axis is None:
+        return squeeze(unbatched, [0])
+    return move_axis_from_front(unbatched, axis) if axis != 0 else unbatched
+
+def _batch_input_pytree(tree: Any, axes: Any, batch_size: int) -> Any:
+    """Prepare a pytree of inputs for batched execution using the generic mapper."""
+    return _map_pytree_with_axes(_batch_array, tree, axes, batch_size)
+
+def _unbatch_output_pytree(tree: Any, axes: Any) -> Any:
+    """Restore the original dimensions of a batched output pytree using the generic mapper."""
+    return _map_pytree_with_axes(_unbatch_array, tree, axes)
+
+def _broadcast_axis_spec(axis_spec: Any, num_items: int) -> tuple[Any, ...]:
+    """Broadcast axis specification to match the number of pytree items."""
+    if isinstance(axis_spec, (int, type(None))):
+        return (axis_spec,) * num_items
+    if isinstance(axis_spec, (list, tuple)):
+        if len(axis_spec) != num_items:
+            raise ValueError(
+                f"Axis specification length {len(axis_spec)} does not match "
+                f"number of items {num_items}"
+            )
+        return tuple(axis_spec)
+    raise TypeError(f"Invalid axis specification type: {type(axis_spec)}")
+
+
+def vmap(
+    func: Callable | None = None,
+    in_axes: Union[int, None, list, tuple] = 0,
+    out_axes: Union[int, None, list, tuple] = 0,
+) -> Callable[..., Any]:
+    """Creates a function that maps a function over axes of pytrees."""
+    if func is None:
+        return lambda f: vmap(f, in_axes=in_axes, out_axes=out_axes)
+
+    def vectorized_func(*args: Any) -> Any:
+        actual_args, is_list_style = _handle_args_consistently(args)
+        if not actual_args:
+            raise ValueError("vmap requires at least one input argument.")
+
+        structured_in_axes = _broadcast_axis_spec(in_axes, len(actual_args))
+        batch_size = _check_in_axes_size(actual_args, structured_in_axes)
+
+        batched_args = _batch_input_pytree(actual_args, structured_in_axes, batch_size)
+
+        outputs = func(batched_args) if is_list_style else func(*batched_args)
+
+        outputs_list, is_single_output = (
+            ([outputs], True)
+            if not isinstance(outputs, (list, tuple))
+            else (list(outputs), False)
+        )
+        structured_out_axes = _broadcast_axis_spec(out_axes, len(outputs_list))
+        unbatched_outputs = _unbatch_output_pytree(outputs_list, structured_out_axes)
+
+        return unbatched_outputs[0] if is_single_output else tuple(unbatched_outputs)
+
+    return vectorized_func
+
+
+def xmap(
+    func: Callable | None = None,
+    in_axes: Union[int, None, list, tuple] = 0,
+    out_axes: Union[int, None, list, tuple] = 0,
+) -> Callable[..., Any]:
+    pass
