@@ -1,0 +1,76 @@
+"""Formatter for Prettier issues."""
+
+from lintro.formatters.core.table_descriptor import TableDescriptor
+from lintro.formatters.styles.csv import CsvStyle
+from lintro.formatters.styles.grid import GridStyle
+from lintro.formatters.styles.html import HtmlStyle
+from lintro.formatters.styles.json import JsonStyle
+from lintro.formatters.styles.markdown import MarkdownStyle
+from lintro.formatters.styles.plain import PlainStyle
+from lintro.parsers.prettier.prettier_issue import PrettierIssue
+from lintro.utils.path_utils import normalize_file_path_for_display
+
+FORMAT_MAP = {
+    "plain": PlainStyle(),
+    "grid": GridStyle(),
+    "markdown": MarkdownStyle(),
+    "html": HtmlStyle(),
+    "json": JsonStyle(),
+    "csv": CsvStyle(),
+}
+
+
+class PrettierTableDescriptor(TableDescriptor):
+    def get_columns(self) -> list[str]:
+        return ["File", "Line", "Column", "Code", "Message"]
+
+    def get_rows(
+        self,
+        issues: list[PrettierIssue],
+    ) -> list[list[str]]:
+        rows = []
+        for issue in issues:
+            rows.append(
+                [
+                    normalize_file_path_for_display(issue.file),
+                    str(issue.line) if issue.line is not None else "-",
+                    str(issue.column) if issue.column is not None else "-",
+                    issue.code,
+                    issue.message,
+                ],
+            )
+        return rows
+
+
+def format_prettier_issues(
+    issues: list[PrettierIssue],
+    format: str = "grid",
+) -> str:
+    """Format Prettier issues with auto-fixable labeling.
+
+    Args:
+        issues: List of PrettierIssue objects.
+        format: Output format identifier (e.g., "grid", "json").
+
+    Returns:
+        str: Formatted output string.
+
+    Notes:
+        All Prettier issues are auto-fixable by running `lintro format`.
+        For non-JSON formats, a single section is labeled as auto-fixable.
+        JSON returns the combined table for compatibility.
+    """
+    descriptor = PrettierTableDescriptor()
+    formatter = FORMAT_MAP.get(format, GridStyle())
+
+    if format == "json":
+        columns = descriptor.get_columns()
+        rows = descriptor.get_rows(issues)
+        return formatter.format(columns=columns, rows=rows, tool_name="prettier")
+
+    columns = descriptor.get_columns()
+    rows = descriptor.get_rows(issues)
+    table = formatter.format(columns=columns, rows=rows)
+    if not rows:
+        return table
+    return "Auto-fixable issues\n" + table
