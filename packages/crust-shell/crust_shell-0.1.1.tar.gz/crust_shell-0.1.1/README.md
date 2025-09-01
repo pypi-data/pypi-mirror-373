@@ -1,0 +1,43 @@
+![Screenshot](screenshot.png)
+# 🐚 Crust Shell
+[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Platform](https://img.shields.io/badge/platform-linux-lightblue.svg)](https://kernel.org)
+[![License](https://img.shields.io/badge/license-edited%20MIT-yellow.svg)]()
+[![Made with ❤️](https://img.shields.io/badge/made%20with-%E2%9D%A4-red.svg)](https://github.com/mostypc123)
+
+Crust is an interactive Linux shell written in Python, designed with a modern interface, AI integration, and enhanced tooling for common system tasks.
+
+**Note:** I am currecntly putting crust into package managers, but it is not ready yet. Until there is an announcment, any packages made by me that are crust are not ready. Please use the `pip install .` way in the Documentation section.
+
+## ✨ Features
+
+- ⚙️ Custom startup hook support via `custom_commands.py`
+- 🧠 AI Assistant integration using Cohere with `.question` prompt
+- 🧾 Enhanced `ls`, `lsusb`, and `df -h` commands using Rich tables
+- 🔧 Built-in troubleshooting interface
+- 💾 Custom integration to search for packages across multiple package managers
+- 📁 Git branch and repo detection in prompt
+- 🪟 Venv support and styled prompt with icons
+- 🧠 Neofetch context awareness for AI assistant
+
+## 📖 Documentation
+https://mostypc123.is-a.dev/crust
+
+Very quick installation:
+```bash
+git clone https://github.com/mostypc123/crust && cd crust && pip install . && cd .. && rm -rf crust
+```
+
+## 🛡️ License
+
+We use an edited version of the MIT license.
+
+## 📫 Contributing
+
+Contributions, bug reports, and ideas are welcome!  
+Feel free to open an issue or pull request on GitHub.
+
+## 🧑‍💻 Author
+
+**Juraj Kollár**  
+Creator of [XediX](https://github.com/mostypc123/XediX)
