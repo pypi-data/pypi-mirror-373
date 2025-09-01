@@ -1,0 +1,198 @@
+general_cfg:
+  endpoint: arn:aws:sns:eu-west-1:103680339861:Imagebuilder
+  processing_job_guid: ''
+  payload:
+    foo: bar
+ops:
+  OpsInputVideosAudios: false  #
+  OpsSyncMultiviewVideos: true
+  OpsCorrectCalib: false
+  OpsMocap: true
+  # ball tracking
+  OpsOnlineBallTracking: false
+  OpsMarkerKalmanFilter: false
+  OpsMarkersToBlend: false
+
+  OpsHandsGen2: false
+  OpsPrepKalmanV2: true
+  OpsKalmanV2: true
+  OpsBlendFilesCreation: true
+  OpsAnimationFilesExports: true
+  OpsRender: true
+  OpsZipData: false
+
+failure_ops:
+- OpsZipData
+
+ops_cfg:
+  OpsInputVideosAudios:
+    is_gopro: false
+    inputs:
+      video_raw_dir: '~/MOX_projects/videos'
+    outputs:
+      log_dir: '~/MOX_projects/log'
+
+  OpsHandsGen2:
+    run_type: "multicam"
+    custom_bboxes: true
+    inputs:
+      video_dir: '~/MOX_projects/videos_processed'
+      pose2d_dir: '~/MOX_projects/pose2d_track'
+      pose3d_dir: '~/MOX_projects/pose3d_track'
+      calib_dir: '~/MOX_projects/calib'
+    outputs:
+      hand_dir: '~/MOX_projects/hands'
+      model_data_dir: '~/MOX_projects/wilor'
+
+  OpsPrepKalmanV2:
+    run_type: "multicam"
+    mdc_use_3d_bone_dir_obs: false
+    iou_threshold: 0.3
+    sources:
+      - name: vit
+        type: poses2d
+        source_dir: ~/MOX_projects/pose2d_track
+        location: vit
+        preparator_class: mocap_kalman.kalman.preparators.impl.VitPreparator
+        adapter_class: mocap_kalman.kalman.adapters.data_adapters.VitPoseAdapter
+        offsets_class: mocap_kalman.kalman.kinematics.offset_structures.ViTOffsets
+        measurement_class: mocap_kalman.kalman.measurement.models.PinholeModel
+      - name: vit_3d
+        type: poses3d
+        source_dir: ~/MOX_projects/pose3d_track
+        location: vit_3d
+        preparator_class: mocap_kalman.kalman.preparators.impl.Vit3DPreparator
+        adapter_class: mocap_kalman.kalman.adapters.data_adapters.VitPose3DAdapter
+        offsets_class: mocap_kalman.kalman.kinematics.offset_structures.ViTOffsets
+        measurement_class: mocap_kalman.kalman.measurement.models.SkeletalModel
+      - name: wilor_hands
+        type: hands
+        source_dir: ~/MOX_projects/wilor
+        location: wilor
+        preparator_class: mocap_kalman.kalman.preparators.impl.WilorPreparator
+        adapter_class: mocap_kalman.kalman.adapters.data_adapters.HandOrientationDataAdapter
+        offsets_class: mocap_kalman.kalman.kinematics.offset_structures.HandOffsets
+        measurement_class: mocap_kalman.kalman.measurement.models.HandOrientationModel
+    inputs:
+      calib_dir: ~/MOX_projects/calib
+      odometry_dir: null
+    outputs:
+      kalman_input_dir: ~/MOX_projects/kalman_inputs
+      calib_mono_dir: null
+      actor_track_mapping_dir: null
+
+  OpsKalmanV2:
+    bone_orient_structures: mocap_kalman.kalman.kinematics.bone_structures.MetrabsBones
+
+    stages: # observations: [POSES_2D, POSES_3D, BONE_ORIENTATIONS, SPINE, TRAJECTORY_CONTACT, PLANAR_CONTACT]
+    - name: first stage
+      transition: mocap_kalman.kalman.transition.transition.RootAdjustedStationaryTransitionModel
+      Q_matrix: mocap_kalman.kalman.parameters.Q_matrices.Q_Moveai_11
+      Q_factor: 3.5
+      observations: [POSES_2D, SPINE]
+      smooth_state: true
+
+    - name: second stage
+      transition: mocap_kalman.kalman.transition.transition.SimpleTransitionModel
+      Q_matrix: mocap_kalman.kalman.parameters.Q_matrices.Q_Moveai_11
+      Q_factor: 0.75
+      observations: [POSES_2D, SPINE, TRAJECTORY_CONTACT, PLANAR_CONTACT]
+      smooth_state: true
+
+    contact_dynamics:
+      use_plane_constraint: true
+      adjust_heel: true
+      stability_std_threshold: 0.02
+      contact_factor_threshold: 35
+      friction_coeff: 0.6
+      alpha: 0.001
+      lambda: 0
+      tanh_param_k: 1
+      tanh_param_n: 0.5
+
+    smoother_settings:
+      state_smoother_type: butterworth #  ['polynomial', 'butterworth']
+      polynomial_window: 0.4 # in seconds
+      polynomial_order: 5
+      state_frequency_cutoff: 5 # in Hz
+      derivative_frequency_cutoff: 4 # in Hz
+      filter_order: 4
+
+    inputs:
+      calib_dir: ~/MOX_projects/calib
+      kalman_input_dir: ~/MOX_projects/kalman_inputs
+      input_video_dir: ~/MOX_projects/videos_processed
+    outputs:
+      kalman_dir: ~/MOX_projects/kalman
+    run_type: multicam
+
+  OpsBlendFilesCreation:
+    import_keypoints_3d: false
+    import_fingers: false
+    background_videos_import: true
+    background_camera_num: 0
+    rest_pose_on_1st_frame: false
+    rig_origin: feet
+    combine_blends: true
+    output_name_3d_assets: main
+    inputs:
+      calib_pkl_dir: ~/MOX_projects/calib/
+      kalman_dir: ~/MOX_projects/kalman/
+      fingers_dir: ~/MOX_projects/hands
+      rig_dir: ~/MOX_projects/rig/
+      video_dir: ~/MOX_projects/videos_processed
+      props_dir:  ~/MOX_projects/props_anims
+    outputs:
+      blender_dir: ~/MOX_projects/blender/
+      log_dir: ~/MOX_projects/log
+
+  OpsAnimationFilesExports:
+      rig_to_export: ["internal", "client"]
+      export_formats: ["fbx", "gltf", "usdz", "bvh", "c3d"]
+      use_namespaces: true
+      timecode_sync: false
+      export_fps: null
+      inputs:
+        rig_dir: ~/MOX_projects/rig/
+        blender_dir: ~/MOX_projects/blender/
+        video_dir: ~/MOX_projects/videos_processed
+      outputs:
+        output_dir: ~/MOX_projects/blender/
+
+  OpsRender:
+    render_resolution: [640, 360]
+    add_logo: true
+    resolution_percentage: 100
+    ffmpeg_container: MPEG4
+    render_engine: EEVEE
+    render_fps: 30
+    do_render_overlay: false
+    overlay_padding: 30
+    overlay_scale: 0.19
+    output_name_video: render
+    inputs:
+      video_dir: ~/MOX_projects/videos_processed
+      blender_dir: ~/MOX_projects/blender/
+      scene_3d_path: null
+    outputs:
+      output_dir: ~/MOX_projects/blender/
+
+  OpsMarkersToBlend:
+    export_fbx: true
+    export_gltf: true
+    inputs:
+      video_dir: ~/MOX_projects/videos_processed
+      marker_kalman_dir: ~/MOX_projects/markers_kalman
+      marker_track_path: ~/MOX_projects/markers_kalman
+    outputs:
+      log_dir: ~/MOX_projects/log
+      props_dir: ~/MOX_projects/props_anims
+      export_dir: ~/MOX_projects/blender
+
+  OpsOnlineBallTracking:
+    inputs:
+      video_dir: '~/MOX_projects/videos_processed'
+      calib_pkl_dir: '~/MOX_projects/calib'
+      yolo_model_path: "/usr/local/moveai/models/yolo/yolo11x.pt"
+    outputs:
+      marker_kalman_dir: "~/MOX_projects/markers_kalman"
