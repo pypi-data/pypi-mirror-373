@@ -1,0 +1,63 @@
+name: Build and Publish Python Package
+
+on:
+  push:
+    tags:
+      - "v*" # Trigger on version tags (v0.1.0, v1.0.0, etc.)
+
+jobs:
+  build-and-publish:
+    name: Build and publish Python distribution to PyPI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # For creating GitHub releases
+      id-token: write # For PyPI trusted publishing
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Get all tags for versioning with setuptools_scm
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine setuptools_scm
+
+      - name: Build package
+        run: python -m build
+
+      - name: Extract tag name
+        id: tag
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
+      - name: Determine if this is a prerelease
+        id: check_prerelease
+        run: |
+          if [[ "${{ env.VERSION }}" == *a* || "${{ env.VERSION }}" == *b* ]]; then
+            echo "IS_PRERELEASE=true" >> $GITHUB_ENV
+          else
+            echo "IS_PRERELEASE=false" >> $GITHUB_ENV
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          name: Release v${{ env.VERSION }}
+          body: |
+            Release of umep version ${{ env.VERSION }}
+
+            Please see the [CHANGELOG](https://github.com/UMEP-dev/umep-core/blob/main/CHANGELOG.md) for details.
+
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          skip-existing: true
