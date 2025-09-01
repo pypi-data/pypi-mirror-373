@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <link rel="stylesheet" href="https://gitee.com/duanliangcong/static-resources/raw/master/vxe-pc-ui/style.css">
+	<link rel="stylesheet" href="https://gitee.com/duanliangcong/static-resources/raw/master/vxe-table/style.css">
+	<link rel="stylesheet" href="https://gitee.com/duanliangcong/static-resources/raw/master/vue3-json-viewer/index.css">
+	<script src="https://gitee.com/duanliangcong/static-resources/raw/master/vue/3.3.4/vue.global.prod.min.js"></script>
+	<script src="https://gitee.com/duanliangcong/static-resources/raw/master/xe-utils/index.js"></script>
+	<script src="https://gitee.com/duanliangcong/static-resources/raw/master/vxe-pc-ui/index.umd.min.js"></script>
+	<script src="https://gitee.com/duanliangcong/static-resources/raw/master/vxe-table/index.umd.min.js"></script>
+	<script src="https://gitee.com/duanliangcong/static-resources/raw/master/vue3-json-viewer/index.bound.js"></script>
+	<script src="https://gitee.com/duanliangcong/static-resources/raw/master/echarts/6.0.0/echarts.min.js"></script>
+	<link rel="icon" type="image/x-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeCAYAAAA7MK6iAAAAAXNSR0IArs4c6QAAAYJJREFUSEtjTN1S9f/ciysM9ARGEjoMjMZz/P6fSd5IT3sZTOb6j1pMnxAfDWr6hDMDwxBJ1Vde32LI2VHPEK0TwJBqGE5R6JCUuEi1ePb5lQwbb+1mmOfbySDGJYziUJpaXLW/m+HSq5tDyGKQi3fdOwIOIgkeUYYi8ySGpsOT4XH89fc3hrydTWB5XTF1hiWXNzDoi2syZBhHMZTuaWf48usbPHhB+pGDHGtQwwx8+fUNXPGrb28ZkjaXM7z48poh3SgKnLhg6i6+vM7gpmTD0OZYihKPJAf1vgfHGMr2djJ0OZczOClYwQ2DiaNbjOxAZJtJthiXBvRUjRzUk9zrGLhZuSjzMcjil1/fMqAbRheLsWUDmlsMyvhLr2xgmOLRyKAjqgYPPpD4zHPLMBIXSAFVghqWgkEGwrIAzLegLIKeuHBZjMsDIPU4Sy7k7ANSCMqfaYYRDOX7OrHmY2w+Rs5uROVjikp/IjWTVFYTaSZRykYtJiqYqKFohAb1QHXaAJ7ermJSR3pdAAAAAElFTkSuQmCC">
+    <title>测试报告</title>
+</head>
+<style>
+    body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+    }
+
+    .header {
+        text-align: center;
+        background-color: #42ad7e;
+        margin-bottom: 10px;
+        h2 {
+            font-weight: bolder;
+            margin: 0;
+            padding: 15px;
+            color: #4b4b4b;
+            letter-spacing: 4px;
+        }
+    }
+
+    .card-box {
+        margin-bottom: 10px;
+    }
+
+    .filter-table {
+        .vxe-card--header {
+            padding: 0 10px;
+            .vxe-card--header-extra {
+                margin: auto auto;
+            }
+            .exception-form {
+                pointer-events: auto;
+            }
+        }
+    }
+
+    .vxe-form {
+        pointer-events: none;
+    }
+
+    .vxe-tabs-header--item:nth-last-child(-n+3) * {
+        cursor: context-menu;
+    }
+
+    .jv-code {
+        padding: 30px 10px 10px 10px !important;
+    }
+
+    .details-expand {
+        position: relative;
+        float: right;
+        z-index: 999;
+        right: 80px;
+        top: 4px
+    }
+
+	.manual-wrap-text {
+	    white-space: pre-wrap !important;
+		color: rgb(61, 152, 120);
+	}
+
+	.shadow-text {
+	    font-size: 20px;
+		font-weight: bold;
+	    color: #0377fb;
+		text-shadow: 7px 6px 6px rgb(187, 185, 185);
+	}
+
+</style>
+
+<body style="overflow: hidden">
+<div id="app"></div>
+<script>
+    // 创建Vue应用
+    const {createApp, ref, reactive, onMounted, nextTick} = Vue
+    const app = createApp({
+        setup() {
+            const statusConfig = {
+                passed: {status: 'success', content: '成功', color: "#0f9064", icon: "vxe-icon-check"},
+	            failed: {status: 'error', content: '失败', color: "#93303f", icon: "vxe-icon-close"},
+                skipped: {status: 'info', content: '跳过', color: "#a2a2a2", icon: "vxe-icon-minus"},
+	            error: {status: 'warning', content: '错误', color: "#e6a23c", icon: "vxe-icon-information"}
+            }
+            // 报告概览
+            const formData = {}
+            const resTimeList = ref([])
+            const formFilter = reactive({model_v: null, class_v: null, status_v: null,})
+            const modelsName = ref([])
+	        const className = ref([])
+            const sourceData = []
+            const tableTotal = ref(0)
+            const tableData = ref([])
+            const tableCurRow = ref({})
+	        const tableLoad = ref(false)
+	        const xTable = ref()
+            const showDrawer = ref(false)
+	        const expandDepth = reactive({query: 3, response: 3})
+	        const expandKey = reactive({query: "", response: ""})
+	        const formatList = []
+
+            function drawerOpen(row) {
+                tableCurRow.value = row
+                showDrawer.value = true
+	            Object.assign(expandDepth, {query: 3, response: 3})
+	            Object.assign(expandKey, {query: "", response: ""})
+            }
+
+            function tabsBeforeChange({name}) {
+                return !["d1", "d2"].includes(name)
+            }
+
+            function selectChange() {
+                tableData.value = []
+	            tableLoad.value = true
+				window.document.body.style.overflow = 'hidden'
+	            let modelsSet = [formFilter.model_v ?? modelsName.value].flat()
+	            let classSet = [formFilter.class_v ?? className.value].flat()
+                let statusSet = [formFilter.status_v ?? ["passed", "skipped", "failed", "error"]].flat()
+                for (let i = 0; i < tableTotal.value; i++) {
+	                if (modelsSet.includes(sourceData[i].model) && classSet.includes(sourceData[i].classed) && statusSet.includes(sourceData[i].status)) {
+                        tableData.value.push(sourceData[i])
+                    }
+                }
+                scrollSH()
+            }
+
+            function changeDepth(depth, name) {
+                if (depth === 'expand') {
+                    expandDepth[name] = 10
+                } else if (depth === 'fold') {
+                    expandDepth[name] = 1
+                }
+                expandKey[name] = `${name}_${expandDepth[name]}`
+            }
+
+            function isJSON(str) {
+                if (typeof str !== 'string') return false
+                try {
+                    JSON.parse(str)
+                    return true
+                } catch (e) {
+                    return false
+                }
+            }
+
+            function formatting(content) {
+                let is_json = isJSON(content)
+                formatList.forEach(function (i) {
+                    content = content.replace(new RegExp(i.value, 'g'), i.name);
+                })
+                if (is_json === true) {
+                    content = JSON.parse(content)
+                }
+                return content
+            }
+
+            function scrollEvent({ direction, isLeft, isRight, isTop, isBottom }) {
+                window.scrollTo({top: xTable.value.getScroll().scrollTop, behavior: 'auto'});
+            }
+
+            function scrollSH() {
+				nextTick(()=>{
+					setTimeout(() => {
+						let table_scroll_y_virtual = xTable.value.$el.querySelector('.vxe-table--scroll-y-virtual')
+						let eleVisible = table_scroll_y_virtual.style.visibility
+						if (eleVisible === "hidden") {
+							document.body.style.overflow = 'auto';
+						} else{
+							document.body.style.overflow = 'hidden';
+						}
+						tableLoad.value = false
+					}, 300);
+				})
+			}
+
+            function isDetails(row) {
+	            const keys = ["print", "skipped", "query", "res_headers", "response", "msg_dict", "img", "status_code", "fail_tag"]
+	            return Object.keys(row).some(item => keys.includes(item));
+            }
+
+            function chart1() {
+                let seriesData = Object.entries(statusConfig).map(([key, config]) => ({name: config.content, value: formData[key]}))
+                let myChart = echarts.init(document.getElementById("echart1"))
+                let option = {
+                    title: {
+                        text: '执行结果',
+                        left: 0
+                    },
+                    legend: {
+                        orient: 'horizontal',
+                        right: 0,
+                        top: 0
+                    },
+                    tooltip: {
+                        trigger: 'item',
+                        formatter: '{a} <br/>{b}: {c} ({d}%)'
+                    },
+                    color: [statusConfig.passed.color, statusConfig.failed.color, statusConfig.skipped.color, statusConfig.error.color],
+                    series: [
+                        {
+                            type: 'pie',
+                            name: '测试结果',
+                            radius: ['35%', '60%'],
+                            center: ['50%', '60%'],
+                            data: seriesData,
+                            zlevel: 1,
+                            z: 1,
+                            label: {
+                                show: true,
+                                formatter: function (params) {
+                                    return params.percent && params.name + ' ' + params.percent + '%' || params.name + ' 0%'
+                                }
+                            },
+                            emphasis: {
+                                label: {
+                                    show: true,
+                                    fontSize: '15',
+                                    fontWeight: 'bold'
+                                }
+                            },
+                        }
+                    ]
+                }
+                myChart.setOption(option, true);
+                window.addEventListener("resize", () => {
+                    myChart.resize()
+                })
+            }
+
+            function chart2() {
+                let xAxisData = Array.from({length: resTimeList.value.length}, (x, i) => i + 1)
+                let myChart = echarts.init(document.getElementById("echart2"))
+                let option = {
+                    color: 'red',
+                    title: [
+                        {
+                            left: 'center',
+                            text: '响应时间'
+                        },
+                    ],
+                    tooltip: {
+                        trigger: 'axis',
+                        formatter: '序号：{b}<br/>响应时间：{c}s'
+                    },
+                    xAxis:
+                        {
+                            data: xAxisData,
+                        },
+                    yAxis:
+                        {},
+                    grid: {
+                        left: 40,
+                        right: 10,
+                        bottom: '30px',
+                    },
+                    series: [
+                        {
+                            type: 'line',
+                            name: '响应时间',
+                            showSymbol: false,
+                            data: resTimeList.value,
+                            zlevel: 1,
+                            z: 1,
+                        }
+                    ]
+                }
+                myChart.setOption(option, true)
+                window.addEventListener("resize", () => {
+                    myChart.resize()
+                })
+            }
+
+            onMounted(() => {
+                tableLoad.value = true
+                sourceData.map(el=>{
+                    el.model = formatting(JSON.stringify(el.model))
+	                el.classed = formatting(JSON.stringify(el.classed))
+	                el.method = formatting(JSON.stringify(el.method))
+	                el.doc = formatting(JSON.stringify(el.doc))
+	                resTimeList.value.push(el.duration)
+                    if (!modelsName.value.includes(el.model)) {
+                        modelsName.value.push(el.model)
+                    }
+                    if (!className.value.includes(el.classed)) {
+                        if (el.classed.length > 0) {
+                            className.value.push(el.classed)
+                        }
+                    }
+                })
+                tableTotal.value = sourceData.length
+                tableData.value = sourceData
+                chart1()
+                chart2()
+	            scrollSH()
+            })
+
+            return {
+                statusConfig,
+                formData,
+                formFilter,
+                modelsName,
+	            className,
+                tableTotal,
+                tableData,
+                tableCurRow,
+	            xTable,
+	            tableLoad,
+                showDrawer,
+	            expandDepth,
+	            expandKey,
+                selectChange,
+                drawerOpen,
+                tabsBeforeChange,
+	            changeDepth,
+	            formatting,
+	            scrollEvent,
+	            isDetails
+            }
+        },
+
+        template: `
+            <div class="page-wrapper">
+                <vxe-layout-container vertical>
+                    <vxe-layout-header class="header">
+                        <h2>自动化测试报告</h2>
+                    </vxe-layout-header>
+                    <vxe-layout-body>
+                        <vxe-row>
+                            <vxe-col span="2"></vxe-col>
+                            <vxe-col span="20">
+                                <vxe-card shadow class="card-box">
+                                    <template #title>
+                                        <span class="shadow-text">{{formData.desc}}</span>
+	                                    <span v-if="formData.envname" style="font-size: 14px">（环境：{{ formData.envname }}）</span>
+                                    </template>
+                                    <template #extra>
+	                                    <vxe-text status="warning" style="margin-left: 10px" v-if="formData.db_connect_time.length > 0">{{formData.db_connect_time}}</vxe-text>
+                                    </template>
+                                    <vxe-row gutter="10">
+                                        <vxe-col span="6" style="border-right: 1px solid rgba(228,231,237,0.82)">
+                                            <vxe-form
+                                                title-width="80"
+                                                title-bold
+                                                :data="formData"
+                                                size="small">
+                                                <vxe-form-item v-for="(value, key, index) in statusConfig" :key="key" :field="key" span="24" :item-render="{name: 'VxeInput'}">
+                                                    <template #title>
+                                                        <span :style="{color: value.color}">{{ value.content }}总数</span>
+                                                    </template>
+                                                </vxe-form-item>
+                                                <vxe-form-item title="开始时间" field="start_time" span="24" :item-render="{name: 'VxeInput'}"></vxe-form-item>
+                                                <vxe-form-item title="结束时间" field="end_time" span="24" :item-render="{name: 'VxeInput'}"></vxe-form-item>
+                                                <vxe-form-item title="测试人员" field="tester" span="24" :item-render="{name: 'VxeInput'}"></vxe-form-item>
+                                            </vxe-form>
+                                        </vxe-col>
+                                        <vxe-col span="8" style="border-right: 1px solid rgba(228,231,237,0.82)">
+                                            <div id="echart1" :style="{height: '336px'}"></div>
+                                        </vxe-col>
+                                        <vxe-col span="10">
+                                            <div id="echart2" :style="{height: '336px'}"></div>
+                                        </vxe-col>
+                                    </vxe-row>
+                                </vxe-card>
+
+                                <vxe-card shadow class="card-box filter-table">
+                                    <template #title>
+                                        <vxe-form :data="formFilter" size="small" class="exception-form">
+                                            <vxe-form-item title="文件名称" field="model_v" :item-render="{}">
+                                                <template #default="{ data }">
+                                                    <vxe-select v-model="data.model_v" placeholder="全部" size="small" clearable @change="selectChange" style="width: 280px">
+                                                        <vxe-option v-for="item in modelsName" :key="item" :label="item" :value="item"></vxe-option>
+                                                    </vxe-select>
+                                                </template>
+                                            </vxe-form-item>
+	                                        <vxe-form-item title="类名称" field="class_v" :item-render="{}" v-if="className.length > 0">
+                                                <template #default="{ data }">
+                                                    <vxe-select v-model="data.class_v" placeholder="全部" size="small" clearable @change="selectChange" style="width: 280px">
+                                                        <vxe-option v-for="item in className" :key="item" :label="item" :value="item"></vxe-option>
+                                                    </vxe-select>
+                                                </template>
+                                            </vxe-form-item>
+                                            <vxe-form-item title="结果" field="status_v" :item-render="{}">
+                                                <template #default="{ data }">
+                                                    <vxe-select v-model="data.status_v" placeholder="全部" size="small" @change="selectChange" clearable>
+                                                        <vxe-option v-for="(value, key, index) in statusConfig" :key="key" :label="value.content" :value="key">
+                                                            <template #default="{ option }">
+													            <span :style="{color: value.color}">
+													                <i :class="value.icon"></i>
+													                <span>{{ option.label }}</span>
+													            </span>
+                                                            </template>
+                                                        </vxe-option>
+                                                    </vxe-select>
+                                                </template>
+                                            </vxe-form-item>
+                                        </vxe-form>
+                                    </template>
+                                    <template #extra>
+                                        <vxe-tag status="primary" :content="'用例总数: ' + tableTotal"></vxe-tag>
+                                    </template>
+                                    <vxe-table
+                                        border
+                                        show-overflow
+                                        ref="xTable"
+                                        :max-height="1000"
+                                        :data="tableData"
+                                        :column-config="{resizable: true}"
+                                        :virtual-y-config="{enabled: true, gt: 300}"
+                                        :loading="tableLoad"
+                                        @scroll="scrollEvent"
+                                    >
+                                        <vxe-column field="seq" type="seq" title="序号" width="60"></vxe-column>
+                                        <vxe-column field="model" title="文件名称"></vxe-column>
+                                        <vxe-column field="classed" title="类名称" v-if="className.length > 0"></vxe-column>
+	                                    <vxe-column field="method" title="用例名称"></vxe-column>
+                                        <vxe-column field="doc" title="用例描述"></vxe-column>
+                                        <vxe-column field="duration" title="响应时间" width="120px">
+                                            <template #default="{ row }">
+                                                <span>{{ row.duration }} s</span>
+                                            </template>
+                                        </vxe-column>
+                                        <vxe-column title="查看详情" width="90px" align="center">
+                                            <template #default="{ row }">
+                                                <vxe-button v-if="isDetails(row)" mode="text" status="primary" content="详情" @click="drawerOpen(row)"></vxe-button>
+	                                            <vxe-icon v-else name="minus"></vxe-icon>
+                                            </template>
+                                        </vxe-column>
+                                        <vxe-column field="status" title="结果" width="90px">
+                                            <template #default="{ row }">
+                                                <vxe-tag :status="statusConfig[row.status].status" size="small" :content="statusConfig[row.status].content"></vxe-tag>
+                                            </template>
+                                        </vxe-column>
+                                    </vxe-table>
+                                </vxe-card>
+                            </vxe-col>
+                        </vxe-row>
+                    </vxe-layout-body>
+                </vxe-layout-container>
+
+                <vxe-drawer v-model="showDrawer" mask-closable destroy-on-close esc-closable :show-close="false" position="right" width="50vw">
+                    <template #title>
+                        <vxe-row>
+                            <vxe-col span="9">
+                                <span>用例详情</span>
+                            </vxe-col>
+                            <vxe-col span="6" align="center">
+                                <vxe-tag :status="statusConfig[tableCurRow.status].status" size="small" :content="statusConfig[tableCurRow.status].content"></vxe-tag>
+                            </vxe-col>
+                            <vxe-col span="9" align="right">
+                                <span>{{ tableCurRow.duration }} s</span>
+                            </vxe-col>
+                        </vxe-row>
+                    </template>
+                    <template #default>
+                        <vxe-form title-bold :data="tableCurRow" size="small" style="margin-bottom: 10px">
+                            <vxe-form-item title="文件名称" field="model" span="8" :item-render="{name: 'VxeInput'}"></vxe-form-item>
+                            <vxe-form-item title="类名称" field="classed" span="8" :item-render="{name: 'VxeInput'}" v-if="className.length > 0"></vxe-form-item>
+	                        <vxe-form-item title="用例名称" field="method" span="8" :item-render="{name: 'VxeInput'}"></vxe-form-item>
+                            <vxe-form-item title="用例描述" field="doc" span="24" :item-render="{name: 'VxeInput'}"></vxe-form-item>
+                        </vxe-form>
+                        <vxe-tabs type="border-card" padding :before-change-method="tabsBeforeChange">
+                            <vxe-tab-pane title="打印内容" name="1" v-if="tableCurRow.print !== undefined">
+	                            <div class="manual-wrap-text" v-text="formatting(tableCurRow.print)"></div>
+                            </vxe-tab-pane>
+                            <vxe-tab-pane title="跳过说明" name="2" v-if="tableCurRow.skipped !== undefined">
+	                            <vxe-text class="manual-wrap-text" status="info">{{ formatting(tableCurRow.skipped) }}</vxe-text>
+                            </vxe-tab-pane>
+                            <vxe-tab-pane title="请求报文" name="3" v-if="tableCurRow.query !== undefined">
+                                <div class="details-expand">
+                                    <vxe-button mode="text" size="small" status="primary" content="展开" @click="changeDepth('expand', 'query')"></vxe-button>
+                                    <vxe-button mode="text" size="small" status="primary" content="折叠" @click="changeDepth('fold', 'query')"></vxe-button>
+                                </div>
+                                <JsonViewer :value="formatting(JSON.stringify(tableCurRow.query))" copyable sort :expand-depth="expandDepth.query" :key="expandKey.query"></JsonViewer>
+                            </vxe-tab-pane>
+                            <vxe-tab-pane title="响应头" name="4" v-if="tableCurRow.res_headers !== undefined">
+                                <JsonViewer :value="formatting(JSON.stringify(tableCurRow.res_headers))" copyable sort/>
+                            </vxe-tab-pane>
+                            <vxe-tab-pane title="响应内容" name="5" v-if="tableCurRow.response !== undefined">
+                                <div v-if="tableCurRow.res_type==='json'">
+                                    <div class="details-expand">
+                                        <vxe-button mode="text" size="small" status="primary" content="展开" @click="changeDepth('expand', 'response')"></vxe-button>
+                                        <vxe-button mode="text" size="small" status="primary" content="折叠" @click="changeDepth('fold', 'response')"></vxe-button>
+                                    </div>
+                                    <JsonViewer :value="formatting(JSON.stringify(tableCurRow.response))" copyable sort :expand-depth="expandDepth.response" :key="expandKey.response"/>
+                                </div>
+                                <div v-else>
+	                                <div class="manual-wrap-text" v-text="formatting(tableCurRow.response)"></div>
+                                </div>
+                            </vxe-tab-pane>
+                            <vxe-tab-pane name="6" v-if="tableCurRow.msg_dict !== undefined">
+								<template #title>
+		                            <vxe-text status="error">失败详情</vxe-text>
+	                            </template>
+	                            <div class="manual-wrap-text" v-text="formatting(tableCurRow.msg_dict)"></div>
+                            </vxe-tab-pane>
+                            <vxe-tab-pane title="图片预览" name="7" v-if="tableCurRow.img !== undefined">
+                                <div style="padding: 8px; overflow: auto">
+	                                <vxe-image :src="tableCurRow.img" style="max-width: 100%; max-height: 100%"></vxe-image>
+                                </div>
+                            </vxe-tab-pane>
+                            <vxe-tab-pane v-if="tableCurRow.status_code" name="d1">
+                                <template #title>
+                                    <vxe-tag :status="tableCurRow.status_code<400?'success':'danger'" :content="tableCurRow.status_code"></vxe-tag>
+                                </template>
+                            </vxe-tab-pane>
+                            <vxe-tab-pane v-if="tableCurRow.fail_tag" name="d2">
+                                <template #title>
+                                    <vxe-tag status="warning" :content="tableCurRow.fail_tag"></vxe-tag>
+                                </template>
+                            </vxe-tab-pane>
+                        </vxe-tabs>
+                    </template>
+                </vxe-drawer>
+            </div>`
+    })
+
+    app.use(VxeUI)
+    app.use(VXETable)
+    app.use(window.jsonViewer)
+    app.mount('#app')
+</script>
+</body>
+</html>
