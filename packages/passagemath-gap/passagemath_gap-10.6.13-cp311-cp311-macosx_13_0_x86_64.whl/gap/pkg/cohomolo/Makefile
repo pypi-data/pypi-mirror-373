@@ -1,0 +1,40 @@
+# General makefile for GAP4 cohomolo package -
+# all executables are put into the bin directory.
+BIN = bin/x86_64-apple-darwin22-default64-kv9
+GAPPATH = /Users/runner/sage-local/lib/gap/
+
+CC ?= gcc
+CFLAGS ?= -O2 -g
+
+# many cohomolo symbols (e.g. 'exp') clash with C builtins,
+# so we disable them to avoid spurious warnings and errors
+EXTRA_CFLAGS += -fno-builtin
+
+# evil HACK: disable some warnings, to prevent an overflowing build
+# log on Travis.
+# FIXME: these warnings really should be fixed instead, but that's
+# very hard and unrewarding word on this old code base. It's more
+# tempting to reimplement this all in scratch in a modern C or C++,
+# or a radically different language (Ruse, Go, Julia, ...)
+EXTRA_CFLAGS += -Wno-implicit-function-declaration
+EXTRA_CFLAGS += -Wno-unused-result
+
+all:
+	mkdir -p bin/x86_64-apple-darwin22-default64-kv9;
+	cd standalone/progs.d;\
+	$(MAKE) CC="$(CC)" BIN="..//..//$(BIN)" CFLAGS="$(CFLAGS) $(EXTRA_CFLAGS)" LDFLAGS="$(LDFLAGS)"
+
+clean:
+	cd standalone/progs.d; $(MAKE) clean
+
+distclean:
+	cd standalone/progs.d; $(MAKE) clean
+	rm -rf bin htm
+
+doc:
+	cd doc && ./make_doc
+
+Makefile: configure Makefile.in $(GAPPATH)/sysinfo.gap
+	./configure $(GAPPATH)
+
+.PHONY: all clean distclean doc
