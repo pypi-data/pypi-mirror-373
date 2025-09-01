@@ -1,0 +1,67 @@
+# FileSpawn
+
+**FileSpawn** is a simple, fast, and highly configurable command-line tool for generating dummy files of specific sizes and quantities. It's perfect for developers, testers, and system administrators who need to create test data, simulate disk usage, or prepare files for benchmarking.
+
+## Key Features
+
+*   **Precise Control**: Specify the exact number of files and the size of each file.
+*   **Human-Readable Sizes**: Use intuitive size suffixes like `10KB`, `25MB`, or `1GB`.
+*   **Custom Naming**: Define custom base names and extensions for your files.
+*   **Efficient & Fast**: Optimized for performance, even when creating gigabytes of data.
+*   **User-Friendly**: A clean CLI with progress bars and clear feedback, powered by `Click` and `Rich`.
+*   **Safe**: Creates output directories if they don't exist and provides clear error messages.
+
+## Installation
+
+Install `filespawn` directly from PyPI using `pip`:
+
+```bash
+pip install filespawn
+```
+
+## How to Use
+
+The `filespawn` command allows you to generate files with just one line.
+
+### Basic Usage
+
+To create 5 files, each 1 kilobyte in size, in the current directory:
+
+```bash
+filespawn --count 5 --size 1KB
+```
+
+### Advanced Usage
+
+To create 100 files, each 10 megabytes, in a directory named `test-data`, with a base name of "report" and a `.dat` extension:
+
+```bash
+filespawn --count 100 --size 10MB --dir ./test-data --name report --ext dat
+```
+
+This will generate files like `report_1.dat`, `report_2.dat`, ..., `report_100.dat` inside the `./test-data/` directory.
+
+### Command-Line Options
+
+Here are all the available options for the `filespawn` command:
+
+| Option    | Short | Description                                                                                | Required |
+| --------- | ----- | ------------------------------------------------------------------------------------------ | -------- |
+| `--count` | `-c`  | The total number of files to create.                                                       | **Yes**  |
+| `--size`  | `-s`  | The size of each file. Accepts bytes (e.g., `1024`) or suffixes like `KB`, `MB`, `GB`.     | **Yes**  |
+| `--dir`   | `-d`  | The output directory for the created files. Defaults to the current directory.             | No       |
+| `--name`  |       | The base name for the files (e.g., `file` becomes `file_1`, `file_2`). Defaults to `file`. | No       |
+| `--ext`   |       | The file extension. Defaults to `dummy`.                                                   | No       |
+| `--help`  |       | Show the help message and exit.                                                            | No       |
+
+## Use Cases
+
+`filespawn` is useful for:
+*   **Testing**: Generating files to test application behavior with large datasets or specific file types.
+*   **Benchmarking**: Creating files to benchmark disk I/O performance.
+*   **Simulation**: Simulating log file generation or user data creation.
+*   **Placeholders**: Quickly creating placeholder files for a project structure.
+
+## License
+
+This project is licensed under the MIT License. See the `LICENSE` file for details.
