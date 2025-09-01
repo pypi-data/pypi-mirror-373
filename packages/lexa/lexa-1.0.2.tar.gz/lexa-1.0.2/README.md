@@ -1,0 +1,162 @@
+# Lexa Python SDK
+
+[![PyPI version](https://badge.fury.io/py/lexa.svg)](https://pypi.org/project/lexa/)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A Python SDK for Lexa AI that provides an OpenAI-compatible interface for easy integration with Lexa's language models. Built with automatic SSL configuration and zero-setup installation.
+
+## ✨ Features
+
+- 🔗 **OpenAI-Compatible**: Drop-in replacement for OpenAI SDK
+- 🚀 **Async Support**: Full async/await support for high-performance applications
+- 📦 **Type Safety**: Comprehensive type hints and validation with Pydantic
+- 🔄 **Streaming**: Real-time streaming responses for interactive applications
+- 🛡️ **Auto SSL**: Automatic SSL certificate handling - works out of the box
+- 📊 **Multiple Models**: Support for all Lexa models (lexa-mml, lexa-x1, lexa-rho)
+- 🔧 **Flexible Configuration**: Optional SSL and configuration overrides
+- ⚡ **High Performance**: Optimized HTTP clients with connection pooling
+
+## 📦 Installation
+
+```bash
+pip install lexa
+```
+
+## 🚀 Quick Start
+
+```python
+from lexa_sdk import Lexa
+
+# Initialize the client with your API key
+client = Lexa(api_key="your-api-key")
+
+# Simple chat completion
+response = client.chat.completions.create(
+    model="lexa-mml",
+    messages=[
+        {"role": "user", "content": "Hello! Tell me a joke."}
+    ],
+    temperature=0.7,
+    max_tokens=100
+)
+
+print(response["choices"][0]["message"]["content"])
+```
+
+## 📚 Available Models
+
+| Model | Description | Context Window | Max Tokens | Use Case |
+|-------|-------------|----------------|------------|----------|
+| `lexa-mml` | Multimodal model with vision capabilities | 8,192 | 4,096 | General purpose with image understanding |
+| `lexa-x1` | Fast, lightweight text-based model | 4,096 | 2,048 | Quick responses, simple tasks |
+| `lexa-rho` | Reasoning model with enhanced capabilities | 16,384 | 8,192 | Complex reasoning, analysis |
+
+## 🔧 Advanced Usage
+
+### Async Support
+
+```python
+import asyncio
+from lexa_sdk import Lexa
+
+async def main():
+    client = Lexa(api_key="your-api-key")
+
+    # Async chat completion
+    response = await client.chat.completions.acreate(
+        model="lexa-mml",
+        messages=[{"role": "user", "content": "Explain quantum computing"}],
+        temperature=0.3
+    )
+
+    print(response["choices"][0]["message"]["content"])
+
+asyncio.run(main())
+```
+
+### Streaming Responses
+
+```python
+from lexa_sdk import Lexa
+
+client = Lexa(api_key="your-api-key")
+
+# Streaming chat completion
+stream = client.chat.completions.create(
+    model="lexa-mml",
+    messages=[{"role": "user", "content": "Write a short story"}],
+    temperature=0.8,
+    stream=True
+)
+
+for chunk in stream:
+    if chunk["choices"][0]["delta"].get("content"):
+        print(chunk["choices"][0]["delta"]["content"], end="", flush=True)
+```
+
+### Custom SSL Configuration
+
+```python
+from lexa_sdk import Lexa
+
+# For environments with SSL issues (not recommended for production)
+client = Lexa(
+    api_key="your-api-key",
+    verify_ssl=False  # ⚠️  Only use if necessary
+)
+
+# Or use enhanced SSL (default behavior)
+client = Lexa(
+    api_key="your-api-key",
+    enhanced_ssl=True  # Automatically download and use correct certificates
+)
+```
+
+## 🛠️ API Reference
+
+### Client Methods
+
+- `client.chat.completions.create()` - Create chat completion
+- `client.chat.completions.acreate()` - Async chat completion
+- `client.models.list()` - List available models
+- `client.models.alist()` - Async list models
+
+### Parameters
+
+- `model`: Model to use (required)
+- `messages`: List of messages (required)
+- `temperature`: Sampling temperature (0.0 to 2.0)
+- `max_tokens`: Maximum tokens to generate
+- `stream`: Enable streaming responses
+- `top_p`: Nucleus sampling parameter
+- `frequency_penalty`: Frequency penalty
+- `presence_penalty`: Presence penalty
+
+## 🔒 Security & SSL
+
+The Lexa SDK automatically handles SSL certificate verification:
+- **Default**: Uses enhanced SSL with automatic certificate management
+- **Fallback**: Gracefully falls back to standard SSL verification
+- **Manual Override**: Allows custom SSL configuration when needed
+
+## 📖 Documentation
+
+For complete documentation, examples, and API reference, visit:
+- [Official Documentation](https://docs.lexa.chat/)
+- [GitHub Repository](https://github.com/Robi-Labs/lexa-python-sdk)
+- [Issue Tracker](https://github.com/Robi-Labs/lexa-python-sdk/issues)
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Built with ❤️ by [Robi Labs](https://robiai.com/)
+- Compatible with OpenAI API specifications
+- Powered by Lexa's advanced AI models
