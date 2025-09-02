@@ -1,0 +1,65 @@
+{
+  "name": "production",
+  "description": "Production-ready project template with deployment configurations and monitoring",
+  "version": "1.0.0",
+  "directories": [
+    "data/raw",
+    "data/cleaned",
+    "data/deduped",
+    "data/tokens",
+    "data/finetune",
+    "exports/checkpoints",
+    "exports/tokenizer",
+    "exports/gguf",
+    "exports/optimized",
+    "deployment",
+    "deployment/docker",
+    "deployment/k8s",
+    "monitoring",
+    "logs",
+    "scripts",
+    "tests",
+    "docs"
+  ],
+  "files": {
+    "requirements.txt": "llmbuilder>=1.0.0\nfastapi>=0.68.0\nuvicorn>=0.15.0\nprometheus-client>=0.11.0\npsutil>=5.8.0\ndocker>=5.0.0\n",
+    "production_config.yaml": "# Production configuration\nproject:\n  name: \"production_model\"\n  version: \"1.0.0\"\n  environment: \"production\"\n  \nmodel:\n  architecture: \"gpt\"\n  vocab_size: 32000\n  embedding_dim: 768\n  num_layers: 12\n  num_heads: 12\n  hidden_dim: 3072\n  max_seq_length: 1024\n  dropout: 0.0\n  \ntraining:\n  batch_size: 8\n  learning_rate: 0.00005\n  num_epochs: 5\n  warmup_steps: 2000\n  weight_decay: 0.01\n  gradient_clip_norm: 1.0\n  use_mixed_precision: true\n  save_every: 1000\n  \noptimization:\n  quantization: true\n  pruning: false\n  distillation: false\n  \ndeployment:\n  server_port: 8000\n  workers: 4\n  max_requests: 1000\n  timeout: 30\n  \nmonitoring:\n  enable_metrics: true\n  enable_logging: true\n  log_level: \"INFO\"\n  metrics_port: 9090\n",
+    "deployment/docker/Dockerfile": "FROM python:3.9-slim\n\nWORKDIR /app\n\n# Install system dependencies\nRUN apt-get update && apt-get install -y \\\n    gcc \\\n    g++ \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Copy requirements and install Python dependencies\nCOPY requirements.txt .\nRUN pip install --no-cache-dir -r requirements.txt\n\n# Copy application code\nCOPY . .\n\n# Expose port\nEXPOSE 8000\n\n# Health check\nHEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \\\n    CMD curl -f http://localhost:8000/health || exit 1\n\n# Run the application\nCMD [\"uvicorn\", \"deployment.server:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]\n",
+    "deployment/docker/docker-compose.yml": "version: '3.8'\n\nservices:\n  llm-api:\n    build: .\n    ports:\n      - \"8000:8000\"\n      - \"9090:9090\"\n    environment:\n      - MODEL_PATH=/app/exports/checkpoints/latest\n      - LOG_LEVEL=INFO\n    volumes:\n      - ./exports:/app/exports:ro\n      - ./logs:/app/logs\n    restart: unless-stopped\n    healthcheck:\n      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:8000/health\"]\n      interval: 30s\n      timeout: 10s\n      retries: 3\n\n  prometheus:\n    image: prom/prometheus:latest\n    ports:\n      - \"9091:9090\"\n    volumes:\n      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml\n    restart: unless-stopped\n\n  grafana:\n    image: grafana/grafana:latest\n    ports:\n      - \"3000:3000\"\n    environment:\n      - GF_SECURITY_ADMIN_PASSWORD=admin\n    volumes:\n      - grafana-storage:/var/lib/grafana\n    restart: unless-stopped\n\nvolumes:\n  grafana-storage:\n",
+    "deployment/k8s/deployment.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: llm-api\n  labels:\n    app: llm-api\nspec:\n  replicas: 3\n  selector:\n    matchLabels:\n      app: llm-api\n  template:\n    metadata:\n      labels:\n        app: llm-api\n    spec:\n      containers:\n      - name: llm-api\n        image: llm-api:latest\n        ports:\n        - containerPort: 8000\n        - containerPort: 9090\n        env:\n        - name: MODEL_PATH\n          value: \"/app/exports/checkpoints/latest\"\n        - name: LOG_LEVEL\n          value: \"INFO\"\n        resources:\n          requests:\n            memory: \"2Gi\"\n            cpu: \"1000m\"\n          limits:\n            memory: \"4Gi\"\n            cpu: \"2000m\"\n        livenessProbe:\n          httpGet:\n            path: /health\n            port: 8000\n          initialDelaySeconds: 30\n          periodSeconds: 10\n        readinessProbe:\n          httpGet:\n            path: /ready\n            port: 8000\n          initialDelaySeconds: 5\n          periodSeconds: 5\n",
+    "deployment/server.py": "#!/usr/bin/env python3\n\"\"\"\nProduction FastAPI server for LLM inference.\n\"\"\"\n\nfrom fastapi import FastAPI, HTTPException\nfrom pydantic import BaseModel\nimport uvicorn\nimport os\nfrom typing import Optional, List\n\napp = FastAPI(\n    title=\"LLM API\",\n    description=\"Production LLM inference API\",\n    version=\"1.0.0\"\n)\n\nclass GenerationRequest(BaseModel):\n    prompt: str\n    max_length: Optional[int] = 100\n    temperature: Optional[float] = 0.7\n    top_p: Optional[float] = 0.9\n\nclass GenerationResponse(BaseModel):\n    text: str\n    tokens_generated: int\n\n@app.get(\"/health\")\nasync def health_check():\n    return {\"status\": \"healthy\"}\n\n@app.get(\"/ready\")\nasync def readiness_check():\n    # TODO: Check if model is loaded\n    return {\"status\": \"ready\"}\n\n@app.post(\"/generate\", response_model=GenerationResponse)\nasync def generate_text(request: GenerationRequest):\n    # TODO: Implement actual text generation\n    return GenerationResponse(\n        text=f\"Generated response for: {request.prompt}\",\n        tokens_generated=50\n    )\n\nif __name__ == \"__main__\":\n    uvicorn.run(app, host=\"0.0.0.0\", port=8000)\n",
+    "monitoring/prometheus.yml": "global:\n  scrape_interval: 15s\n\nscrape_configs:\n  - job_name: 'llm-api'\n    static_configs:\n      - targets: ['llm-api:9090']\n    scrape_interval: 5s\n    metrics_path: /metrics\n",
+    "scripts/deploy.sh": "#!/bin/bash\n\n# Production deployment script\n\nset -e\n\necho \"Starting production deployment...\"\n\n# Build Docker image\necho \"Building Docker image...\"\ndocker build -t llm-api:latest deployment/docker/\n\n# Run tests\necho \"Running tests...\"\npython -m pytest tests/\n\n# Deploy with docker-compose\necho \"Deploying with docker-compose...\"\ndocker-compose -f deployment/docker/docker-compose.yml up -d\n\necho \"Deployment completed!\"\necho \"API available at: http://localhost:8000\"\necho \"Metrics available at: http://localhost:9090\"\necho \"Grafana available at: http://localhost:3000\"\n",
+    "tests/test_api.py": "#!/usr/bin/env python3\n\"\"\"\nAPI tests for production deployment.\n\"\"\"\n\nimport pytest\nfrom fastapi.testclient import TestClient\nfrom deployment.server import app\n\nclient = TestClient(app)\n\ndef test_health_check():\n    response = client.get(\"/health\")\n    assert response.status_code == 200\n    assert response.json() == {\"status\": \"healthy\"}\n\ndef test_readiness_check():\n    response = client.get(\"/ready\")\n    assert response.status_code == 200\n    assert response.json() == {\"status\": \"ready\"}\n\ndef test_generate_text():\n    response = client.post(\"/generate\", json={\n        \"prompt\": \"Hello world\",\n        \"max_length\": 50\n    })\n    assert response.status_code == 200\n    data = response.json()\n    assert \"text\" in data\n    assert \"tokens_generated\" in data\n"
+  },
+  "config_overrides": {
+    "model": {
+      "vocab_size": 32000,
+      "embedding_dim": 768,
+      "num_layers": 12,
+      "num_heads": 12,
+      "hidden_dim": 3072,
+      "max_seq_length": 1024,
+      "dropout": 0.0
+    },
+    "training": {
+      "batch_size": 8,
+      "learning_rate": 0.00005,
+      "use_mixed_precision": true,
+      "save_every": 1000
+    },
+    "device": {
+      "use_cuda": true,
+      "mixed_precision": true
+    },
+    "logging": {
+      "level": "INFO",
+      "rotation": "100 MB",
+      "retention": "90 days"
+    }
+  },
+  "sample_data": {
+    "enabled": false,
+    "files": []
+  }
+}
