@@ -1,0 +1,95 @@
+name: deploy
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+
+      - run: |
+          sudo apt-get update && sudo apt-get install -y \
+              build-essential \
+              cmake \
+              gcc \
+              libudev-dev \
+              libnl-3-dev \
+              libnl-route-3-dev \
+              ninja-build \
+              pkg-config \
+              valgrind
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: "Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Build package
+        run: |
+          uv build --sdist --wheel
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: dist/*.whl
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  test_pypi_publish:
+    name: Publish release to TestPyPI
+    needs: [build]
+    runs-on: ubuntu-latest
+    environment:
+      name: prerelease
+      url: https://test.pypi.org/p/pyverbs
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist
+
+      - name: Publish package distributions to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          print-hash: true
+          verbose: true
+          repository-url: https://test.pypi.org/legacy/
+
+  pypi_publish:
+    if: "!github.event.release.prerelease"
+    name: Publish release to PyPI
+    needs: [build, test_pypi_publish]
+    runs-on: ubuntu-latest
+    environment:
+      name: release
+      url: https://pypi.org/p/pyverbs
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          print-hash: true
+          verbose: true
