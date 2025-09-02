@@ -1,0 +1,78 @@
+prompt_type: General
+
+instruction:
+  format: str
+  value: "根据问题特征进行三层稳定性分类，采用正交判别法\n\n# 核心规则（独立互斥）\n1. **简单直接类**必须满足：\n   - 执行路径唯一且标准化（查表/转换/计算）\n\
+    \   - 所需参数≤2个且无动态依赖（如天气无需实时数据）\n\n2. **多步骤类**触发条件：\n   - 存在显性逻辑链 (因果/比较/条件) \n\
+    \   OR\n   - 需要3+参数动态组合（如温度+风速+场合）\n\n3. **多主题类**严格标准：\n   - 涉及两个独立知识域（领域重叠度＜30%）\n\
+    \   - 需要调用不同框架进行解答"
+
+step:
+  format: str
+  value: "```mermaid\ngraph TD\n    A[原始问题] --> B{包含'>1'个问号}\n    B -->|是| C[领域离散检测]\n\
+    \    C -->|离散度>0.6| D[多主题]\n    B -->|否| E{存在逻辑关键词}\n    E -->|是| F[多步骤]\n   \
+    \ E -->|否| G[参数复杂度分析]\n    G -->|参数≥3| F\n    G -->|参数<3| H[简单直接]\n```"
+
+output_format:
+  format: dict
+  value:
+    properties:
+      category_name:
+        description: Exactly the name of the category that matches
+        enum:
+        - 简单直接
+        - 多步骤
+        - 多主题
+        title: Category Name
+        type: string
+      conflict:
+        anyOf:
+        - type: string
+        - type: 'null'
+        default: null
+        description: 当存在跨级特征时的矛盾点
+        title: Conflict
+      reason:
+        description: 16字内核心依据
+        title: Reason
+        type: string
+    required:
+    - reason
+    - category_name
+    title: QuestionCategories
+    type: object
+
+sample:
+  format: str
+  value: '
+
+    输入：孙悟空和钢铁侠谁更加厉害？
+
+    输出：
+
+    ```json
+
+    {"conflict":"表面简单但涉及跨体系能力比较","reason":"跨作品战力需多维评估","category_name":"多步骤"}
+
+    ```
+
+
+    输入：如何用python编写排序算法？
+
+    输出：
+
+    ```json
+
+    {"reason":"标准算法单文档可覆盖","category_name":"简单直接"}
+
+    ```
+
+    '
+
+note:
+  format: str
+  value: '- 置信度锚定：各分类初始置信度 ≠ 可重叠范围
+
+    - 最终决策树：任一节点判定后立即阻断下游判断
+
+    - 语义消毒：自动滤除修饰性副词与情感词汇'
