@@ -1,0 +1,70 @@
+FROM --platform=linux/amd64 {{ kelvin_app_builder_image }} as builder
+LABEL stage=builder
+ARG DEBIAN_FRONTEND=noninteractive
+ARG PIP_EXTRA_INDEX_URL
+ARG PIP_DISABLE_PIP_VERSION_CHECK=true
+ARG PIP_NO_INPUT=true
+ARG PIP_CACHE_DIR=/tmp/pip
+
+{% if system_packages %}
+RUN \
+  --mount=type=cache,sharing=locked,target=/var/cache/apt \
+  --mount=type=cache,sharing=locked,target=/var/lib/apt \
+  apt-get update && \
+  apt-get install -y --no-install-recommends {{ system_packages }}
+{% endif %}
+
+WORKDIR /opt/kelvin/app/
+{% if requirements_file %}
+RUN \
+  --mount=type=cache,target=/tmp/pip \
+  --mount=type=bind,target=/opt/kelvin/app/{{ requirements_file }},source={{ requirements_file }} \
+  {% if wheels_dir %}
+  --mount=type=bind,target={{ wheels_dir }},source={{ wheels_dir }} \
+  {% endif %}
+  ${VIRTUAL_ENV_PYTHON} -m pip install --no-cache-dir \
+  {% if wheels_dir %}
+    -f {{ wheels_dir}} \
+  {% endif %}
+    -r {{ requirements_file }}
+{% endif %}
+{% if build_for_datatype_compilation %}
+RUN \
+  --mount=type=bind,target=/tmp/datatype,source=build/datatype \
+  kelvin-datatype message package /tmp/datatype && \
+  ${VIRTUAL_ENV_PYTHON} -m pip install \
+    kelvin_message-*.whl && \
+  rm kelvin_message-*.whl
+{% endif %}
+COPY . /opt/kelvin/app/
+
+RUN \
+  --mount=type=cache,target=/tmp/pip \
+  ${VIRTUAL_ENV_PYTHON} -m pip install -e .
+
+FROM --platform=linux/amd64 {{ kelvin_app_runner_image }}
+ENV PYTHONUNBUFFERED=1
+ENV VIRTUAL_ENV=/opt/kelvin/app/venv
+ENV PATH=${VIRTUAL_ENV}/bin:${PATH}
+WORKDIR /opt/kelvin/app/
+{% if system_packages %}
+RUN \
+  --mount=type=cache,sharing=locked,target=/var/cache/apt \
+  --mount=type=cache,sharing=locked,target=/var/lib/apt \
+  apt-get update && \
+  apt-get install -y --no-install-recommends {{ system_packages }}
+{% endif %}
+COPY --from=builder /opt/kelvin/app /opt/kelvin/app/
+{% if not build_for_upload %}
+COPY build/app.yaml /opt/kelvin/app/app.yaml
+{% endif %}
+
+{% if docker_entrypoint %}
+ENTRYPOINT {{ docker_entrypoint | safe }}
+{% endif %}
+{% if docker_cmd %}
+CMD {{ docker_cmd | safe }}
+{% endif %}
+{#
+  vim:ft=dockerfile.jinja
+#}
