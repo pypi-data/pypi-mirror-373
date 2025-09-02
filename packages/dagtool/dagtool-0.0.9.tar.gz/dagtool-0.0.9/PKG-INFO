@@ -1,0 +1,270 @@
+Metadata-Version: 2.4
+Name: dagtool
+Version: 0.0.9
+Summary: a friendly airflow dag build tool
+Project-URL: Homepage, https://github.com/ddeutils/dagtool/
+Project-URL: Source Code, https://github.com/ddeutils/dagtool/
+License-File: LICENSE
+Classifier: Development Status :: 4 - Beta
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Natural Language :: English
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Utilities
+Requires-Python: >=3.10
+Requires-Dist: apache-airflow[google]>=2.7.1
+Requires-Dist: pendulum<3.0.0
+Requires-Dist: pydantic>=2.9.2
+Provides-Extra: base
+Requires-Dist: apache-airflow[google]==2.7.1; extra == 'base'
+Requires-Dist: pydantic==2.9.2; extra == 'base'
+Provides-Extra: dev
+Requires-Dist: apache-airflow[google]==2.7.1; extra == 'dev'
+Requires-Dist: clishelf>=0.2.22; extra == 'dev'
+Requires-Dist: coverage>=7.10.0; extra == 'dev'
+Requires-Dist: pre-commit>=4.0.0; extra == 'dev'
+Requires-Dist: pydantic==2.9.2; extra == 'dev'
+Requires-Dist: pytest>=8.4.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# DAG Tool
+
+[![pypi version](https://img.shields.io/pypi/v/dagtool)](https://pypi.org/project/dagtool/)
+[![python support version](https://img.shields.io/pypi/pyversions/dagtool)](https://pypi.org/project/dagtool/)
+[![size](https://img.shields.io/github/languages/code-size/ddeutils/dagtool)](https://github.com/ddeutils/dagtool)
+
+A **Friendly Airflow DAG Build Tool** for Data Engineer with YAML file template.
+
+> [!WARNING]
+> This project will reference the DAG generate code from the [Astronomer: DAG-Factory](https://github.com/astronomer/dag-factory).
+> But I replace some logic that fit with ETL propose for Data Engineer.
+
+> [!NOTE]
+> **Disclaimer**: This project will override all necessary parameters that should
+> pass to Airflow object with ETL context for Data Engineer use-case. So, if you
+> want to use and enhance this project, you can fork this project anytime without
+> notice me.
+
+**Feature Supported**:
+
+- ✅ JSON Schema Validation (Set IDE with `json-schema.json`)
+- 💚 Allow Passing Variable to DAG Template before build
+
+From my opinion, a data Engineer should focus on the user requirement instead of
+focusing on the Python code when it need creates a new DAG in our Airflow application.
+
+So, this project focus for this plain to make sure that all DAG can readable and easy to
+maintain with the same standard when we want to scale up and out the Airflow application
+support 10 to 1000 DAGs.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ddeutils/dagtool/refs/heads/main/docs/img/overview.png" width="720" height="360">
+</p>
+
+**File Structure**:
+
+```text
+dags/
+├── { domain }/
+│     ├── { module-dags }/
+│     │     ├── __init__.py
+│     │     ├── dag.yml
+│     │     ├── variables.yml
+│     │     └── assets/
+│     │         ├── dag-schema-mapping.json
+│     │         └── dag-transform-query.sql
+│     │
+│     └── { module-dags }/
+│           ├── __init__.py
+```
+
+> [!NOTE]
+> I think this project should support multiple DAGs structure like:
+>
+> ```text
+> dags/
+> ├── { domain }/
+> │     ├── { module-dags }/
+> │     │     ├── __init__.py
+> │     │     ├── dag-{ name-1 }.yml
+> │     │     ├── dag-{ name-2 }.yml
+> │     │     ├── variables.yml
+> │     │     └── assets/
+> │     │         ├── dag-case-1-schema-mapping.json
+> │     │         ├── dag-case-1-transform-query.sql
+> │     │         ├── dag-case-2-schema-mapping.json
+> │     │         └── dag-case-2-transform-query.sql
+> │     │
+> │     └── { module-dags }/
+> │           ├── __init__.py
+> ```
+
+**Execution Flow**:
+
+The flow of this project provide the interface Pydantic Model before
+passing it to Airflow objects.
+
+```text
+S --> Template --> Pydantic Model --> DAG/Operator Objects --> Execute --> E
+```
+
+## 📦 Installation
+
+```shell
+uv pip install -U dagtool
+```
+
+| Airflow Version | Supported | Noted                                                          |
+|:---------------:|:---------:|----------------------------------------------------------------|
+| `>2.7.1,<3.0.0` |     ✅     | Common version support for Airflow version `2.x.x`             |
+|    `>=3.x.x`    |     ✅     | Common version support for Airflow version `3.x.x`             |
+
+> [!NOTE]
+> I recommend to use Airflow2 util Airflow3 stable.
+
+## 🎯 Usage
+
+This DAG generator engine need you define the `dag.yml` file and set engine
+object to get the current path on `__init__.py` file.
+
+### DAG Template
+
+> [!NOTE]
+> If you want to dynamic environment config on the `dag.yaml` file, you can use a
+> `variable.yaml` file for dynamic value that marking on config template via macro
+> function, `{{ vars('keystore-on-dag-name') }}`.
+
+On the `dag-transaction.yml` file:
+
+```yaml
+name: transaction
+schedule: "@daily"
+owner: "de-oncall@email.com,de@email.com"
+start_date: "{{ vars('start_date') }}"
+catchup: "{{ vars('catchup') }}"
+tags:
+  - "domain:sales"
+  - "tier:1"
+  - "schedule:daily"
+tasks:
+  - task: start
+    op: empty
+
+  - group: etl_master
+    upstream: start
+    tasks:
+      - type: extract
+        op: python
+        caller: get_api_data
+        params:
+          path: gcs://{{ vars("project_id") }}/sales/master/date/{{ exec_date | fmt('%y') }}
+
+      - task: transform
+        upstream: extract
+        op: operator
+        operator_name: gcs_transform_data
+        params:
+          path: gcs://{{ vars("project_id") }}/landing/master/date/{{ exec_date | fmt('%y') }}
+
+      - task: sink
+        upstream: transform
+        op: custom
+        uses: write_iceberg
+        params:
+          path: gcs://{{ vars("project_id") }}
+
+  - task: end
+    upstream: etl_master
+    op: empty
+```
+
+On the `__inti__.py` file:
+
+```python
+"""# SALES DAG
+
+This DAG will extract data from Google Cloud Storage to Google BigQuery LakeHouse
+via DuckDB engine.
+
+> This DAG is the temp DAG for ingest data to GCP.
+"""
+from dagtool import Factory, TaskModel, Context
+
+from airflow.models import DAG
+from airflow.utils.dates import days_ago
+from airflow.utils.task_group import TaskGroup
+from airflow.operators.empty import EmptyOperator
+
+# NOTE: Some external provider operator object.
+from airflow.providers.google.cloud.operators import MockGCSTransformData
+from pydantic import Field
+
+# NOTE: Some function that want to use with PythonOperator
+def get_api_data(path: str) -> dict[str, list[str]]:
+    return {"data": [f"src://{path}/table/1", f"src://{path}/table/2"]}
+
+# NOTE: Some custom task that create any Airflow Task instance object.
+class WriteIceberg(TaskModel):
+    """Custom Task for user defined inside of template path."""
+
+    path: str = Field(description="An Iceberg path.")
+
+    def build(
+        self,
+        dag: DAG | None = None,
+        task_group: TaskGroup | None = None,
+        context: Context | None = None,
+    ) -> TaskGroup:
+        with TaskGroup(
+            group_id="write_iceberg",
+            parent_group=task_group,
+            dag=dag,
+        ) as tg:
+            t1 = EmptyOperator(task_id="prepare", dag=dag)
+            t2 = EmptyOperator(task_id="write", dag=dag)
+            t2.set_upstream(t1)
+        return tg
+
+
+factory = Factory(
+    name="sales",
+    path=__file__,
+    docs=__doc__,
+    operators={"gcs_transform_data": MockGCSTransformData},
+    python_callers={"get_api_data": get_api_data},
+    tasks={"write_iceberg": WriteIceberg},
+)
+factory.build_airflow_dags_to_globals(
+    gb=globals(),
+    default_args={"start_date": days_ago(2)},
+)
+```
+
+**Output**:
+
+The DAG that was built from this package will have the name is, `sales_transaction`.
+
+> [!NOTE]
+> On the `variables.yml` file:
+> ```yaml
+> type: variable
+> variables:
+>   - key: transaction
+>     stages:
+>       dev:
+>         start_date: "2025-01-01"
+>         catchup: false
+>         project_id: "sales_project_dev"
+> ```
+
+## 💬 Contribute
+
+I do not think this project will go around the world because it has specific propose,
+and you can create by your coding without this project dependency for long term
+solution. So, on this time, you can open [the GitHub issue on this project :raised_hands:](https://github.com/ddeutils/dagtool/issues)
+for fix bug or request new feature if you want it.

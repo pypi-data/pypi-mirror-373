@@ -1,0 +1,240 @@
+name: loss
+type: dag
+desc: |
+  This is the Sock Loss data source from POS Admin system.
+
+  ## Input
+
+  - POS Admin: loss
+
+  ## Output
+
+  - GBQ Stock: loss
+  - GBQ Stock: loss_sku
+schedule_interval: "1 * * * *"
+start_date: "{{ vars('start_date') }}"
+catchup: "{{ vars('catchup') }}"
+max_active_runs: "{{ vars('max_active_runs') }}"
+render_template_as_native_obj: true
+tags:
+  - "dom:stock"
+  - "src-type:json"
+  - "src-sys:pos-admin"
+  - "stor-type:iceberg"
+  - "sched-type:hourly"
+  - "proc:spark"
+default_args:
+  owner: "de@mail.com,de-on-call@mail.com"
+  depends_on_past: false
+  retries: 1
+  retry_delay: { "minutes": 1 }
+tasks:
+  - task: start
+    uses: empty
+
+  - task: copy_last_modified_blob
+    upstream: start
+    uses: operator
+    name: gcs_copy_files_time_range_operator
+    params:
+      source_bucket: "pos-admin"
+      source_prefix: "stock-loss/"
+      destination_bucket: "{{ vars('bucket_name') }}"
+      destination_prefix: "pre-landing/stock_loss/{{ data_interval_start | tz('Asia/Bangkok') | fmt('year=%Y/month=%m/day=%d/hour=%H') }}"
+      timespan_start: "{{ data_interval_start | tz('Asia/Bangkok') | fmt('%Y-%m-%d %H:00:00') }}"
+      timespan_end: "{{ data_interval_end | tz('Asia/Bangkok') | fmt('%Y-%m-%d %H:00:00') }}"
+      timezone: "Asia/Bangkok"
+      soft_fail: true
+      replace: false
+      match_glob: "*/*/{{ data_interval_start | tz('Asia/Bangkok') | fmt('%Y/%m/%d') }}/*?"
+    inlets:
+      - platform: gcs
+        name: "pos-admin/stock-loss/"
+    outlets:
+      - platform: gcs
+        name: "{{ vars('bucket_name') }}/pre-landing"
+
+  - group: query_stock_loss_and_copy
+    upstream: start
+    tasks:
+      - task: check_backfill_bq
+        uses: operator
+        name: bigquery_insert_job_operator
+        params:
+          location: "asia-southeast1"
+          gcp_conn_id: "google_cloud_default"
+          configuration:
+            query:
+              query: "check_backfill_stock_loss.sql"
+              useLegacySql: false
+              queryParameters:
+                - name: "start_interval"
+                  parameterType: { "type": "STRING" }
+                  parameterValue:
+                    value: "{{ data_interval_start | tz('Asia/Bangkok') | fmt('%Y-%m-%d %H:00:00%z') }}"
+                - name: "end_interval"
+                  parameterType: { "type": "STRING" }
+                  parameterValue:
+                    value: "{{ data_interval_end | tz('Asia/Bangkok') | fmt('%Y-%m-%d %H:00:00%z') }}"
+          params:
+            bucket_prefix: "stock-loss/"
+            full_table_name: "pos-prod.pos_admin.stock-loss-prd"
+            stock_temp_table_name: "{{ vars('project_id') }}.pos_admin_tmp.stock-loss-prd"
+
+      - task: get_backfill_full_path
+        upstream: check_backfill_bq
+        uses: operator
+        name: bigquery_get_data_operator
+        params:
+          table_project_id: "{{ task_instance.xcom_pull(task_ids='check_backfill_bq', key='bigquery_table')['project_id'] }}"
+          dataset_id: "{{ task_instance.xcom_pull(task_ids='check_backfill_bq', key='bigquery_table')['dataset_id'] }}"
+          table_id: "{{ task_instance.xcom_pull(task_ids='check_backfill_bq', key='bigquery_table')['table_id'] }}"
+          job_project_id: "{{ vars('project_id') }}"
+          selected_fields: "file_path"
+          max_results: 100000
+          use_legacy_sql: false
+          location: "asia-southeast1"
+
+      - task: copy_backfill_blob_to_gcs
+        upstream: get_backfill_full_path
+        uses: operator
+        name: gcs_to_gcs
+        params:
+          source_bucket: "pos-admin"
+          source_objects: "{{ task_instance.xcom_pull(task_ids='get_backfill_full_path') | unnested_list }}"
+          destination_bucket: "{{ vars('bucket_name') }}"
+          destination_object: "pre-landing/stock_loss/{{ data_interval_start | tz('Asia/Bangkok') | fmt('year=%Y/month=%m/day=%d/hour=%H') }}"
+          delimiter: "*.json"
+
+  - task: check_blob_exist
+    upstream:
+      - copy_last_modified_blob
+      - query_stock_loss_and_copy
+    uses: operator
+    name: gcs_object_with_prefix_existence_sensor
+    trigger_rule: all_done
+    params:
+      bucket: "{{ vars('bucket_name') }}"
+      prefix: "pre-landing/stock_loss/{{ data_interval_start.in_timezone('Asia/Bangkok').strftime('year=%Y/month=%m/day=%d/hour=%H') }}"
+      soft_fail: true
+      timeout: 5
+      poke_interval: 5
+
+  - task: concat_file_into_landing
+    upstream: check_blob_exist
+    uses: operator
+    name: concat_file_into_landing
+    params:
+      bucket: "{{ vars('bucket_name') }}"
+      prefix: "pre-landing/stock_loss/{{ data_interval_start | tz('Asia/Bangkok') | fmt('year=%Y/month=%m/day=%d/hour=%H') }}"
+      all_uris_path: "pre-landing/stock_loss/{{ data_interval_start | tz('Asia/Bangkok') | fmt('year=%Y/month=%m/day=%d/hour=%H') }}/all_uris.txt"
+      batch_size: "{{ vars('batch_size') }}"
+
+  - group: stock_loss
+    upstream: concat_file_into_landing
+    tasks:
+      - group: transforming
+        tasks:
+          - task: "dp_pyspark_job"
+            uses: operator
+            name: spark_kubernetes_operator
+            params:
+              application_file: "stock_loss_spark_job.yml"
+              params:
+                spark_app_name: "stock_loss-tf"
+                dp_pyspark_job: file_transform
+                json_config_path: "gs://{{ vars('bucket_name') }}/configs/stock_loss/stock_loss_transforming.json"
+                task_macro_datetime: data_interval_start
+                task_datetime_format: "%Y-%m-%d %H:%M:%S%z"
+                task_macro_timezone: "Asia/Bangkok"
+                dp_pyspark_version: "{{ vars('dp_pyspark_version') }}"
+                driver_core: 1
+                driver_core_request: "{{ vars('transform_driver_request') }}"
+                driver_core_limit: "{{ vars('transform_driver_limit') }}"
+                driver_memory: "1536m"
+                executor_core: 2
+                executor_core_request: "200m"
+                executor_core_limit: "700m"
+                executor_instance: 1
+                executor_memory: "2048m"
+              do_xcom_push: true
+              kubernetes_conn_id: "kube_spark_conn"
+
+          - task: "dp_pyspark_monitor"
+            upstream: "dp_pyspark_job"
+            uses: operator
+            name: spark_kubernetes_sensor
+            params:
+              application_name: "{{ task_instance.xcom_pull(task_ids='dp_pyspark_job')['metadata']['name'] }}"
+              attach_log: false
+              mode: "poke"
+              poke_interval: 60
+              soft_fail: false
+              exponential_backoff: false
+              kubernetes_conn_id: "kube_spark_conn"
+            inlets:
+              - platform: gcs
+                name: "{{ vars('bucket_name') }}/pre-landing/stock-loss"
+            outlets:
+              - platform: gcs
+                name: "{{ vars('bucket_name') }}/transforming/stock-loss"
+
+      - group: validating
+        upstream: transforming
+        tasks:
+          - task: "dp_pyspark_job"
+            uses: operator
+            name: spark_kubernetes_operator
+            params:
+              application_file: "stock_loss_spark_job.yml"
+              params:
+                spark_app_name: "stock_loss-val"
+                dp_pyspark_job: single_datasource_ge_validation
+                json_config_path: "gs://{{ vars('bucket_name') }}/configs/stock_loss/stock_loss_validating.json"
+                task_macro_datetime: data_interval_start
+                task_datetime_format: "%Y-%m-%d %H:%M:%S%z"
+                task_macro_timezone: "Asia/Bangkok"
+                dp_pyspark_version: "{{ vars('dp_pyspark_version') }}"
+                driver_core: 1
+                driver_core_request: "200m"
+                driver_core_limit: "600m"
+                driver_memory: "1024m"
+                executor_core: 1
+                executor_core_request: "100m"
+                executor_core_limit: "200m"
+                executor_instance: 1
+                executor_memory: "768m"
+                ttl: 420
+              do_xcom_push: true
+              kubernetes_conn_id: "kube_spark_conn"
+
+          - task: "dp_pyspark_monitor"
+            upstream: "dp_pyspark_job"
+            uses: operator
+            name: spark_kubernetes_sensor
+            params:
+              application_name: "{{ task_instance.xcom_pull(task_ids='dp_pyspark_job')['metadata']['name'] }}"
+              attach_log: false
+              mode: "poke"
+              poke_interval: 60
+              soft_fail: false
+              exponential_backoff: false
+              kubernetes_conn_id: "kube_spark_conn"
+            inlets:
+              - platform: gcs
+                name: "{{ vars('bucket_name') }}/transforming/stock-loss"
+
+      - task: sync_transforming_table_to_bigquery
+        upstream: validating
+        uses: operator
+        name: iceberg_to_bigquery
+        params:
+          iceberg_table_uri: "gs://{{ vars('bucket_name') }}/transforming/stock_loss"
+          bigquery_full_table_name: "{{ vars('project_id') }}.stock_transforming.stock_loss"
+          biglake_connection_id: "projects/{{ vars('project_id') }}/locations/asia-southeast1/connections/stock_loss_transforming_iceberg_connection"
+          bq_location: "asia-southeast1"
+          schema_json_file_path: "schema/stock_loss.json"
+
+  - task: end
+    upstream: stock_loss
+    uses: empty

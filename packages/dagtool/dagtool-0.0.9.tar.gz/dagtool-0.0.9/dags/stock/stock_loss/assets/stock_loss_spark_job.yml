@@ -1,0 +1,57 @@
+apiVersion: "sparkoperator.k8s.io/v1beta2"
+kind: SparkApplication
+metadata:
+  name: [APPNAME]-[APPDATETIME]
+  namespace: {{ params.namespace }}
+spec:
+  type: Python
+  pythonVersion: "3"
+  mode: cluster
+  image: "{{ params.dp_pyspark_image_path}}:{{ params.dp_pyspark_version }}"
+  imagePullPolicy: {{ params.image_pull_policy }}
+  mainApplicationFile: local:///opt/apps/main.py
+  arguments:
+    - --job
+    - "{{ params.dp_pyspark_job }}"
+    - --job_args
+    - config_mode={{ params.config_mode }}
+    - config_file={{ params.json_config_path }}
+    - task_datetime=[TASKDATETIME]
+    - spark_app_name={{ params.spark_app_name }}
+  sparkVersion: "{{params.spark_version}}"
+  timeToLiveSeconds: {{params.ttl}}
+  restartPolicy:
+    type: OnFailure
+    onFailureRetries: {{params.on_failure_retries}}
+    onFailureRetryInterval: {{params.on_failure_retry_interval}}
+    onSubmissionFailureRetries: {{params.on_submission_failure_retries}}
+    onSubmissionFailureRetryInterval:
+      {{params.on_submission_failure_retry_interval}}
+  driver:
+    cores: {{ params.driver_core }}
+    coreRequest: {{ params.driver_core_request }}
+    coreLimit: {{ params.driver_core_limit }}
+    memory: {{ params.driver_memory }}
+    labels:
+      spark-version: "{{ params.spark_version }}"
+    serviceAccount: sparkoperator
+  executor:
+    cores: {{ params.executor_core }}
+    coreRequest: {{ params.executor_core_request }}
+    coreLimit: {{ params.executor_core_limit }}
+    instances: {{ params.executor_instance }}
+    memory: {{ params.executor_memory }}
+    labels:
+      spark-version: "{{ params.spark_version }}"
+  nodeSelector:
+    {{ params.driver_node_selector }}
+    zone: stateless
+  sparkConf:
+    "spark.eventLog.enabled": "true"
+    "spark.eventLog.dir": "{{ params.spark_event_log_location }}"
+    "spark.driver.extraJavaOptions": "-Divy.cache.dir=/tmp -Divy.home=/tmp"
+    "spark.kubernetes.driver.secrets.google-sa-key": "/cred"
+    "spark.kubernetes.executor.secrets.google-sa-key": "/cred"
+    "spark.kubernetes.driverEnv.GOOGLE_APPLICATION_CREDENTIALS": "{{ params.dp_cred_file_location }}"
+    "spark.executorEnv.GOOGLE_APPLICATION_CREDENTIALS": "{{ params.dp_cred_file_location }}"
+    "spark.debug.maxToStringFields": "100"
