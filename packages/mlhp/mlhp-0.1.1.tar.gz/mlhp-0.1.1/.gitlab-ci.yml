@@ -1,0 +1,353 @@
+# This file is part of the mlhp project. License: See LICENSE
+
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+  
+# ---------------- Templates ------------------
+
+.build_unix:
+  stage: build
+
+  script:
+    - echo "${CellIndexSize} ${DofIndexSize}"
+    - export CXXFLAGS="-Werror ${CXXFLAGS}"
+    
+    # Configure & generate build project
+    - cmake -D MLHP_DEBUG_CHECKS=ON 
+            -D MLHP_EXAMPLES=ON 
+            -D MLHP_EXAMPLE_CPP_FICHERA_CORNER=ON 
+            -D MLHP_EXAMPLE_CPP_J2_PRESSURIZED_SPHERE_FCM=ON 
+            -D MLHP_EXAMPLE_CPP_LINEAR_ELASTIC_FCM_STL=ON 
+            -D MLHP_EXAMPLE_CPP_TRAVELLING_HEAT_SOURCE=ON 
+            -D MLHP_EXAMPLE_CPP_WAVEEQUATION_MATRIX_FREE=ON 
+            -D MLHP_EXAMPLE_CPP_WING_ELASTIC_FCM=ON 
+            -D MLHP_MULTITHREADING=OMP
+            -D MLHP_DIMENSIONS=4
+            -D MLHP_INDEX_SIZE_CELLS=${CellIndexSize}
+            -D MLHP_INDEX_SIZE_DOFS=${DofIndexSize}
+            -B "${BUILD_DIR}"
+    
+    # Invoke build in build subdirectory
+    - cmake --build "${BUILD_DIR}" -- -j$(nproc) 
+
+  artifacts:
+    paths:
+      - ${BUILD_DIR}/bin
+      - ${BUILD_DIR}/lib
+      - ${BUILD_DIR}/testfiles
+      
+  only:
+    - master
+    - merge_requests
+
+.test_unix:
+  stage: test
+
+  script:
+    - cd ${BUILD_DIR}
+    - ./bin/mlhpcore_testrunner --reporter junit --out=mlhpcore_testrunner.xml
+    - ./bin/system_testrunner --reporter junit --out=cpp_system_testrunner.xml
+    - python3 ./bin/run_systemtests.py
+
+  artifacts:
+    paths:
+      - ${BUILD_DIR}/mlhpcore_testrunner.xml
+      - ${BUILD_DIR}/cpp_system_testrunner.xml
+    reports:
+      junit: 
+        - ${BUILD_DIR}/mlhpcore_testrunner.xml
+        - ${BUILD_DIR}/cpp_system_testrunner.xml
+
+  only:
+    - master
+    - merge_requests
+
+.linux:
+  image: registry.gitlab.com/hpfem/code/mlhp/ubuntu21.04
+
+# -------------- Ubuntu with g++ --------------
+
+build_ubuntu21_gcc:
+  variables:
+    BUILD_DIR: ubuntu21_gcc
+
+  extends:
+    - .linux 
+    - .build_unix
+    
+  before_script:
+    - CellIndexSize=32
+    - DofIndexSize=64
+    - export CXX=g++-10
+    - export CXXFLAGS="-Wno-error=suggest-attribute=pure"
+
+test_ubuntu21_gcc:
+  variables:
+    BUILD_DIR: ubuntu21_gcc
+
+  extends:
+    - .linux 
+    - .test_unix
+    
+  needs: 
+    - job: build_ubuntu21_gcc
+      artifacts: true
+
+# ------------ Ubuntu with clang++ ------------
+
+build_ubuntu21_clang:
+  variables:
+    BUILD_DIR: ubuntu21_clang
+
+  extends:
+    - .linux 
+    - .build_unix
+  
+  before_script:
+    - export CXX=clang++-12
+    - CellIndexSize=16
+    - DofIndexSize=32
+  
+test_ubuntu21_clang:
+  variables:
+    BUILD_DIR: ubuntu21_clang
+
+  extends:
+    - .linux 
+    - .test_unix
+    
+  needs: 
+    - job: build_ubuntu21_clang
+      artifacts: true
+  
+# ------- MacOS with xcode (apple clang) ------
+
+.macos_xcode:
+  image: macos-15-xcode-16
+
+  tags:
+    - saas-macos-medium-m1
+
+  variables:
+    BUILD_DIR: macos_xcode    
+    HOMEBREW_NO_AUTO_UPDATE: 1
+
+build_macos_xcode:  
+  extends: 
+    - .macos_xcode
+    - .build_unix
+
+  before_script:
+    - export HOMEBREW_NO_INSTALL_CLEANUP=TRUE
+    - export HOMEBREW_NO_UPDATE_REPORT_FORMULAE=TRUE 
+    - export HOMEBREW_NO_UPDATE_REPORT_CASKS=TRUE
+    - brew install cmake
+    - CellIndexSize=32
+    - DofIndexSize=64
+    - curl -O https://mac.r-project.org/openmp/openmp-14.0.6-darwin20-Release.tar.gz
+    - sudo tar fvxz openmp-14.0.6-darwin20-Release.tar.gz -C /
+
+    ## Alternatively to find and use installed openmp:
+    #- export CXXFLAGS="-I\"$(brew --prefix libomp)/include\""
+    #- export LDFLAGS="-L\"$(brew --prefix libomp)/lib\""
+
+  # For some reason doesn't work with $BUILD_DIR
+  artifacts:
+    paths:
+      - macos_xcode/bin
+      - macos_xcode/lib
+      - macos_xcode/testfiles
+
+test_macos_xcode:
+  extends: 
+    - .macos_xcode
+    - .test_unix
+    
+  script:
+    - curl -O https://mac.r-project.org/openmp/openmp-14.0.6-darwin20-Release.tar.gz
+    - sudo tar fvxz openmp-14.0.6-darwin20-Release.tar.gz -C /
+    - cd ${BUILD_DIR}
+    - export OMP_NUM_THREADS=1
+    - ./bin/mlhpcore_testrunner --reporter junit --out=mlhpcore_testrunner.xml
+    - ./bin/system_testrunner ~plane_stress_unstructured --reporter junit --out=cpp_system_testrunner.xml
+    
+    # Maybe a new pybind11 update will find the correct python version or something else makes it work again
+    - python3.13 bin/run_systemtests.py
+    #- python bin/run_systemtests.py
+  
+  needs: 
+    - job: build_macos_xcode
+      artifacts: true
+
+  # For some reason doesn't work with $BUILD_DIR
+  artifacts:
+    paths:
+      - macos_xcode/mlhpcore_testrunner.xml
+      - macos_xcode/cpp_system_testrunner.xml
+    reports:
+      junit: 
+        - macos_xcode/mlhpcore_testrunner.xml
+        - macos_xcode/cpp_system_testrunner.xml
+
+# -------- Windows with Visual Studio ---------
+
+.windows_msvc:
+  variables: 
+    BUILD_DIR: windows_msvc
+
+  tags:
+    - saas-windows-medium-amd64
+
+  #before_script:
+  #  - choco install python --version=3.10.0 -y
+  #  - $env:PATH+=";C:\Python310;C:\Python310\Scripts" 
+
+  only:
+    - master
+    - merge_requests
+
+build_windows_msvc:
+  extends: .windows_msvc
+  stage: build
+
+  script:
+    - cmake -D MLHP_DEBUG_CHECKS=ON 
+            -D MLHP_EXAMPLES=ON 
+            -D MLHP_EXAMPLE_CPP_FICHERA_CORNER=ON 
+            -D MLHP_EXAMPLE_CPP_WING_ELASTIC_FCM=ON 
+            -D MLHP_EXAMPLE_CPP_TRAVELLING_HEAT_SOURCE=ON 
+            -D MLHP_MULTITHREADING=OMP
+            -B ${BUILD_DIR}
+    
+    - cmake --build ${BUILD_DIR} --target install --config Release
+  
+  artifacts:
+    paths: 
+      - ${BUILD_DIR}/install
+
+test_windows_msvc:
+
+  extends: .windows_msvc
+
+  stage: test
+
+  script:
+    - cd ${BUILD_DIR}/install
+    - ./bin/mlhpcore_testrunner --reporter junit --out=mlhpcore_testrunner.xml
+    - ./bin/system_testrunner --reporter junit --out=cpp_system_testrunner.xml
+    - python bin/run_systemtests.py
+
+  needs: 
+    - job: build_windows_msvc
+      artifacts: true
+
+  artifacts:
+    paths:
+      - ${BUILD_DIR}/install/mlhpcore_testrunner.xml
+      - ${BUILD_DIR}/install/cpp_system_testrunner.xml
+    reports:
+      junit: 
+        - ${BUILD_DIR}/install/mlhpcore_testrunner.xml
+        - ${BUILD_DIR}/install/cpp_system_testrunner.xml
+
+# ----------- Doxygen documentation -----------
+
+pages:
+  extends:
+    - .linux
+  stage: deploy
+  script:
+    - doxygen tools/doxygen/Doxyfile 
+    - mv html/ public/
+  artifacts:
+    paths:
+      - public
+  only:
+    - master
+
+# ------------ Build python wheels ------------
+
+# From: https://cibuildwheel.pypa.io/en/stable/setup/#gitlab-ci
+
+.manual_wheels:
+  when: manual
+  stage: build
+  only: [master, merge_requests]
+
+
+wheels_linux:
+  extends:
+    - .manual_wheels
+
+  image: python:3.8
+  
+  services:
+    - name: docker:dind
+      entrypoint: ["env", "-u", "DOCKER_HOST"]
+      command: ["dockerd-entrypoint.sh"]
+
+  variables:
+    DOCKER_HOST: tcp://docker:2375/
+    DOCKER_DRIVER: overlay2
+    DOCKER_TLS_CERTDIR: ""
+
+  script:
+    - curl -sSL https://get.docker.com/ | sh
+    - python -m pip install pipx
+    - python -m pip install cibuildwheel==2.19.1
+    - git rev-parse HEAD
+    - export CXXFLAGS="-w -Ofast -mavx2 -march=haswell -mtune=core-avx2 -DMLHP_DISABLE_PURE"
+    - export SKBUILD_CMAKE_DEFINE="MLHP_ALL_OPTIMIZATIONS=OFF;MLHP_COMMIT_ID=$(git rev-parse HEAD)"
+    - export CIBW_ENVIRONMENT_PASS_LINUX="CXXFLAGS SKBUILD_CMAKE_DEFINE"
+    - python -m pipx run build --sdist
+    - cibuildwheel --output-dir wheelhouse
+  artifacts:
+    paths:
+      - wheelhouse/
+      - dist/
+
+wheels_macos_xcode:  
+  extends:
+    - .manual_wheels
+
+  image: macos-15-xcode-16
+
+  tags:
+    - saas-macos-medium-m1
+
+  variables:
+    HOMEBREW_NO_AUTO_UPDATE: 1
+
+  before_script:
+    - python3 -m pip install cibuildwheel
+    - curl -O https://mac.r-project.org/openmp/openmp-14.0.6-darwin20-Release.tar.gz
+    - sudo tar fvxz openmp-14.0.6-darwin20-Release.tar.gz -C /
+
+  script:
+    - export CIBW_ENVIRONMENT="SKBUILD_CMAKE_DEFINE=\"MLHP_ALL_OPTIMIZATIONS=OFF;MLHP_COMMIT_ID=$(git rev-parse HEAD)\" CXXFLAGS=\"-Ofast\""
+    #- export CIBW_ENVIRONMENT="${CIBW_ENVIRONMENT} SKBUILD_LOGGING_LEVEL=\"INFO\" SKBUILD_CMAKE_VERBOSE=\"true\""
+    #- export CIBW_BUILD_VERBOSITY=3
+    - python3 -m cibuildwheel --output-dir wheelhouse
+
+  artifacts:
+    paths:
+      - wheelhouse/
+
+wheels_windows:
+  extends:
+    - .manual_wheels
+
+  tags:
+    - saas-windows-medium-amd64
+    
+  script:
+    #- choco install python -y --version 3.8.6
+    - choco install git.install -y
+    - py -m pip install cibuildwheel==2.19.1
+    - $Env:MLHP_COMMIT_ID = git rev-parse HEAD
+    - $Env:CIBW_ENVIRONMENT="SKBUILD_CMAKE_DEFINE=`"MLHP_COMMIT_ID=$Env:MLHP_COMMIT_ID`""
+    - py -m cibuildwheel --output-dir wheelhouse --platform windows
+
+  artifacts:
+    paths:
+      - wheelhouse/

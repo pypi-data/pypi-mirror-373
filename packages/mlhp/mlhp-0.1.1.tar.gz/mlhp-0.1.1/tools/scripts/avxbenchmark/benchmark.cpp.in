@@ -1,0 +1,94 @@
+#include "mlhp/core.hpp"
+
+namespace mlhp
+{
+
+void doMain( )
+{
+    auto tBegin = utilities::tic( );   
+     
+    size_t refinementLevel = __refinementLevel__;
+    size_t numberOfElements = __numberOfElements__;
+    size_t polynomialDegree = __polynomialDegree__;
+    using MatrixType = linalg::__MatrixType__SparseMatrix;
+
+    static constexpr size_t D = 3;
+
+    auto circle = implicit::sphere<D>( array::make<double, D>( 0.5 ), 0.31 );
+
+    auto numberOfBaseElements = array::make<size_t, D>( numberOfElements );
+    auto lengths = array::make<double, D>( 1.0 );
+
+    auto integrationOrderDeterminor = makeIntegrationOrderDeterminor<D>( 1 );
+
+    std::function kappa = []( std::array<double, D> ) noexcept { return 1.0; };
+
+    auto t0 = utilities::tic( );
+
+    // Create base grid
+    CartesianGrid baseGrid( numberOfBaseElements, lengths );
+
+    auto refinementStrategy = refineTowardsDomainBoundary( circle, refinementLevel );
+
+    // Refine grid
+    auto grid = makeRefinedGrid( baseGrid );
+
+    if( refinementLevel > 0 )
+    {
+        grid->refine( refinementStrategy );
+    }
+
+    std::cout << "grid: " << utilities::toc( t0 ) << std::endl;
+    auto t1 = utilities::tic( );
+
+    auto degrees = array::make<size_t, D>( polynomialDegree );
+
+    // Create multi-level hp basis on refined grid
+    auto basis = makeHpBasis<TensorSpace>( grid, degrees );
+
+    std::cout << "basis: " << utilities::toc( t1 ) << std::endl;
+
+    // Boundary conditions
+    auto solve = linalg::makeCGSolver( 1e-8 );
+
+    std::vector<size_t> sides;
+
+    for( size_t axis = 0; axis < D; ++axis )
+    {
+        sides.push_back( 2 * axis + 1 );
+    }
+
+    // Analytical solution / source
+    auto solution = solution::singularSolution<D>( );
+    auto solutionDerivatives = solution::singularSolutionDerivatives<D>( );
+    auto source = solution::singularSolutionSource<D>( );
+
+    // Solve for boundary dofs
+    auto boundaryDofs = boundary::boundaryDofs<D>( solution, *basis, sides, 
+                                                   integrationOrderDeterminor );
+
+    auto t2 = utilities::tic( );
+    
+    // Allocate sparse matrix
+    auto matrix = allocateMatrix<MatrixType>( *basis, boundaryDofs.first );
+
+    std::cout << "allocation: " << utilities::toc( t2 ) << std::endl;
+    auto t3 = utilities::tic( );
+
+    std::vector<double> F( matrix.size1( ), 0.0 );
+
+    // Assemble global system
+    auto integrand = makePoissonIntegrand<D>( kappa, source );
+
+    integrateOnDomain( *basis, integrand, { matrix, F }, integrationOrderDeterminor, boundaryDofs );
+
+    std::cout << "assembly: " << utilities::toc( t3 ) << std::endl;
+    std::cout << "total: " << utilities::toc( tBegin ) << std::endl;
+}
+
+} // namespace mlhp
+
+int main( )
+{
+    mlhp::doMain( );
+}

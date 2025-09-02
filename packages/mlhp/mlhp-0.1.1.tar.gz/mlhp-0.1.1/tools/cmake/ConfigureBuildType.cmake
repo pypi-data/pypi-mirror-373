@@ -1,0 +1,6 @@
+
+if( NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC" AND NOT CMAKE_BUILD_TYPE )
+  message(STATUS "Setting build type to 'RELEASE' as none was specified.")
+  set(CMAKE_BUILD_TYPE "RELEASE" CACHE STRING "Choose the type of build." FORCE)
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "DEBUG" "RELEASE" "MINSIZERELEASE" "RELWITHDEBINFO")
+endif()
