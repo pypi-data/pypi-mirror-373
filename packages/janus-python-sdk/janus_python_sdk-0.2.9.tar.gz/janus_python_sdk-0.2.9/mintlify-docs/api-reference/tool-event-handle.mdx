@@ -1,0 +1,84 @@
+---
+title: "ToolEventSpanHandle"
+description: "Handle class for managing manual tool event spans across multiple function calls"
+---
+
+## ToolEventSpanHandle
+
+A simple handle returned by `start_tool_event()` that you pass to `finish_tool_event()` to complete manual tracing operations.
+
+### What it is
+
+`ToolEventSpanHandle` is a dataclass that contains:
+- A reference to the OpenTelemetry span being traced
+- The start time for duration calculation
+
+### Basic Usage
+
+```python
+from janus_sdk import start_tool_event, finish_tool_event
+
+def process_data(data: list) -> dict:
+    # Start tracing - returns a handle
+    handle = start_tool_event("data_processing", f"items: {len(data)}")
+    
+    # Do your work
+    result = {"processed": len(data), "status": "success"}
+    
+    # Finish tracing - pass the handle
+    finish_tool_event(handle, result)
+    return result
+```
+
+### Key Points
+
+<Tip>
+- **Always check if handle is None** - Tracing might be disabled
+- **Pass the handle to finish_tool_event()** - Even if an error occurs
+- **Don't modify the handle** - Use it as-is
+</Tip>
+
+### Handling Disabled Tracing
+
+```python
+def safe_operation(data: str) -> str:
+    handle = start_tool_event("operation", data)
+    
+    result = process_data(data)
+    
+    # Safe to call even if handle is None
+    finish_tool_event(handle, result)
+    return result
+```
+
+### Error Handling
+
+```python
+def risky_operation(data: dict) -> dict:
+    handle = start_tool_event("risky_op", str(data))
+    
+    try:
+        if not data:
+            raise ValueError("Data cannot be empty")
+        
+        result = process_data(data)
+        finish_tool_event(handle, result)
+        return result
+        
+    except Exception as e:
+        # Always finish the trace, even on error
+        finish_tool_event(handle, error=e)
+        raise
+```
+
+### Related Functions
+
+<CardGroup cols={2}>
+<Card title="start_tool_event" icon="play" href="/api-reference/tracing-functions#start_tool_event">
+  Create tool event spans and get handles
+</Card>
+
+<Card title="finish_tool_event" icon="stop" href="/api-reference/tracing-functions#finish_tool_event">
+  Complete tool event spans with handles
+</Card>
+</CardGroup>
