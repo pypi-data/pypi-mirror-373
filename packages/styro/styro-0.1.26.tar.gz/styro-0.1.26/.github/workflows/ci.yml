@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+    - name: Lint with Ruff
+      uses: astral-sh/ruff-action@v3
+    - name: Format with Ruff
+      uses: astral-sh/ruff-action@v3
+      with:
+        args: 'format --check'
+
+  typing:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version-file: pyproject.toml
+    - name: Check types with ty
+      run: |
+        uv run ty check
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04]
+        openfoam-version: [9, 13, 2006, 2506]
+        python-version: ['3.8', '3.13']
+        include:
+          - os: macos-latest
+            openfoam-version: 2112
+            python-version: '3.9'
+          - os: macos-latest
+            openfoam-version: 2112
+            python-version: '3.13'
+          - os: macos-latest
+            openfoam-version: 2506
+            python-version: '3.9'
+          - os: macos-latest
+            openfoam-version: 2506
+            python-version: '3.13'
+      fail-fast: false
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Set up OpenFOAM
+      uses: gerlero/setup-openfoam@v1
+      with:
+        openfoam-version: ${{ matrix.openfoam-version }}
+    - name: Install test dependencies
+      run: |
+        uv sync
+    - name: Test with pytest
+      run: |
+        uv run pytest --cov=styro --cov-report xml
+    - name: Upload code coverage results to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
+    - name: Check package build
+      run: |
+        uv build
