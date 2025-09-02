@@ -1,0 +1,306 @@
+---
+title: "Function Tracing"
+description: "Learn how to trace function calls and tool usage in your AI agents"
+---
+
+## Function Call Tracing
+
+Janus Python SDK provides comprehensive tracing capabilities to track function calls, tool usage, sub agent interactions, and performance metrics in your AI agents. This helps you understand how your agent works internally, how it coordinates with other agents, and identify bottlenecks or issues.
+
+## Tracing Methods
+
+### 1. **Automatic Tracing with `@track` Decorator**
+
+The simplest way to trace function calls is using the `@track` decorator:
+
+```python
+from janus_sdk import track
+
+@track
+def analyze_data(data: dict) -> dict:
+    """This function call will be automatically traced"""
+    # Your analysis logic here
+    return {"result": "analysis_complete"}
+
+@track
+async def fetch_external_data(url: str) -> str:
+    """Async functions are also supported"""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+        return response.text
+```
+
+<Info>
+The `@track` decorator automatically captures function inputs, outputs, execution time, and any errors that occur.
+</Info>
+
+You can also add rule validation to traced functions:
+
+```python
+@track(rules=["Must validate input", "Response time < 100ms"])
+def analyze_data_with_rules(data: dict) -> dict:
+    """This function call will be automatically traced and validated"""
+    # Your analysis logic here
+    return {"result": "analysis_complete"}
+```
+
+### 2. **Manual Tracing for External Tools**
+
+For external APIs, databases, or tools that can't use the decorator:
+
+```python
+from janus_sdk import start_tool_event, finish_tool_event, record_tool_event
+
+# One-shot tracing for simple operations
+record_tool_event("external_api", "request_data", "response_data")
+
+# Start/finish pattern for long-running operations
+handle = start_tool_event("database_query", "SELECT * FROM users")
+try:
+    result = query_database()
+    finish_tool_event(handle, result)
+except Exception as e:
+    finish_tool_event(handle, error=e)
+```
+
+You can also add rules to manual tracing:
+
+```python
+# One-shot tracing with rules
+record_tool_event(
+    "external_api", 
+    "request_data", 
+    "response_data",
+    rules=["Must use HTTPS", "Response time < 500ms"]
+)
+
+# Start/finish pattern with rules
+handle = start_tool_event(
+    "database_query", 
+    "SELECT * FROM users",
+    rules=["Must use parameterized queries", "Query timeout < 2s"]
+)
+try:
+    result = query_database()
+    finish_tool_event(handle, result)
+except Exception as e:
+    finish_tool_event(handle, error=e)
+```
+
+### 3. **LangChain Integration**
+
+For LangChain agents, use the custom callback:
+
+```python
+from janus_sdk import JanusLangChainCallback
+
+agent_executor = AgentExecutor(
+    agent=agent,
+    tools=[weather_tool, calculator_tool],
+    callbacks=[JanusLangChainCallback()]
+)
+```
+
+## What Gets Traced
+
+### **Function Information**
+- Function name and signature
+- Input parameters and their values
+- Return values and outputs
+- Execution time and duration
+- Error messages and stack traces
+
+### **Context Information**
+- Conversation ID and simulation context
+- Parent function calls (call stack)
+- Timestamps and sequence information
+- Performance metrics
+
+### **Tool Usage**
+- Tool name and input parameters
+- Tool output and results
+- Success/failure status
+- Duration and performance data
+
+### **Sub Agent Interactions**
+- Sub agent calls and delegation patterns
+- Agent-to-agent communication flows
+- Hierarchical agent structures and relationships
+- Cross-agent context sharing and coordination
+
+### **Rule Validation**
+- Rule compliance status for each function/tool call
+- Violation details with rule descriptions
+- Rule validation timing and performance
+
+## Tracing in Practice
+
+### **Healthcare Example**
+Here's how tracing works in a healthcare application:
+
+```python
+class HealthcareAgent:
+    @track
+    def analyze_symptom_severity(self, symptoms: list, impact_level: str) -> dict:
+        """Automatically traced function"""
+        # Analysis logic here
+        return severity_assessment
+
+    @track(rules=["Must validate symptoms list", "Must return severity level"])
+    def analyze_symptom_severity_with_rules(self, symptoms: list, impact_level: str) -> dict:
+        """Automatically traced and validated function"""
+        # Analysis logic here
+        return severity_assessment
+
+    async def get_medication_info(self, medication_name: str) -> str:
+        """Manual tracing with rules for external database"""
+        handle = start_tool_event(
+            "medication_database", 
+            f"query: {medication_name}",
+            rules=["Must use secure connection", "Query timeout < 2s"]
+        )
+        
+        try:
+            # Simulate database query
+            await asyncio.sleep(0.5)
+            result = "Medication information retrieved"
+            finish_tool_event(handle, result)
+            return result
+        except Exception as e:
+            finish_tool_event(handle, error=e)
+            return f"Error: {str(e)}"
+```
+
+### **LangChain Integration Example**
+For LangChain agents, tracing happens automatically:
+
+```python
+class WeatherTool(BaseTool):
+    name: str = "search_weather"
+    description: str = "Get weather information for a location"
+    
+    def _run(self, location: str):
+        # This tool call will be automatically traced
+        return f"Weather for {location}: Sunny, 75°F"
+
+# The callback automatically traces all tool calls
+callback = JanusLangChainCallback()
+agent_executor = AgentExecutor(
+    agent=agent,
+    tools=[WeatherTool()],
+    callbacks=[callback]
+)
+```
+
+### **Advanced LangChain Integration**
+For more control over tool tracing, you can create a custom callback handler:
+
+```python
+from langchain.callbacks.base import BaseCallbackHandler
+from janus_sdk import start_tool_event, finish_tool_event
+
+class JanusLangChainCallback(BaseCallbackHandler):
+    def __init__(self):
+        self._handles = {}
+    
+    def on_agent_action(self, action, **kwargs):
+        if hasattr(action, 'tool') and action.tool:
+            self._handles[action.tool] = start_tool_event(
+                tool_name=action.tool,
+                tool_input=action.tool_input
+            )
+    
+    def on_agent_finish(self, outputs, **kwargs):
+        for tool, handle in self._handles.items():
+            finish_tool_event(handle, tool_output=str(outputs))
+        self._handles.clear()
+
+# Add to your agent executor
+executor = AgentExecutor(
+    agent=agent, 
+    tools=[your_tools], 
+    callbacks=[JanusLangChainCallback()]
+)
+```
+
+This custom implementation gives you fine-grained control over when tool events start and finish, allowing for more precise tracing of complex agent workflows.
+
+## Rule Validation
+
+### **Adding Rules to Traces**
+You can add rule validation to any traced function or tool call by passing a list of rule strings:
+
+```python
+# Function-level rules
+@track(rules=["Must validate input", "Response time < 100ms"])
+def my_function(data: dict) -> dict:
+    pass
+
+# Tool-level rules
+handle = start_tool_event(
+    "database_query", 
+    "SELECT * FROM users",
+    rules=["Must use parameterized queries", "Query timeout < 2s"]
+)
+
+# One-shot tool rules
+record_tool_event(
+    "external_api", 
+    "request_data", 
+    "response_data",
+    rules=["Must use HTTPS", "Response time < 500ms"]
+)
+```
+
+### **Rule Format**
+Rules are simple strings that describe the expected behavior:
+- **Input validation**: "Must validate input before processing"
+- **Performance**: "Response time must be under 100ms"
+- **Security**: "Must use HTTPS for external calls"
+- **Format**: "Output must be valid JSON"
+- **Business logic**: "Must check user permissions"
+
+
+
+## Viewing Traces
+
+### **In the Janus Dashboard**
+Traces are automatically recorded, evaluated, and sent to the Janus platform when simulations are run. You can view them in the dashboard:
+
+1. **Go to Results** at [app.withjanus.com](https://app.withjanus.com)
+2. **Select a conversation** to view detailed results
+3. **Click on the Traces tab** to see:
+   - Function call hierarchy
+   - Input/output values
+   - Execution timing
+   - Error details
+   - Performance metrics
+
+### **Trace Information Available**
+- **Function calls**: Complete call stack with parameters
+- **Tool usage**: External API calls, database queries, etc.
+- **Sub agent calls**: Agent delegation, communication flows, and hierarchical structures
+- **Performance data**: Response times, token usage, throughput
+- **Error tracking**: Exceptions, failures, and debugging info
+- **Context linking**: Connection to conversation and simulation data
+
+## Best Practices
+
+<Tip>
+- Use `@track` for internal functions that you control
+- Use manual tracing for external APIs and third-party tools
+- Include meaningful tool names and input descriptions
+- Handle errors gracefully in traced functions
+- Use specific, measurable rules rather than vague guidelines
+- Combine rule-based evaluation with autonomous judging for comprehensive assessment
+</Tip>
+
+<Warning>
+Tracing adds some overhead to function calls. For high-frequency operations, consider selective tracing.
+</Warning>
+
+
+
+
+
+ 

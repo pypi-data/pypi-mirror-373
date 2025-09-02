@@ -1,0 +1,223 @@
+---
+title: "Quickstart"
+description: "Get up and running with Janus Python SDK in under 5 minutes"
+---
+
+## Get Started in 5 Minutes
+
+Learn how to test your first AI agent with Janus Python SDK. This guide will walk you through creating a simple agent and running automated simulations.
+
+
+
+## Prerequisites
+
+Before you begin, make sure you have:
+
+<Check>
+- Python 3.9 or higher installed
+- A Janus API key (contact [team@withjanus.com](mailto:team@withjanus.com))
+
+</Check>
+
+## Step 1: Install the SDK
+
+Install Janus Python SDK using pip:
+
+```bash
+pip install janus-python-sdk
+```
+
+<Check>
+Verify the installation by importing the SDK in Python:
+```python
+import janus_sdk
+print("Janus SDK installed successfully!")
+```
+</Check>
+
+## Step 2: Set Up Your Environment
+
+Create a `.env` file in your project directory to store your API key:
+
+```bash
+# .env
+JANUS_API_KEY=your_janus_api_key_here
+# You can use any model - we're using OpenAI API for this example
+OPENAI_API_KEY=your_openai_api_key_here
+```
+
+<Warning>
+Never commit your API keys to version control. Add `.env` to your `.gitignore` file.
+</Warning>
+
+## Step 3: Create Your First Agent
+
+Create a simple AI agent that responds to user prompts. Wrap helper functions with `@track` for automatic tracing:
+
+```python
+# my_agent.py
+import asyncio
+import os
+from openai import AsyncOpenAI
+from dotenv import load_dotenv
+from janus_sdk import run_simulations, track
+
+# Load environment variables
+load_dotenv()
+
+@track                          # ① traces this helper (inputs • output • timing)
+def add(a: int, b: int) -> int:
+    return a + b
+
+class MyAgent:                    # ② exactly one async chat method
+    def __init__(self):
+        self.client = AsyncOpenAI(
+            api_key=os.getenv("OPENAI_API_KEY")
+        )
+        self.system_prompt = "You are a helpful AI assistant. Keep your responses concise and accurate."
+
+    async def chat(self, prompt: str, **kwargs) -> str:
+        """Main chat method that will be tested by Janus."""
+        prompt += f"  (2+3={add(2,3)})"     # use the tracked helper
+        response = await self.client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=100,
+        )
+        return response.choices[0].message.content
+
+async def main():
+    # Run simulations with your agent
+    results = await run_simulations(
+        num_simulations=3,  # Start with a small number for testing
+        max_turns=3,        # Keep conversations short for quick testing
+        target_agent=lambda: MyAgent().chat,
+        api_key=os.getenv("JANUS_API_KEY"),
+    )
+    
+    print(f"Completed {len(results)} simulations!")
+    for i, result in enumerate(results):
+        print(f"Simulation {i+1}: {result.get('status', 'unknown')}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+<Info>
+**Tip:** Anything wrapped with `@track` is automatically logged (inputs, outputs, timing) in every simulation turn.
+</Info>
+
+## Step 4: Configure Your Testing Environment (Webapp)
+
+Before running simulations, you need to set up your testing environment in the Janus webapp:
+
+### Create Test Cases
+1. Go to the **Test & Rules → Test Cases** page to create and manage your test queries
+2. Add specific queries you want to test against, along with context and goals for each test case
+3. These will be used in your simulations
+
+### Define Rule Sets
+1. Go to the **Test & Rules → Rule Sets** tab to create and manage rules
+2. Define compliance rules, response quality checks, and behavioral constraints that you want to test your agent's responses against
+
+### Create Simulation Templates
+1. Go to the **Chat page** and create custom configurations for your agents
+2. You can only use one template at a time
+3. Star a template when you're ready to test against it
+
+<Info>
+**Tip:** The SDK and webapp work hand-in-hand. Use the webapp to configure simulations and the SDK to run them programmatically.
+</Info>
+
+<Card
+  title="Complete Webapp Setup Guide"
+  icon="book-open"
+  href="/concepts/webapp-setup"
+>
+  Get detailed instructions for all webapp configuration options
+</Card>
+
+## Step 5: Run Your First Test
+
+Execute your agent test:
+
+```bash
+python my_agent.py
+```
+
+
+
+## Step 6: Understand the Results
+
+Janus will provide detailed results for each simulation, including:
+
+- **Conversation logs** - Full conversation history
+- **Performance metrics** - Response times, token usage
+- **Evaluation scores** - Rule-based assessments
+- **Error detection** - Hallucinations, policy violations
+- **Tool usage patterns** - Detailed tracing of `@track` functions and manual traces
+- **Performance bottlenecks** - Slow operations and error analysis
+
+<Card
+  title="View Results"
+  icon="chart-line"
+  href="https://app.withjanus.com/dashboard/results"
+>
+  Check your results in the Janus dashboard
+</Card>
+
+## Next Steps
+
+Now that you've run your first test, explore these advanced features:
+
+<CardGroup cols={2}>
+<Card title="Webapp Setup" icon="gear" href="/concepts/webapp-setup">
+  Learn how to configure your testing environment in the webapp.
+</Card>
+
+<Card title="Evaluation Concepts" icon="chart-line" href="/concepts/evaluation">
+  Understand rule-based evaluation and scoring.
+</Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+<Accordion title="Common Issues">
+  <Tabs>
+  <Tab title="Import Error">
+    Make sure you've installed the SDK correctly:
+    ```bash
+    pip install janus-python-sdk
+    ```
+  </Tab>
+  
+  <Tab title="API Key Error">
+    Verify your API key is set correctly in the `.env` file:
+    ```bash
+    JANUS_API_KEY=your_actual_api_key_here
+    ```
+  </Tab>
+  
+  <Tab title="OpenAI API Error">
+    Ensure your OpenAI API key is valid and has sufficient credits:
+    ```bash
+    OPENAI_API_KEY=your_openai_api_key_here
+    ```
+  </Tab>
+  </Tabs>
+</Accordion>
+
+<Accordion title="Performance Tips">
+  - Start with `num_simulations=3` for quick testing
+  - Use `max_turns=3` for faster results
+  - Increase simulation count gradually as you optimize
+</Accordion>
+</AccordionGroup>
+
+<Note>
+**Need help?** Contact us at team@withjanus.com.
+</Note>
