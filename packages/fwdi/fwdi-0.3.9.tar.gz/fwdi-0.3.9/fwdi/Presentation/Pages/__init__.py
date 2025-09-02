@@ -1,0 +1,2 @@
+from .rights_management_panel import RightsManagementPanel
+from .web_service_setting_panel import WebServiceSettingPanel
