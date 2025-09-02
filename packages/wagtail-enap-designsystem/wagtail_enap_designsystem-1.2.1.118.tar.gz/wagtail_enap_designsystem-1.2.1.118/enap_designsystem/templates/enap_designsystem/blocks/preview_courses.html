@@ -1,0 +1,280 @@
+
+{% load wagtailcore_tags wagtailimages_tags %}
+
+{% block block_render %}
+{% load static %}
+{% block content %}
+<section class="section-courses">
+    <div class="content-section">
+        <div class="section-header">
+            <h2 class="section-heading">{{ value.page.title }}</h2>
+        </div>
+    
+        <div class="slider-container">
+            <div class="container-preview"><div class="slider-track">
+                {% with page_instance=value.page.specific %}
+                    {% for course in page_instance.get_children.live %}
+                        <div class="slider-item">
+                            {% with course_specific=course.specific %}
+                                <!-- Extrair a primeira imagem de banner disponível -->
+                                {% for block in course_specific.content %}
+                                    {% if block.block_type == 'banner' and block.value.background_image %}
+                                        {% image block.value.background_image original format-webp as banner_img %}
+                                        
+                                        <!-- Card agora é um link completo -->
+                                        <a href="{% pageurl course %}" class="card-link">
+                                            <div class="card-bgimage" style="background-image: url('{{ banner_img.url }}');">
+                                                <!-- Status Badge - Sistema Corrigido -->
+                                                {% if course_specific.status_inscricao %}
+                                                    {% if course_specific.status_inscricao == 'abertas' %}
+                                                        <div class="status-badge status-abertas">
+                                                            Inscrições Abertas
+                                                        </div>
+                                                    {% elif course_specific.status_inscricao == 'encerradas' %}
+                                                        <div class="status-badge status-encerradas">
+                                                            Inscrições Encerradas
+                                                        </div>
+                                                    {% elif course_specific.status_inscricao == 'em_andamento' %}
+                                                        <div class="status-badge status-andamento">
+                                                            Curso em Andamento
+                                                        </div>
+                                                    {% elif course_specific.status_inscricao == 'finalizado' %}
+                                                        <div class="status-badge status-finalizado">
+                                                            Curso Finalizado
+                                                        </div>
+                                                    {% endif %}
+                                                {% endif %}
+                                                
+                                                <div class="wrapper-text-card-bgimage">
+                                                    <div class="wrapper-text-card_bg">
+                                                        <h2 class="h2-card">{{ course.title }}</h2>
+                                                        <p class="p-card" style="display: -webkit-box;
+                                                                                -webkit-line-clamp: 3;
+                                                                                -webkit-box-orient: vertical;
+                                                                                overflow: hidden;
+                                                                                text-overflow: ellipsis;">
+                                                                                {{ block.value.description|richtext|striptags }}
+                                                        </p>
+                                                    </div>
+                                                    <div class="wrapper-button">
+                                                        <span class="btn-card">Saiba mais <i class="fa-solid fa-circle-chevron-right"></i></span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </a>
+                                    
+                                    {% endif %}
+                                {% endfor %}
+                            {% endwith %}
+                        </div>
+                    {% empty %}
+                        <div class="slider-item">
+                            <p>Nenhuma especialização disponível.</p>
+                        </div>
+                    {% endfor %}
+                {% endwith %}
+            </div></div>
+            <button class="slider-arrow slider-arrow-prev"><img style="width: 40px; height: 40px;" src="{% static 'enap_designsystem/icons/iconleft.svg' %}" alt="Anterior"></button>
+            <button class="slider-arrow slider-arrow-next"><img style="width: 40px; height: 40px;" src="{% static 'enap_designsystem/icons/iconrig.svg' %}" alt="Próximo"></button>
+        </div>
+    </div> 
+</section>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const sliderContainer = document.querySelector('.slider-container');
+        const sliderTrack = document.querySelector('.slider-track');
+        const prevButton = document.querySelector('.slider-arrow-prev');
+        const nextButton = document.querySelector('.slider-arrow-next');
+        let currentIndex = 0;
+        
+        // Obtém o número total de itens no carrossel
+        const totalItems = sliderTrack.children.length;
+        let maxIndex = Math.max(0, totalItems - 1);
+        
+        // Variáveis para controle de touch
+        let touchStartX = 0;
+        let touchEndX = 0;
+        let isDragging = false;
+        let startTranslateX = 0;
+        let currentTranslateX = 0;
+        let slideWidth = 0;
+        let slideMargin = 20;
+        let isMobile = false;
+        
+        function updateSlideWidth() {
+            isMobile = window.innerWidth <= 768;
+            
+            if (isMobile) {
+                // Em mobile, definimos uma largura exata para os slides (75% da viewport)
+                slideWidth = Math.floor(window.innerWidth * 0.75);
+            } else {
+                // Para desktop, usamos a largura exata do item conforme definido no CSS (510px)
+                slideWidth = 510;
+            }
+            
+            // Atualiza a largura dos itens no DOM para garantir consistência
+            Array.from(sliderTrack.children).forEach(item => {
+                item.style.width = `${slideWidth}px`;
+                item.style.marginRight = `${slideMargin}px`;
+            });
+            
+            // Garante que o índice atual esteja dentro dos limites válidos após redimensionamento
+            currentIndex = Math.min(currentIndex, maxIndex);
+            
+            // Reposiciona o carousel na posição atual
+            showSlide(currentIndex);
+        }
+
+        // SCROLL FLUIDO com trackpad/mouse wheel
+sliderContainer.addEventListener('wheel', function(e) {
+    if (Math.abs(e.deltaX) > 0) {
+        e.preventDefault();
+        
+        // Obter posição atual do transform
+        const currentTransform = sliderTrack.style.transform;
+        const match = currentTransform.match(/translateX\((-?\d*\.?\d*)px\)/);
+        let currentOffset = match ? parseFloat(match[1]) : 0;
+        
+        // Movimento proporcional
+        const scrollMultiplier = 1.5;
+        const newOffset = currentOffset - (e.deltaX * scrollMultiplier);
+        
+        // Limites
+        const maxOffset = 0;
+        const minOffset = -(maxIndex * (slideWidth + slideMargin));
+        
+        // Resistência nas bordas
+        let finalOffset = newOffset;
+        if (newOffset > maxOffset) {
+            finalOffset = maxOffset + ((newOffset - maxOffset) * 0.3);
+        } else if (newOffset < minOffset) {
+            finalOffset = minOffset + ((newOffset - minOffset) * 0.3);
+        }
+        
+        // Aplicar posição
+        sliderTrack.style.transition = 'none';
+        sliderTrack.style.transform = `translateX(${finalOffset}px)`;
+        
+        // Atualizar currentIndex baseado na posição
+        const newIndex = Math.round(Math.abs(finalOffset) / (slideWidth + slideMargin));
+        currentIndex = Math.max(0, Math.min(newIndex, maxIndex));
+        updateNavigationButtons();
+        
+        // Snap quando parar de rolar
+        clearTimeout(window.snapTimeout);
+        window.snapTimeout = setTimeout(() => {
+            sliderTrack.style.transition = 'transform 0.5s ease-in-out';
+            showSlide(currentIndex);
+        }, 150);
+    }
+}, { passive: false });
+        
+        // Função para atualizar a visibilidade dos botões de navegação
+        function updateNavigationButtons() {
+            // No primeiro slide, esconde o botão de voltar
+            if (currentIndex === 0) {
+                prevButton.style.display = 'none';
+            } else {
+                prevButton.style.display = 'block';
+            }
+            
+            // No último slide, esconde o botão de avançar
+            if (currentIndex >= maxIndex) {
+                nextButton.style.display = 'none';
+            } else {
+                nextButton.style.display = 'block';
+            }
+        }
+        
+        function showSlide(index) {
+            // Garante que o índice esteja dentro dos limites
+            currentIndex = Math.min(Math.max(0, index), maxIndex);
+            
+            // Calcula o deslocamento exato baseado na largura + margem dos slides
+            const offset = currentIndex * (slideWidth + slideMargin);
+            sliderTrack.style.transform = `translateX(-${offset}px)`;
+            
+            // Atualizar a visibilidade dos botões de navegação
+            updateNavigationButtons();
+        }
+        
+        // Inicializar a visibilidade dos botões
+        updateNavigationButtons();
+        
+        // Para navegação por botões (desktop)
+        prevButton.addEventListener('click', function() {
+            if (currentIndex > 0) {
+                showSlide(currentIndex - 1);
+            }
+        });
+        
+        nextButton.addEventListener('click', function() {
+            if (currentIndex < maxIndex) {
+                showSlide(currentIndex + 1);
+            }
+        });
+        
+        // Funções para controle de touch em dispositivos móveis
+        function handleTouchStart(event) {
+            touchStartX = event.touches[0].clientX;
+            isDragging = true;
+            startTranslateX = -currentIndex * (slideWidth + slideMargin);
+            currentTranslateX = startTranslateX;
+            
+            sliderTrack.style.transition = 'none';
+        }
+        
+        function handleTouchMove(event) {
+            if (!isDragging) return;
+            touchEndX = event.touches[0].clientX;
+            const diffX = touchEndX - touchStartX;
+            
+            // Limitar o arrasto para não ultrapassar os limites
+            currentTranslateX = Math.min(0, Math.max(-(maxIndex * (slideWidth + slideMargin)), startTranslateX + diffX));
+            sliderTrack.style.transform = `translateX(${currentTranslateX}px)`;
+            
+            // Prevenir scroll da página durante o swipe horizontal
+            if (Math.abs(diffX) > 5) {
+                event.preventDefault();
+            }
+        }
+        
+        function handleTouchEnd() {
+            if (!isDragging) return;
+            isDragging = false;
+            sliderTrack.style.transition = 'transform 0.5s ease-in-out';
+            
+            const diffX = touchEndX - touchStartX;
+            const threshold = slideWidth * 0.2; // 20% da largura do slide como threshold
+            
+            if (Math.abs(diffX) > threshold) {
+                if (diffX > 0 && currentIndex > 0) {
+                    // Swipe para direita (anterior)
+                    currentIndex--;
+                } else if (diffX < 0 && currentIndex < maxIndex) {
+                    // Swipe para esquerda (próximo)
+                    currentIndex++;
+                }
+            }
+            
+            // Garante que o carrossel se alinhe perfeitamente após o swipe
+            showSlide(currentIndex);
+        }
+        
+        // Adiciona listeners para eventos de touch
+        sliderContainer.addEventListener('touchstart', handleTouchStart, { passive: false });
+        sliderContainer.addEventListener('touchmove', handleTouchMove, { passive: false });
+        sliderContainer.addEventListener('touchend', handleTouchEnd);
+        
+        // Atualiza larguras e posições ao redimensionar a janela
+        window.addEventListener('resize', updateSlideWidth);
+        
+        // Inicialização
+        updateSlideWidth();
+    });
+
+
+    
+</script>
+{% endblock content %}
+{% endblock block_render %}

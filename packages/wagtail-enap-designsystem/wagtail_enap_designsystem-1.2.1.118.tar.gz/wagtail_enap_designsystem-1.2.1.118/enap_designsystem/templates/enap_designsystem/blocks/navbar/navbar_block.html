@@ -1,0 +1,1238 @@
+{% load wagtailcore_tags wagtailimages_tags %}
+{% load static %}
+
+<script src="https://kit.fontawesome.com/2e8803d931.js" crossorigin="anonymous"></script>
+
+<div style="background-color: #f8fafc;">
+	<nav class="navbar">
+		<div class="mobile-ss" style="max-width: 1142px; width: 1142px; margin: auto; display: flex; justify-content: space-between;">
+		<!-- Menu Hamburguer + Logo -->
+		    <div class="wrapper-nav-home" style="display: flex; align-items: center; gap: 20px; width: 100%; justify-content: space-between" >
+			    <div class="menu-container">
+				<!-- Ícone do Menu -->
+                <button class="menu-icon" 
+                        type="button"
+                        onclick="toggleMenu()"
+                        onkeydown="handleMenuKeydown(event)"
+                        aria-label="Abrir menu de navegação"
+                        aria-expanded="false"
+                        aria-controls="main-navigation"
+                        aria-haspopup="true">
+                    <span style="color: #007D7A;" class="material-icons" aria-hidden="true">menu</span>
+                </button>
+		
+				<!-- Dropdown do Menu -->
+				    <div id="menu-dropdown" class="menu-dropdown hidden">
+					{% if navbar.links %}
+						{% for link_block in navbar.links %}
+							{% if link_block.block_type == 'navbar_link' %}
+								<!-- Link normal -->
+								<a href="{{ link_block.value.url }}" class="nav-link-nav">
+									{{ link_block.value.label }}
+								</a>
+							{% elif link_block.block_type == 'chooserpage' %}
+								<!-- ChooserPage Menu -->
+								<div class="chooser-menu-item">
+									<div class="chooser-title" onclick="toggleChooserSubmenu(this)">
+										<span>{{ link_block.value.title }}</span>
+										<i class="material-icons">keyboard_arrow_right</i>
+									</div>
+									
+									<!-- Submenu das páginas -->
+									<div class="chooser-submenu">
+										<div class="submenu-content-horizontal">
+											<div id="childList-{{ forloop.counter0 }}" class="child-pages-container-horizontal">
+												<!-- As páginas filhas aparecerão automaticamente -->
+											</div>
+										</div>
+										
+										<!-- Dados escondidos para o JavaScript -->
+										<div style="display: none;" class="hidden-parent-data" data-chooser-id="{{ forloop.counter0 }}">
+											{% for parent_item in link_block.value.parent_pages %}
+												<div data-page-id="{{ parent_item.page.id }}" data-max-children="{{ link_block.value.max_child_pages|default:10 }}" data-show-descriptions="{{ link_block.value.show_child_descriptions }}">
+													{% for child in parent_item.page.get_children.live %}
+														<span data-title="{{ child.title|escapejs }}" data-url="{% pageurl child %}" data-description="{% if link_block.value.show_child_descriptions and child.search_description %}{{ child.search_description|escapejs }}{% endif %}"></span>
+													{% endfor %}
+												</div>
+											{% endfor %}
+										</div>
+									</div>
+								</div>
+							{% endif %}
+						{% endfor %}
+					{% else %}
+						<span class="text-red-500">⚠️ Nenhum link cadastrado.</span>
+					{% endif %}
+				    </div>
+			    </div>
+
+                <!-- Logo -->
+                <div class="logo-enap">
+                    <a href="/" class="navbar-logo-link">
+                        {% for block in navbar.logo %}
+                            {% if ".svg" in block.value.file.url|lower %}
+                                <img src="{{ block.value.file.url }}" alt="logo da enap verde" >
+                            {% else %}
+                                {% image block.value fill-118x18 format-webp as navbar_logo %}
+                                <img src="{{ navbar_logo.url }}" alt="logo da enap verde" class="logo-navbar">
+                            {% endif %}
+                        {% endfor %}
+                    </a>
+                </div>
+	
+                <!-- Barra de Pesquisa -->
+                <form action="/busca/" method="get" class="search-container">
+                    <input type="text" id="search-input" name="q" placeholder="O que você procura ou quer aprender?" value="{{ query_navbar }}">
+                    <button type="submit">
+                        <span class="material-icons">search</span>
+                    </button>
+                    <button type="button" id="mic-button">
+                        <span class="material-icons">mic</span>
+                    </button>
+                </form>
+	
+		        <!-- Opções à Direita -->
+		        <div class="options">
+                    <!-- Seletor de Idioma -->
+                    <!-- Versão com bandeiras -->
+                    <!-- Substitua o botão atual por este -->
+                    <div class="language-selector" id="language-selector">
+                        <div class="current-language" onclick="toggleLanguageDropdown()">
+                            <span class="language-text">PT</span>
+                            <span class="material-icons">expand_more</span>
+                        </div>
+                        <div class="language-dropdown" id="language-dropdown">
+                            <div class="language-option" onclick="changeLanguage('pt')">
+                                <span class="flag-icon">PT - </span>
+                                <span>Português</span>
+                            </div>
+                            <div class="language-option" onclick="changeLanguage('en')">
+                                <span class="flag-icon">EN - </span>
+                                <span>English</span>
+                            </div>
+                            <div class="language-option" onclick="changeLanguage('es')">
+                                <span class="flag-icon">ES - </span>
+                                <span>Español</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Google Translate escondido -->
+                        <div id="google_translate_element" style="display: none;"></div>
+                    </div>
+        
+                    <!-- Botão de Contraste -->
+            
+                    <!-- Botão de Login -->
+                    {% if request.aluno %}
+                        <a href="/area-do-aluno/" class="login-btn">
+                            <i class="fa-solid fa-circle-user"></i>
+                            <span>Olá, {{ request.primeiro_nome }}</span>
+                        </a>
+                        <a href="/logout" class="logout-btn">Sair</a>
+                    {% else %}
+                        <a href="/login-sso" class="login-btn">
+                            <i class="fa-solid fa-circle-user"></i>
+                            <span>Entrar</span>
+                        </a>
+                    {% endif %}
+		        </div>
+		    </div>
+        </div>
+	</nav>
+</div>
+
+<style>
+    /* === LANGUAGE SELECTOR === */
+    .language-selector {
+        position: relative;
+        display: inline-block;
+    }
+    
+    .current-language {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        cursor: pointer;
+        border-radius: 6px;
+        transition: background-color 0.2s;
+        color: inherit;
+        font-weight: 500;
+        font-size: 14px;
+        color: #007D7A;
+    }
+    
+    .current-language:hover {
+        background-color: rgba(255,255,255,0.1);
+    }
+    
+    .current-language .material-icons {
+        font-size: 18px;
+        transition: transform 0.2s;
+    }
+    
+    .current-language.active .material-icons {
+        transform: rotate(180deg);
+    }
+    
+    /* Dropdown */
+    .language-dropdown {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        min-width: 150px;
+        z-index: 9999;
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(-10px);
+        transition: all 0.3s ease;
+    }
+    
+    .language-dropdown.active {
+        opacity: 1;
+        visibility: visible;
+        transform: translateY(0);
+    }
+    
+    .language-option {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        cursor: pointer;
+        color: #333;
+        transition: background-color 0.2s;
+        border-radius: 6px;
+        margin: 4px;
+    }
+    
+    .language-option:hover {
+        background-color: #f5f5f5;
+    }
+    
+    .language-option.current {
+        background-color: #e3f2fd;
+        color: #1976d2;
+    }
+    
+    .flag-icon {
+        font-size: 16px;
+    }
+    
+    /* Google Translate escondido */
+    .goog-te-banner-frame {
+        display: none !important;
+    }
+    
+    body {
+        top: 0 !important;
+    }
+    
+    .goog-te-gadget {
+        display: none !important;
+    }
+    
+    /* Responsivo */
+    @media (max-width: 768px) {
+        .language-dropdown {
+            right: -10px;
+            min-width: 150px;
+        }
+    }
+
+
+
+
+
+        /* Estilos para o dropdown principal */
+        .menu-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: #025257;
+            border-radius: 0px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            min-width: 300px;
+            max-width: 350px;
+            z-index: 1000;
+            transition: all 0.3s ease;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            gap: 0px;
+        }
+
+        .menu-dropdown.dropdown-active {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Estilos base para nav-link */
+        .nav-link {
+            display: block;
+            padding: 12px 46px;
+            text-decoration: none;
+            color: white;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+            font-size: 14px;
+        }
+
+        .nav-link:hover {
+            background: #006969;
+            color: white;
+            text-decoration: none;
+        }
+
+        /* Estilos para o ChooserPage no navbar */
+        .chooser-menu-item {
+            position: relative;
+            font-size: 14px;
+            font-weight: 400;
+        }
+
+        .chooser-menu-item:last-child {
+            border-bottom: none;
+        }
+
+        .chooser-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 24px;
+            cursor: pointer;
+            color: white;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            background: #025257;
+            position: relative;
+            font-weight: 400;
+        }
+
+        .chooser-title:hover {
+            background: #006969;
+            color: white;
+        }
+
+        .chooser-title.active {
+            background: #024248;
+            color: white;
+        }
+
+        .chooser-title .material-icons {
+            font-size: 18px;
+            transition: transform 0.2s ease;
+        }
+
+        .chooser-title.active .material-icons {
+            transform: rotate(0deg); /* Mantém a seta para direita quando ativo */
+        }
+
+        /* Submenu lateral para páginas filhas */
+        .chooser-submenu {
+            position: absolute;
+            left: 100%;
+            top: 0;
+            background: #006969;
+            border-radius: 0;
+            box-shadow: 4px 0 12px rgba(0,0,0,0.1);
+            min-width: 300px;
+            max-width: 400px;
+            z-index: 1001;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateX(-10px);
+            transition: all 0.3s ease;
+            border-left: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .chooser-submenu.active {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(0);
+        }
+
+        /* Container para as páginas filhas */
+        .submenu-content-horizontal {
+            padding: 0;
+        }
+
+        .child-pages-container-horizontal {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .child-pages-container-horizontal .child-pages-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .child-pages-container-horizontal .child-page-item {
+            margin-bottom: 0;
+        }
+
+        .child-pages-container-horizontal .child-page-item:last-child {
+            border-bottom: none;
+        }
+
+        .child-pages-container-horizontal .child-page-link {
+            display: block;
+            padding: 12px 20px;
+            text-decoration: none;
+            color: white;
+            transition: all 0.2s ease;
+            font-size: 14px;
+            border-radius: 0;
+            border-left: 3px solid transparent;
+            font-weight: 400;
+        }
+
+        .child-pages-container-horizontal .child-page-link:hover {
+            color: white;
+            background: #024248;
+            text-decoration: none;
+        }
+
+        .child-pages-container-horizontal ul li {
+            margin: 0;
+            padding: 0;
+            color: white;
+        }
+
+        .no-selection {
+            color: rgba(255,255,255,0.6);
+            font-style: italic;
+            text-align: center;
+            padding: 30px 20px;
+            margin: 0;
+            font-size: 13px;
+        }
+
+        /* Scrollbar personalizada */
+        .child-pages-container-horizontal::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .child-pages-container-horizontal::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+        }
+
+        .child-pages-container-horizontal::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.3);
+            border-radius: 3px;
+        }
+
+        .child-pages-container-horizontal::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.5);
+        }
+
+        /* Responsivo para mobile */
+        @media (max-width: 768px) {
+            .menu-dropdown {
+                min-width: 280px;
+                max-width: 90vw;
+            }
+            
+            .chooser-submenu {
+                position: static;
+                transform: none;
+                border-radius: 0;
+                box-shadow: none;
+                border-left: none;
+                border-top: 1px solid rgba(255,255,255,0.1);
+            }
+            
+            .chooser-submenu.active {
+                transform: none;
+            }
+
+            .current-language {
+                padding: 0;
+            }
+        }
+
+        /* Estilos restantes mantidos iguais */
+        .submenu-content {
+            display: flex;
+            min-height: 300px;
+        }
+
+        .submenu-left, .submenu-right {
+            flex: 1;
+            padding: 16px;
+        }
+
+        .submenu-left {
+            border-right: 1px solid #e5e7eb;
+            background: #f9fafb;
+        }
+
+        .submenu-left h4, .submenu-right h4 {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            font-weight: 600;
+            color: #374151;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .parent-pages-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .parent-page-item {
+            margin-bottom: 2px;
+        }
+
+        .parent-page-link {
+            display: flex;
+            align-items: center;
+            padding: 12px 14px;
+            text-decoration: none;
+            color: #374151;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+            gap: 10px;
+            font-size: 14px;
+            border-left: 3px solid transparent;
+        }
+
+        .parent-page-link:hover, .parent-page-link.active {
+            background: #e0f2f1;
+            color: #007D7A;
+            text-decoration: none;
+            border-left-color: #007D7A;
+            transform: translateX(2px);
+        }
+
+        .parent-page-link .material-icons:first-child {
+            font-size: 18px;
+            min-width: 18px;
+        }
+
+        .parent-page-link .arrow {
+            margin-left: auto;
+            font-size: 16px;
+            opacity: 0.6;
+        }
+
+        .child-pages-container {
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .child-pages-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .child-page-item {
+            margin-bottom: 6px;
+        }
+
+        .child-page-link {
+            display: block;
+            padding: 10px 14px;
+            text-decoration: none;
+            color: #374151;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+            border-left: 3px solid transparent;
+            font-size: 14px;
+        }
+
+        .child-page-link:hover {
+            border-left-color: 3px solid #006969;
+            text-decoration: none;
+            transform: translateX(2px);
+        }
+
+        .child-page-title {
+            margin-bottom: 3px;
+        }
+
+        .child-page-description {
+            font-size: 12px;
+            color: #6b7280;
+            line-height: 1.4;
+        }
+
+        .no-selection {
+            color: #9ca3af;
+            font-style: italic;
+            text-align: center;
+            padding: 30px 20px;
+            margin: 0;
+            font-size: 13px;
+        }
+
+        /* Scrollbar personalizada */
+        .child-pages-container::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .child-pages-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+
+        .child-pages-container::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+
+        .child-pages-container::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+
+        /* Responsivo para mobile */
+        @media (max-width: 768px) {
+            .menu-dropdown {
+                min-width: 280px;
+                max-width: 90vw;
+            }
+            
+            .submenu-content {
+                flex-direction: column;
+                min-height: auto;
+            }
+            
+            .submenu-left {
+                border-right: none;
+                border-bottom: 1px solid #e5e7eb;
+            }
+            
+            .chooser-submenu {
+                margin: 8px -8px;
+            }
+            
+        }
+
+        @media (max-width: 600px) {
+            .search-container .material-icons {
+                font-size: 16px;
+            }
+
+            .current-language{
+                padding: 0px;
+            }
+        }
+
+        .search-container .material-icons {
+            font-size: 20px;
+        }
+
+        #mic-button {
+            border-radius: 50%;
+            padding: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s, box-shadow 0.2s;
+        }
+
+        /* Estado ouvindo */
+        #mic-button.listening {
+            background-color: #0A7263;
+            color: white;
+            border-color: #0A7263;
+            box-shadow: 0 0 8px rgba(10, 114, 99, 0.6);
+        }
+
+        #mic-button span {
+            font-size: 20px;
+            pointer-events: none;
+        }
+</style>
+
+<script>
+// === LANGUAGE SELECTOR ===
+let currentLanguage = 'pt';
+let googleTranslateLoaded = false;
+
+// Inicializar Google Translate
+function googleTranslateElementInit() {
+    new google.translate.TranslateElement({
+        pageLanguage: 'pt',
+        includedLanguages: 'en,es', // Apenas inglês e espanhol
+        layout: google.translate.TranslateElement.InlineLayout.SIMPLE,
+        multilanguagePage: true,
+        gaTrack: true
+    }, 'google_translate_element');
+    
+    googleTranslateLoaded = true;
+    console.log('Google Translate carregado!');
+}
+
+// Carregar Google Translate
+function loadGoogleTranslate() {
+    if (!document.querySelector('script[src*="translate.google.com"]')) {
+        var script = document.createElement('script');
+        script.type = 'text/javascript';
+        script.src = '//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
+        script.async = true;
+        document.head.appendChild(script);
+    }
+}
+
+// === CORREÇÃO: Toggle dropdown com acessibilidade ===
+function toggleLanguageDropdown() {
+    const dropdown = document.getElementById('language-dropdown');
+    const currentLang = document.querySelector('.current-language');
+    
+    dropdown.classList.toggle('active');
+    currentLang.classList.toggle('active');
+    
+    // NOVO: Gerenciar ARIA
+    const isOpen = dropdown.classList.contains('active');
+    currentLang.setAttribute('aria-expanded', isOpen);
+    
+    // NOVO: Gerenciar foco
+    if (isOpen) {
+        const firstOption = dropdown.querySelector('.language-option');
+        if (firstOption) {
+            setTimeout(() => firstOption.focus(), 100);
+        }
+    }
+}
+
+// === CORREÇÃO: Mudar idioma com acessibilidade ===
+function changeLanguage(langCode) {
+    const languages = {
+        'pt': { text: 'PT', flag: '🇧🇷', name: 'Português' },
+        'en': { text: 'EN', flag: '🇺🇸', name: 'English' },
+        'es': { text: 'ES', flag: '🇪🇸', name: 'Español' }
+    };
+    
+    // Atualizar interface
+    const languageText = document.querySelector('.language-text');
+    if (languageText) {
+        languageText.textContent = languages[langCode].text;
+    }
+    
+    // NOVO: Atualizar ARIA label do botão principal
+    const languageButton = document.querySelector('.current-language');
+    if (languageButton) {
+        languageButton.setAttribute('aria-label', 
+            `Idioma atual: ${languages[langCode].name}. Clique para alterar idioma`
+        );
+    }
+    
+    // Marcar opção atual
+    document.querySelectorAll('.language-option').forEach(option => {
+        const isSelected = option.getAttribute('onclick')?.includes(langCode);
+        option.classList.toggle('current', isSelected);
+        option.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+        option.setAttribute('tabindex', isSelected ? '0' : '-1');
+    });
+    
+    // Fechar dropdown
+    toggleLanguageDropdown();
+    
+    // Aplicar tradução via Google Translate
+    applyGoogleTranslate(langCode);
+    
+    currentLanguage = langCode;
+    
+    // NOVO: Anunciar mudança para leitores de tela
+    announceToScreenReader(`Idioma alterado para ${languages[langCode].name}`);
+}
+
+// Aplicar tradução do Google
+function applyGoogleTranslate(langCode) {
+    if (!googleTranslateLoaded) {
+        console.log('Google Translate ainda não carregou...');
+        return;
+    }
+    
+    // Aguardar um pouco para garantir que o Google Translate está pronto
+    setTimeout(() => {
+        const selectElement = document.querySelector('.goog-te-combo');
+        if (selectElement) {
+            selectElement.value = langCode;
+            selectElement.dispatchEvent(new Event('change'));
+            console.log(`Idioma alterado para: ${langCode}`);
+        } else {
+            console.log('Elemento do Google Translate não encontrado');
+            // Método alternativo
+            window.location.hash = '#googtrans(pt|' + langCode + ')';
+            window.location.reload();
+        }
+    }, 500);
+}
+
+// === CORREÇÃO: Função do menu com acessibilidade ===
+function toggleMenu() {
+    const menu = document.getElementById("menu-dropdown");
+    const menuButton = document.querySelector('.menu-icon');
+    
+    // Toggle do menu
+    menu.classList.toggle("dropdown-active");
+    
+    // NOVO: Gerenciar ARIA states
+    const isOpen = menu.classList.contains('dropdown-active');
+    
+    if (menuButton) {
+        menuButton.setAttribute('aria-expanded', isOpen);
+        menuButton.setAttribute('aria-label', 
+            isOpen ? 'Fechar menu de navegação' : 'Abrir menu de navegação'
+        );
+        
+        // Trocar ícone se necessário
+        const icon = menuButton.querySelector('.material-icons');
+        if (icon) {
+            icon.textContent = isOpen ? 'close' : 'menu';
+        }
+    }
+    
+    // NOVO: Gerenciar foco
+    if (isOpen) {
+        const firstMenuItem = menu.querySelector('a, button');
+        if (firstMenuItem) {
+            setTimeout(() => firstMenuItem.focus(), 100);
+        }
+    }
+}
+
+// === NOVAS FUNÇÕES DE ACESSIBILIDADE ===
+
+// CORREÇÃO: Navegação por teclado no menu
+function handleMenuKeydown(event) {
+    if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        toggleMenu();
+    }
+    else if (event.key === 'Escape') {
+        const menu = document.getElementById("menu-dropdown");
+        if (menu.classList.contains('dropdown-active')) {
+            toggleMenu();
+        }
+    }
+}
+
+// CORREÇÃO: Navegação por teclado no selector de idioma
+function handleLanguageKeydown(event) {
+    if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        toggleLanguageDropdown();
+    }
+    else if (event.key === 'Escape') {
+        const dropdown = document.getElementById('language-dropdown');
+        if (dropdown && dropdown.classList.contains('active')) {
+            toggleLanguageDropdown();
+        }
+    }
+    // Setas para navegar entre opções quando dropdown estiver aberto
+    else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        const dropdown = document.getElementById('language-dropdown');
+        if (dropdown && dropdown.classList.contains('active')) {
+            event.preventDefault();
+            navigateLanguageOptions(event.key === 'ArrowDown' ? 1 : -1);
+        }
+    }
+}
+
+// CORREÇÃO: Navegação por setas nas opções de idioma
+function navigateLanguageOptions(direction) {
+    const options = document.querySelectorAll('.language-option');
+    const currentFocused = document.activeElement;
+    
+    let currentIndex = Array.from(options).findIndex(option => 
+        option.contains(currentFocused) || option === currentFocused
+    );
+    
+    if (currentIndex === -1) currentIndex = 0;
+    
+    const newIndex = (currentIndex + direction + options.length) % options.length;
+    if (options[newIndex]) {
+        options[newIndex].focus();
+    }
+}
+
+// CORREÇÃO: Função para anúncios de tela
+function announceToScreenReader(message) {
+    let announcer = document.getElementById('screen-reader-announcer');
+    if (!announcer) {
+        announcer = document.createElement('div');
+        announcer.id = 'screen-reader-announcer';
+        announcer.setAttribute('aria-live', 'polite');
+        announcer.setAttribute('aria-atomic', 'true');
+        announcer.style.position = 'absolute';
+        announcer.style.left = '-10000px';
+        announcer.style.width = '1px';
+        announcer.style.height = '1px';
+        announcer.style.overflow = 'hidden';
+        document.body.appendChild(announcer);
+    }
+    
+    announcer.textContent = message;
+    
+    // Limpar depois de 1 segundo
+    setTimeout(() => {
+        announcer.textContent = '';
+    }, 1000);
+}
+
+// CORREÇÃO: Navegação por teclado no search
+function handleSearchKeydown(event) {
+    const searchInput = event.target;
+    
+    // Escape limpa o campo de busca
+    if (event.key === 'Escape') {
+        searchInput.value = '';
+        toggleClearButton();
+        searchInput.blur();
+    }
+    // Enter faz a busca
+    else if (event.key === 'Enter') {
+        event.preventDefault();
+        performSearch(searchInput.value);
+    }
+}
+
+// CORREÇÃO: Função de busca
+function performSearch(query) {
+    if (query.trim()) {
+        // Adapte esta URL conforme seu sistema de busca
+        window.location.href = `/busca/?q=${encodeURIComponent(query)}`;
+    }
+}
+
+// === FUNÇÕES EXISTENTES MANTIDAS ===
+
+// Função para mostrar submenu e carregar todas as páginas filhas automaticamente
+function toggleChooserSubmenu(element) {
+    const submenu = element.nextElementSibling;
+    const isActive = element.classList.contains('active');
+    
+    // Fecha todos os outros submenus
+    document.querySelectorAll('.chooser-title.active').forEach(title => {
+        title.classList.remove('active');
+        title.nextElementSibling.classList.remove('active');
+    });
+    
+    // Toggle do submenu atual
+    if (!isActive) {
+        element.classList.add('active');
+        submenu.classList.add('active');
+        
+        // Automaticamente carrega todas as páginas filhas
+        setTimeout(() => {
+            loadAllChildPages(submenu);
+        }, 100);
+    }
+}
+
+// Nova função para carregar todas as páginas filhas de uma vez
+function loadAllChildPages(submenu) {
+    const hiddenData = submenu.querySelector('.hidden-parent-data');
+    if (!hiddenData) return;
+    
+    const chooserId = hiddenData.getAttribute('data-chooser-id');
+    const childList = submenu.querySelector(`#childList-${chooserId}`);
+    
+    if (!childList) return;
+    
+    let allChildren = [];
+    
+    // Coleta todas as páginas filhas de todas as páginas mãe
+    hiddenData.querySelectorAll('[data-page-id]').forEach(parentData => {
+        const childElements = parentData.querySelectorAll('span[data-title]');
+        childElements.forEach(childEl => {
+            allChildren.push({
+                title: childEl.getAttribute('data-title'),
+                url: childEl.getAttribute('data-url'),
+                description: childEl.getAttribute('data-description')
+            });
+        });
+    });
+    
+    // Mostra todas as páginas filhas em layout horizontal
+    if (allChildren.length > 0) {
+        let html = '<ul class="child-pages-list">';
+        allChildren.forEach(function(child) {
+            html += `
+                <li class="child-page-item">
+                    <a href="${child.url}" class="child-page-link">
+                        <div class="child-page-title">${child.title}</div>
+                        ${child.description ? `<div class="child-page-description" style="font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 4px;">${child.description}</div>` : ''}
+                    </a>
+                </li>
+            `;
+        });
+        html += '</ul>';
+        childList.innerHTML = html;
+    } else {
+        childList.innerHTML = '<p class="no-selection">Nenhuma página encontrada</p>';
+    }
+}
+
+// Dados das páginas filhas para o navbar - agora simplificado
+const navbarChildPagesData = {};
+
+function clearInput() {
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.value = '';
+        searchInput.focus();
+        toggleClearButton();
+    }
+}
+
+function toggleClearButton() {
+    const input = document.getElementById('searchInput');
+    const clearButton = document.getElementById('clearButton');
+    if (input && clearButton) {
+        clearButton.style.display = input.value ? 'block' : 'none';
+    }
+}
+
+// Função para verificar se é dispositivo móvel
+function isMobile() {
+    return window.innerWidth <= 768;
+}
+
+// === EVENT LISTENERS ===
+
+// CORREÇÃO: Fechar dropdown ao clicar fora - melhorado
+document.addEventListener('click', function(e) {
+    // Fechar menu principal
+    if (!e.target.closest('.menu-container')) {
+        const menu = document.getElementById('menu-dropdown');
+        if (menu && menu.classList.contains('dropdown-active')) {
+            toggleMenu();
+        }
+        
+        // Fecha também todos os submenus
+        document.querySelectorAll('.chooser-title.active').forEach(title => {
+            title.classList.remove('active');
+            title.nextElementSibling.classList.remove('active');
+        });
+    }
+    
+    // Fechar selector de idioma
+    if (!e.target.closest('.language-selector')) {
+        const dropdown = document.getElementById('language-dropdown');
+        const currentLang = document.querySelector('.current-language');
+        
+        if (dropdown && dropdown.classList.contains('active')) {
+            dropdown.classList.remove('active');
+            if (currentLang) {
+                currentLang.classList.remove('active');
+                currentLang.setAttribute('aria-expanded', 'false');
+            }
+        }
+    }
+});
+
+// Scroll navbar
+window.addEventListener('scroll', function() {
+    const navbar = document.querySelector('.navbar');
+    
+    if (navbar) {
+        // Adiciona classe fixa quando rolar mais que a altura inicial da navbar
+        if (window.scrollY > navbar.offsetHeight) {
+            navbar.classList.add('navbar-fixed');
+        } else {
+            navbar.classList.remove('navbar-fixed');
+        }
+    }
+    
+    // CORREÇÃO: Comportamento responsivo do search melhorado
+    const searchContainer = document.querySelector('.search-container');
+    if (searchContainer) {
+        const scrollPosition = window.scrollY;
+        
+        if (isMobile()) {
+            // Versão mobile - só visível após scroll
+            if (scrollPosition > 200) {
+                searchContainer.classList.add('show');
+            } else {
+                searchContainer.classList.remove('show');
+            }
+        } else {
+            // Versão desktop - sempre visível
+            searchContainer.classList.add('visible');
+            searchContainer.classList.add('show');
+        }
+    }
+});
+
+// Recalcular quando a janela for redimensionada
+window.addEventListener('resize', function() {
+    const searchContainer = document.querySelector('.search-container');
+    
+    if (searchContainer) {
+        if (!isMobile()) {
+            // Versão desktop - sempre visível
+            searchContainer.classList.add('visible');
+            searchContainer.classList.add('show');
+        } else {
+            // Versão mobile - verificar posição de scroll
+            const scrollPosition = window.scrollY;
+            if (scrollPosition <= 200) {
+                searchContainer.classList.remove('show');
+            }
+        }
+    }
+});
+
+// === INICIALIZAÇÃO ===
+document.addEventListener('DOMContentLoaded', function() {
+    // === CONFIGURAÇÃO DE ACESSIBILIDADE ===
+    
+    // Configurar botão do menu principal
+    const menuButton = document.querySelector('.menu-icon');
+    if (menuButton) {
+        menuButton.setAttribute('aria-expanded', 'false');
+        menuButton.setAttribute('aria-label', 'Abrir menu de navegação');
+        menuButton.setAttribute('aria-controls', 'menu-dropdown');
+        menuButton.setAttribute('aria-haspopup', 'true');
+        
+        // Adicionar event listener para teclado
+        menuButton.addEventListener('keydown', handleMenuKeydown);
+    }
+    
+    // Configurar selector de idioma
+    const languageButton = document.querySelector('.current-language');
+    if (languageButton) {
+        languageButton.setAttribute('aria-expanded', 'false');
+        languageButton.setAttribute('aria-label', 'Idioma atual: Português. Clique para alterar idioma');
+        languageButton.setAttribute('aria-controls', 'language-dropdown');
+        languageButton.setAttribute('aria-haspopup', 'true');
+        
+        // Tornar focável se não for botão
+        if (languageButton.tagName !== 'BUTTON') {
+            languageButton.setAttribute('tabindex', '0');
+            languageButton.setAttribute('role', 'button');
+        }
+        
+        // Adicionar event listener para teclado
+        languageButton.addEventListener('keydown', handleLanguageKeydown);
+    }
+    
+    // Configurar opções de idioma
+    document.querySelectorAll('.language-option').forEach((option, index) => {
+        option.setAttribute('role', 'option');
+        option.setAttribute('tabindex', '-1');
+        option.setAttribute('aria-selected', 'false');
+        
+        // Tornar focável se necessário
+        if (option.tagName !== 'BUTTON' && option.tagName !== 'A') {
+            option.setAttribute('tabindex', '0');
+        }
+        
+        // Adicionar navegação por teclado
+        option.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                option.click();
+            }
+            else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                navigateLanguageOptions(e.key === 'ArrowDown' ? 1 : -1);
+            }
+        });
+    });
+    
+    // Configurar campo de busca
+    const searchInput = document.getElementById('searchInput') || document.getElementById('search-input');
+    if (searchInput) {
+        searchInput.setAttribute('aria-label', 'Campo de busca do site');
+        searchInput.addEventListener('keydown', handleSearchKeydown);
+    }
+    
+    // Configurar botão de microfone
+    const micButton = document.getElementById('mic-button');
+    if (micButton) {
+        micButton.setAttribute('aria-label', 'Busca por voz');
+        micButton.setAttribute('title', 'Clique para usar busca por voz');
+    }
+    
+    // === CONFIGURAÇÃO ORIGINAL MANTIDA ===
+    
+    // Pequeno delay para não interferir com outros scripts
+    setTimeout(() => {
+        loadGoogleTranslate();
+    }, 1000);
+    
+    // Marcar idioma atual
+    const currentOption = document.querySelector('.language-option[onclick="changeLanguage(\'pt\')"]');
+    if (currentOption) {
+        currentOption.classList.add('current');
+        currentOption.setAttribute('aria-selected', 'true');
+        currentOption.setAttribute('tabindex', '0');
+    }
+    
+    // Configuração responsiva de busca
+    const searchContainer = document.querySelector('.search-container');
+    if (searchContainer && !isMobile()) {
+        searchContainer.classList.add('visible');
+        searchContainer.classList.add('show');
+    }
+    
+    // === CONFIGURAÇÃO DE VOZ ===
+    
+    // Verifica suporte do navegador
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    
+    if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'pt-BR';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        
+        const micButton = document.getElementById('mic-button');
+        const searchInput = document.getElementById('search-input') || document.getElementById('searchInput');
+        
+        if (micButton && searchInput) {
+            // Clicou no microfone → começa a ouvir
+            micButton.addEventListener('click', () => {
+                recognition.start();
+                micButton.classList.add('listening');
+                micButton.setAttribute('aria-label', 'Ouvindo... Fale agora');
+            });
+            
+            // Quando captura a voz
+            recognition.addEventListener('result', (event) => {
+                const transcript = Array.from(event.results)
+                    .map(result => result[0].transcript)
+                    .join('');
+                
+                searchInput.value = transcript;
+                toggleClearButton();
+                announceToScreenReader(`Texto capturado: ${transcript}`);
+            });
+            
+            // Quando finaliza (parou de ouvir)
+            recognition.addEventListener('end', () => {
+                micButton.classList.remove('listening');
+                micButton.setAttribute('aria-label', 'Busca por voz');
+            });
+            
+            // Se der erro, remove o estado listening
+            recognition.addEventListener('error', () => {
+                micButton.classList.remove('listening');
+                micButton.setAttribute('aria-label', 'Busca por voz');
+                announceToScreenReader('Erro no reconhecimento de voz. Tente novamente.');
+            });
+        }
+    } else {
+        // Se não suportar, esconde o botão
+        const micButton = document.getElementById('mic-button');
+        if (micButton) {
+            micButton.style.display = 'none';
+        }
+    }
+});
+</script>
+
