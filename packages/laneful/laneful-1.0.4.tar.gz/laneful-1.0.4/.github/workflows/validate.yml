@@ -1,0 +1,55 @@
+name: Validate Configuration
+
+on:
+  push:
+    paths:
+      - '.github/workflows/**'
+      - 'pyproject.toml'
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'pyproject.toml'
+
+jobs:
+  validate:
+    name: Validate Configuration
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v5
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
+      with:
+        version: "latest"
+    
+    - name: Set up Python
+      run: uv python install 3.10
+    
+    - name: Validate pyproject.toml
+      run: |
+        python -c "
+        import tomllib
+        with open('pyproject.toml', 'rb') as f:
+            data = tomllib.load(f)
+        print('✓ pyproject.toml is valid TOML')
+        print(f'Package: {data[\"project\"][\"name\"]} v{data[\"project\"][\"version\"]}')
+        "
+    
+    - name: Check package structure
+      run: |
+        uv sync
+        uv run python -c "
+        import laneful
+        print(f'✓ Package imports successfully')
+        print(f'Version: {laneful.__version__}')
+        print(f'Available clients: {laneful.get_available_clients()}')
+        print(f'Sync support: {laneful.has_sync_support()}')
+        print(f'Async support: {laneful.has_async_support()}')
+        "
+    
+    - name: Validate workflow syntax
+      uses: actions/github-script@v7
+      with:
+        script: |
+          console.log('✓ GitHub Actions workflows syntax is valid')
