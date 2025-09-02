@@ -1,0 +1,252 @@
+openapi: 3.1.0
+info:
+  version: "1.0"
+  title: PLANQK Service API
+  description: |
+    API description for a managed PLANQK Service.
+paths:
+  /:
+    get:
+      tags:
+        - Service API
+      summary: List of service executions
+      description: |
+        Retrieves a list of all service executions.
+        The response includes links to each service execution, allowing for further queries on their status and results.
+      operationId: getServiceExecutions
+      responses:
+        "200":
+          description: List of service executions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ServiceExecution"
+    post:
+      tags:
+        - Service API
+      summary: Asynchronous execution of the service
+      description: |
+        Starts a service execution, which in turn is processed asynchronously. 
+        The location header of the response contains the URL which can be used to query the status and the result of the service execution.
+      operationId: startExecution
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "201":
+          description: Service execution is submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceExecution"
+          headers:
+            Location:
+              description: URL to query the status and the result of a service execution
+              schema:
+                type: string
+  /{id}:
+    get:
+      tags:
+        - Service API
+      summary: Check the status of a service execution
+      description: |
+        Retrieves the status of a service execution.
+        The status can be one of the following: UNKNOWN, PENDING, RUNNING, SUCCEEDED, CANCELLED, FAILED.
+      operationId: getStatus
+      parameters:
+        - in: path
+          name: id
+          required: true
+          description: The id of a service execution
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A service execution
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceExecution"
+  /{id}/result:
+    get:
+      tags:
+        - Service API
+      summary: Get the result of a service execution
+      description: |
+        Retrieves the result of a service execution.
+        The result is returned as a JSON object containing the status and any additional data.
+        The result may include links to download specific result files.
+      operationId: getResult
+      parameters:
+        - in: path
+          name: id
+          required: true
+          description: The id of a service execution
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The service execution result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  _links:
+                    type: object
+                    properties:
+                      status:
+                        $ref: '#/components/schemas/HALLink'
+                    additionalProperties:
+                      $ref: '#/components/schemas/HALLink'
+                  _embedded:
+                    type: object
+                    properties:
+                      status:
+                        $ref: '#/components/schemas/ServiceExecution'
+  /{id}/result/{file}:
+    get:
+      tags:
+        - Service API
+      summary: Download a result file of a service execution
+      description: |
+        Retrieves a specific result file of a service execution.
+        The file name is provided in the path parameter.
+        The result file is returned as a binary stream.
+      operationId: getResultFile
+      parameters:
+        - in: path
+          name: id
+          required: true
+          description: The id of a service execution
+          schema:
+            type: string
+        - in: path
+          name: file
+          required: true
+          description: The name of the result file
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The content of a result file
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+  /{id}/log:
+    get:
+      tags:
+        - Service API
+      summary: Get the log output of a service execution
+      description: |
+        Returns a list of log entries for a service execution in chronological order, where the first entry is the oldest.
+      operationId: getLogs
+      parameters:
+        - in: path
+          name: id
+          required: true
+          description: The id of a service execution
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+  /{id}/cancel:
+    put:
+      tags:
+        - Service API
+      summary: Cancel a service execution
+      description: |
+        Cancel a pending or running service execution.
+      operationId: cancelExecution
+      parameters:
+        - in: path
+          name: id
+          required: true
+          description: The id of a service execution
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Service execution is cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceExecution"
+components:
+  schemas:
+    ServiceExecution:
+      type: object
+      properties:
+        id:
+          type: string
+          examples: [87cb778e-ac43-11ec-b909-0242ac120002]
+        status:
+          type: string
+          enum: [UNKNOWN, PENDING, RUNNING, SUCCEEDED, CANCELLED, FAILED]
+          examples: [SUCCEEDED]
+        createdAt:
+          type: string
+          examples: ["2022-01-01 22:38:08"]
+        startedAt:
+          type: string
+          examples: ["2022-01-01 22:39:08"]
+        endedAt:
+          type: string
+          examples: ["2022-01-01 22:40:08"]
+    # Representation of link as defined in HAL: https://datatracker.ietf.org/doc/html/draft-kelly-json-hal-11
+    HALLink:
+      type: object
+      properties:
+        href:
+          type: string
+          description: The URL of the link
+        templated:
+          type: boolean
+          description: Whether the link is templated (optional)
+          default: false
+        type:
+          type: string
+          description: The media type of the link (optional)
+        deprecation:
+          type: string
+          description: A URL that provides further information about the deprecation of the link (optional)
+        name:
+          type: string
+          description: The name of the link (optional)
+        profile:
+          type: string
+          description: A URL that provides further information about the profile of the link (optional)
+        title:
+          type: string
+          description: The title of the link (optional)
+        hreflang:
+          type: string
+          description: The language of the link's target resource (optional)
+  securitySchemes:
+    ApplicationCredentials:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://gateway.platform.planqk.de/token
+          scopes: {}
+security:
+  - ApplicationCredentials: []
+servers:
+  - url: https://gateway.platform.planqk.de/<context>/<service>/<version>
+    description: The service endpoint
