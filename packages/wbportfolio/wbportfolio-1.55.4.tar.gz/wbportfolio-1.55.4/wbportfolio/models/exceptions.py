@@ -1,0 +1,2 @@
+class InvalidAnalyticPortfolio(Exception):
+    pass
