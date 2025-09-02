@@ -1,0 +1,314 @@
+# PyCompilerX
+
+> **A Comprehensive Python Compiler Toolkit**
+
+[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.1.0-orange.svg)](pyproject.toml)
+
+PyCompilerX is a comprehensive Python package that integrates various tools and libraries to facilitate the creation, manipulation, and compilation of Python code. This toolkit serves as a complete solution for developers interested in compiler design, code analysis, and optimization.
+
+## ✨ Features
+
+### 🔧 **Parsing & AST Manipulation**
+- **AST Processing**: Built on Python's native Abstract Syntax Tree
+- **Tokenization**: Advanced lexical analysis using Python's tokenize module
+- **Custom Parsing**: Support for custom grammar parsing
+- **Code Generation**: Regenerate Python source code from ASTs
+- **Syntax Validation**: Comprehensive syntax checking and validation
+
+### 📊 **Static Analysis & Type Checking**  
+- **Type Analysis**: Basic type inference and checking
+- **Code Statistics**: Extract comprehensive code metrics
+- **Symbol Table Management**: Track variables, functions, and classes
+- **Code Quality Analysis**: Detect potential issues and improvements
+
+### ⚡ **Code Generation & Compilation**
+- **LLVM Integration**: Generate LLVM intermediate representation 
+- **Cython Support**: Compile Python code to C for performance optimization
+- **Numba JIT**: Apply Just-In-Time compilation for numerical code
+- **Optimization Analysis**: Analyze code for optimization opportunities
+
+### 🎯 **Additional Utilities**
+- **Code Visualization**: Tools to visualize ASTs and code structure
+- **Interactive Calculator**: Full-featured expression evaluator
+- **Transformation Engine**: Apply custom code transformations
+- **CLI Tools**: Command-line interface for all functionality
+
+## 🚀 Installation
+
+### Basic Installation
+```bash
+pip install .
+```
+
+### Full Installation (with all optional dependencies)
+```bash
+pip install .[full]
+```
+
+### Development Installation
+```bash
+pip install .[dev]
+```
+
+## 📖 Quick Start
+
+### Python API
+```python
+import pycompilerx as pc
+
+# Parse and analyze code
+code = """
+def fibonacci(n: int) -> int:
+    if n <= 1:
+        return n
+    return fibonacci(n-1) + fibonacci(n-2)
+"""
+
+# Parse the code
+tree = pc.parse_code(code)
+print("✓ Code parsed successfully")
+
+# Analyze the code
+analysis = pc.analyze_code(code)
+print(f"Functions: {analysis['functions']}")
+print(f"Variables: {len(analysis['variables'])}")
+
+# Type checking
+type_result = pc.check_types(code)
+print(f"Type checking: {'✓ Passed' if type_result['success'] else '⚠ Issues found'}")
+
+# Generate LLVM IR
+llvm_ir = pc.generate_llvm_ir(code)
+print(f"LLVM IR generated: {len(llvm_ir)} characters")
+
+# Compile with Cython
+cython_result = pc.compile_cython(code)
+print(f"Cython compilation: {'✓ Success' if cython_result['success'] else '✗ Failed'}")
+```
+
+### Interactive Calculator
+```python
+from pycompilerx import BasicCalculator
+
+calc = BasicCalculator()
+
+# Basic arithmetic
+result = calc.evaluate_expression("2 + 3 * 4")
+print(f"2 + 3 * 4 = {result}")  # Output: 14
+
+# Variables
+calc.set_variable("x", 10)
+calc.set_variable("y", 5)
+result = calc.evaluate_expression("x ** 2 + y")
+print(f"x² + y = {result}")  # Output: 105
+
+# Script evaluation
+script = """
+radius = 5
+area = 3.14159 * radius ** 2
+perimeter = 2 * 3.14159 * radius
+"""
+calc.evaluate_script(script)
+print("Variables:", calc.list_variables())
+```
+
+### Command Line Usage
+```bash
+# Analyze a Python file
+pycompilerx analyze script.py --types --stats
+
+# Parse and validate syntax
+pycompilerx parse -e "x = 5 + 3" --validate
+
+# Generate LLVM IR
+pycompilerx compile script.py --llvm --optimize -o output.ll
+
+# Compile with Cython
+pycompilerx compile script.py --cython --optimize -o output.pyx
+
+# Interactive calculator
+pycompilerx calc --interactive
+
+# Evaluate expression
+pycompilerx calc "2 ** 10 + 3 * 4"
+
+# Analyze optimization potential
+pycompilerx analyze script.py --cython --numba
+```
+
+## 📁 Architecture
+
+```
+PyCompilerX/
+├── pycompilerx/              # Main package
+│   ├── __init__.py          # Package initialization & exports
+│   ├── cli.py               # Command-line interface
+│   ├── parsing/             # Parsing and AST tools
+│   │   ├── lexer.py        # Lexical analysis
+│   │   ├── parser.py       # Parser implementations  
+│   │   └── ast_tools.py    # AST manipulation & analysis
+│   ├── analysis/           # Static analysis & type checking
+│   │   └── type_check.py   # Type inference & validation
+│   ├── backend/            # Code generation & compilation
+│   │   ├── llvm.py        # LLVM IR generation
+│   │   ├── cython.py      # Cython compilation
+│   │   └── numba.py       # Numba JIT integration
+│   └── examples/           # Examples & demonstrations
+│       ├── basic_calc.py  # Calculator implementation
+│       └── ast_transform.py # AST transformation demos
+├── tests/                  # Comprehensive test suite
+├── pyproject.toml         # Modern Python packaging
+├── README.md              # This file
+└── LICENSE               # MIT license
+```
+
+## 🔧 API Reference
+
+### Core Functions
+```python
+# Parsing
+tree = pycompilerx.parse_code(code)           # Parse code to AST
+syntax_ok = pycompilerx.validate_syntax(code) # Validate syntax
+
+# Analysis  
+stats = pycompilerx.analyze_code(code)        # Get code statistics
+types = pycompilerx.check_types(code)         # Type checking
+analysis = pycompilerx.analyze_types(code)    # Detailed type analysis
+
+# Code Generation
+llvm_ir = pycompilerx.generate_llvm_ir(code)  # Generate LLVM IR
+cython_code = pycompilerx.compile_cython(code) # Compile to Cython
+
+# Utilities
+calc = pycompilerx.BasicCalculator()          # Create calculator
+result = pycompilerx.evaluate_expression("2+3") # Quick evaluation
+```
+
+### Examples Module
+```python
+# Calculator
+calc = BasicCalculator()
+calc.evaluate_expression("sqrt(16) + 2**3")
+calc.set_variable("pi", 3.14159)
+
+# AST Transformations
+from pycompilerx.examples import transform_example, analyze_example
+transform_example()  # Demo code transformations
+analyze_example()    # Demo code analysis
+```
+
+## 🧪 Testing
+
+Run the test suite:
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=pycompilerx
+
+# Run specific test categories
+pytest -m "not slow"           # Skip slow tests
+pytest tests/test_parsing.py   # Test specific module
+```
+
+## 📋 Requirements
+
+### Minimum Requirements
+- **Python 3.8+**
+- `typing-extensions` (for Python < 3.10)
+
+### Optional Dependencies (for full functionality)
+- `ply` - Python Lex-Yacc for custom parsing
+- `lark` - Modern parsing library  
+- `gast` - AST compatibility across Python versions
+- `llvmlite` - LLVM integration (Python 3.8+)
+- `cython` - C compilation support
+- `numba` - JIT compilation (Python 3.8+)
+- `mypy` - Advanced static type checking
+- `astor` - AST to source conversion (Python < 3.9)
+
+## 🎯 Use Cases
+
+### **For Educators & Students**
+- Learn compiler construction concepts
+- Understand AST manipulation
+- Explore code analysis techniques
+- Practice optimization algorithms
+
+### **For Developers**  
+- Build custom code analysis tools
+- Create domain-specific languages
+- Implement code transformations
+- Optimize Python performance
+
+### **For Researchers**
+- Experiment with compiler optimizations
+- Analyze code patterns and metrics
+- Develop new analysis techniques
+- Prototype language features
+
+## 🤝 Contributing
+
+We welcome contributions! Here's how to get started:
+
+1. **Fork the repository**
+2. **Create a feature branch**: `git checkout -b feature-name`
+3. **Make your changes** and add tests
+4. **Run tests**: `pytest`
+5. **Submit a pull request**
+
+### Development Setup
+```bash
+git clone https://github.com/your-username/pycompilerx.git
+cd pycompilerx
+pip install -e .[dev]
+pre-commit install
+```
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+PyCompilerX builds upon excellent open-source projects:
+- Python's built-in `ast` and `tokenize` modules
+- [PLY (Python Lex-Yacc)](https://github.com/dabeaz/ply) for parsing
+- [Lark](https://github.com/lark-parser/lark) parsing library
+- [LLVM](https://llvm.org/) and [llvmlite](https://github.com/numba/llvmlite)
+- [Cython](https://cython.org/) for C compilation
+- [Numba](https://numba.pydata.org/) for JIT compilation
+- [MyPy](http://mypy-lang.org/) for static typing
+
+## 🚀 Roadmap
+
+### Current (v0.1.0)
+- ✅ Core parsing and AST manipulation
+- ✅ Basic static analysis and type checking
+- ✅ LLVM IR generation (mock)
+- ✅ Cython and Numba integration
+- ✅ Interactive calculator and examples
+- ✅ Comprehensive CLI tools
+
+### Upcoming (v0.2.0)
+- 🔄 Enhanced type inference algorithms
+- 🔄 Advanced code optimization passes
+- 🔄 Plugin system for custom backends
+- 🔄 Web-based AST visualizer
+- 🔄 Performance benchmarking suite
+- 🔄 IDE integration plugins
+
+### Future
+- 📋 Custom DSL support
+- 📋 Distributed compilation
+- 📋 Machine learning model compilation
+- 📋 Advanced debugging tools
+
+---
+
+**Made with ❤️ by the PyCompilerX Team**
+
+*Star ⭐ this repository if you find it helpful!*
