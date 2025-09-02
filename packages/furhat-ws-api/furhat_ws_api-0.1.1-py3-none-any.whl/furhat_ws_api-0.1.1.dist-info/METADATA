@@ -1,0 +1,193 @@
+Metadata-Version: 2.4
+Name: furhat_ws_api
+Version: 0.1.1
+Summary: A Python client for the Furhat WebSocket API.
+Project-URL: Homepage, https://docs.furhat.io/
+Author-email: Your Name <you@example.com>
+Keywords: api,client,furhat,robotics,websocket
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Requires-Python: >=3.9
+Requires-Dist: asyncio
+Requires-Dist: websockets
+Description-Content-Type: text/markdown
+
+# Python Furhat WebSocket API Client
+
+Python implementation of Furhat WebSocket API client. 
+
+There are two different clients:
+
+- `FurhatClient`: A synchronous (blocking) client for simple, sequential command execution.
+- `AsyncFurhatClient`: An asynchronous client for advanced, concurrent, or event-driven interactions.
+
+## Installation
+
+Install the module with pip:
+
+```
+pip install furhat-ws-api
+```
+
+Then include it your code:
+
+```python
+from furhat_ws_api import *
+```
+
+## Synchronous Event client
+
+The synchronous client (`FurhatClient`) is a wrapper around the asynchronous client that allows for blocking calls in a standard (non-async) Python context. This is useful for simple use cases where you want to send one command at a time and wait for the result before proceeding. Note that it is not suitable for advanced scenarios requiring concurrent or overlapping commands.
+
+```python
+from furhat_ws_api import FurhatClient
+import logging
+
+furhat = FurhatClient("127.0.0.1")  # Add authentication key as second argument if needed
+furhat.set_logging_level(logging.INFO)  # Use logging.DEBUG for more details
+furhat.connect()
+furhat.request_speak_text("Hello world, I am Furhat.")
+furhat.disconnect()
+```
+
+## Asyncronous Event client
+
+The asynchronous client is based on the Python [asyncio](https://docs.python.org/3/library/asyncio.html) library. This allows for much more flexible use cases, where requests can be aborted and responses can be streamed while actions are being executed. 
+
+```python
+from furhat_ws_api import AsyncFurhatClient
+import asyncio
+import logging
+
+furhat = AsyncFurhatClient("127.0.0.1")
+
+async def run_example():
+    await furhat.connect()
+    await furhat.request_speak_text("Hello world, I am Furhat.", wait=True)
+    await furhat.disconnect()
+
+asyncio.run(run_example())
+```
+
+Note that one important difference when making requests in the asynchronous API is that they need to be called with the `await` keyword.
+
+If you want to mix the use of the synchronous and asynchronous clients, you should not instantiate both, but you can access it like this:
+
+```python
+from furhat_ws_api import FurhatClient
+import logging
+
+furhat = FurhatClient("127.0.0.1")  
+furhat_async = furhat.async_client
+furhat.connect()
+
+async def run_example():
+    await furhat_async.speak_text("Hello world, I am Furhat.", wait=True)
+
+asyncio.run(run_example())
+```
+
+### Reacting to events
+
+With the asynchronous client, you can react to events from Furhat. This allows your application to react to specific events from the Furhat robot, such as when the robot starts or stops speaking, hears something, or detects a user.
+
+Here is an example of how to react to events related to Furhat speaking:
+
+```python
+from furhat_ws_api import AsyncFurhatClient, Events
+import asyncio
+
+furhat = AsyncFurhatClient("127.0.0.1")
+
+async def on_speak_start(event):
+    print("Furhat started speaking:", event)
+
+async def on_speak_end(event):
+    print("Furhat finished speaking:", event)
+
+async def main():
+    await furhat.connect()
+    # Register handlers
+    furhat.add_handler(Events.response_speak_start, on_speak_start)
+    furhat.add_handler(Events.response_speak_end, on_speak_end)
+    
+    await furhat.request_speak_text("Hello! Please say something.")
+    await furhat.disconnect()
+
+asyncio.run(main())
+```
+
+## Supported methods
+
+Here is a summary of the main methods. All of them are available in the asynchronous API, but only some of them in the synchronous wrapper API. 
+
+- `connect()` / `disconnect()`
+  - Establishes or closes the connection to the Furhat robot.
+
+### Speaking
+
+- `request_speak_text(text: str, wait: bool = True, abort: bool = True)`
+  - Makes Furhat speak the given text. If `wait` is True, the method blocks until speaking is finished. If `abort` is True, any ongoing speech is stopped before starting the new one.
+
+- `request_speak_audio(url: str, wait: bool = True, abort: bool = True, text: str, lipsync: bool = True)`
+  - Makes Furhat play the given audio (from url). Same `wait` and `abort` logic as `speak_text`. `text` is just for logging purposes and can be omitted. `lipsync` denotes whether automatic lipsync should be added.
+
+- `request_speak_stop()`
+  - Immediately stops any ongoing speech or audio playback.
+
+You can add the following events handlers:
+
+- `response_speak_start`
+  - Furhat starts speaking
+
+- `response_speak_end` 
+  - Furhat stops speaking
+
+### Listening (for speech)
+
+- `request_listen()`
+  - Starts listening for user speech and returns the recognized text. Blocks until the listening interaction is complete.
+
+### Voice  
+
+- `request_voice_status()`
+  - Returns the current voice configuration and status of the robot.
+
+- `request_voice_config(voice_id: str, language: str, provider: str, gender: str, name: str)`
+  - Changes the robot's voice according to the parameters (one or several can be used to add constraints).
+
+### Attention
+
+- `request_attend_user(user_id: str)`
+  - Makes Furhat turn its attention to a specific user (by user ID). Use the string `closest` to attend to the closest user. 
+
+- `request_attend_location(x: float, y: float, z: float)`
+  - Makes Furhat attend to a specific location.
+
+### Gestures 
+
+- `request_gesture(gesture_name: str, intensity: float = 1.0, duration: float = 1.0, wait: bool = False)`
+  - Makes Furhat perform a gesture. You can control the intensity and duration. If `wait` is True, the method blocks until the gesture is finished.
+
+### Face  
+
+- `request_face_params(params_dict: dict)`
+  - Sets facial animation parameters directly. The `params_dict` should specify the desired facial features and their values.
+
+- `request_face_headpose(yaw: float, pitch: float, roll: float, relative: bool)`
+  - Directly controls the head pose of the robot. Set `relative` to True for movement relative to current gaze (attention) target, or False for absolute positioning.
+
+- `request_face_config(face_id: str, visibility: bool = True, microexpressions: bool = True)`
+  - Sets the current mask and character (face), and/or face visibility and microexpressions.
+
+- `request_face_status(face_id: bool = True, face_list: bool = True)`
+  - Gets the current and available masks and characters. Returns information about the face configuration.
+
+- `request_face_reset()`
+  - Resets all facial parameters to their default values.
+
+### LED  
+
+- `request_led_set(color: str)`
+  - Sets the color of the robot's LED. The `color` can be a color name (e.g., "red") or a hex code (e.g., "#FF0000").
