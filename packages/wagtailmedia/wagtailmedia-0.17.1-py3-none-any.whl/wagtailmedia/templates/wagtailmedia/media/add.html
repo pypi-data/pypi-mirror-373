@@ -1,0 +1,75 @@
+{% extends "wagtailadmin/base.html" %}
+{% load i18n wagtailadmin_tags %}
+{% block titletag %}
+    {% if media_type == 'audio' %}
+        {% trans "Add audio" %}
+    {% elif media_type == 'video' %}
+        {% trans "Add video" %}
+    {% else %}
+        {% trans "Add audio or video" %}
+    {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+    {{ block.super }}
+    {{ form.media.js }}
+
+    <script>
+        $(function() {
+            const fileWidget = document.getElementById("id_file");
+            const titleWidget = document.getElementById("id_title");
+            fileWidget.addEventListener('change', function () {
+                if (titleWidget.value === '') {
+                    // The file widget value example: `C:\fakepath\media.jpg`
+                    var parts = fileWidget.value.split('\\');
+                    var filename = parts[parts.length - 1].replace(/\.[^.]+$/, '');
+                    titleWidget.value = filename;
+                }
+            });
+        });
+    </script>
+{% endblock %}
+
+{% block extra_css %}
+    {{ block.super }}
+    {{ form.media.css }}
+{% endblock %}
+
+{% block content %}
+    {% if media_type == 'audio' %}
+        {% trans "Add audio" as add_str %}
+    {% elif media_type == 'video' %}
+        {% trans "Add video" as add_str %}
+    {% else %}
+        {% trans "Add audio or video" as add_str %}
+    {% endif %}
+    {% include "wagtailadmin/shared/header.html" with title=add_str icon="media" %}
+
+    <div class="nice-padding">
+        {% include "wagtailadmin/shared/non_field_errors.html" %}
+        <form action="{% block action %}{% url 'wagtailmedia:add' media_type %}{% endblock %}" method="POST" enctype="multipart/form-data" novalidate>
+            {% csrf_token %}
+            <ul class="fields">
+                {% for field in form %}
+                    {% if field.is_hidden %}
+                        {{ field }}
+                    {% else %}
+                        <li>{% include "wagtailadmin/shared/field.html" with field=field %}</li>
+                    {% endif %}
+                {% endfor %}
+                <li>
+                    <button
+                        type="submit"
+                        class="button button-longrunning"
+                        data-clicked-text="{% trans 'Uploading…' %}"
+                        data-controller="w-progress"
+                        data-action="w-progress#activate"
+                        data-w-progress-active-value="{% trans 'Uploading…' %}"
+                    >
+                        {% icon name="spinner" %}<em>{% trans 'Upload' %}</em>
+                    </button>
+                </li>
+            </ul>
+        </form>
+    </div>
+{% endblock %}

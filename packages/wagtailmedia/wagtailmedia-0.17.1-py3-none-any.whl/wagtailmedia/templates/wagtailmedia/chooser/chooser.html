@@ -1,0 +1,103 @@
+{% load i18n wagtailadmin_tags %}
+{% include "wagtailadmin/shared/header.html" with title=title icon=icon merged=1 %}
+
+{# TODO: drop data-wmtabs and the tabs.js include once we drop support for Wagtail < 7.1 #}
+<div class="w-tabs wagtailmedia-tabs"
+     data-controller="w-tabs" data-w-tabs-active-class="animate-in"
+     data-tabs data-tabs-animate data-tabs-disable-url data-wm-tabs>
+    {% if uploadforms %}
+        {# Both auth and video forms are powered by the same media form, so use one of them #}
+        {% if uploadforms.video %}
+            {{ uploadforms.video.media.js }}
+            {{ uploadforms.video.media.css }}
+        {% else %}
+            {{ uploadforms.audio.media.js }}
+            {{ uploadforms.audio.media.css }}
+        {% endif %}
+
+        <div class="w-tabs__wrapper w-overflow-hidden">
+            {# Using nice-padding and full width class until the modal header is restyled #}
+            <div role="tablist"
+                 class="w-tabs__list w-w-full nice-padding"
+                 data-action="keydown.right->w-tabs#selectNext keydown.left->w-tabs#selectPrevious keydown.home->w-tabs#selectFirst keydown.end->w-tabs#selectLast"
+            >
+                {% trans "Search" as search_text %}
+                {% include 'wagtailadmin/shared/tabs/tab_nav_link.html' with tab_id='search' title=search_text %}
+                {% if uploadforms.audio %}
+                    {% trans "Upload Audio" as upload_audio_text %}
+                    {% if uploadforms.audio.errors and media_type == 'audio' %}
+                        {% include 'wagtailadmin/shared/tabs/tab_nav_link.html' with tab_id='upload-audio' title=upload_audio_text errors_count=uploadforms.audio.errors|length %}
+                    {% else %}
+                        {% include 'wagtailadmin/shared/tabs/tab_nav_link.html' with tab_id='upload-audio' title=upload_audio_text %}
+                    {% endif %}
+                {% endif %}
+                {% if uploadforms.video %}
+                    {% trans "Upload Video" as upload_video_text %}
+                    {% if uploadforms.video.errors and media_type == 'video' %}
+                        {% include 'wagtailadmin/shared/tabs/tab_nav_link.html' with tab_id='upload-video' title=upload_video_text errors_count=uploadforms.video.errors|length %}
+                    {% else %}
+                        {% include 'wagtailadmin/shared/tabs/tab_nav_link.html' with tab_id='upload-video' title=upload_video_text %}
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+
+    <div class="tab-content">
+        <section id="tab-search" class="w-tabs__panel" role="tabpanel" data-w-tabs-target="panel" aria-labelledby="tab-label-search">
+            <form action="{{ chooser_url }}" method="GET" role="search" class="media-search search-bar" novalidate data-chooser-modal-search>
+                <ul class="fields">
+                    {% for field in searchform %}
+                        <li>{% include "wagtailadmin/shared/field.html" with field=field only %}</li>
+                    {% endfor %}
+                    {% if collections %}
+                        <li>{% include "wagtailadmin/shared/collection_chooser.html" %}</li>
+                    {% endif %}
+                    {% if popular_tags %}
+                        {% url 'wagtailmedia:index' as index_url %}
+                        <li class="taglist">
+                            <h3>{% trans 'Popular tags' %}</h3>
+                            {% for tag in popular_tags %}
+                                <a class="suggested-tag tag" href="{{ index_url }}?tag={{ tag.name|urlencode }}">{{ tag.name }}</a>
+                            {% endfor %}
+                        </li>
+                    {% endif %}
+                </ul>
+            </form>
+            <div id="search-results" class="listing media">
+                {% include "wagtailmedia/chooser/results.html" %}
+            </div>
+        </section>
+        {% if uploadforms %}
+            {% for form_type, uploadform in uploadforms.items %}
+            <section id="tab-upload-{{ form_type }}" class="w-tabs__panel" role="tabpanel" data-w-tabs-target="panel" aria-labelledby="tab-label-upload-{{ form_type }}" hidden>
+                {% include "wagtailadmin/shared/non_field_errors.html" with form=uploadform %}
+                <form class="media-upload" action="{% url 'wagtailmedia:chooser_upload' form_type %}" method="POST" enctype="multipart/form-data" novalidate>
+                    {% csrf_token %}
+                    <ul class="fields">
+                        {% for field in uploadform %}
+                            {% if field.is_hidden %}
+                                {{ field }}
+                            {% else %}
+                                <li>{% include "wagtailadmin/shared/field.html" with field=field only %}</li>
+                            {% endif %}
+                        {% endfor %}
+                        <li>
+                            <button
+                                type="submit"
+                                class="button button-longrunning"
+                                data-clicked-text="{% trans 'Uploading…' %}"
+                                data-controller="w-progress"
+                                data-action="w-progress#activate"
+                                data-w-progress-active-value="{% trans 'Uploading…' %}"
+                            >
+                                {% icon name="spinner" %}<em>{% trans 'Upload' %}</em>
+                            </button>
+                        </li>
+                    </ul>
+                </form>
+            </section>
+            {% endfor %}
+        {% endif %}
+    </div>
+</div>
