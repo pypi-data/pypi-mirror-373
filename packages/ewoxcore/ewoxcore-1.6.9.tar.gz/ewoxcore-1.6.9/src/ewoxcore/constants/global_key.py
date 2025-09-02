@@ -1,0 +1,2 @@
+class GlobalKey():
+    GetService = "getservice"
