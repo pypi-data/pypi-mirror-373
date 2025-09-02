@@ -1,0 +1,108 @@
+package eventstore
+
+import (
+    "context"
+    "encoding/json"
+    "fmt"
+    "time"
+
+    "github.com/nats-io/nats.go"
+    "{{ .ProjectName }}/internal/domain/aggregate"
+)
+
+// SnapshotStore 快照存储
+type SnapshotStore struct {
+    conn   *nats.Conn
+    js     nats.JetStreamContext
+    stream string
+}
+
+// NewSnapshotStore 创建快照存储
+func NewSnapshotStore(url string, stream string) (*SnapshotStore, error) {
+    conn, err := nats.Connect(url)
+    if err != nil {
+        return nil, fmt.Errorf("failed to connect to NATS: %w", err)
+    }
+    
+    js, err := conn.JetStream()
+    if err != nil {
+        return nil, fmt.Errorf("failed to get JetStream: %w", err)
+    }
+    
+    streamConfig := &nats.StreamConfig{
+        Name:      stream,
+        Subjects:  []string{"snapshots.*"},
+        Storage:   nats.FileStorage,
+        Retention: nats.LimitsPolicy,
+        MaxAge:    7 * 24 * time.Hour, // 7天
+    }
+    
+    _, err = js.AddStream(streamConfig)
+    if err != nil && err != nats.ErrStreamNameAlreadyInUse {
+        return nil, fmt.Errorf("failed to create stream: %w", err)
+    }
+    
+    return &SnapshotStore{
+        conn:   conn,
+        js:     js,
+        stream: stream,
+    }, nil
+}
+
+// SaveSnapshot 保存快照
+func (s *SnapshotStore) SaveSnapshot(ctx context.Context, aggregateID string, aggregate *aggregate.{{ .NameUpper }}, version int) error {
+    snapshot := Snapshot{
+        AggregateID: aggregateID,
+        Version:     version,
+        Data:        aggregate,
+        Timestamp:   time.Now(),
+    }
+    
+    data, err := json.Marshal(snapshot)
+    if err != nil {
+        return fmt.Errorf("failed to marshal snapshot: %w", err)
+    }
+    
+    subject := fmt.Sprintf("snapshots.%s", aggregateID)
+    
+    _, err = s.js.Publish(subject, data)
+    if err != nil {
+        return fmt.Errorf("failed to publish snapshot: %w", err)
+    }
+    
+    return nil
+}
+
+// LoadSnapshot 加载快照
+func (s *SnapshotStore) LoadSnapshot(ctx context.Context, aggregateID string) (*aggregate.{{ .NameUpper }}, int, error) {
+    subject := fmt.Sprintf("snapshots.%s", aggregateID)
+    
+    sub, err := s.js.SubscribeSync(subject)
+    if err != nil {
+        return nil, 0, fmt.Errorf("failed to subscribe to snapshots: %w", err)
+    }
+    defer sub.Unsubscribe()
+    
+    msg, err := sub.NextMsg(1 * time.Second)
+    if err != nil {
+        if err == nats.ErrTimeout {
+            return nil, 0, nil // 没有快照
+        }
+        return nil, 0, fmt.Errorf("failed to get snapshot: %w", err)
+    }
+    
+    var snapshot Snapshot
+    if err := json.Unmarshal(msg.Data, &snapshot); err != nil {
+        return nil, 0, fmt.Errorf("failed to unmarshal snapshot: %w", err)
+    }
+    
+    return snapshot.Data.(*aggregate.{{ .NameUpper }}), snapshot.Version, nil
+}
+
+// Snapshot 快照数据结构
+type Snapshot struct {
+    AggregateID string      `json:"aggregate_id"`
+    Version     int         `json:"version"`
+    Data        interface{} `json:"data"`
+    Timestamp   time.Time   `json:"timestamp"`
+}

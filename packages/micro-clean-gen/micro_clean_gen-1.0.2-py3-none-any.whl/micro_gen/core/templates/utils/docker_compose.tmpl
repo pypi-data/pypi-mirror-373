@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: {{project_name}}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    networks:
+      - app-network
+
+  nats:
+    image: nats-streaming:0.25-alpine
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["-cid", "test-cluster", "-m", "8222"]
+    networks:
+      - app-network
+
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+      - "50051:50051"
+    depends_on:
+      - postgres
+      - nats
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME={{project_name}}
+      - NATS_URL=nats://nats:4222
+      - NATS_CLUSTER_ID=test-cluster
+    networks:
+      - app-network
+    volumes:
+      - ./configs:/app/configs
+      - ./logs:/app/logs
+
+volumes:
+  postgres_data:
+
+networks:
+  app-network:
+    driver: bridge

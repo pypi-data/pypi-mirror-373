@@ -1,0 +1,71 @@
+package command
+
+import (
+    "context"
+    "fmt"
+    
+    "{{project}}/internal/domain/aggregate"
+    "{{project}}/internal/domain/repository"
+    "{{project}}/internal/domain/event"
+    "{{project}}/internal/infrastructure/eventstore"
+)
+
+// Create{{Name}}Command 创建{{name}}命令
+type Create{{Name}}Command struct {
+    {{fields}}
+}
+
+// Create{{Name}}Handler 创建{{name}}处理器
+type Create{{Name}}Handler struct {
+    repository repository.{{Name}}Repository
+    eventStore eventstore.EventStore
+}
+
+// NewCreate{{Name}}Handler 创建处理器实例
+func NewCreate{{Name}}Handler(repo repository.{{Name}}Repository, store eventstore.EventStore) *Create{{Name}}Handler {
+    return &Create{{Name}}Handler{
+        repository: repo,
+        eventStore: store,
+    }
+}
+
+// Handle 处理创建{{name}}命令
+func (h *Create{{Name}}Handler) Handle(ctx context.Context, cmd Create{{Name}}Command) error {
+    // 业务验证
+    if err := h.validate(cmd); err != nil {
+        return fmt.Errorf("validation failed: %w", err)
+    }
+    
+    // 创建聚合根
+    {{name}} := aggregate.New{{Name}}(cmd.ID, {{param_assigns}})
+    
+    // 创建事件
+    createEvent := &event.{{Name}}CreatedEvent{
+        ID:        cmd.ID,
+        {{event_fields}}
+        Timestamp: {{name}}.CreatedAt,
+    }
+    
+    // 应用事件
+    if err := {{name}}.ApplyEvent(createEvent); err != nil {
+        return fmt.Errorf("failed to apply event: %w", err)
+    }
+    
+    // 保存聚合根
+    if err := h.repository.Save(ctx, {{name}}); err != nil {
+        return fmt.Errorf("failed to save {{name}}: %w", err)
+    }
+    
+    // 发布事件
+    if err := h.eventStore.PublishEvent(ctx, createEvent); err != nil {
+        return fmt.Errorf("failed to publish event: %w", err)
+    }
+    
+    return nil
+}
+
+// validate 验证命令参数
+func (h *Create{{Name}}Handler) validate(cmd Create{{Name}}Command) error {
+    // TODO: 实现业务验证逻辑
+    return nil
+}

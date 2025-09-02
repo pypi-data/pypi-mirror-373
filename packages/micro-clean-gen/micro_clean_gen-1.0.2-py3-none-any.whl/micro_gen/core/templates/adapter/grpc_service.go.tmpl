@@ -1,0 +1,116 @@
+package grpc
+
+import (
+    "context"
+    
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/status"
+    
+    "{{project}}/internal/usecase/command"
+    "{{project}}/internal/usecase/query"
+    pb "{{project}}/api/proto"
+)
+
+// {{Name}}Service {{name}} gRPC服务
+type {{Name}}Service struct {
+    pb.Unimplemented{{Name}}ServiceServer
+    createHandler *command.Create{{Name}}Handler
+    updateHandler *command.Update{{Name}}Handler
+    getHandler    *query.Get{{Name}}Handler
+    listHandler   *query.List{{Name}}Handler
+}
+
+// New{{Name}}Service 创建服务实例
+func New{{Name}}Service(
+    create *command.Create{{Name}}Handler,
+    update *command.Update{{Name}}Handler,
+    get *query.Get{{Name}}Handler,
+    list *query.List{{Name}}Handler,
+) *{{Name}}Service {
+    return &{{Name}}Service{
+        createHandler: create,
+        updateHandler: update,
+        getHandler:    get,
+        listHandler:   list,
+    }
+}
+
+// Create{{Name}} 创建{{name}}
+func (s *{{Name}}Service) Create{{Name}}(ctx context.Context, req *pb.Create{{Name}}Request) (*pb.Create{{Name}}Response, error) {
+    cmd := command.Create{{Name}}Command{
+        {{field_assigns}}
+    }
+    
+    if err := s.createHandler.Handle(ctx, cmd); err != nil {
+        return nil, status.Error(codes.Internal, err.Error())
+    }
+    
+    return &pb.Create{{Name}}Response{
+        Message: "{{name}} created successfully",
+    }, nil
+}
+
+// Update{{Name}} 更新{{name}}
+func (s *{{Name}}Service) Update{{Name}}(ctx context.Context, req *pb.Update{{Name}}Request) (*pb.Update{{Name}}Response, error) {
+    cmd := command.Update{{Name}}Command{
+        ID: req.Id,
+        {{field_assigns}}
+    }
+    
+    if err := s.updateHandler.Handle(ctx, cmd); err != nil {
+        return nil, status.Error(codes.Internal, err.Error())
+    }
+    
+    return &pb.Update{{Name}}Response{
+        Message: "{{name}} updated successfully",
+    }, nil
+}
+
+// Get{{Name}} 获取{{name}}
+func (s *{{Name}}Service) Get{{Name}}(ctx context.Context, req *pb.Get{{Name}}Request) (*pb.Get{{Name}}Response, error) {
+    q := query.Get{{Name}}Query{ID: req.Id}
+    result, err := s.getHandler.Handle(ctx, q)
+    if err != nil {
+        return nil, status.Error(codes.Internal, err.Error())
+    }
+    
+    if result == nil || result.Data == nil {
+        return nil, status.Error(codes.NotFound, "{{name}} not found")
+    }
+    
+    return &pb.Get{{Name}}Response{
+        Data: &pb.{{Name}}Model{
+            {{response_fields}}
+        },
+    }, nil
+}
+
+// List{{Name}} 列表{{name}}
+func (s *{{Name}}Service) List{{Name}}(ctx context.Context, req *pb.List{{Name}}Request) (*pb.List{{Name}}Response, error) {
+    q := query.List{{Name}}Query{
+        Limit:  int(req.Limit),
+        Offset: int(req.Offset),
+    }
+    
+    result, err := s.listHandler.Handle(ctx, q)
+    if err != nil {
+        return nil, status.Error(codes.Internal, err.Error())
+    }
+    
+    var items []*pb.{{Name}}Model
+    for _, item := range result.Data {
+        items = append(items, &pb.{{Name}}Model{
+            {{response_fields}}
+        })
+    }
+    
+    return &pb.List{{Name}}Response{
+        Data: items,
+    }, nil
+}
+
+// Register{{Name}}Service 注册{{name}}服务
+func Register{{Name}}Service(server *grpc.Server, service *{{Name}}Service) {
+    pb.Register{{Name}}ServiceServer(server, service)
+}

@@ -1,0 +1,151 @@
+package http
+
+import (
+    "encoding/json"
+    "net/http"
+    "strconv"
+    
+    "{{project}}/internal/usecase/command"
+    "{{project}}/internal/usecase/query"
+)
+
+// {{Name}}Handler {{name}} HTTP处理器
+type {{Name}}Handler struct {
+    createHandler *command.Create{{Name}}Handler
+    updateHandler *command.Update{{Name}}Handler
+    getHandler    *query.Get{{Name}}Handler
+    listHandler   *query.List{{Name}}Handler
+}
+
+// New{{Name}}Handler 创建处理器实例
+func New{{Name}}Handler(
+    create *command.Create{{Name}}Handler,
+    update *command.Update{{Name}}Handler,
+    get *query.Get{{Name}}Handler,
+    list *query.List{{Name}}Handler,
+) *{{Name}}Handler {
+    return &{{Name}}Handler{
+        createHandler: create,
+        updateHandler: update,
+        getHandler:    get,
+        listHandler:   list,
+    }
+}
+
+// Create 创建{{name}}
+func (h *{{Name}}Handler) Create(w http.ResponseWriter, r *http.Request) {
+    var req Create{{Name}}Request
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        http.Error(w, err.Error(), http.StatusBadRequest)
+        return
+    }
+    
+    cmd := command.Create{{Name}}Command{
+        {{field_assigns}}
+    }
+    
+    if err := h.createHandler.Handle(r.Context(), cmd); err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusCreated)
+    json.NewEncoder(w).Encode(map[string]string{
+        "message": "{{name}} created successfully",
+    })
+}
+
+// Update 更新{{name}}
+func (h *{{Name}}Handler) Update(w http.ResponseWriter, r *http.Request) {
+    id := r.URL.Query().Get("id")
+    if id == "" {
+        http.Error(w, "ID is required", http.StatusBadRequest)
+        return
+    }
+    
+    var req Update{{Name}}Request
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        http.Error(w, err.Error(), http.StatusBadRequest)
+        return
+    }
+    
+    cmd := command.Update{{Name}}Command{
+        ID: id,
+        {{field_assigns}}
+    }
+    
+    if err := h.updateHandler.Handle(r.Context(), cmd); err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(map[string]string{
+        "message": "{{name}} updated successfully",
+    })
+}
+
+// Get 获取{{name}}
+func (h *{{Name}}Handler) Get(w http.ResponseWriter, r *http.Request) {
+    id := r.URL.Query().Get("id")
+    if id == "" {
+        http.Error(w, "ID is required", http.StatusBadRequest)
+        return
+    }
+    
+    q := query.Get{{Name}}Query{ID: id}
+    result, err := h.getHandler.Handle(r.Context(), q)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    
+    if result == nil || result.Data == nil {
+        http.Error(w, "{{name}} not found", http.StatusNotFound)
+        return
+    }
+    
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(result)
+}
+
+// List 列表{{name}}
+func (h *{{Name}}Handler) List(w http.ResponseWriter, r *http.Request) {
+    limitStr := r.URL.Query().Get("limit")
+    offsetStr := r.URL.Query().Get("offset")
+    
+    limit, _ := strconv.Atoi(limitStr)
+    if limit <= 0 {
+        limit = 10
+    }
+    
+    offset, _ := strconv.Atoi(offsetStr)
+    if offset < 0 {
+        offset = 0
+    }
+    
+    q := query.List{{Name}}Query{
+        Limit:  limit,
+        Offset: offset,
+    }
+    
+    result, err := h.listHandler.Handle(r.Context(), q)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(result)
+}
+
+// Create{{Name}}Request 创建{{name}}请求
+type Create{{Name}}Request struct {
+    {{request_fields}}
+}
+
+// Update{{Name}}Request 更新{{name}}请求
+type Update{{Name}}Request struct {
+    {{request_fields}}
+}

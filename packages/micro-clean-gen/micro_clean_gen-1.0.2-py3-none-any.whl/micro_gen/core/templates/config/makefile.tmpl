@@ -1,0 +1,81 @@
+# Go 参数
+GOCMD=go
+GOBUILD=$(GOCMD) build
+GOCLEAN=$(GOCMD) clean
+GOTEST=$(GOCMD) test
+GOGET=$(GOCMD) get
+GOMOD=$(GOCMD) mod
+BINARY_NAME=main
+DOCKER_IMAGE={{project_name}}
+
+# 构建应用
+build:
+	$(GOBUILD) -o $(BINARY_NAME) -v cmd/server/main.go
+
+# 运行应用
+run:
+	$(GOCMD) run cmd/server/main.go
+
+# 构建Docker镜像
+docker-build:
+	docker build -t $(DOCKER_IMAGE) .
+
+# 运行Docker容器
+docker-run:
+	docker-compose up --build
+
+# 清理
+clean:
+	$(GOCLEAN)
+	rm -f $(BINARY_NAME)
+
+# 依赖管理
+deps:
+	$(GOMOD) download
+	$(GOMOD) tidy
+
+# 测试
+$(GOTEST) -v ./...
+
+# 代码格式化
+fmt:
+	$(GOCMD) fmt ./...
+
+# 代码检查
+lint:
+	golangci-lint run
+
+# 生成proto文件
+proto:
+	protoc --go_out=. --go-grpc_out=. pkg/proto/*.proto
+
+# 日志相关命令
+logs:
+	docker-compose logs -f app
+
+logs-error:
+	grep '"level":"ERROR"' /var/log/docker/{{project_name}}.log | jq .
+
+logs-tail:
+	tail -f /var/log/docker/{{project_name}}.log | jq .
+
+logs-stats:
+	@echo "日志统计:"
+	@echo "总日志: $$(wc -l < /var/log/docker/{{project_name}}.log)"
+	@echo "ERROR: $$(grep -c '"level":"ERROR"' /var/log/docker/{{project_name}}.log 2>/dev/null || echo 0)"
+	@echo "WARN: $$(grep -c '"level":"WARN"' /var/log/docker/{{project_name}}.log 2>/dev/null || echo 0)"
+	@echo "INFO: $$(grep -c '"level":"INFO"' /var/log/docker/{{project_name}}.log 2>/dev/null || echo 0)"
+
+# 日志查询脚本
+logs-search:
+	@if [ -f scripts/log_query.sh ]; then \
+		chmod +x scripts/log_query.sh; \
+		./scripts/log_query.sh search "$(filter-out $@,$(MAKECMDGOALS))"; \
+	else \
+		echo "日志查询脚本不存在"; \
+	fi
+
+# 全部清理并重新构建
+all: clean deps build
+
+.PHONY: build run docker-build docker-run clean deps test fmt lint proto logs logs-error logs-tail logs-stats all

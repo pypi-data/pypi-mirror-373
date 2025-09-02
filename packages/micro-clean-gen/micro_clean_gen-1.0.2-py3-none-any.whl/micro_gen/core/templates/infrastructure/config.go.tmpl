@@ -1,0 +1,125 @@
+package config
+
+import (
+    "os"
+    "strconv"
+    "time"
+)
+
+// Config 应用配置
+type Config struct {
+    Server ServerConfig
+    NATS   NATSConfig
+    Cache  CacheConfig
+    Log    LogConfig
+}
+
+// ServerConfig 服务器配置
+type ServerConfig struct {
+    Host         string
+    Port         int
+    ReadTimeout  time.Duration
+    WriteTimeout time.Duration
+    IdleTimeout  time.Duration
+}
+
+// NATSConfig NATS配置
+type NATSConfig struct {
+    URL            string
+    Stream         string
+    SnapshotStream string
+}
+
+// CacheConfig 缓存配置
+type CacheConfig struct {
+    Type    string // "memory", "redis", "badger"
+    Redis   RedisConfig
+    Badger  BadgerConfig
+}
+
+// RedisConfig Redis配置
+type RedisConfig struct {
+    Host string
+    Port int
+    DB   int
+}
+
+// BadgerConfig Badger配置
+type BadgerConfig struct {
+    Path       string
+    SyncWrites bool
+}
+
+// LogConfig 日志配置
+type LogConfig struct {
+    Level  string
+    Format string
+}
+
+// LoadConfig 加载配置
+func LoadConfig() *Config {
+    return &Config{
+        Server: ServerConfig{
+            Host:         getEnv("SERVER_HOST", "0.0.0.0"),
+            Port:         getEnvInt("SERVER_PORT", 8080),
+            ReadTimeout:  getEnvDuration("SERVER_READ_TIMEOUT", 30*time.Second),
+            WriteTimeout: getEnvDuration("SERVER_WRITE_TIMEOUT", 30*time.Second),
+            IdleTimeout:  getEnvDuration("SERVER_IDLE_TIMEOUT", 120*time.Second),
+        },
+        NATS: NATSConfig{
+            URL:            getEnv("NATS_URL", "nats://localhost:4222"),
+            Stream:         getEnv("NATS_STREAM", "{{ .ProjectName }}"),
+            SnapshotStream: getEnv("NATS_SNAPSHOT_STREAM", "{{ .ProjectName }}-snapshots"),
+        },
+        Cache: CacheConfig{
+            Type: getEnv("CACHE_TYPE", "memory"),
+            Redis: RedisConfig{
+                Host: getEnv("REDIS_HOST", "localhost"),
+                Port: getEnvInt("REDIS_PORT", 6379),
+                DB:   getEnvInt("REDIS_DB", 0),
+            },
+            Badger: BadgerConfig{
+                Path:       getEnv("BADGER_PATH", "./data/badger"),
+                SyncWrites: getEnvBool("BADGER_SYNC_WRITES", false),
+            },
+        },
+        Log: LogConfig{
+            Level:  getEnv("LOG_LEVEL", "info"),
+            Format: getEnv("LOG_FORMAT", "json"),
+        },
+    }
+}
+
+func getEnv(key, defaultValue string) string {
+    if value := os.Getenv(key); value != "" {
+        return value
+    }
+    return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) int {
+    if value := os.Getenv(key); value != "" {
+        if intValue, err := strconv.Atoi(value); err == nil {
+            return intValue
+        }
+    }
+    return defaultValue
+}
+
+func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
+    if value := os.Getenv(key); value != "" {
+        if duration, err := time.ParseDuration(value); err == nil {
+            return duration
+        }
+    }
+    return defaultValue
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+    if value := os.Getenv(key); value != "" {
+        if boolValue, err := strconv.ParseBool(value); err == nil {
+            return boolValue
+        }
+    }
+    return defaultValue
+}

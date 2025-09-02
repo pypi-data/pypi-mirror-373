@@ -1,0 +1,71 @@
+package command
+
+import (
+    "context"
+    "fmt"
+    
+    "{{project}}/internal/domain/aggregate"
+    "{{project}}/internal/domain/repository"
+    "{{project}}/internal/domain/event"
+    "{{project}}/internal/infrastructure/eventstore"
+)
+
+// Update{{Name}}Command 更新{{name}}命令
+type Update{{Name}}Command struct {
+    ID string
+    {{fields}}
+}
+
+// Update{{Name}}Handler 更新{{name}}处理器
+type Update{{Name}}Handler struct {
+    repository repository.{{Name}}Repository
+    eventStore eventstore.EventStore
+}
+
+// NewUpdate{{Name}}Handler 创建处理器实例
+func NewUpdate{{Name}}Handler(repo repository.{{Name}}Repository, store eventstore.EventStore) *Update{{Name}}Handler {
+    return &Update{{Name}}Handler{
+        repository: repo,
+        eventStore: store,
+    }
+}
+
+// Handle 处理更新{{name}}命令
+func (h *Update{{Name}}Handler) Handle(ctx context.Context, cmd Update{{Name}}Command) error {
+    // 查找聚合根
+    {{name}}, err := h.repository.FindByID(ctx, cmd.ID)
+    if err != nil {
+        return fmt.Errorf("failed to find %s: %w", {{name}}, err)
+    }
+    
+    if {{name}} == nil {
+        return fmt.Errorf("%s not found", {{name}})
+    }
+    
+    // 业务验证
+    if err := h.validate(cmd); err != nil {
+        return fmt.Errorf("validation failed: %w", err)
+    }
+    
+    // 更新聚合根
+    {{update_logic}}
+    
+    // 发布更新事件
+    {{name}}.AddEvent(&event.{{Name}}Updated{
+        ID: cmd.ID,
+        {{event_fields}}
+    })
+    
+    // 保存聚合根
+    if err := h.repository.Save(ctx, {{name}}); err != nil {
+        return fmt.Errorf("failed to save {{name}}: %w", err)
+    }
+    
+    return nil
+}
+
+// validate 验证命令参数
+func (h *Update{{Name}}Handler) validate(cmd Update{{Name}}Command) error {
+    // TODO: 实现业务验证逻辑
+    return nil
+}
