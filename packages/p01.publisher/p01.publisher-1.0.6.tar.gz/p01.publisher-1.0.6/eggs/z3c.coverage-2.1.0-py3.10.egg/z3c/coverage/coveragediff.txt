@@ -1,0 +1,462 @@
+======================
+coveragediff internals
+======================
+
+``coveragediff`` is a tool that can be used to compare two directories with
+coverage reports (such as the ones produced by ``zope.testing`` test runner
+with the ``--coverage`` option, or, more generally, the ``trace`` module
+from the Python standard library).  ``coveragediff`` reports regressions, that
+is, increases in the number of untested lines of code.
+
+This document describes the internals of ``coveragediff.py``.  It also acts as
+a test suite.
+
+
+Locating coverage files
+-----------------------
+
+The function ``find_coverage_files`` looks for plain-text coverage reports
+in a given directory
+
+    >>> import z3c.coverage, os
+    >>> sampleinput_dir = os.path.join(z3c.coverage.__path__[0], 'sampleinput')
+
+    >>> from z3c.coverage.coveragediff import find_coverage_files
+    >>> for filename in sorted(find_coverage_files(sampleinput_dir)):
+    ...     print(filename)
+    z3c.coverage.__init__.cover
+    z3c.coverage.coveragediff.cover
+    z3c.coverage.coveragereport.cover
+    z3c.coverage.tests.cover
+
+The function ``filter_coverage_files`` looks for plain-text coverage reports
+in a given location that match a set of include and exclude patterns
+
+    >>> from z3c.coverage.coveragediff import filter_coverage_files
+    >>> for filename in sorted(filter_coverage_files(sampleinput_dir)):
+    ...     print(filename)
+    z3c.coverage.__init__.cover
+    z3c.coverage.coveragediff.cover
+    z3c.coverage.coveragereport.cover
+    z3c.coverage.tests.cover
+
+    >>> for filename in sorted(filter_coverage_files(sampleinput_dir,
+    ...                                              include=['diff'])):
+    ...     print(filename)
+    z3c.coverage.coveragediff.cover
+
+The patterns are regular expressions
+
+    >>> for filename in sorted(filter_coverage_files(sampleinput_dir,
+    ...                                              exclude=['^z'])):
+    ...     print(filename)
+
+
+Parsing coverage files
+----------------------
+
+The function ``count_coverage`` reads a plain-text coverage reports and
+returns two numbers: the number of tested code lines and the number of
+untested code lines.
+
+    >>> from z3c.coverage.coveragediff import count_coverage
+    >>> filename = os.path.join(sampleinput_dir, 'z3c.coverage.tests.cover')
+    >>> tested, untested = count_coverage(filename)
+    >>> tested
+    10
+    >>> untested
+    3
+
+
+Comparing coverage files
+------------------------
+
+The function ``compare_file`` reads two coverage reports for the same module
+and reports a warning if the new file has more untested lines of code
+
+    >>> from z3c.coverage.coveragediff import compare_file
+    >>> another_dir = os.path.join(z3c.coverage.__path__[0], 'moresampleinput')
+    >>> old_filename = os.path.join(sampleinput_dir,
+    ...                             'z3c.coverage.coveragediff.cover')
+    >>> new_filename = os.path.join(another_dir,
+    ...                             'z3c.coverage.coveragediff.cover')
+    >>> compare_file(old_filename, new_filename)
+    z3c.coverage.coveragediff: 36 new lines of untested code
+
+If the number of untested lines is the same or smaller than before, there's
+no output
+
+    >>> compare_file(new_filename, new_filename)
+    >>> compare_file(new_filename, old_filename)
+
+The function ``new_file`` is used to look for untested lines of code in new
+modules.
+
+    >>> from z3c.coverage.coveragediff import new_file
+    >>> new_filename = os.path.join(another_dir,
+    ...                             'z3c.coverage.fakenewmodule.cover')
+    >>> new_file(new_filename)
+    z3c.coverage.fakenewmodule: new file with 3 lines of untested code (out of 13)
+
+Once again, if there are no untested lines, ``new_file`` is quiet
+
+    >>> new_filename = os.path.join(another_dir,
+    ...                             'z3c.coverage.faketestedmodule.cover')
+    >>> new_file(new_filename)
+
+
+Comparing directories
+---------------------
+
+``compare_dirs`` ties it all together: you pass in two directory names, you get
+a bunch of warnings about regressions
+
+    >>> from z3c.coverage.coveragediff import compare_dirs
+    >>> compare_dirs(sampleinput_dir, another_dir)
+    z3c.coverage.coveragediff: 36 new lines of untested code
+    z3c.coverage.fakenewmodule: new file with 3 lines of untested code (out of 13)
+
+You can pass ``include`` and ``exclude`` arguments as well
+
+    >>> compare_dirs(sampleinput_dir, another_dir, exclude=['[Ff]ake'])
+    z3c.coverage.coveragediff: 36 new lines of untested code
+
+    >>> compare_dirs(sampleinput_dir, another_dir, include=['d.ff'])
+    z3c.coverage.coveragediff: 36 new lines of untested code
+
+
+MailSender
+----------
+
+The ``MailSender`` class is responsible for assembling an RFC-2822 email
+message and handing it off to an SMTP server.
+
+    >>> from z3c.coverage.coveragediff import MailSender
+    >>> mailer = MailSender('smtp.example.com', 25)
+
+Since it wouldn't be a good idea to actually send emails from the test suite,
+we'll use a stub SMTP connection class.  Also, let's hide the real one as
+an insurance, so that even if our stub fails, the rest of the tests won't
+send any real emails:
+
+    >>> MailSender.connection_class = None
+    >>> import six
+
+    >>> class FakeSMTP(object):
+    ...     def __init__(self, host, port):
+    ...         print("Connecting to %s:%s" % (host, port))
+    ...     def sendmail(self, sender, recipients, body):
+    ...         from smtplib import quoteaddr
+    ...         print("MAIL FROM:%s" % quoteaddr(sender))
+    ...         if isinstance(recipients, six.string_types):
+    ...             recipients = [recipients]
+    ...         for recipient in recipients:
+    ...             print("RCPT TO:%s" % quoteaddr(recipient))
+    ...         print("DATA")
+    ...         print(body)
+    ...         print(".")
+    ...     def quit(self):
+    ...         print("QUIT")
+    >>> mailer.connection_class = FakeSMTP
+
+Here's how you send an email:
+
+    >>> mailer.send_email('Some Bot <bot@example.com>',
+    ...                   'Maintainer <m@example.com>',
+    ...                   'Test coverage regressions',
+    ...                   'You broke the tests completely.  Have a nice day.')
+    Connecting to smtp.example.com:25
+    MAIL FROM:<bot@example.com>
+    RCPT TO:<m@example.com>
+    DATA
+    Content-Type: text/plain; charset="us-ascii"
+    MIME-Version: 1.0
+    Content-Transfer-Encoding: 7bit
+    From: Some Bot <bot@example.com>
+    To: Maintainer <m@example.com>
+    Subject: Test coverage regressions
+    <BLANKLINE>
+    You broke the tests completely.  Have a nice day.
+    .
+    QUIT
+
+
+Small utilities
+---------------
+
+There are several small utility functions like ``strip``, ``urljoin``,
+``matches`` and ``filter_files``.  These are described (and tested) adequately
+by their doctests.
+
+
+ReportPrinter
+-------------
+
+The ``ReportPrinter`` class is responsible for formatting the output.
+
+    >>> from z3c.coverage.coveragediff import ReportPrinter
+    >>> printer = ReportPrinter()
+    >>> printer.warn('/tmp/coverage/z3c.coverage.coveragediff.cover',
+    ...              '3 new untested lines')
+    z3c.coverage.coveragediff: 3 new untested lines
+    >>> printer.warn('/tmp/coverage/z3c.coverage.coveragereport.cover',
+    ...              '2 new untested lines')
+    z3c.coverage.coveragereport: 2 new untested lines
+
+
+Links to web pages
+~~~~~~~~~~~~~~~~~~
+
+Report printer can also include links to web pages with the coverage reports
+(e.g. the ones you can get from the ``coverage`` tool distributed with
+``z3c.coverage``).
+
+    >>> printer = ReportPrinter(web_url='http://example.com/coverage/')
+    >>> printer.warn('/tmp/coverage/z3c.coverage.coveragediff.cover',
+    ...              '3 new untested lines')
+    z3c.coverage.coveragediff: 3 new untested lines
+    See http://example.com/coverage/z3c.coverage.coveragediff.html
+    <BLANKLINE>
+    >>> printer.warn('/tmp/coverage/z3c.coverage.coveragereport.cover',
+    ...              '2 new untested lines')
+    z3c.coverage.coveragereport: 2 new untested lines
+    See http://example.com/coverage/z3c.coverage.coveragereport.html
+    <BLANKLINE>
+
+
+ReportEmailer
+-------------
+
+The ``ReportEmailer`` class is an alternative to ``ReportPrinter``.  It
+collects warnings and sends them via email.
+
+You pass the basic email parameters (sender, recipient and subject line)
+to the constructor:
+
+    >>> from z3c.coverage.coveragediff import ReportEmailer
+    >>> emailer = ReportEmailer('Some Bot <bot@example.com>',
+    ...                         'Maintainer <m@example.com>',
+    ...                         'Test coverage regressions')
+
+You add warnings about Python modules by passing the filename of the
+coverage file and the message
+
+    >>> emailer.warn('/tmp/coverage/z3c.coverage.coveragediff.cover',
+    ...              '3 new untested lines')
+    >>> emailer.warn('/tmp/coverage/z3c.coverage.coveragereport.cover',
+    ...              '2 new untested lines')
+
+Finally you send the email.  Since it wouldn't be a good idea to actually
+send emails from the test suite, we'll use a stub MailSender class:
+
+    >>> class FakeMailSender(object):
+    ...     def send_email(self, from_addr, to_addr, subject, body):
+    ...         print("From:", from_addr)
+    ...         print("To:", to_addr)
+    ...         print("Subject:", subject)
+    ...         print("---")
+    ...         print(body)
+    >>> emailer.mailer = FakeMailSender()
+    >>> emailer.send()
+    From: Some Bot <bot@example.com>
+    To: Maintainer <m@example.com>
+    Subject: Test coverage regressions
+    ---
+    z3c.coverage.coveragediff: 3 new untested lines
+    z3c.coverage.coveragereport: 2 new untested lines
+
+
+Links to web pages
+~~~~~~~~~~~~~~~~~~
+
+Report emailer can also include links to web pages with the coverage reports
+(e.g. the ones you can get from the ``coveragereport`` tool distributed with
+``z3c.coverage``).
+
+    >>> emailer = ReportEmailer('Some Bot <bot@example.com>',
+    ...                         'Maintainer <m@example.com>',
+    ...                         'Test coverage regressions',
+    ...                         web_url='http://example.com/coverage',
+    ...                         mailer=FakeMailSender())
+    >>> emailer.warn('/tmp/coverage/z3c.coverage.coveragediff.cover',
+    ...              '3 new untested lines')
+    >>> emailer.warn('/tmp/coverage/z3c.coverage.coveragereport.cover',
+    ...              '2 new untested lines')
+    >>> emailer.send()
+    From: Some Bot <bot@example.com>
+    To: Maintainer <m@example.com>
+    Subject: Test coverage regressions
+    ---
+    z3c.coverage.coveragediff: 3 new untested lines
+    See http://example.com/coverage/z3c.coverage.coveragediff.html
+    <BLANKLINE>
+    z3c.coverage.coveragereport: 2 new untested lines
+    See http://example.com/coverage/z3c.coverage.coveragereport.html
+    <BLANKLINE>
+
+
+Empty reports
+~~~~~~~~~~~~~
+
+Empty reports are not sent out.
+
+    >>> emailer = ReportEmailer('Some Bot <bot@example.com>',
+    ...                         'Maintainer <m@example.com>',
+    ...                         'Test coverage regressions',
+    ...                         mailer=FakeMailSender())
+    >>> emailer.send()
+
+
+Main function
+-------------
+
+A traditional ``main`` function parses command-line arguments and hooks up
+``compare_dirs`` with the appropriate reporter.
+
+    >>> import sys
+    >>> from z3c.coverage.coveragediff import main
+
+    >>> def run(args):
+    ...     try:
+    ...         old_stderr = sys.stderr
+    ...         sys.argv = args
+    ...         sys.stderr = sys.stdout
+    ...         try:
+    ...             main()
+    ...         finally:
+    ...             sys.stderr = old_stderr
+    ...     except SystemExit as e:
+    ...         if e.code:
+    ...             print("(returned exit code %s)" % e.code)
+
+
+Help message
+~~~~~~~~~~~~
+
+    >>> run(['coveragediff', '--help'])
+    Usage: coveragediff [options] olddir newdir
+    <BLANKLINE>
+    Options:
+      -h, --help         show this help message and exit
+      --include=REGEX    only consider files matching REGEX
+      --exclude=REGEX    ignore files matching REGEX
+      --email=ADDR       send the report to a given email address (only if
+                         regressions were found)
+      --from=ADDR        set the email sender address
+      --subject=SUBJECT  set the email subject
+      --web-url=BASEURL  include hyperlinks to HTML-ized coverage reports at a
+                         given URL
+
+
+Missing arguments
+~~~~~~~~~~~~~~~~~
+
+    >>> run(['coveragediff'])
+    Usage: coveragediff [options] olddir newdir
+    <BLANKLINE>
+    coveragediff: error: wrong number of arguments
+    (returned exit code 2)
+
+    >>> run(['coveragediff', 'somedir'])
+    Usage: coveragediff [options] olddir newdir
+    <BLANKLINE>
+    coveragediff: error: wrong number of arguments
+    (returned exit code 2)
+
+
+Excess arguments
+~~~~~~~~~~~~~~~~
+
+    >>> run(['coveragediff', 'dir1', 'dir2', 'dir3'])
+    Usage: coveragediff [options] olddir newdir
+    <BLANKLINE>
+    coveragediff: error: wrong number of arguments
+    (returned exit code 2)
+
+
+Regular run
+~~~~~~~~~~~
+
+``coveragediff`` follows the hallowed Unix tradition and does not print any
+unnecessary output, just the basics
+
+    >>> run(['coveragediff', sampleinput_dir, another_dir])
+    z3c.coverage.coveragediff: 36 new lines of untested code
+    z3c.coverage.fakenewmodule: new file with 3 lines of untested code (out of 13)
+
+It means that if you have no coverage regressions in your test suite, the
+output will be empty
+
+    >>> run(['coveragediff', another_dir, another_dir])
+
+
+Include/exclude patterns
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+    >>> run(['coveragediff', sampleinput_dir, another_dir,
+    ...      '--include', 'fake'])
+    z3c.coverage.fakenewmodule: new file with 3 lines of untested code (out of 13)
+
+    >>> run(['coveragediff', sampleinput_dir, another_dir,
+    ...      '--exclude', 'fake'])
+    z3c.coverage.coveragediff: 36 new lines of untested code
+
+
+Links to web pages
+~~~~~~~~~~~~~~~~~~
+
+If you use ``coveragereport`` to produce HTML versions of the plain-text
+coverage files, and you have those available on the web, you can ask
+``coveragediff`` to include links to the appropriate modules for convenient
+copy and paste (or clickety-clicking for those of us who use superior terminal
+emulators like GNOME Terminal).
+
+    >>> run(['coveragediff', sampleinput_dir, another_dir,
+    ...      '--web-url', 'http://example.com/coverage'])
+    z3c.coverage.coveragediff: 36 new lines of untested code
+    See http://example.com/coverage/z3c.coverage.coveragediff.html
+    <BLANKLINE>
+    z3c.coverage.fakenewmodule: new file with 3 lines of untested code (out of 13)
+    See http://example.com/coverage/z3c.coverage.fakenewmodule.html
+    <BLANKLINE>
+
+
+Reports via email
+~~~~~~~~~~~~~~~~~
+
+You can ask for the output to be emailed instead of being printed to stdout.
+
+    >>> MailSender.connection_class = FakeSMTP
+    >>> run(['coveragediff', sampleinput_dir, another_dir,
+    ...      '--email', 'Project List <dev@example.com>',
+    ...      '--from', 'Coverage Daemon <root@example.com>'])
+    Connecting to localhost:25
+    MAIL FROM:<root@example.com>
+    RCPT TO:<dev@example.com>
+    DATA
+    Content-Type: text/plain; charset="us-ascii"
+    MIME-Version: 1.0
+    Content-Transfer-Encoding: 7bit
+    From: Coverage Daemon <root@example.com>
+    To: Project List <dev@example.com>
+    Subject: Unit test coverage regression
+    <BLANKLINE>
+    z3c.coverage.coveragediff: 36 new lines of untested code
+    z3c.coverage.fakenewmodule: new file with 3 lines of untested code (out of 13)
+    .
+    QUIT
+
+
+coveragediff.py is a script
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For convenience you can download the ``coveragediff.py`` module and run it
+as a script
+
+    >>> sys.argv = ['coveragediff', sampleinput_dir, another_dir]
+    >>> script_file = os.path.join(z3c.coverage.__path__[0], 'coveragediff.py')
+    >>> with open(script_file) as f:
+    ...     code = compile(f.read(), script_file, 'exec')
+    ...     exec(code, dict(__name__='__main__'))
+    z3c.coverage.coveragediff: 36 new lines of untested code
+    z3c.coverage.fakenewmodule: new file with 3 lines of untested code (out of 13)

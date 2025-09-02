@@ -1,0 +1,336 @@
+======================
+p01.recipe.setup:paste
+======================
+
+This Zope 3 recipes offers a Paste Deploy setup for Zope3 projects. It requires
+to define a Paste Deploy *.ini file in the buildout.cfg. The big difference
+between this recipe and p01.recipe.paster is that this recipes offers a non
+ZODB setup. This means the recipe doesn't check for a zodb part in the config
+section.
+
+
+Options
+-------
+
+The 'paste' recipe accepts the following options:
+
+eggs
+  The names of one or more eggs, with their dependencies that should
+  be included in the Python path of the generated scripts.
+
+parts
+  The parts/* location where the buildout scripts get stored. This allows to
+  setup more then one server startup scripts in one location. If this option
+  is given all script names get prefixed within this name. Note, you ave to
+  make sure that your wsgi application factory can fetch this different name.
+  See p01/publisher/wsgi.py for a sample how you can guess this name.
+
+ini
+  The paste deploy ``paste.ini`` file content.
+
+conf
+  The zope paste.conf file defining the error log and product configuration
+  section.
+
+zcml
+  The zope paste.zcml file used by the zope application.
+
+environment (optional)
+  The environement if needed by your application code.
+
+
+Built in template subtitution
+-----------------------------
+
+The ini, conf and zcml options allows to inherit templates like any other
+buildout recipe. But we support a additional special variabe syntax like
+@{options:foobar} next to the common ${buildout:directory} syntax.
+You can define additional arguments in your recipe and use a template for
+ini, conf or zcml and use this special syntax for replace them within the
+recipes custom options.
+
+sample:
+
+  [conf]
+  ini =
+    [loggers]
+    keys = root, wsgi
+    [server:main]
+    use = egg:Paste#http
+    host = 127.0.0.1
+    port = @{options:port}
+  conf =
+    <product-config p01.cdn>
+      minify @{options:minify}
+    </product-config>
+
+  [app]
+  recipe = p01.recipe.setup:paste
+  eggs = xpo
+  ini = ${conf:ini}
+  zcml = ${conf:zcml}
+  conf = ${conf:conf}
+  port = 8080
+  minify = false
+
+
+Test
+----
+
+Lets define a (bogus) eggs that we can use in our application:
+
+  >>> mkdir('demo')
+  >>> write('demo', 'setup.py',
+  ... '''
+  ... from setuptools import setup
+  ... setup(name = 'demo')
+  ... ''')
+
+Now check if the setup was correct:
+
+  >>> ls('bin')
+  -  buildout
+
+We'll create a ``buildout.cfg`` file that defines our paste serve configuration:
+
+  >>> write('buildout.cfg',
+  ... '''
+  ... [buildout]
+  ... develop = demo
+  ... parts = myapp
+  ...
+  ... [env]
+  ... PREFER_Z3C_PT = True
+  ...
+  ... [myapp]
+  ... eggs = demo
+  ... recipe = p01.recipe.setup:paste
+  ... environment = env
+  ... ini =
+  ...   [app:main]
+  ...   use = egg:demo
+  ...
+  ...   [server:main]
+  ...   use = egg:Paste#http
+  ...   host = 127.0.0.1
+  ...   port = 8080
+  ...
+  ... conf =
+  ...
+  ...   <eventlog>
+  ...     <logfile>
+  ...       formatter zope.exceptions.log.Formatter
+  ...       path ${buildout:directory}/parts/myapp/error.log
+  ...     </logfile>
+  ...     <logfile>
+  ...       formatter zope.exceptions.log.Formatter
+  ...       path STDOUT
+  ...     </logfile>
+  ...   </eventlog>
+  ...
+  ...  devmode on
+  ...
+  ... zcml =
+  ...   <!-- inlcude other zcml files like principals.zcml or securitypolicy.zcml
+  ...        and your app configuration -->
+  ...   <include package="demo" file="app.zcml" />
+  ...
+  ... ''' % globals())
+
+Now, Let's run the buildout and see what we get:
+
+  >>> print(system(join('bin', 'buildout')))
+  Develop: '/sample-buildout/demo'
+  Installing myapp.
+  Generated script '/sample-buildout/bin/myapp'.
+
+The bin folder contains the scripts for serve our new created paste deploy
+server:
+
+  >>> ls('bin')
+  -  buildout
+  -  myapp
+
+Check the content of our new generated myapp script. As you can see, the
+generated script uses the ``paste.script.command.run`` for starting our server:
+
+  >>> cat('bin', 'myapp')
+  <BLANKLINE>
+  import sys
+  sys.path[0:0] = [
+      '/sample-buildout/demo',
+      ]
+  <BLANKLINE>
+  <BLANKLINE>
+  import os
+  sys.argv[0] = os.path.abspath(sys.argv[0])
+  os.environ['PREFER_Z3C_PT'] = 'True'
+  <BLANKLINE>
+  <BLANKLINE>
+  import paste.script.command
+  <BLANKLINE>
+  if __name__ == '__main__':
+      sys.exit(paste.script.command.run([
+    'serve', '/sample-buildout/parts/myapp/paste.ini',
+    ]+sys.argv[1:]))
+
+Check the content of our new generated paste.ini file:
+
+  >>> cat('parts', 'myapp', 'paste.ini')
+  <BLANKLINE>
+  [app:main]
+  use = egg:demo
+  [server:main]
+  use = egg:Paste#http
+  host = 127.0.0.1
+  port = 8080
+
+Check the content of our new generated site.zcml file:
+
+  >>> cat('parts', 'myapp', 'site.zcml')
+  <configure
+      xmlns="http://namespaces.zope.org/zope">
+  <BLANKLINE>
+  <!-- inlcude other zcml files like principals.zcml or securitypolicy.zcml
+  and your app configuration -->
+  <include package="demo" file="app.zcml" />
+  <BLANKLINE>
+  </configure>
+
+Check the content of our new generated zope.conf file:
+
+  >>> cat('parts', 'myapp', 'zope.conf')
+  devmode on
+  site-definition /sample-buildout/parts/myapp/site.zcml
+  <BLANKLINE>
+  <eventlog>
+    <logfile>
+      formatter zope.exceptions.log.Formatter
+      path /sample-buildout/parts/myapp/error.log
+    </logfile>
+    <logfile>
+      formatter zope.exceptions.log.Formatter
+      path STDOUT
+    </logfile>
+  </eventlog>
+
+
+Entry point
+-----------
+
+As you probably know, there is some magic going on during startup. The section
+``app:main`` in the paste.ini file above must be defined as entry_point in your
+projects setup.py file. Without them, the ``app:main`` isn't available. You can
+define such a app:main entry point by using an ``application_factory``
+like shown here:
+
+  def application_factory(global_conf, conf='conf'):
+      zope_conf = os.path.join(global_conf['here'], conf)
+      return p01.publisher.application.getWSGIApplication(zope_conf)
+
+The setup in setup.py looks like:
+
+  setup(
+      name = 'something',
+      version = '0.5.0dev',
+      ...
+      include_package_data = True,
+      package_dir = {'':'src'},
+      namespace_packages = [],
+      install_requires = [
+          'some.package',
+          ],
+      entry_points = """
+          [paste.app_factory]
+          main = p01.recipe.setup.wsgi:application_factory
+          """,
+  )
+
+
+gevent support
+--------------
+
+We built in gevent support. Or let's say we support an initialization part
+and an explicit cmd (module and method) where you can reference a custom
+paster.script.command run method which probably will call geven.monkey.patch_all
+before loading modules define in the paster ini file. You can reference such
+a modul, method an initialization with:
+
+
+  >>> write('buildout.cfg',
+  ... '''
+  ... [buildout]
+  ... develop = demo
+  ... parts = mygevent
+  ...
+  ... [env]
+  ... PREFER_Z3C_PT = True
+  ...
+  ... [mygevent]
+  ... eggs = demo
+  ... recipe = p01.recipe.setup:paste
+  ... environment = env
+  ... ini =
+  ...   [app:main]
+  ...   use = egg:demo
+  ...
+  ...   [server:main]
+  ...   use = egg:Paste#http
+  ...   host = 127.0.0.1
+  ...   port = 8080
+  ...
+  ... conf =
+  ...
+  ...   <eventlog>
+  ...     <logfile>
+  ...       formatter zope.exceptions.log.Formatter
+  ...       path ${buildout:directory}/parts/myapp/error.log
+  ...     </logfile>
+  ...     <logfile>
+  ...       formatter zope.exceptions.log.Formatter
+  ...       path STDOUT
+  ...     </logfile>
+  ...   </eventlog>
+  ...
+  ...  devmode on
+  ...
+  ... zcml =
+  ...   <!-- inlcude other zcml files like principals.zcml or securitypolicy.zcml
+  ...        and your app configuration -->
+  ...   <include package="demo" file="app.zcml" />
+  ...
+  ... module = demo.wsgi
+  ... method= run
+  ... initialization = import gevent.monkey
+  ...   gevent.monkey.patch_all()
+  ... ''' % globals())
+
+  >>> print(system(join('bin', 'buildout')))
+  Develop: '/sample-buildout/demo'
+  Uninstalling myapp.
+  Installing mygevent.
+  Generated script '/sample-buildout/bin/mygevent'.
+
+  >>> ls('bin')
+  -  buildout
+  -  mygevent
+
+  >>> cat('bin', 'mygevent')
+  <BLANKLINE>
+  import sys
+  sys.path[0:0] = [
+    '/sample-buildout/demo',
+    ]
+  <BLANKLINE>
+  import os
+  sys.argv[0] = os.path.abspath(sys.argv[0])
+  os.environ['PREFER_Z3C_PT'] = 'True'
+  import gevent.monkey
+  gevent.monkey.patch_all()
+  <BLANKLINE>
+  import demo.wsgi
+  <BLANKLINE>
+  if __name__ == '__main__':
+      sys.exit(demo.wsgi.run([
+    'serve', '/sample-buildout/parts/mygevent/paste.ini',
+    ]+sys.argv[1:]))

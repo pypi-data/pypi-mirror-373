@@ -1,0 +1,101 @@
+======
+mkfile
+======
+
+The mkfile recipe creates a file with a given path, content and
+permissions.
+
+Lets create a minimal `buildout.cfg` file:
+
+  >>> write(sample_buildout, 'buildout.cfg',
+  ... """
+  ... [buildout]
+  ... parts = script
+  ...
+  ... [script]
+  ... recipe = p01.recipe.setup:mkfile
+  ... target = file.sh
+  ... content = dodo
+  ... mode = 0755
+  ... """)
+  >>> print(system(buildout))
+  Generated script '/sample-buildout/bin/buildout'.
+  Installing script.
+  script: Writing file /sample-buildout/file.sh
+  script: Change mode ... for /sample-buildout/file.sh
+
+  >>> ls(sample_buildout)
+  -  .installed.cfg
+  d  bin
+  -  buildout.cfg
+  d  develop-eggs
+  d  eggs
+  -  file.sh
+  d  parts
+
+The content is written to the file.
+
+  >>> cat(sample_buildout, 'file.sh')
+  dodo
+
+And the mode is set. Note set a mode is not supported on windows
+
+  >>> import os, stat, sys
+  >>> target = os.path.join(sample_buildout, 'file.sh')
+  >>> if sys.platform[:3].lower() != "win":
+  ...     oct(stat.S_IMODE(os.stat(target)[stat.ST_MODE]))
+  ... else:
+  ...     '0755'
+  '0755'
+
+If we change the filename the old file is deleted.
+
+  >>> write(sample_buildout, 'buildout.cfg',
+  ... """
+  ... [buildout]
+  ... parts = script
+  ...
+  ... [script]
+  ... recipe = p01.recipe.setup:mkfile
+  ... target = newfile.sh
+  ... content = dodo
+  ... mode = 0755
+  ... """)
+  >>> print(system(buildout))
+  Uninstalling script.
+  Installing script.
+  script: Writing file /sample-buildout/newfile.sh
+  script: Change mode ... for /sample-buildout/newfile.sh
+
+  >>> ls(sample_buildout)
+  -  .installed.cfg
+  d  bin
+  -  buildout.cfg
+  d  develop-eggs
+  d  eggs
+  -  newfile.sh
+  d  parts
+
+We can also specify to create the path for the file.
+
+  >>> write(sample_buildout, 'buildout.cfg',
+  ... """
+  ... [buildout]
+  ... parts = script
+  ...
+  ... [script]
+  ... recipe = p01.recipe.setup:mkfile
+  ... createpath = On
+  ... target = subdir/for/file/file.sh
+  ... content = dodo
+  ... mode = 0755
+  ... """)
+  >>> print(system(buildout))
+  Uninstalling script.
+  Installing script.
+  script: Creating directory /sample-buildout/subdir/for/file
+  script: Writing file /sample-buildout/subdir/for/file/file.sh
+  script: Change mode ... for /sample-buildout/subdir/for/file/file.sh
+
+  >>> ls(sample_buildout + '/subdir/for/file')
+  -  file.sh

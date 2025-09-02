@@ -1,0 +1,200 @@
+============
+J01form test
+============
+
+The testbrowser package provides built-in support for testing j01.jsonrpc and
+j01form components. This means a request get submitted by JSON-RPC and the
+content get partial replaced based on the target expression given from the
+repsonse.
+
+from __future__ import absolute_import
+from __future__ import print_function
+  >>> from p01.testbrowser.testing import getWSGITestBrowser
+  >>> from p01.testbrowser.ftests.wsgitestapp import WSGITestApplication
+
+Setup the wsgi test application:
+
+  >>> wsgi_app = WSGITestApplication()
+
+Let's setup the demo app and get a j01 form:
+
+  >>> url = 'http://localhost/j01form.html'
+  >>> browser = getWSGITestBrowser(url, wsgi_app=wsgi_app)
+
+Check the page content:
+
+  >>> print((browser.contents))
+  <html>
+  <body>
+  <div id="content">
+    <h1>J01Form Test</h1>
+    <form id="1" name="form" action="j01form.html">
+      <div id="left">
+        <label for="text1">Text 1</label>
+        <input type="text" id="text1" name="text1"
+               value="Text 1" />
+        <label for="text2">Text 2</label>
+        <input type="text" id="text2" name="text2"
+               value="Text 2" />
+        <input type="image" name="image1" src="zope3logo.gif" />
+        <input type="button" id="submit" name="submit"
+               value="Submit" />
+        <input type="button" name="load" value="Load"
+               data-j01-testing-method="j01LoadContent"
+               data-j01-testing-error="j01RenderContentError"
+               data-j01-testing-success="j01RenderContentSuccess"
+               data-j01-testing-typ="JSONRPCButton"
+               data-j01-testing-url="http://localhost:9090/j01form.html" data-j01-testing-form="form" />
+      </div>
+      <div id="right">No Content</div>
+    </form>
+  </div>
+  </body>
+  </html>
+
+
+We can get the input control:
+
+  >>> control = browser.getControl(name='text1')
+  >>> control
+  <TextControl name='text1' id='text1'>
+
+  >>> control.value
+  'Text 1'
+
+  >>> control = browser.getControl(name='text2')
+  >>> control
+  <TextControl name='text2' id='text2'>
+
+  >>> control.value
+  'Text 2'
+
+set a value:
+
+  >>> control = browser.getControl(name='text1')
+  >>> control.value = 'value'
+  >>> control.value
+  'value'
+
+and submit the form with a simple POST request (non json-rpc):
+
+  >>> browser.getControl(name='submit').click()
+
+  browser.getControl(name='text1').value
+  'value'
+
+Check the page content. As you can see, the text1 value is our posted value:
+
+  >>> print((browser.contents))
+  <html>
+  <body>
+  <div id="content">
+    <h1>J01Form Test</h1>
+    <form id="1" name="form" action="j01form.html">
+      <div id="left">
+        <label for="text1">Text 1</label>
+        <input type="text" id="text1" name="text1"
+               value="value" />
+        <label for="text2">Text 2</label>
+        <input type="text" id="text2" name="text2"
+               value="Text 2" />
+        <input type="image" name="image1" src="zope3logo.gif" />
+        <input type="button" id="submit" name="submit"
+               value="Submit" />
+        <input type="button" name="load" value="Load"
+               data-j01-testing-method="j01LoadContent"
+               data-j01-testing-error="j01RenderContentError"
+               data-j01-testing-success="j01RenderContentSuccess"
+               data-j01-testing-typ="JSONRPCButton"
+               data-j01-testing-url="http://localhost:9090/j01form.html" data-j01-testing-form="form" />
+      </div>
+      <div id="right">No Content</div>
+    </form>
+  </div>
+  </body>
+  </html>
+
+
+json-rpc and controls
+---------------------
+
+An important part is, that if j01.jsonrpc submits a form with json.rpc and
+replaces the content, other not replaced content must stay as is. This works
+as shown in test above.
+
+Another important part is, that if we submit and replace partial content in the
+dom, that previous filled controls based on content that didn't get replaces by
+the response content must also stay as is. Otherwise we could loose previous
+filled control values if we replace the dom.
+
+In other words on each request, we will replace the browser content and reset
+some browser internal markers. On json-rpc request we must make sure that
+the control values must survive for the form that doesn't get replaced.
+Let's thest this:
+
+  >>> url = 'http://localhost/j01form.html'
+  >>> browser = getWSGITestBrowser(url, wsgi_app=wsgi_app)
+
+first, load the content into the right div:
+
+  >>> browser.getControl(name='load').click()
+
+Fill in all control values:
+
+  >>> browser.getControl(name='text1').value = 'V1'
+  >>> browser.getControl(name='text2').value = 'V2'
+  >>> browser.getControl(name='text3').value = 'V3'
+  >>> browser.getControl(name='text4').value = 'V4'
+
+Submit the right form. This will replace the right form with a status message
+and the left form input fields will stay as is:
+
+  >>> browser.getControl(name='save').click()
+
+As you can see the control values for text1 and text2 are still there:
+
+  >>> browser.getControl(name='text1').value
+  'V1'
+
+  >>> browser.getControl(name='text2').value
+  'V2'
+
+And the controls text3 and text4 in the right div get replaced with the form
+status message:
+
+And we also dumped the new control value to the dom:
+
+  >>> print(browser.contents)
+  <html>
+   <body>
+    <div id="content">
+     <h1>
+      J01Form Test
+     </h1>
+     <form action="j01form.html" id="1" name="form">
+      <div id="left">
+       <label for="text1">
+        Text 1
+       </label>
+       <input id="text1" name="text1" type="text" value="V1"/>
+       <label for="text2">
+        Text 2
+       </label>
+       <input id="text2" name="text2" type="text" value="V2"/>
+       <input name="image1" src="zope3logo.gif" type="image"/>
+       <input id="submit" name="submit" type="button" value="Submit"/>
+       <input data-j01-testing-error="j01RenderContentError"
+              data-j01-testing-form="form"
+              data-j01-testing-method="j01LoadContent"
+              data-j01-testing-success="j01RenderContentSuccess"
+              data-j01-testing-typ="JSONRPCButton"
+              data-j01-testing-url="http://localhost:9090/j01form.html"
+              name="load" type="button" value="Load"/>
+      </div>
+      <div id="right">
+  Form saved
+      </div>
+     </form>
+    </div>
+   </body>
+  </html>

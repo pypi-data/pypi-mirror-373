@@ -1,0 +1,126 @@
+==========
+Directives
+==========
+
+JSONRPC directive
+-----------------
+
+Show how we can use the jsonrpc directive. Register the meta configuration for 
+the directive.
+
+  >>> from zope.configuration import xmlconfig
+  >>> import p01.jsonrpc
+  >>> context = xmlconfig.file('meta.zcml', p01.jsonrpc)
+
+Now register the view defined in the testing module within the ``p01:jsonrpc``
+directive:
+
+  >>> context = xmlconfig.string("""
+  ... <configure
+  ...     xmlns:p01="http://namespaces.zope.org/p01">
+  ...   <p01:jsonrpc
+  ...       for="p01.jsonrpc.testing.IA"
+  ...       class="p01.jsonrpc.testing.MethodsA"
+  ...       permission="zope.Public"
+  ...       methods="hello"
+  ...       />
+  ... </configure>
+  ... """, context)
+
+Let's check if the view is registered as adapter:
+
+  >>> import zope.component
+  >>> from p01.jsonrpc.testing import A
+  >>> from p01.jsonrpc.testing import TestRequest
+  >>> a = A()
+  >>> request = TestRequest()
+  >>> zope.component.queryMultiAdapter((a, request), name='hello')
+  <p01.jsonrpc.zcml.MethodsA object at ...>
+
+We can also use a layer interface wich will restrict our view registration to
+a specific request type. Provide such a request type layer:
+
+  >>> from p01.jsonrpc.testing import IJSONRPCTestLayer
+  >>> demoRequest = TestRequest()
+  >>> zope.interface.directlyProvides(demoRequest, IJSONRPCTestLayer)
+
+And register a new JSON-RPC view:
+
+  >>> context = xmlconfig.string("""
+  ... <configure
+  ...     xmlns:p01="http://namespaces.zope.org/p01">
+  ...   <p01:jsonrpc
+  ...       for="p01.jsonrpc.testing.IB"
+  ...       class="p01.jsonrpc.testing.MethodsB"
+  ...       permission="zope.Public"
+  ...       methods="hello"
+  ...       layer="p01.jsonrpc.testing.IJSONRPCTestLayer"
+  ...       />
+  ... </configure>
+  ... """, context)
+
+Setup a new content stub:
+
+  >>> from p01.jsonrpc.testing import B
+  >>> b = B()
+
+And test the view within our new layer:
+
+  >>> zope.component.queryMultiAdapter((b, demoRequest), name='hello')
+  <p01.jsonrpc.zcml.MethodsB object at ...>
+
+Note the object b does not know the view within the default request layer:
+
+  >>> zope.component.queryMultiAdapter((b, request), name='hello') is None
+  True
+
+
+setDefaultJSONRPCSkin
+---------------------
+
+  >>> from p01.jsonrpc import interfaces
+  >>> import p01.jsonrpc.zcml
+
+  >>> class IMySkin(zope.interface.Interface):
+  ...     __module__ = 'p01.jsonrpc.tests'
+  >>> zope.interface.directlyProvides(IMySkin, interfaces.IJSONRPCSkinType)
+
+Before we setup a default request, we try to set a default request for our
+request:
+
+  >>> from zope.publisher.skinnable import setDefaultSkin
+  >>> setDefaultSkin(request)
+
+Our request should not provide any default kins since we didn't register any:
+
+  >>> IMySkin.providedBy(request)
+  False
+
+Now let's register a default skin:
+
+  >>> zope.component.provideUtility(IMySkin, interfaces.IJSONRPCSkinType,
+  ...     name='JSONRPC')
+  >>> p01.jsonrpc.zcml.setDefaultJSONRPCSkin('JSONRPC')
+
+We can lookup a default skin from the adapter registry: 
+
+  >>> from zope.publisher.interfaces import IDefaultSkin
+  >>> adapters = zope.component.getSiteManager().adapters
+  >>> default = adapters.lookup((interfaces.IJSONRPCRequest,), IDefaultSkin, '')
+  >>> default is IMySkin
+  True
+
+Since we have a default skin utility registered as a skin type for our 
+request, a new request instance should provide the default skin:
+
+  >>> request = TestRequest()
+  >>> setDefaultSkin(request)
+  >>> IMySkin.providedBy(request)
+  True
+
+We can get the applied default skin by look for our skin type:
+
+  >>> for iface in zope.interface.providedBy(request):
+  ...     if interfaces.IJSONRPCSkinType.providedBy(iface):
+  ...         print("<InterfaceClass %s>" % iface)
+  <InterfaceClass p01.jsonrpc.tests.IMySkin>
