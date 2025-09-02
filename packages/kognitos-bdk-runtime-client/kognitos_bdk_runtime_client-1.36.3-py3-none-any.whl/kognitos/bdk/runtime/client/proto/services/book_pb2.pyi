@@ -1,0 +1,20 @@
+from requests import discover_procedures_pb2 as _discover_procedures_pb2
+from requests import environment_information_pb2 as _environment_information_pb2
+from requests import invoke_procedure_pb2 as _invoke_procedure_pb2
+from requests import resolve_promise_pb2 as _resolve_promise_pb2
+from requests import retrieve_book_pb2 as _retrieve_book_pb2
+from requests import retrieve_book_procedures_pb2 as _retrieve_book_procedures_pb2
+from requests import retrieve_books_pb2 as _retrieve_books_pb2
+from requests import retrieve_discoverables_pb2 as _retrieve_discoverables_pb2
+from requests import test_connection_pb2 as _test_connection_pb2
+from responses import discover_procedures_pb2 as _discover_procedures_pb2_1
+from responses import environment_information_pb2 as _environment_information_pb2_1
+from responses import invoke_procedure_pb2 as _invoke_procedure_pb2_1
+from responses import retrieve_book_pb2 as _retrieve_book_pb2_1
+from responses import retrieve_book_procedures_pb2 as _retrieve_book_procedures_pb2_1
+from responses import retrieve_books_pb2 as _retrieve_books_pb2_1
+from responses import retrieve_discoverables_pb2 as _retrieve_discoverables_pb2_1
+from responses import test_connection_pb2 as _test_connection_pb2_1
+from google.protobuf import descriptor as _descriptor
+from typing import ClassVar as _ClassVar
+DESCRIPTOR: _descriptor.FileDescriptor
