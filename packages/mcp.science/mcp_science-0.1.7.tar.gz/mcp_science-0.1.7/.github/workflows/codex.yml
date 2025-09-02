@@ -1,0 +1,39 @@
+name: Codex
+
+on:
+  workflow_dispatch:
+  issues:
+    types: [labeled]
+  pull_request:
+    branches: [main]
+    types: [labeled]
+
+jobs:
+  codex:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.label.name, 'codex-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      # By default, Codex runs network disabled using --full-auto, so perform
+      # any setup that requires network (such as installing dependencies)
+      # before openai/codex-action.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate GitHub App Token
+        id: generate_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.CODEX_APP_ID }}
+          private-key: ${{ secrets.CODEX_PRIVATE_KEY }}
+
+      - name: Run Codex
+        uses: openai/codex/.github/actions/codex@main
+        with:
+          openai_api_key: ${{ secrets.CODEX_OPENAI_API_KEY }}
+          codex_args: --full-auto
+          github_token: ${{ steps.generate_token.outputs.token }}
+          codex_home: ./.github/codex/home
