@@ -1,0 +1,96 @@
+name: "Nightly Quality Gate"
+on:
+  # allow for kicking off quality gate check manually
+  workflow_dispatch:
+
+  # run 5 AM (UTC) daily
+  schedule:
+    - cron:  '0 5 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+
+  select-providers:
+    runs-on: ubuntu-22.04
+    outputs:
+      providers: ${{ steps.determine-providers.outputs.providers }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v5.0.0
+        with:
+          # in order to properly resolve the version from git
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bootstrap environment
+        uses: ./.github/actions/bootstrap
+        with:
+          tools: false
+
+      - name: Determine providers
+        id: determine-providers
+        run: |
+          # select all providers as test subjects (this populates the matrix downstream)
+          content=`cd tests/quality && make all-providers`
+          echo $content
+          echo "providers=$content" >> $GITHUB_OUTPUT
+
+  validate-provider:
+    runs-on: ubuntu-22.04
+    needs: select-providers
+    strategy:
+      matrix:
+        provider: ${{fromJson(needs.select-providers.outputs.providers)}}
+      fail-fast: false
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v5.0.0
+        with:
+          # in order to properly resolve the version from git
+          fetch-depth: 0
+          # we need submodules for the quality gate to work (requires vulnerability-match-labels repo)
+          submodules: true
+          persist-credentials: false
+
+      - name: Bootstrap environment
+        uses: ./.github/actions/bootstrap
+        with:
+          go: true
+
+      - name: Run quality gate
+        uses: ./.github/actions/quality-gate
+        with:
+          provider: ${{ matrix.provider }}
+        env:
+          # needed as a secret for the github provider
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # note: the name for this check is referenced in release.yaml, do not change here without changing there
+  Nightly-Quality-Gate:
+    runs-on: ubuntu-22.04
+    needs: validate-provider
+    if: ${{ always() && !cancelled() }}
+    steps:
+      # based on https://docs.github.com/en/actions/learn-github-actions/contexts#job-context
+      # the valid result values are: success, failure, cancelled
+      - env:
+          VALIDATION_STATUS: ${{ needs.validate-provider.result }}
+        run: |
+          echo "Validations Status: $VALIDATION_STATUS"
+          if [ "$VALIDATION_STATUS" != "success" ]; then
+            echo "🔴 Quality gate FAILED! 😭"
+            exit 1
+          fi
+          echo "🟢 Quality gate passed!"
+
+      - uses: 8398a7/action-slack@1750b5085f3ec60384090fb7c52965ef822e869e #v3.18.0
+        if: ${{ failure() }}
+        with:
+          status: ${{ job.status }}
+          fields: repo,workflow,action,eventName
+          text: "Vunnel nightly quality gate has failed: https://github.com/anchore/vunnel/actions/workflows/nightly-quality-gate.yaml"
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_TOOLBOX_WEBHOOK_URL }}

@@ -1,0 +1,203 @@
+name: "Release"
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: tag the latest commit on main with the given version (prefixed with v)
+        required: true
+      bypassQualityGate:
+        description: bypass the quality gate check
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  quality-gate:
+    environment: release
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Check if tag already exists
+        # note: this will fail if the tag already exists
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          # Validate version format
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: Version must match pattern v*.*.* (e.g., v1.2.3)"
+            exit 1
+          fi
+          git tag "$VERSION"
+
+      # we don't want to release commits that have been pushed and tagged, but not necessarily merged onto main
+      - name: Ensure tagged commit is on main
+        run: |
+          echo "Tag: ${GITHUB_REF##*/}"
+          git fetch origin main
+          git merge-base --is-ancestor ${GITHUB_REF##*/} origin/main && echo "${GITHUB_REF##*/} is a commit on main!"
+
+      - name: Check static analysis results
+        uses: fountainhead/action-wait-for-check@5a908a24814494009c4bb27c242ea38c93c593be #v1.1.1
+        id: static-analysis
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # This check name is defined as the github action job name (in .github/workflows/validations.yaml)
+          checkName: "Static Analysis"
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Check test results
+        uses: fountainhead/action-wait-for-check@5a908a24814494009c4bb27c242ea38c93c593be #v1.1.1
+        id: test
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # This check name is defined as the github action job name (in .github/workflows/validations.yaml)
+          checkName: "Test Gate"
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Check nightly quality gate results
+        uses: fountainhead/action-wait-for-check@5a908a24814494009c4bb27c242ea38c93c593be #v1.2.0
+        id: nightly-quality-gate
+        if: ${{ github.event.inputs.bypassQualityGate != 'true' }}
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # This check name is defined as the github action job name (in .github/workflows/nightly-quality-gate.yaml)
+          checkName: "Nightly-Quality-Gate"
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          # If there is no result in 10 seconds, assume it hasn't run yet
+          timeoutSeconds: 10
+          intervalSeconds: 3
+
+      - name: Release quality gate
+        if: steps.static-analysis.conclusion != 'success' || steps.test.conclusion != 'success' || (steps.nightly-quality-gate.conclusion != 'success' && steps.nightly-quality-gate.conclusion != 'skipped')
+        env:
+          STATIC_ANALYSIS_STATUS: ${{ steps.static-analysis.conclusion }}
+          TEST_STATUS: ${{ steps.test.conclusion }}
+          QUALITY_GATE_STATUS: ${{ steps.nightly-quality-gate.conclusion }}
+        run: |
+          echo "Static Analysis Status: $STATIC_ANALYSIS_STATUS"
+          echo "Test Status: $TEST_STATUS"
+          echo "Nightly Quality Gate Status: $QUALITY_GATE_STATUS"
+          false
+
+  tag:
+    needs:
+      - quality-gate
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      packages: write
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v5.0.0
+        with:
+          # in order to properly resolve the version from git
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Tag release
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Validate version format
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: Version must match pattern v*.*.* (e.g., v1.2.3)"
+            exit 1
+          fi
+          git config --global user.name "anchoreci"
+          git config --global user.email "anchoreci@users.noreply.github.com"
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin --tags
+
+  release-pypi:
+    needs:
+      - tag
+    runs-on: ubuntu-22.04
+    # important! PyPI OIDC auth will fail without environment: release
+    environment: release
+    permissions:
+      contents: read
+      # required to authenticate with PyPI via OIDC token
+      id-token: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v5.0.0
+        with:
+          # in order to properly resolve the version from git
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bootstrap environment
+        uses: ./.github/actions/bootstrap
+
+      # note: authentication is via the OIDC token
+      - name: Publish to PyPI
+        run: make ci-publish-pypi
+
+  release-docker:
+    needs:
+      - tag
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v5.0.0
+        with:
+          # in order to properly resolve the version from git
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bootstrap environment
+        uses: ./.github/actions/bootstrap
+
+      - name: Login to ghcr.io
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: |
+          echo "$GITHUB_TOKEN" | oras login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          echo "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Promote commit image to release
+        run: |
+          make ci-promote-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-github:
+    needs:
+      - tag
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      packages: write
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v5.0.0
+        with:
+          # in order to properly resolve the version from git
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bootstrap environment
+        uses: ./.github/actions/bootstrap
+
+      - name: Create github release
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Validate version format
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: Version must match pattern v*.*.* (e.g., v1.2.3)"
+            exit 1
+          fi
+          make changelog
+          gh release create "$VERSION" -F CHANGELOG.md -t "$VERSION"

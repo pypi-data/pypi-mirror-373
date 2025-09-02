@@ -1,0 +1,117 @@
+name: "Validations"
+on:
+  # needed for publishing commit images on the main branch
+  push:
+    branches:
+      - main
+
+  # needed when running from forks
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+
+  # note: the name for this check is referenced in release.yaml, do not change here without changing there
+  Static-Analysis:
+    name: "Static Analysis"
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v5.0.0
+        with:
+          # in order to properly resolve the version from git
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bootstrap environment
+        uses: ./.github/actions/bootstrap
+
+      - name: Run static analysis
+        run: make static-analysis
+
+      - name: Ensure quality gate tools are properly configured
+        run: |
+          cd tests/quality && make validate-test-tool-versions
+
+  Test:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        # note: this is not a single source of truth (this is also in the tox.ini)
+        python:
+          - version: '3.11'
+            toxEnv: py311
+
+          - version: '3.12'
+            toxEnv: py312
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v5.0.0
+        with:
+          # in order to properly resolve the version from git
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bootstrap environment
+        uses: ./.github/actions/bootstrap
+        with:
+          python-version: ${{ matrix.python.version }}
+
+      - name: Run unit tests
+        run: uv run tox -e ${{ matrix.python.toxEnv }}
+
+      - name: Build assets
+        run: make build
+
+  # this is to help facilitate ensuring all checks have run with the checks API for release
+  # see https://github.com/orgs/community/discussions/26822#discussioncomment-3305794
+  # as well as the release.yaml workflow
+  Test-Gate:
+    if: ${{ always() }}
+    runs-on: ubuntu-22.04
+    name: Test Gate
+    needs: [Test]
+    steps:
+      - env:
+          TEST_RESULT: ${{ needs.Test.result }}
+        run: |
+          if [[ $TEST_RESULT == "success" || $TEST_RESULT == "skipped" ]]; then
+            exit 0
+          else
+            exit 1
+          fi
+
+  Publish-PreProd:
+    runs-on: ubuntu-22.04
+    needs: [Static-Analysis, Test]
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      # package write permission is needed for publishing commit images
+      packages: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v5.0.0
+        with:
+          # in order to properly resolve the version from git
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bootstrap environment
+        uses: ./.github/actions/bootstrap
+
+      - name: Login to ghcr.io
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: |
+          echo "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build assets
+        run: make build
+
+      - name: Publish commit image
+        run: make ci-publish-commit
