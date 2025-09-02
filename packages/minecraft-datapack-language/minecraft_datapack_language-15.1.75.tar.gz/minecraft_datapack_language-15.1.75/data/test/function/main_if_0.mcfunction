@@ -1,0 +1,1 @@
+tellraw @a [{"text":"Counter is greater than 3"}]
