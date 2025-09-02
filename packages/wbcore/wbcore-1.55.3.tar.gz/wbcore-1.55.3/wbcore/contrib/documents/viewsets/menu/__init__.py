@@ -1,0 +1,1 @@
+from .documents import DMS_MENUITEM, DOCUMENT_TYPE_MENUITEM
