@@ -1,0 +1,168 @@
+Metadata-Version: 2.4
+Name: hvym_stellar
+Version: 0.10
+Summary: Heavymeta Stellar Utilities for Python , By: Fibo Metavinci
+Author-email: Fibo Metavinci <pszdw-75nat-5227i-bha5s-y7lai-pebdq-o2agp-3xho4-hd6z6-emxrd-nqe@dmail.ai>
+Description-Content-Type: text/markdown
+License-Expression: MIT
+License-File: LICENSE
+Requires-Dist: annotated-types>=0.7.0
+Requires-Dist: certifi>=2025.4.26
+Requires-Dist: cffi>=1.17.1
+Requires-Dist: charset-normalizer>=3.4.2
+Requires-Dist: docutils>=0.21.2
+Requires-Dist: idna>=3.10
+Requires-Dist: mnemonic>=0.20
+Requires-Dist: pycparser>=2.22
+Requires-Dist: pydantic>=2.11.5
+Requires-Dist: pydantic_core>=2.33.2
+Requires-Dist: pymacaroons>=0.13.0
+Requires-Dist: PyNaCl>=1.5.0
+Requires-Dist: requests>=2.32.4
+Requires-Dist: requests-sse>=0.5.1
+Requires-Dist: six>=1.17.0
+Requires-Dist: stellar-sdk>=12.3.0
+Requires-Dist: toml>=0.10.2
+Requires-Dist: tomli_w>=1.2.0
+Requires-Dist: typing-inspection>=0.4.1
+Requires-Dist: typing_extensions>=4.14.0
+Requires-Dist: urllib3>=2.5.0
+Requires-Dist: xdrlib3>=0.1.1
+Project-URL: Home, https://github.com/inviti8/hvym_stellar
+
+# hvym_stellar
+
+A Python library for secure token generation and verification using Stellar keypairs. This package provides a robust way to create and verify tokens with support for expiration, access control, and secret sharing.
+
+## Features
+
+- **Secure Token Generation**: Create cryptographically secure tokens using Stellar keypairs
+- **Token Expiration**: Set token expiration times to enhance security
+- **Access Control**: Define fine-grained access control through caveats
+- **Secret Sharing**: Securely share secrets between parties
+- **Backward Compatibility**: Support for legacy token verification
+- **Timestamp Validation**: Built-in support for token expiration and max age validation
+
+## Installation
+
+```bash
+pip install hvym_stellar
+```
+
+## Dependencies
+
+- PyNaCl (Python binding to libsodium)
+- pymacaroons (Macaroon token support)
+- stellar-sdk (Stellar keypair and address handling)
+- base58 (For encoding/decoding)
+- cryptography (For encryption/decryption)
+
+## Basic Usage
+
+### 1. Creating a Token
+
+```python
+from hvym_stellar import StellarSharedKeyTokenBuilder, TokenType
+from stellar_sdk import Keypair
+
+# Generate or load Stellar keypairs
+sender_kp = Keypair.random()
+receiver_kp = Keypair.random()
+
+# Create a new token
+token = StellarSharedKeyTokenBuilder(
+    sender_kp,
+    receiver_kp.public_key,
+    token_type=TokenType.ACCESS,
+    expires_in=3600,  # 1 hour expiration
+    caveats={"user_id": "123", "role": "admin"}
+)
+
+# Serialize the token for transmission
+serialized_token = token.serialize()
+```
+
+### 2. Verifying a Token
+
+```python
+from hvym_stellar import StellarSharedKeyTokenVerifier, TokenType
+
+# Verify the token
+verifier = StellarSharedKeyTokenVerifier(
+    receiver_kp,
+    serialized_token,
+    TokenType.ACCESS,
+    expected_caveats={"user_id": "123"},
+    max_age_seconds=3600  # Optional: enforce maximum token age
+)
+
+if verifier.valid():
+    print("Token is valid!")
+    
+    # Access token claims
+    print("Token expires at:", verifier.get_expiration_time())
+    print("Is expired:", verifier.is_expired())
+```
+
+### 3. Sharing Secrets
+
+```python
+# Sender: Create token with a secret
+secret_data = "sensitive-information-here"
+token_with_secret = StellarSharedKeyTokenBuilder(
+    sender_kp,
+    receiver_kp.public_key,
+    token_type=TokenType.SECRET,
+    secret=secret_data,
+    expires_in=300  # 5 minutes
+)
+serialized_secret_token = token_with_secret.serialize()
+
+# Receiver: Extract the secret
+verifier = StellarSharedKeyTokenVerifier(
+    receiver_kp,
+    serialized_secret_token,
+    TokenType.SECRET
+)
+
+if verifier.valid():
+    try:
+        secret = verifier.secret()
+        print("Retrieved secret:", secret)
+    except ValueError as e:
+        print("Failed to retrieve secret:", str(e))
+```
+
+## Token Types
+
+### Access Tokens
+- Used for API authentication and authorization
+- Can include custom caveats for access control
+- Support expiration and max age validation
+
+### Secret Tokens
+- Used for securely sharing sensitive information
+- Automatically encrypted using the receiver's public key
+- Can be decrypted only by the intended recipient
+
+## Security Considerations
+
+- Always use HTTPS when transmitting tokens
+- Set appropriate expiration times for tokens
+- Validate all token claims and caveats on the server side
+- Rotate encryption keys regularly
+- Keep private keys secure and never commit them to version control
+
+## License
+
+MIT License - See [LICENSE](LICENSE) for details.
+
+## Contributing
+
+Contributions are welcome! Please submit a pull request or open an issue to discuss your ideas.
+
+## Version History
+
+- 0.1.0: Initial release
+- 0.9.0: Added timestamp validation and expiration support
+
