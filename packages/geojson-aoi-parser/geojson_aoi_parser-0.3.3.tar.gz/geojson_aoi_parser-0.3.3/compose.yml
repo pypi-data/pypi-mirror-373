@@ -1,0 +1,72 @@
+# Copyright (c) Humanitarian OpenStreetMap Team
+# This file is part of geojson-aoi-parser.
+#
+#     geojson-aoi-parser is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+#
+#     geojson-aoi-parser is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+#
+#     You should have received a copy of the GNU General Public License
+#     along with geojson-aoi-parser.  If not, see <https:#www.gnu.org/licenses/>.
+#
+
+networks:
+  net:
+    name: aoi-parser
+
+services:
+  parser:
+    image: "ghcr.io/hotosm/geojson-aoi-parser:${TAG_OVERRIDE:-ci}"
+    build:
+      target: ci
+    container_name: aoi-parser
+    volumes:
+      # Mount local package
+      - ./geojson_aoi:/opt/python/lib/python3.10/site-packages/geojson_aoi
+      # Mount local tests
+      - ./tests:/data/tests
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - POSTGRES_USER=aoi
+      - POSTGRES_PASSWORD=dummycipassword
+      - POSTGRES_DB=aoi
+      - GEOJSON_AOI_DB_NAME=aoi
+      - GEOJSON_AOI_DB_USER=aoi
+      - GEOJSON_AOI_DB_PASSWORD=dummycipassword
+      - GEOJSON_AOI_DB_HOST=db
+      - GEOJSON_AOI_DB_PORT=5432
+    networks:
+      - net
+    restart: "no"
+    command: "pytest"
+
+  db:
+    image: "postgis/postgis:17-3.5-alpine"
+    container_name: aoi-parser-db
+    environment:
+      - POSTGRES_USER=aoi
+      - POSTGRES_PASSWORD=dummycipassword
+      - POSTGRES_DB=aoi
+      - GEOJSON_AOI_DB_NAME=aoi
+      - GEOJSON_AOI_DB_USER=aoi
+      - GEOJSON_AOI_DB_PASSWORD=dummycipassword
+      - GEOJSON_AOI_DB_HOST=db
+      - GEOJSON_AOI_DB_PORT=5432
+    ports:
+      - "5439:5432"
+    networks:
+      - net
+    restart: "unless-stopped"
+    healthcheck:
+      test: pg_isready -U ${FMTM_DB_USER:-aoi} -d ${FMTM_DB_NAME:-aoi}
+      start_period: 5s
+      interval: 10s
+      timeout: 5s
+      retries: 3
