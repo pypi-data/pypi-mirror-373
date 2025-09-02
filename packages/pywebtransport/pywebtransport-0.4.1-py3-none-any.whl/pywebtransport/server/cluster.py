@@ -1,0 +1,241 @@
+"""
+WebTransport Server Cluster.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from types import TracebackType
+from typing import Any, Self, Type
+
+from pywebtransport.config import ServerConfig
+from pywebtransport.exceptions import ServerError
+from pywebtransport.server.server import WebTransportServer
+from pywebtransport.utils import get_logger
+
+__all__ = ["ServerCluster"]
+
+logger = get_logger("server.cluster")
+
+
+class ServerCluster:
+    """Manages the lifecycle of multiple WebTransport server instances."""
+
+    def __init__(self, configs: list[ServerConfig]):
+        """Initialize the server cluster."""
+        self._configs = configs
+        self._servers: list[WebTransportServer] = []
+        self._running = False
+        self._lock: asyncio.Lock | None = None
+
+    @property
+    def is_running(self) -> bool:
+        """Check if the cluster is currently running."""
+        return self._running
+
+    async def __aenter__(self) -> Self:
+        """Enter the async context, initializing resources and starting all servers."""
+        self._lock = asyncio.Lock()
+        await self.start_all()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: Type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Exit the async context and stop all servers."""
+        await self.stop_all()
+
+    async def start_all(self) -> None:
+        """Start all servers in the cluster concurrently."""
+        if self._lock is None:
+            raise ServerError(
+                "ServerCluster has not been activated. It must be used as an "
+                "asynchronous context manager (`async with ...`)."
+            )
+
+        async with self._lock:
+            if self._running:
+                return
+            initial_configs = self._configs
+
+        started_servers: list[WebTransportServer] = []
+        tasks: list[asyncio.Task[WebTransportServer]] = []
+        try:
+            async with asyncio.TaskGroup() as tg:
+                for config in initial_configs:
+                    tasks.append(tg.create_task(self._create_and_start_server(config)))
+            started_servers = [task.result() for task in tasks]
+        except* Exception as eg:
+            logger.error(f"Failed to start server cluster: {eg.exceptions}")
+            successful_servers = [task.result() for task in tasks if task.done() and not task.exception()]
+            if successful_servers:
+                logger.info(f"Cleaning up {len(successful_servers)} successfully started servers...")
+                try:
+                    async with asyncio.TaskGroup() as cleanup_tg:
+                        for server in successful_servers:
+                            cleanup_tg.create_task(server.close())
+                except* Exception as cleanup_eg:
+                    logger.error(f"Errors during cluster startup cleanup: {cleanup_eg.exceptions}")
+            raise eg.exceptions[0]
+
+        async with self._lock:
+            self._servers = started_servers
+            self._running = True
+            logger.info(f"Started cluster with {len(self._servers)} servers")
+
+    async def stop_all(self) -> None:
+        """Stop all servers in the cluster concurrently."""
+        if self._lock is None:
+            raise ServerError(
+                "ServerCluster has not been activated. It must be used as an "
+                "asynchronous context manager (`async with ...`)."
+            )
+
+        servers_to_stop: list[WebTransportServer] = []
+        async with self._lock:
+            if not self._running:
+                return
+            servers_to_stop = self._servers
+            self._servers = []
+            self._running = False
+
+        if servers_to_stop:
+            try:
+                async with asyncio.TaskGroup() as tg:
+                    for server in servers_to_stop:
+                        tg.create_task(server.close())
+            except* Exception as eg:
+                logger.error(f"Errors occurred while stopping server cluster: {eg.exceptions}")
+                raise eg
+        logger.info("Stopped server cluster")
+
+    async def add_server(self, config: ServerConfig) -> WebTransportServer | None:
+        """Add and start a new server in the running cluster."""
+        if self._lock is None:
+            raise ServerError(
+                "ServerCluster has not been activated. It must be used as an "
+                "asynchronous context manager (`async with ...`)."
+            )
+
+        is_running: bool
+        async with self._lock:
+            is_running = self._running
+            if not is_running:
+                self._configs.append(config)
+                logger.info("Cluster not running. Server config added for next start.")
+                return None
+
+        try:
+            server = await self._create_and_start_server(config)
+            async with self._lock:
+                if not self._running:
+                    await server.close()
+                    logger.warning("Cluster was stopped while new server was starting. New server has been shut down.")
+                    return None
+                self._servers.append(server)
+                logger.info(f"Added server to cluster: {server.local_address}")
+            return server
+        except Exception as e:
+            logger.error(f"Failed to add server to cluster: {e}", exc_info=True)
+            return None
+
+    async def remove_server(self, *, host: str, port: int) -> bool:
+        """Remove and stop a specific server from the cluster by its address."""
+        if self._lock is None:
+            raise ServerError(
+                "ServerCluster has not been activated. It must be used as an "
+                "asynchronous context manager (`async with ...`)."
+            )
+
+        server_to_remove: WebTransportServer | None = None
+        async with self._lock:
+            for server in self._servers:
+                if server.local_address == (host, port):
+                    server_to_remove = server
+                    break
+
+            if server_to_remove:
+                self._servers.remove(server_to_remove)
+            else:
+                logger.warning(f"Server at {host}:{port} not found in cluster.")
+                return False
+
+        await server_to_remove.close()
+        logger.info(f"Removed server from cluster: {host}:{port}")
+        return True
+
+    async def get_cluster_stats(self) -> dict[str, Any]:
+        """Get deeply aggregated statistics for the entire cluster."""
+        if self._lock is None:
+            raise ServerError(
+                "ServerCluster has not been activated. It must be used as an "
+                "asynchronous context manager (`async with ...`)."
+            )
+
+        servers_snapshot: list[WebTransportServer]
+        async with self._lock:
+            if not self._servers:
+                return {}
+            servers_snapshot = self._servers.copy()
+
+        tasks: list[asyncio.Task[dict[str, Any]]] = []
+        try:
+            async with asyncio.TaskGroup() as tg:
+                for s in servers_snapshot:
+                    tasks.append(tg.create_task(s.get_server_stats()))
+        except* Exception as eg:
+            logger.error(f"Failed to fetch stats from some servers: {eg.exceptions}")
+            raise eg
+
+        stats_list = [task.result() for task in tasks if task.done() and not task.exception()]
+
+        agg_stats: dict[str, Any] = {
+            "server_count": len(servers_snapshot),
+            "total_connections_accepted": 0,
+            "total_connections_rejected": 0,
+            "total_connections_active": 0,
+            "total_sessions_active": 0,
+        }
+        for stats in stats_list:
+            agg_stats["total_connections_accepted"] += stats.get("connections_accepted", 0)
+            agg_stats["total_connections_rejected"] += stats.get("connections_rejected", 0)
+            if "connections" in stats:
+                agg_stats["total_connections_active"] += stats["connections"].get("active", 0)
+            if "sessions" in stats:
+                agg_stats["total_sessions_active"] += stats["sessions"].get("active", 0)
+
+        return agg_stats
+
+    async def get_server_count(self) -> int:
+        """Get the number of running servers in the cluster."""
+        if self._lock is None:
+            raise ServerError(
+                "ServerCluster has not been activated. It must be used as an "
+                "asynchronous context manager (`async with ...`)."
+            )
+        async with self._lock:
+            return len(self._servers)
+
+    async def get_servers(self) -> list[WebTransportServer]:
+        """Get a thread-safe copy of all active servers in the cluster."""
+        if self._lock is None:
+            raise ServerError(
+                "ServerCluster has not been activated. It must be used as an "
+                "asynchronous context manager (`async with ...`)."
+            )
+        async with self._lock:
+            return self._servers.copy()
+
+    async def _create_and_start_server(self, config: ServerConfig) -> WebTransportServer:
+        """Create, activate, and start a single server instance."""
+        server = WebTransportServer(config=config)
+        await server.__aenter__()
+        try:
+            await server.listen()
+        except Exception:
+            await server.close()
+            raise
+        return server
