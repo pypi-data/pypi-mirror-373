@@ -1,0 +1,54 @@
+name: build
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: 'check'
+            python: '3.13'
+            tox_env: 'check'
+            os: 'ubuntu-latest'
+          - name: 'py313-dj4 (ubuntu)'
+            python: '3.13'
+            python_arch: 'x64'
+            tox_env: 'py313-dj4'
+            os: 'ubuntu-latest'
+          - name: 'py313-dj5 (ubuntu)'
+            python: '3.13'
+            python_arch: 'x64'
+            tox_env: 'py313-dj5'
+            os: 'ubuntu-latest'
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python }}
+        architecture: ${{ matrix.python_arch }}
+    - name: install dependencies
+      run: |
+        python -mpip install --progress-bar=off -r ci/requirements.txt
+        virtualenv --version
+        pip --version
+        tox --version
+        pip list --format=freeze
+    - name: test
+      run: >
+        tox -e ${{ matrix.tox_env }} -v
+  finish:
+    needs: test
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+    - uses: coverallsapp/github-action@v2
+      with:
+        parallel-finished: true
+    - uses: codecov/codecov-action@v5
+      with:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
