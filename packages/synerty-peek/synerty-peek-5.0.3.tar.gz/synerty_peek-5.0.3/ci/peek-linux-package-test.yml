@@ -1,0 +1,382 @@
+# Test Peek platform package installation
+
+.peek_linux_package_test_template:
+  extends: .peek_package_template
+  stage: test
+  script:
+    - FAILS=0
+    # Install peek-env package first, as it's required by all packages
+    - echo "Installing peek dependency packages..."
+    - dnf install -y 
+         $ARTIFACTS_DIR/peek-env.rpm
+         $ARTIFACTS_DIR/peek-python.rpm
+         $ARTIFACTS_DIR/peek-postgresql.rpm
+
+    # Install Peek platform package
+    - time dnf install -y $ARTIFACTS_DIR/peek-platform-*.rpm 2>&1 | tee dnf.log
+    - grep -v -q '^/var' dnf.log
+    - grep -i -v -q -e '^warning' -e '^error' dnf.log
+
+    # Test Peek installation directory structure
+    - if ! test -d ${PEEK_SOFTWARE_HOME}/peek-platform;
+      then
+          echo "Peek installation directory missing" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    - if ! test -d ${PEEK_SOFTWARE_HOME}/peek-platform/venv;
+      then
+          echo "Peek virtual environment directory missing" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    - if ! test -d ${PEEK_SOFTWARE_HOME}/peek-platform/scripts;
+      then
+          echo "Peek scripts directory missing" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    - if ! test -d ${PEEK_SOFTWARE_HOME}/peek-platform/nodejs;
+      then
+          echo "Peek nodejs directory missing" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    # Test virtual environment
+    - if ! test -f ${PEEK_SOFTWARE_HOME}/peek-platform/venv/bin/python;
+      then
+          echo "Python executable missing in virtual environment" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    - su - peek -c "which python" || true
+    - if ! su - peek -c "which python" | grep -q 'peek-platform';
+      then
+          echo "Python binary not found in peek-platform PATH" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    - if ! su - peek -c "python --version";
+      then
+          echo "Python version check failed" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    # Test pip in virtual environment
+    - su - peek -c "which pip" || true
+    - if ! su - peek -c "which pip" | grep -q 'peek-platform';
+      then
+          echo "Pip binary not found in peek-platform PATH" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    - if ! su - peek -c "pip --version";
+      then
+          echo "Pip version check failed" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    # Test Node.js installation
+    - if ! test -f ${PEEK_SOFTWARE_HOME}/peek-platform/nodejs/bin/node;
+      then
+          echo "Node.js executable missing in nodejs directory" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    - su - peek -c "which node" || true
+    - if ! su - peek -c "which node" | grep -q 'peek-platform';
+      then
+          echo "Node.js binary not found in peek-platform PATH" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    - if ! su - peek -c "node --version";
+      then
+          echo "Node.js version check failed" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    - if ! test -f ${PEEK_SOFTWARE_HOME}/peek-platform/nodejs/bin/npm;
+      then
+          echo "npm executable missing in nodejs directory" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    - su - peek -c "which npm" || true
+    - if ! su - peek -c "which npm" | grep -q 'peek-platform';
+      then
+          echo "npm binary not found in peek-platform PATH" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    - if ! su - peek -c "npm --version";
+      then
+          echo "npm version check failed" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    # Test Peek platform import
+    - if ! su - peek -c "python -c 'import peek_platform'";
+      then
+          echo "Peek platform import failed" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    - su - peek -c "which run_peek_logic_service" || true
+    - if ! su - peek -c "which run_peek_logic_service" | grep -q 'peek-platform';
+      then
+          echo "which run_peek_logic_service check failed" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    - su - peek -c "which run_peek_worker_service" || true
+    - if ! su - peek -c "which run_peek_worker_service" | grep -q 'peek-platform';
+      then
+          echo "which run_peek_worker_service check failed" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    - su - peek -c "which run_peek_agent_service" || true
+    - if ! su - peek -c "which run_peek_agent_service" | grep -q 'peek-platform';
+      then
+          echo "which run_peek_agent_service check failed" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    - su - peek -c "which run_peek_office_service" || true
+    - if ! su - peek -c "which run_peek_office_service" | grep -q 'peek-platform';
+      then
+          echo "which run_peek_office_service check failed" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    - su - peek -c "which run_peek_field_service" || true
+    - if ! su - peek -c "which run_peek_field_service" | grep -q 'peek-platform';
+      then
+          echo "which run_peek_field_service check failed" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    # Test systemd service files exist
+    - for service in peek_logic peek_worker peek_office peek_field peek_agent;
+      do
+        if [ ! -f "/usr/lib/systemd/system/${service}.service" ];
+        then
+            echo "Missing systemd service file ${service}.service" >&2 ;
+            ((FAILS+=1));
+        fi;
+      done
+
+    # Test Peek directories exist and have correct ownership
+    - for dir in ${PEEK_DATA_HOME} ${PEEK_CONFIG_HOME} ${PEEK_LOG_HOME} ${PEEK_RUN_HOME} ${PEEK_TMP_HOME};
+      do
+        if [ ! -d "$dir" ];
+        then
+            echo "Missing Peek directory $dir" >&2 ;
+            ((FAILS+=1));
+        elif [ "$(stat -c %U $dir 2>/dev/null)" != "peek" ];
+        then
+            echo "Directory $dir not owned by peek user" >&2 ;
+            ((FAILS+=1));
+        else
+            echo "✓ Directory $dir exists and is owned by peek user";
+        fi;
+      done
+
+    # Test utility scripts in scripts directory
+    - if [ ! -f ${PEEK_SOFTWARE_HOME}/peek-platform/scripts/peek_stop_all.sh ];
+      then
+          echo "Missing utility script peek_stop_all.sh in scripts directory" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    - if [ ! -f ${PEEK_SOFTWARE_HOME}/peek-platform/scripts/peek_restart_all.sh ];
+      then
+          echo "Missing utility script peek_restart_all.sh in scripts directory" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    # Test utility scripts are executable
+    - if ! test -x ${PEEK_SOFTWARE_HOME}/peek-platform/scripts/peek_stop_all.sh;
+      then
+          echo "Utility script peek_stop_all.sh not executable" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    # Test admin directory installation
+    - if [ ! -d ${PEEK_SOFTWARE_HOME}/peek-platform/share/admin ];
+      then
+          echo "Missing admin directory" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    # Test admin scripts are executable
+    - for admin_script in dump_config_only.sh p_gen_self_signed_certificates.sh;
+      do
+        if [ -f "${PEEK_SOFTWARE_HOME}/peek-platform/share/admin/${admin_script}" ];
+        then
+            if ! test -x "${PEEK_SOFTWARE_HOME}/peek-platform/share/admin/${admin_script}";
+            then
+                echo "Admin script ${admin_script} not executable" >&2 ;
+                ((FAILS+=1));
+            fi;
+        else
+            echo "Missing admin script ${admin_script}" >&2 ;
+            ((FAILS+=1));
+        fi;
+      done
+
+    # Test environment script installation
+    - if [ ! -f ${PEEK_PROFILE_D}/901-peek-platform.sh ];
+      then
+          echo "Missing main environment script";
+          ((FAILS+=1));
+      fi
+
+
+
+
+
+    # Test Node.js applications are installed
+    - |
+      cat > /tmp/test_nodejs_apps.sh << 'EOF'
+      #!/bin/bash
+      set -x
+      SITE_PACKAGES=$(echo SED_PEEK_SOFTWARE_HOME/peek-platform/venv/lib/python*/site-packages)
+      NODE_APPS="peek_field_app peek_office_app peek_admin_app"
+      for app in $NODE_APPS; do
+          if [ -d "${SITE_PACKAGES}/${app}/node_modules" ]; then
+              echo "✓ ${app} node_modules directory exists"
+          else
+              echo "WARNING ${app} node_modules directory missing"
+          fi
+      done
+      EOF
+    - sed -i "s;SED_PEEK_SOFTWARE_HOME;${PEEK_SOFTWARE_HOME};g" /tmp/test_nodejs_apps.sh
+    - chmod +x /tmp/test_nodejs_apps.sh
+    - /tmp/test_nodejs_apps.sh
+
+    # Test that peek user can run utility scripts
+    - if ! su - peek -c "which peek_stop_all.sh";
+      then
+          echo "peek user cannot execute utility scripts" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    # Test environment aliases work for peek user
+    - if ! su - peek -c "alias p_stop_";
+      then
+          echo "Environment aliases not working for peek user" >&2 ;
+          ((FAILS+=1));
+      fi
+
+    # Test package list shows expected packages are installed
+    - su - peek -c "pip list" > pip_list.txt
+    - if ! grep -q 'peek-platform\|synerty-peek' pip_list.txt;
+      then
+          echo "Peek platform packages not showing in pip list" >&2 ;
+          su - peek -c "pip list | grep peek || true";
+          ((FAILS+=1));
+      fi
+
+    # Test that old installation directories don't exist
+    - if [ -d /home/peek/synerty-peek-* ];
+      then
+        echo "WARNING Old synerty-peek installation directories found";
+        ls -la /home/peek/synerty-peek-* || true;
+      fi
+
+    # Test that duplicate profile.d directory does not exist
+    - if [ -d ${PEEK_SOFTWARE_HOME}/peek-platform/share/profile.d ];
+      then
+        echo "ERROR Duplicate profile.d directory found at ${PEEK_SOFTWARE_HOME}/peek-platform/share/profile.d" >&2;
+        echo "This causes confusion with duplicate files" >&2;
+        ((FAILS+=1));
+      else
+        echo "✓ No duplicate profile.d directory found";
+      fi
+
+    # Test modular directory structure
+    - echo "Testing modular directory structure..."
+    - echo "Virtual environment ${PEEK_SOFTWARE_HOME}/peek-platform/venv"
+    - echo "Scripts directory ${PEEK_SOFTWARE_HOME}/peek-platform/scripts"
+    - echo "Node.js directory ${PEEK_SOFTWARE_HOME}/peek-platform/nodejs"
+
+    # Run verification script
+    - ${PEEK_SOFTWARE_HOME}/peek-platform/share/pkg-scripts/verify-installation.sh
+
+    # Set peek postgresql password
+    - |
+      cat > /tmp/set_peek_password.sh << 'EOF'
+      #!/bin/bash
+      set -x
+      psql -c "ALTER USER peek PASSWORD 'PASSWORD';"
+      EOF
+    - chmod +x /tmp/set_peek_password.sh
+
+    # Run the single required command - migrate database only
+    - echo "Running peek logic service migrate only..."
+    - su - peek -c /tmp/set_peek_password.sh
+    - su - peek -c "run_peek_logic_service_migrate_only"
+
+    # Clean up test files
+    - rm -f /tmp/test_*.sh
+
+    # All tests complete, fail the job if we need
+    - echo "Recorded $FAILS test fails" 
+    - test $FAILS -eq 0
+
+# Concrete test jobs for different distributions
+peek_linux_package_test_rhel8:
+  extends: 
+    - .peek_linux_package_test_template
+    - .alma8_with_epel
+  needs:
+    - peek_linux_package_build_rhel8
+    - peek_linux_dependencies_fetch_rhel8
+  variables:
+    PKG_BUILD_FOR_RHEL8: "true"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - if: '$CI_PIPELINE_SOURCE == "triggers"'
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+    - if: '$BUILD_TARGET == "RHEL8" || $BUILD_TARGET == null || 
+           $BUILD_TARGET == ""'
+
+peek_linux_package_test_rhel9:
+  extends: 
+    - .peek_linux_package_test_template
+    - .alma9_with_epel
+  needs:
+    - peek_linux_package_build_rhel9
+    - peek_linux_dependencies_fetch_rhel9
+  variables:
+    PKG_BUILD_FOR_RHEL9: "true"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - if: '$CI_PIPELINE_SOURCE == "triggers"'
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+    - if: '$BUILD_TARGET == "RHEL9" || $BUILD_TARGET == null || 
+           $BUILD_TARGET == ""'
+
+peek_linux_package_test_amzn2023:
+  extends: 
+    - .peek_linux_package_test_template
+    - .amazonlinux2023_with_epel
+  needs:
+    - peek_linux_package_build_amzn2023
+    - peek_linux_dependencies_fetch_amzn2023
+  variables:
+    PKG_BUILD_FOR_AL_2023_7: "true"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - if: '$CI_PIPELINE_SOURCE == "triggers"'
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+    - if: '$BUILD_TARGET == "AL2023_7" || $BUILD_TARGET == null || 
+           $BUILD_TARGET == ""'

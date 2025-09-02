@@ -1,0 +1,278 @@
+# SBOM generation jobs for Peek platform packages
+
+.peek_sbom_generation_template:
+    extends: .peek_package_template
+    stage: sbom
+    script:
+        - dnf install -y libicu findutils
+
+        - export SBOM_TOOL_VERSION=2.2.7
+        - export NEXUS_PROXY='http://nexus.synerty.com/repository/ci-wget-cache-gitlab.com/'
+
+        # Downloading SBOM tool
+        - export URL="${NEXUS_PROXY}/microsoft/sbom-tool/releases/download"
+        - curl -f ${URL}/v${SBOM_TOOL_VERSION}/sbom-tool-linux-x64
+            -o /usr/bin/sbom-tool
+        - chmod +x /usr/bin/sbom-tool
+        - sbom-tool --version || true
+
+        - echo "Starting SBOM generation for ${LINUX_VERSION}..."
+        - export SBOM_OUTPUT_DIR="$ARTIFACTS_DIR/sbom"
+        - mkdir -p $SBOM_OUTPUT_DIR
+
+        - echo $ARTIFACTS_DIR
+        - find $ARTIFACTS_DIR -type f -ls
+
+        # Download peek dependency packages tar file with version fallback
+        - echo "Downloading peek dependency packages tar for ${LINUX_VERSION}..."
+        - if [ "${PACKAGE_VERSION}" = "x" ];
+          then
+            export TAR_FILE="peek-dependency-packages-${PACKAGE_BRANCH}-${PACKAGE_VERSION}.${LINUX_VERSION}.x86_64.tar";
+            echo "${DROPBOX_UPLOAD_URL}/${TAR_FILE}";
+            curl -f -o "/tmp/${TAR_FILE}" "${DROPBOX_UPLOAD_URL}/${TAR_FILE}";
+          else
+            for Z in $(seq ${PACKAGE_VERSION} -1 0);
+            do
+              export DROPBOX_UPLOAD_URL="${DROPBOX_BASE_URL}/${PACKAGE_BRANCH}.${Z}";
+              export TAR_FILE="peek-dependency-packages-${PACKAGE_BRANCH}-${Z}.${LINUX_VERSION}.x86_64.tar";
+              echo "Trying ${DROPBOX_UPLOAD_URL}/${TAR_FILE}";
+              if curl -f -o "/tmp/${TAR_FILE}" "${DROPBOX_UPLOAD_URL}/${TAR_FILE}";
+              then
+                echo "Successfully downloaded ${TAR_FILE}";
+                break;
+              else
+                echo "Failed to download ${TAR_FILE}, trying next version...";
+              fi;
+            done;
+          fi
+
+        # Extract dependency packages from tar file
+        - mkdir -p /tmp/extract
+        - cd /tmp/extract
+        - tar xf "/tmp/${TAR_FILE}"
+        - echo "Installing peek-* packages..."
+        - ls -la /tmp/extract/peek-*.rpm
+        - time dnf install -y /tmp/extract/peek-*.rpm
+
+        # Install the tested platform package
+        - echo "Installing peek-platform package..."
+        - time dnf install -y $ARTIFACTS_DIR/peek-platform*.rpm
+
+        # Generate Python packages SBOM
+        - echo "Generating Python packages SBOM..."
+        - mkdir -p /tmp/python-sbom
+        - ${PEEK_SOFTWARE_HOME}/peek-platform/venv/bin/pip list --format=json > /tmp/python-sbom/pip-list.json
+        - ${PEEK_SOFTWARE_HOME}/peek-platform/venv/bin/pip freeze > /tmp/python-sbom/requirements.txt
+
+        # Create Python package manifest for SBOM tool
+        - echo "Creating Python package manifest..."
+        - |
+            cat > /tmp/python-sbom/package.json << EOF
+            {
+              "name": "peek-platform-python-deps",
+              "version": "${PACKAGE_BRANCH}.${PACKAGE_VERSION}",
+              "description": "Peek Platform Python Dependencies"
+            }
+            EOF
+
+        # Generate SBOM for Python packages
+        - echo "Running SBOM tool for Python packages..."
+        - time sbom-tool generate 
+            -b /tmp/python-sbom 
+            -bc /tmp/python-sbom 
+            -nsb https://peek.synerty.com 
+            -ps "Synerty HQ Pty Ltd" 
+            -pn "peek-platform-python-deps-${LINUX_VERSION}" 
+            -pv "${PACKAGE_BRANCH}.${PACKAGE_VERSION}" 
+            -pm true 
+            -li true
+
+        # Copy Python SBOM results
+        - mv -v /tmp/python-sbom/_manifest/*/* $SBOM_OUTPUT_DIR/;
+        - mv -v $SBOM_OUTPUT_DIR/manifest.spdx.json
+            $SBOM_OUTPUT_DIR/peek-platform-python-deps-${LINUX_VERSION}-manifest.spdx.json
+        - mv -v $SBOM_OUTPUT_DIR/manifest.spdx.json.sha256
+            $SBOM_OUTPUT_DIR/peek-platform-python-deps-${LINUX_VERSION}-manifest.spdx.json.sha256
+
+        # Generate npm packages SBOM for peek-office-app only
+        - echo "Generating npm packages SBOM for peek-office-app..."
+        - export SITE_PACKAGES="$(echo ${PEEK_SOFTWARE_HOME}/peek-platform/venv/lib/python*/site-packages)"
+        - export OFFICE_APP_DIR="${SITE_PACKAGES}/peek_office_app"
+
+        - echo "Found peek-office-app node_modules, generating SBOM...";
+        - mkdir -p /tmp/npm-sbom;
+        - mv $OFFICE_APP_DIR/package*.json /tmp/npm-sbom/
+        - mv $OFFICE_APP_DIR/node_modules /tmp/npm-sbom/
+
+        - time sbom-tool generate 
+              -b /tmp/npm-sbom 
+              -bc /tmp/npm-sbom 
+              -nsb https://peek.synerty.com 
+              -ps "Synerty HQ Pty Ltd" 
+              -pn "peek-office-app-npm-deps-${LINUX_VERSION}" 
+              -pv "${PACKAGE_BRANCH}.${PACKAGE_VERSION}" 
+              -pm true 
+              -li true
+
+        -  mv -v /tmp/npm-sbom/_manifest/*/* $SBOM_OUTPUT_DIR/;
+        -  mv -v $SBOM_OUTPUT_DIR/manifest.spdx.json
+            $SBOM_OUTPUT_DIR/peek-office-app-npm-deps-${LINUX_VERSION}-manifest.spdx.json
+        -  mv -v $SBOM_OUTPUT_DIR/manifest.spdx.json.sha256
+            $SBOM_OUTPUT_DIR/peek-office-app-npm-deps-${LINUX_VERSION}-manifest.spdx.json.sha256
+
+        # Generate Linux packages SBOM
+        - echo "Generating Linux packages SBOM..."
+        - mkdir -p /tmp/linux-sbom
+
+        # Create comprehensive Linux package inventory
+        - echo "Creating Linux package inventory..."
+        - rpm -qa --queryformat '%{NAME}|%{VERSION}|%{RELEASE}|%{ARCH}|%{SUMMARY}\n' > /tmp/linux-sbom/rpm-list.txt
+        - dnf list installed > /tmp/linux-sbom/dnf-list.txt
+
+        # Create Python package manifest for SBOM tool
+        - echo "Creating Linux package manifest..."
+        - |
+            cat > /tmp/linux-sbom/package.json << EOF
+            {
+              "name": "peek-platform-linux-deps",
+              "version": "${PACKAGE_BRANCH}.${PACKAGE_VERSION}",
+              "description": "Peek Linux Dependencies"
+            }
+            EOF
+
+        # Generate SBOM for Linux packages
+        - time sbom-tool generate 
+            -b /tmp/linux-sbom 
+            -bc /tmp/linux-sbom 
+            -nsb https://peek.synerty.com 
+            -ps "Synerty HQ Pty Ltd" 
+            -pn "peek-platform-linux-deps-${LINUX_VERSION}" 
+            -pv "${PACKAGE_BRANCH}.${PACKAGE_VERSION}" 
+            -pm true 
+            -li true
+
+        # Copy Linux SBOM results
+        - mv -v /tmp/linux-sbom/_manifest/*/* $SBOM_OUTPUT_DIR/;
+        - mv -v $SBOM_OUTPUT_DIR/manifest.spdx.json
+            $SBOM_OUTPUT_DIR/peek-platform-linux-deps-${LINUX_VERSION}-manifest.spdx.json
+        - mv -v $SBOM_OUTPUT_DIR/manifest.spdx.json.sha256
+            $SBOM_OUTPUT_DIR/peek-platform-linux-deps-${LINUX_VERSION}-manifest.spdx.json.sha256
+
+        # Generate combined SBOM summary
+        - echo "Creating SBOM summary document..."
+        - |
+            cat > $SBOM_OUTPUT_DIR/peek-platform-sbom-summary-${LINUX_VERSION}.md << EOF
+            # Peek Platform SBOM Summary - ${LINUX_VERSION}
+    
+            **Generated:** $(date '+%Y-%m-%d %H:%M:%S UTC')
+            **Platform Version:** ${PACKAGE_BRANCH}.${PACKAGE_VERSION}
+            **Linux Distribution:** ${LINUX_VERSION}
+            **Pipeline ID:** ${CI_PIPELINE_ID}
+    
+            ## SBOM Artifacts Generated
+    
+            ### Python Dependencies
+    
+            - **File:** peek-platform-python-deps-${LINUX_VERSION}-manifest.spdx.json
+            - **Package Count:** $(cat /tmp/python-sbom/requirements.txt | wc -l)
+            - **Scope:** All Python packages installed in Peek virtual environment
+    
+            ### npm Dependencies (peek-office-app)
+    
+            - **File:** peek-office-app-npm-deps-${LINUX_VERSION}-manifest.spdx.json  
+            - **Scope:** Node.js packages for peek-office-app only
+            - **Location:** ${OFFICE_APP_DIR}/node_modules
+    
+            ### Linux System Dependencies
+    
+            - **File:** peek-platform-linux-deps-${LINUX_VERSION}-manifest.spdx.json
+            - **Package Count:** $(cat /tmp/linux-sbom/rpm-list.txt | wc -l)
+            - **Scope:** All installed RPM packages on the system
+    
+            ## Key Python Packages
+    
+            \`\`\`
+            $(${PEEK_SOFTWARE_HOME}/peek-platform/venv/bin/pip list | grep -E "(peek|synerty)" | head -20)
+            \`\`\`
+    
+            ## System Information
+    
+            - **OS:** $(cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '"')
+            - **Kernel:** $(uname -r)
+            - **Architecture:** $(uname -m)
+    
+            ---
+    
+            *Generated automatically by Peek Platform SBOM Pipeline*
+            
+            EOF
+
+        # List generated SBOM artifacts
+        - echo "SBOM generation completed. Generated artifacts:"
+        - ls -la $SBOM_OUTPUT_DIR/
+
+    artifacts:
+        paths:
+            - $ARTIFACTS_DIR/sbom/
+        expire_in: 1 week
+
+# Concrete SBOM generation jobs for different distributions
+peek_sbom_generation_rhel8:
+    extends:
+        - .peek_sbom_generation_template
+        - .alma8_with_epel
+    needs:
+        - peek_linux_dependencies_fetch_rhel8
+        - peek_linux_package_test_rhel8
+        - peek_linux_package_build_rhel8
+    variables:
+        PKG_BUILD_FOR_RHEL8: "true"
+        LINUX_VERSION: "el8"
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "push"'
+          when: never
+        - if: '$CI_PIPELINE_SOURCE == "web"'
+        - if: '$CI_PIPELINE_SOURCE == "triggers"'
+        - if: '$CI_PIPELINE_SOURCE == "api"'
+        - if: '$BUILD_TARGET == "RHEL8" || $BUILD_TARGET == null || 
+               $BUILD_TARGET == ""'
+
+peek_sbom_generation_rhel9:
+    extends:
+        - .peek_sbom_generation_template
+        - .alma9_with_epel
+    needs:
+        - peek_linux_dependencies_fetch_rhel9
+        - peek_linux_package_test_rhel9
+        - peek_linux_package_build_rhel9
+    variables:
+        PKG_BUILD_FOR_RHEL9: "true"
+        LINUX_VERSION: "el9"
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "push"'
+          when: never
+        - if: '$CI_PIPELINE_SOURCE == "web"'
+        - if: '$CI_PIPELINE_SOURCE == "triggers"'
+        - if: '$CI_PIPELINE_SOURCE == "api"'
+        - if: '$BUILD_TARGET == "RHEL9" || $BUILD_TARGET == null || 
+               $BUILD_TARGET == ""'
+
+peek_sbom_generation_amzn2023:
+    extends:
+        - .peek_sbom_generation_template
+        - .amazonlinux2023_with_epel
+    needs:
+        - peek_linux_dependencies_fetch_amzn2023
+        - peek_linux_package_test_amzn2023
+        - peek_linux_package_build_amzn2023
+    variables:
+        PKG_BUILD_FOR_AL_2023_7: "true"
+        LINUX_VERSION: "amzn2023"
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "push"'
+          when: never
+        - if: '$CI_PIPELINE_SOURCE == "web"'
+        - if: '$CI_PIPELINE_SOURCE == "triggers"'
+        - if: '$CI_PIPELINE_SOURCE == "api"'
+        - if: '$BUILD_TARGET == "AL2023_7" || $BUILD_TARGET == null ||
+               $BUILD_TARGET == ""'

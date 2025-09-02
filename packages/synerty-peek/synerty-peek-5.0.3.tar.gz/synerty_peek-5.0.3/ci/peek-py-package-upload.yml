@@ -1,0 +1,41 @@
+.upload_py_packages_template:
+  stage: upload
+  script:
+    - echo "Starting Python packages tar creation and upload..."
+    - ls -la $ARTIFACTS_DIR/
+
+    # Create tar file of Python packages
+    - export PY_DIR="${RELEASE_TAG:-$RELEASE_BRANCH}b${CI_PIPELINE_ID}"
+    - export PY_TAR="peek-platform-py-packages-${PY_DIR}.tar.gz"
+    - mkdir -p /tmp/${PY_DIR}
+    - cp -rv ${GIT_CLONE_PATH}/community_packages/* /tmp/${PY_DIR}
+    - cp -rv ${GIT_CLONE_PATH}/enterprise_packages/* /tmp/${PY_DIR}
+
+    # Create tar file
+    - cd /tmp
+    - tar -czf ${PY_TAR} ${PY_DIR}/
+    - cp ${PY_TAR} $ARTIFACTS_DIR/
+
+    # Create directory structure
+    - curl -X MKCOL ${DROPBOX_UPLOAD_URL}/
+
+    # Upload tar file
+    - echo "Uploading Python packages tar file..."
+    - curl -k -f -v --upload-file "$ARTIFACTS_DIR/${PY_TAR}"
+        ${DROPBOX_UPLOAD_URL}/
+
+    - echo "Python packages upload completed"
+
+peek_py_package_upload:
+    extends:
+        - .upload_py_packages_template
+        - .alma8_old_build
+    needs:
+        - peek_py_package_build_community
+        - peek_py_package_build_enterprise
+    rules:
+        -   if: '$CI_PIPELINE_SOURCE == "push"'
+            when: never
+        -   if: '$CI_PIPELINE_SOURCE == "web"'
+        -   if: '$CI_PIPELINE_SOURCE == "triggers"'
+        -   if: '$CI_PIPELINE_SOURCE == "api"'

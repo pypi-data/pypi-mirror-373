@@ -1,0 +1,220 @@
+# Package publishing jobs
+
+peek_py_package_build_community:
+    extends: .alma8_old_build
+    dependencies:
+        - peek_git_clone_repos_community
+    allow_failure: false
+    artifacts:
+        paths:
+            - ${GIT_CLONE_PATH}/community_packages
+        expire_in: 1 day
+    only:
+        - web
+        - triggers
+        - api
+    stage: py_package
+    script:
+        - uname -a
+        - which python || true
+        - python --version
+        - export GITHUB_PUSH=0
+        - pip install build
+        - source ./pip_common.sh
+
+        # Set version and source path
+        - export VER="${RELEASE_TAG:-${NON_RELEASE_VER}}"
+        - export SRC_PATH="${GIT_CLONE_PATH}/cloned_community_repos"
+        - echo "Publishing community packages version ${VER}"
+
+        # Set up date for build
+        - if [ -n "${BAMBOO_DATE:-}" ];
+          then
+            export DATE="$(python -c "from dateutil.parser import parse; print(parse('${BAMBOO_DATE}').strftime('%y%m%d.%H%M'))")";
+          else
+            export DATE="$(date +%y%m%d.%H%M)";
+          fi
+
+        # Check for package existence
+        - echo "CHECKING for package existence"
+        - export EXIT=""
+        - for pkg in $COMMUNITY_PKGS;
+          do
+            if [ ! -d "${SRC_PATH}/$pkg" ];
+            then
+              echo "${pkg} ${SRC_PATH}/$pkg does not exist" >&2;
+              export EXIT="Y";
+            fi;
+          done
+        - if [ -n "$EXIT" ];
+          then
+            exit 1;
+          fi
+
+        # Check for uncommitted changes
+        - echo "CHECKING for uncommitted changes"
+        - export EXIT=""
+        - for pkg in $COMMUNITY_PKGS;
+          do
+            if [ -n "$(cd ${SRC_PATH}/$pkg && git status --porcelain)" ];
+            then
+              echo "${pkg} has uncommitted changes, make sure all changes are committed" >&2;
+              export EXIT="Y";
+            fi;
+          done
+        - if [ -n "$EXIT" ];
+          then
+            exit 1;
+          fi
+
+        # Check for existing tag
+        - echo "CHECKING for existing tag"
+        - export EXIT=""
+        - for pkg in $COMMUNITY_PKGS;
+          do
+            if (cd ${SRC_PATH}/$pkg && git tag | grep -q "^${VER}$");
+            then
+              echo "${pkg} has an existing git tag for version ${VER}." >&2;
+              export EXIT="Y";
+            fi;
+          done
+        - if [ -n "$EXIT" ];
+          then
+            exit 1;
+          fi
+
+        # Check for successful build
+        - echo "CHECKING for successful build"
+        - for pkg in $COMMUNITY_PKGS;
+          do
+            if ! (cd ${SRC_PATH}/$pkg && python -m build --sdist --verbose);
+            then
+              echo "${pkg} failed to build." >&2;
+              exit 1;
+            fi;
+          done
+
+        # Build packages
+        - echo "Building packages"
+        - for pkg in $COMMUNITY_PKGS;
+          do
+            if ! (cd ${SRC_PATH}/$pkg && bash ./publish.sh ${VER});
+            then
+              echo "${pkg} failed to run publish." >&2;
+              exit 1;
+            fi;
+          done
+
+        # Collect built packages
+        - mkdir -p ${GIT_CLONE_PATH}/community_packages
+        - mv ${GIT_CLONE_PATH}/cloned_community_repos/*/dist/* ${GIT_CLONE_PATH}/community_packages
+
+peek_py_package_build_enterprise:
+    extends: .alma8_old_build
+    dependencies:
+        - peek_git_clone_repos_community
+        - peek_git_clone_repos_enterprise
+    allow_failure: false
+    artifacts:
+        paths:
+            - ${GIT_CLONE_PATH}/enterprise_packages
+        expire_in: 1 day
+    only:
+        - web
+        - triggers
+        - api
+    stage: py_package
+    script:
+        - uname -a
+        - which python || true
+        - python --version
+        - export GITHUB_PUSH=0
+        - pip install build
+        - source ./pip_common.sh
+
+        # Set version and source path
+        - export VER="${RELEASE_TAG:-${NON_RELEASE_VER}}"
+        - export SRC_PATH="${GIT_CLONE_PATH}/cloned_enterprise_repos"
+        - echo "Publishing enterprise packages version ${VER}"
+
+        # Set up date for build
+        - if [ -n "${BAMBOO_DATE:-}" ];
+          then
+            export DATE="$(python -c "from dateutil.parser import parse; print(parse('${BAMBOO_DATE}').strftime('%y%m%d.%H%M'))")";
+          else
+            export DATE="$(date +%y%m%d.%H%M)";
+          fi
+
+        # Check for package existence
+        - echo "CHECKING for package existence"
+        - export EXIT=""
+        - for plugin in $ENTERPRISE_PKGS;
+          do
+            if [ ! -d "${SRC_PATH}/$plugin" ];
+            then
+              echo "${plugin} ${SRC_PATH}/$plugin does not exist" >&2;
+              export EXIT="Y";
+            fi;
+          done
+        - if [ -n "$EXIT" ];
+          then
+            exit 1;
+          fi
+
+        # Check for uncommitted changes
+        - echo "CHECKING for uncommitted changes"
+        - export EXIT=""
+        - for plugin in $ENTERPRISE_PKGS;
+          do
+            if [ -n "$(cd ${SRC_PATH}/$plugin && git status --porcelain)" ];
+            then
+              echo "${plugin} has uncommitted changes, make sure all changes are committed" >&2;
+              export EXIT="Y";
+            fi;
+          done
+        - if [ -n "$EXIT" ];
+          then
+            exit 1;
+          fi
+
+        # Check for existing tag
+        - echo "CHECKING for existing tag"
+        - export EXIT=""
+        - for plugin in $ENTERPRISE_PKGS;
+          do
+            if (cd ${SRC_PATH}/$plugin && git tag | grep -q "^${VER}$");
+            then
+              echo "${plugin} has an existing git tag for version ${VER}." >&2;
+              export EXIT="Y";
+            fi;
+          done
+        - if [ -n "$EXIT" ];
+          then
+            exit 1;
+          fi
+
+        # Check for successful build
+        - echo "CHECKING for successful build"
+        - for plugin in $ENTERPRISE_PKGS;
+          do
+            if ! (cd ${SRC_PATH}/$plugin && python -m build --sdist --verbose);
+            then
+              echo "${plugin} failed to build." >&2;
+              exit 1;
+            fi;
+          done
+
+        # Build packages
+        - echo "Building packages"
+        - for plugin in $ENTERPRISE_PKGS;
+          do
+            if ! (cd ${SRC_PATH}/$plugin && bash publish.sh ${VER} "");
+            then
+              echo "${plugin} failed to run publish." >&2;
+              exit 1;
+            fi;
+          done
+
+        # Collect built packages
+        - mkdir -p ${GIT_CLONE_PATH}/enterprise_packages
+        - mv ${GIT_CLONE_PATH}/cloned_enterprise_repos/*/dist/* ${GIT_CLONE_PATH}/enterprise_packages
