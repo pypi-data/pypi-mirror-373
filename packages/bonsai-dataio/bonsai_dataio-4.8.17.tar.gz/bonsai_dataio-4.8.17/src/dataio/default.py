@@ -1,0 +1,4 @@
+DB_NAME = "EXIOBASE"
+DB_VERSION = "v3.8-beta2"
+BONSAI_VERSION = "v1.1.0"
+DEBUG = True
