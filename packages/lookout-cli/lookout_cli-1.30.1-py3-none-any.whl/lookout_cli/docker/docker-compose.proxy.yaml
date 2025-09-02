@@ -1,0 +1,97 @@
+name: lookout
+
+services:
+  traefik:
+    image: traefik:v3.3
+    container_name: traefik
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+      - "--accesslog=true"
+      # - "--log.level=DEBUG"
+      - "--providers.docker"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+    ports:
+      - 80:80
+      - 8080:8080
+      - 443:443
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  lookout_core:
+    labels:
+      - "traefik.enable=true"
+      # HTTPS router
+      - "traefik.http.routers.lookout-data-bridge.rule=PathPrefix(`/lookout/data-bridge`)"
+      - "traefik.http.routers.lookout-data-bridge.entrypoints=websecure"
+      - "traefik.http.routers.lookout-data-bridge.tls=true"
+      - "traefik.http.services.lookout-data-bridge.loadbalancer.server.port=4001"
+      - "traefik.http.middlewares.lookout-data-bridge-strip.stripprefix.prefixes=/lookout/data-bridge"
+      - "traefik.http.routers.lookout-data-bridge.middlewares=lookout-data-bridge-strip@docker"
+      # HTTP router
+      - "traefik.http.routers.lookout-data-bridge-http.rule=PathPrefix(`/lookout/data-bridge`)"
+      - "traefik.http.routers.lookout-data-bridge-http.entrypoints=web"
+      - "traefik.http.routers.lookout-data-bridge-http.middlewares=lookout-data-bridge-strip@docker"
+      - "traefik.http.routers.lookout-data-bridge-http.service=lookout-data-bridge"
+
+  lookout_ui:
+    labels:
+      - "traefik.enable=true"
+      # HTTPS router
+      - "traefik.http.routers.lookout-ui.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.lookout-ui.entrypoints=websecure"
+      - "traefik.http.routers.lookout-ui.tls=true"
+      - "traefik.http.services.lookout-ui.loadbalancer.server.port=4000"
+      # HTTP router
+      - "traefik.http.routers.lookout-ui-http.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.lookout-ui-http.entrypoints=web"
+      - "traefik.http.routers.lookout-ui-http.service=lookout-ui"
+      # - "traefik.http.middlewares.lookout-ui-strip.stripprefix.prefixes=/lookout"
+      # - "traefik.http.routers.lookout-ui.middlewares=lookout-ui-strip@docker"
+
+  lookout_greenstream:
+    labels:
+      - "traefik.enable=true"
+      # Greenstream Signalling - HTTPS
+      - "traefik.http.routers.lookout-greenstream-signalling.rule=PathPrefix(`/lookout/signalling`)"
+      - "traefik.http.routers.lookout-greenstream-signalling.entrypoints=websecure"
+      - "traefik.http.routers.lookout-greenstream-signalling.tls=true"
+      - "traefik.http.services.lookout-greenstream-signalling.loadbalancer.server.port=4002"
+      - "traefik.http.middlewares.lookout-greenstream-signalling-strip.stripprefix.prefixes=/lookout/signalling"
+      - "traefik.http.routers.lookout-greenstream-signalling.middlewares=lookout-greenstream-signalling-strip@docker"
+      - "traefik.http.routers.lookout-greenstream-signalling.service=lookout-greenstream-signalling"
+      # Greenstream Signalling - HTTP
+      - "traefik.http.routers.lookout-greenstream-signalling-http.rule=PathPrefix(`/lookout/signalling`)"
+      - "traefik.http.routers.lookout-greenstream-signalling-http.entrypoints=web"
+      - "traefik.http.routers.lookout-greenstream-signalling-http.middlewares=lookout-greenstream-signalling-strip@docker"
+      - "traefik.http.routers.lookout-greenstream-signalling-http.service=lookout-greenstream-signalling"
+      # Greenstream UI - HTTPS
+      - "traefik.http.routers.lookout-greenstream-ui.rule=PathPrefix(`/lookout/greenstream`)"
+      - "traefik.http.routers.lookout-greenstream-ui.entrypoints=websecure"
+      - "traefik.http.routers.lookout-greenstream-ui.tls=true"
+      - "traefik.http.services.lookout-greenstream-ui.loadbalancer.server.port=4003"
+      - "traefik.http.middlewares.lookout-greenstream-ui-strip.stripprefix.prefixes=/lookout/greenstream"
+      - "traefik.http.routers.lookout-greenstream-ui.middlewares=lookout-greenstream-ui-strip@docker"
+      - "traefik.http.routers.lookout-greenstream-ui.service=lookout-greenstream-ui"
+      # Greenstream UI - HTTP
+      - "traefik.http.routers.lookout-greenstream-ui-http.rule=PathPrefix(`/lookout/greenstream`)"
+      - "traefik.http.routers.lookout-greenstream-ui-http.entrypoints=web"
+      - "traefik.http.routers.lookout-greenstream-ui-http.middlewares=lookout-greenstream-ui-strip@docker"
+      - "traefik.http.routers.lookout-greenstream-ui-http.service=lookout-greenstream-ui"
+
+  lookout_docs:
+    labels:
+      - "traefik.enable=true"
+      # HTTPS router
+      - "traefik.http.routers.lookout-docs.rule=PathPrefix(`/lookout/docs`)"
+      - "traefik.http.routers.lookout-docs.entrypoints=websecure"
+      - "traefik.http.routers.lookout-docs.tls=true"
+      - "traefik.http.services.lookout-docs.loadbalancer.server.port=3000"
+      # HTTP router
+      - "traefik.http.routers.lookout-docs-http.rule=PathPrefix(`/lookout/docs`)"
+      - "traefik.http.routers.lookout-docs-http.entrypoints=web"
+      - "traefik.http.routers.lookout-docs-http.service=lookout-docs"
