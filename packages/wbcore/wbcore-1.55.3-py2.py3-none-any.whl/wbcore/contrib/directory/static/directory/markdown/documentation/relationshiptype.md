@@ -1,0 +1,2 @@
+# Relationship Types
+This is a list of every relationship type in the database where you can modify, delete and add new types. You can also add a counter relationship (e.g. parent <> child) for an already existing relationship type. Typing in the search field or the column filter accessible from the three lines at the end of the column title filters the relationship types by name. Click on the column title to order it.
