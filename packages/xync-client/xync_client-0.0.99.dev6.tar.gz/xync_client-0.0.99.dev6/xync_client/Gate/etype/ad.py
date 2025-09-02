@@ -1,0 +1,60 @@
+from pydantic import Field
+from xync_schema.xtype import BaseAd
+
+
+class Ad(BaseAd):
+    exid: int | str | None = Field(alias="id")
+    type: str
+    rate: str
+    amount: str
+    total: str
+    limit_total: str
+    limit_fiat: str
+    pay_type_num: str
+    oid: str
+    is_sell: str
+    btn_css: str
+    button: str
+    online_status: str
+    username: str
+    avatar: str
+    tier: int
+    complete_number: int
+    used_time: str
+    is_big: int
+    is_black: int
+    is_blacked: int
+    is_follow: int
+    verified: str
+    user_timest: str
+    is_online: int
+    complete_number_month: int
+    complete_rate_month: int
+    expire_min: str
+    uid: str
+    blue_vip: str
+    tier_limit: int
+    advertisers_limit: int
+    reg_time_limit: int
+    verified_limit: int
+    completed_orders_limit: int
+    min_completed_limit: int
+    max_completed_limit: int
+    user_country_limit: int
+    limit_country_en: str
+    limit_country_cn: str
+    completed_rate_limit: int
+    user_orders_limit: int
+    hide_payment: str
+    curr_a: str
+    curr_b: str
+    have_traded: int
+    trade_tips: str
+    new_hand: int
+    check_journal_account: bool
+    discount_rate: int
+    article_link: str
+    is_freeze_guarantee: int
+    usdt_left_guarantee: str
+    need_replenish: int
+    guarantee_curr_type: str
