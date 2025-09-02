@@ -1,0 +1,184 @@
+Metadata-Version: 2.4
+Name: java-coder
+Version: 0.0.2
+Summary: A java class file operate tools
+Home-page: https://github.com/chonmb/javacoder
+Author: chonmb
+Author-email: weichonmb@foxmail.com
+License: MIT
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
+License-File: LICENSE.txt
+Requires-Dist: javalang
+Requires-Dist: requests
+Dynamic: author
+Dynamic: author-email
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: license
+Dynamic: license-file
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# java-coder
+
+java-coder is a python tool to operate Java source code. It provides a series of ways to parse, modified and rebuild
+Java source code based on `javalang`, targeting Java 8.
+
+the following gives a brief examples to use java-coder.
+
+## Getting Started
+
+java-coder will load java source code from the java file and parse the code and show them.
+
+```python
+from javacoder.core import operator
+
+op = operator.ClassOperator(class_path="your_class_path")
+op.preview_class()
+```
+
+java-coder also provides builder tools to create a new class file easily.
+
+```python
+from javacoder.core.builder import ClassBuilder
+
+builder = ClassBuilder("DemoClass")
+builder.field("test1", annotation='JSONField', name="111")
+builder.field("hello")
+builder.extend("ExtendClass")
+builder.implement("Implement1")
+builder.implement("Implement2")
+builder.add_fields_getter_and_setter()
+builder.document("this is a test document")
+builder.annotation("AnnotationDemo2")
+builder.annotation("AnnotationDemo")
+builder.imports("com.path")
+builder.build().preview_class()
+```
+
+java-coder also provides some useful plugins to generate some infos automatically. It also supports you to apply your
+own plugin.
+
+```python
+from javacoder.core.builder import InterfaceBuilder
+
+project_path = 'your project path'
+builder = InterfaceBuilder("DemoClass")
+builder.author()
+builder.project(project_path)
+builder.extend("Implement1", "JPA_DO")
+builder.extend("Header")
+builder.document("this is a test interface")
+builder.annotation("AnnotationDemo2")
+builder.annotation("AnnotationDemo")
+builder.method("hello")
+builder.imports("com.path")
+builder.imports("com.path2", wildcard=True)
+builder.build().preview_class()
+```
+
+### Plugins
+
+plugin is an important part in java-coder, it will act after some actions. There has some native plugins in java-coder.
+
+- AuthorPlugin
+
+> `AuthorPlugin` can auto add basic author infos in your source file.  
+> `AuthorPlugin` will use your git config by default if you don't config the info.  
+
+- ProjectPlugin
+
+> `ProjectPlugin` can scan the whole project and record the files.  
+> `ProjectPlugin` can load `pom.xml` and parse it, recording the dependencies.  
+> `ProjectPlugin` can scan the dependencies of the project and extract `.class` file 
+> from the jar file in your local mvn library.
+
+### Builder Extends
+
+If you are operating multi classes and want to use the same config, you can extend builder to simplify builder
+initiation as follows.
+
+```python
+from javacoder.core.builder import InterfaceBuilder
+
+project_path = 'your project path'
+builder1 = InterfaceBuilder("DemoClass1")
+builder1.author()
+builder1.project(project_path)
+builder1.build()
+
+builder2 = InterfaceBuilder("DemoClass2")
+builder2.extend_builder(builder1)
+builder2.build()
+```
+
+or
+
+```python
+from javacoder.core.builder import InterfaceBuilder, create_builder
+
+project_path = 'your project path'
+builder1 = InterfaceBuilder("DemoClass1")
+builder1.author()
+builder1.project(project_path)
+builder1.build()
+
+builder2 = create_builder("DemoClass2", InterfaceBuilder, builder1)
+builder2.build()
+```
+
+> tips: builder can only extend built builder by once.
+
+### Project Module
+
+project module will help you gen a basic java project easily.
+
+## Useful Tools
+
+### DDL Generator
+
+java-coder gives some useful tools to make every java coder work easily in daily work.
+
+```python
+from javacoder.core import operator
+from javacoder.utils import generator
+
+op = operator.ClassOperator(class_path="your_class_path")
+ddl_gen = generator.convert_class_fields_to_db_ddl_builder("table_name")
+print(ddl_gen(class_fields=[i.declarators[0].name for i in op.get_fields()]))
+```
+
+this will help you generate ddl according to class fields.
+
+#### FOR JPA ENTITY:
+
+java-coder provides way to generate ddl quickly as follows:
+
+```python
+from javacoder.core.operator import ClassOperator
+from javacoder.utils.generator import convert_jpa_entity_to_ddl
+
+op = ClassOperator(class_path='your_class_path')
+print(convert_jpa_entity_to_ddl(op))
+```
+
+java-coder will recognize the entity and generate ddl as defined in your java source code.
+
+furthermore, your can add `ProjectPlugin` to make java-coder enable to scan your whole project and generate the entire
+ddl if the entity extends from parent entity.
+
+Just like this:
+
+```python
+from javacoder.core.operator import ClassOperator
+from javacoder.core.plugins import ProjectPlugin
+from javacoder.utils.generator import convert_jpa_entity_to_ddl
+
+op = ClassOperator(class_path='your_class_path')
+op.add_plugin(ProjectPlugin(project_path='your_project_path'))
+print(convert_jpa_entity_to_ddl(op))
+```
+
