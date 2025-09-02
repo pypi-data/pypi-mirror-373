@@ -1,0 +1,83 @@
+package bootstrap
+
+import (
+    "context"
+    "net/http"
+    "os"
+    "os/signal"
+    "strconv"
+    "syscall"
+    "time"
+
+    "go.uber.org/zap"
+    "{{ .ProjectName }}/internal/infrastructure/container"
+)
+
+// App 应用结构
+type App struct {
+    logger  *zap.Logger
+    server  *http.Server
+    config  *container.Config
+    container *container.Container
+}
+
+// NewApp 创建新的应用实例
+func NewApp(logger *zap.Logger) (*App, error) {
+    // 加载配置
+    config := container.LoadConfig()
+    
+    // 创建容器
+    c, err := container.NewContainer(config, logger)
+    if err != nil {
+        return nil, err
+    }
+    
+    // 创建HTTP服务器
+    server := &http.Server{
+        Addr:    ":" + strconv.Itoa(config.Server.Port),
+        Handler: NewRouter(c, logger),
+        ReadTimeout:  30 * time.Second,
+        WriteTimeout: 30 * time.Second,
+        IdleTimeout:  60 * time.Second,
+    }
+    
+    return &App{
+        logger:    logger,
+        server:    server,
+        config:    config,
+        container: c,
+    }, nil
+}
+
+// Start 启动应用
+func (a *App) Start() error {
+    a.logger.Info("启动HTTP服务器",
+        zap.String("addr", a.server.Addr),
+    )
+    
+    // 启动服务器
+    go func() {
+        if err := a.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+            a.logger.Fatal("服务器启动失败", zap.Error(err))
+        }
+    }()
+    
+    // 等待中断信号
+    quit := make(chan os.Signal, 1)
+    signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+    <-quit
+    
+    a.logger.Info("收到关闭信号，开始优雅关闭...")
+    
+    // 优雅关闭
+    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+    defer cancel()
+    
+    if err := a.server.Shutdown(ctx); err != nil {
+        a.logger.Error("服务器关闭失败", zap.Error(err))
+        return err
+    }
+    
+    a.logger.Info("服务器已优雅关闭")
+    return nil
+}

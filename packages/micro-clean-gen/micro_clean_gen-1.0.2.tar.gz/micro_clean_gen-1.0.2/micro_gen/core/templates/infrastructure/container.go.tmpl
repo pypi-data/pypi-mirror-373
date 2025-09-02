@@ -1,0 +1,71 @@
+package container
+
+import (
+    "go.uber.org/zap"
+    "{{ .ProjectName }}/internal/adapter/grpc"
+    "{{ .ProjectName }}/internal/adapter/http"
+    "{{ .ProjectName }}/internal/adapter/message"
+    "{{ .ProjectName }}/internal/domain/repository"
+    "{{ .ProjectName }}/internal/domain/projection"
+    "{{ .ProjectName }}/internal/infrastructure/cache"
+    "{{ .ProjectName }}/internal/infrastructure/eventstore"
+    "{{ .ProjectName }}/internal/infrastructure/projection"
+    "{{ .ProjectName }}/internal/usecase/command"
+    "{{ .ProjectName }}/internal/usecase/event"
+    "{{ .ProjectName }}/internal/usecase/query"
+)
+
+// Container 依赖注入容器
+type Container struct {
+    // 基础设施
+    EventStore   *eventstore.NatsEventStore
+    SnapshotStore *eventstore.SnapshotStore
+    Cache        cache.Cache
+    Logger       *zap.Logger
+    
+    // 投影
+    
+    // 仓储
+    
+    // 用例
+    
+    // 适配器
+    
+}
+
+// NewContainer 创建容器实例
+func NewContainer(config *Config, logger *zap.Logger) (*Container, error) {
+    // 创建基础设施
+    eventStore, err := eventstore.NewNatsEventStore(config.NATS.URL, config.NATS.Stream, logger)
+    if err != nil {
+        return nil, err
+    }
+    
+    snapshotStore, err := eventstore.NewSnapshotStore(config.NATS.URL, config.NATS.SnapshotStream)
+    if err != nil {
+        return nil, err
+    }
+    
+    // 创建缓存
+    var cacheInstance cache.Cache
+    switch config.Cache.Type {
+    case "redis":
+        cacheInstance, err = cache.NewRedisCache(config.Cache.Redis.Host, config.Cache.Redis.Port, config.Cache.Redis.DB)
+    case "badger":
+        cacheInstance, err = cache.NewBadgerCache(config.Cache.Badger.Path, config.Cache.Badger.SyncWrites)
+    case "memory":
+        cacheInstance = cache.NewTTLMemoryCache()
+    default:
+        cacheInstance = cache.NewTTLMemoryCache()
+    }
+    if err != nil {
+        return nil, err
+    }
+    
+    return &Container{
+        EventStore:    eventStore,
+        SnapshotStore: snapshotStore,
+        Cache:         cacheInstance,
+        Logger:        logger,
+    }, nil
+}

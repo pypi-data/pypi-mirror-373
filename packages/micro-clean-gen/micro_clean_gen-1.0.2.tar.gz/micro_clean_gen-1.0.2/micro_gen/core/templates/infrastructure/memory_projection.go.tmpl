@@ -1,0 +1,110 @@
+package projection
+
+import (
+    "context"
+    "fmt"
+    "sync"
+    "time"
+    
+    "{{ .ProjectName }}/internal/domain/projection"
+    "{{ .ProjectName }}/internal/domain/event"
+)
+
+// Memory{{ .NameUpper }}Projection 内存{{ .NameLower }}投影
+type Memory{{ .NameUpper }}Projection struct {
+    mu    sync.RWMutex
+    data  map[string]*projection.{{ .NameUpper }}ProjectionModel
+    index map[string]int
+    items []*projection.{{ .NameUpper }}ProjectionModel
+}
+
+// NewMemory{{ .NameUpper }}Projection 创建内存投影实例
+func NewMemory{{ .NameUpper }}Projection() *Memory{{ .NameUpper }}Projection {
+    return &Memory{{ .NameUpper }}Projection{
+        data:  make(map[string]*projection.{{ .NameUpper }}ProjectionModel),
+        index: make(map[string]int),
+        items: make([]*projection.{{ .NameUpper }}ProjectionModel, 0),
+    }
+}
+
+// Get 获取{{ .NameLower }}
+func (p *Memory{{ .NameUpper }}Projection) Get(ctx context.Context, id string) (*projection.{{ .NameUpper }}ProjectionModel, error) {
+    p.mu.RLock()
+    defer p.mu.RUnlock()
+    
+    item, exists := p.data[id]
+    if !exists {
+        return nil, fmt.Errorf("%s not found", "{{ .NameLower }}")
+    }
+    
+    return item, nil
+}
+
+// GetAll 获取所有{{ .NameLower }}
+func (p *Memory{{ .NameUpper }}Projection) GetAll(ctx context.Context) ([]*projection.{{ .NameUpper }}ProjectionModel, error) {
+    p.mu.RLock()
+    defer p.mu.RUnlock()
+    
+    return p.items, nil
+}
+
+// Project 处理事件投影
+func (p *Memory{{ .NameUpper }}Projection) Project(ctx context.Context, event event.Event) error {
+    p.mu.Lock()
+    defer p.mu.Unlock()
+    
+    switch e := event.(type) {
+    case *event.{{ .NameUpper }}Created:
+        return p.handle{{ .NameUpper }}Created(e)
+    case *event.{{ .NameUpper }}Updated:
+        return p.handle{{ .NameUpper }}Updated(e)
+    case *event.{{ .NameUpper }}Deleted:
+        return p.handle{{ .NameUpper }}Deleted(e)
+    default:
+        return fmt.Errorf("unknown event type: %T", event)
+    }
+}
+
+func (p *Memory{{ .NameUpper }}Projection) handle{{ .NameUpper }}Created(e *event.{{ .NameUpper }}Created) error {
+    model := &projection.{{ .NameUpper }}ProjectionModel{
+        ID:        e.ID,
+        {{ .FieldAssignments }}
+        CreatedAt: e.Timestamp,
+        UpdatedAt: e.Timestamp,
+    }
+    
+    p.data[e.ID] = model
+    p.index[e.ID] = len(p.items)
+    p.items = append(p.items, model)
+    
+    return nil
+}
+
+func (p *Memory{{ .NameUpper }}Projection) handle{{ .NameUpper }}Updated(e *event.{{ .NameUpper }}Updated) error {
+    model, exists := p.data[e.ID]
+    if !exists {
+        return fmt.Errorf("%s not found", "{{ .NameLower }}")
+    }
+    
+    {{ .FieldUpdates }}
+    model.UpdatedAt = e.Timestamp
+    
+    return nil
+}
+
+func (p *Memory{{ .NameUpper }}Projection) handle{{ .NameUpper }}Deleted(e *event.{{ .NameUpper }}Deleted) error {
+    model, exists := p.data[e.ID]
+    if !exists {
+        return nil
+    }
+    
+    delete(p.data, e.ID)
+    
+    index, exists := p.index[e.ID]
+    if exists {
+        p.items = append(p.items[:index], p.items[index+1:]...)
+        delete(p.index, e.ID)
+    }
+    
+    return nil
+}

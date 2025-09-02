@@ -1,0 +1,232 @@
+package cache
+
+import (
+    "context"
+    "encoding/json"
+    "fmt"
+    "sync"
+    "time"
+
+    "github.com/dgraph-io/badger/v4"
+    "github.com/redis/go-redis/v9"
+)
+
+// Cache 缓存接口
+type Cache interface {
+    Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error
+    Get(ctx context.Context, key string, value interface{}) error
+    Delete(ctx context.Context, key string) error
+    Close() error
+}
+
+// RedisCache Redis缓存实现
+type RedisCache struct {
+    client *redis.Client
+}
+
+// NewRedisCache 创建Redis缓存实例
+func NewRedisCache(host string, port int, db int) (*RedisCache, error) {
+    client := redis.NewClient(&redis.Options{
+        Addr: fmt.Sprintf("%s:%d", host, port),
+        DB:   db,
+    })
+    
+    // 测试连接
+    ctx := context.Background()
+    if err := client.Ping(ctx).Err(); err != nil {
+        return nil, fmt.Errorf("failed to connect to redis: %w", err)
+    }
+    
+    return &RedisCache{
+        client: client,
+    }, nil
+}
+
+// Set 设置缓存值
+func (c *RedisCache) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+    data, err := json.Marshal(value)
+    if err != nil {
+        return fmt.Errorf("failed to marshal value: %w", err)
+    }
+    
+    return c.client.Set(ctx, key, data, ttl).Err()
+}
+
+// Get 获取缓存值
+func (c *RedisCache) Get(ctx context.Context, key string, value interface{}) error {
+    data, err := c.client.Get(ctx, key).Result()
+    if err != nil {
+        if err == redis.Nil {
+            return fmt.Errorf("key not found")
+        }
+        return fmt.Errorf("failed to get value: %w", err)
+    }
+    
+    return json.Unmarshal([]byte(data), value)
+}
+
+// Delete 删除缓存值
+func (c *RedisCache) Delete(ctx context.Context, key string) error {
+    return c.client.Del(ctx, key).Err()
+}
+
+// Close 关闭缓存
+func (c *RedisCache) Close() error {
+    return c.client.Close()
+}
+
+// BadgerCache Badger缓存存储
+type BadgerCache struct {
+    db *badger.DB
+}
+
+// NewBadgerCache 创建Badger缓存实例
+func NewBadgerCache(path string, syncWrites bool) (*BadgerCache, error) {
+    opts := badger.DefaultOptions(path)
+    opts.SyncWrites = syncWrites
+    opts.Logger = nil // 禁用Badger内部日志
+
+    db, err := badger.Open(opts)
+    if err != nil {
+        return nil, fmt.Errorf("failed to open badger: %w", err)
+    }
+
+    return &BadgerCache{
+        db: db,
+    }, nil
+}
+
+// Set 设置缓存值
+func (c *BadgerCache) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+    data, err := json.Marshal(value)
+    if err != nil {
+        return fmt.Errorf("failed to marshal value: %w", err)
+    }
+
+    return c.db.Update(func(txn *badger.Txn) error {
+        e := badger.NewEntry([]byte(key), data).WithTTL(ttl)
+        return txn.SetEntry(e)
+    })
+}
+
+// Get 获取缓存值
+func (c *BadgerCache) Get(ctx context.Context, key string, value interface{}) error {
+    return c.db.View(func(txn *badger.Txn) error {
+        item, err := txn.Get([]byte(key))
+        if err != nil {
+            if err == badger.ErrKeyNotFound {
+                return fmt.Errorf("key not found")
+            }
+            return fmt.Errorf("failed to get value: %w", err)
+        }
+
+        return item.Value(func(val []byte) error {
+            return json.Unmarshal(val, value)
+        })
+    })
+}
+
+// Delete 删除缓存值
+func (c *BadgerCache) Delete(ctx context.Context, key string) error {
+    return c.db.Update(func(txn *badger.Txn) error {
+        return txn.Delete([]byte(key))
+    })
+}
+
+// Close 关闭缓存
+func (c *BadgerCache) Close() error {
+    return c.db.Close()
+}
+
+// TTLMemoryCache 带TTL的内存缓存实现
+type TTLMemoryCache struct {
+    data map[string]*cacheItem
+    mu   sync.RWMutex
+}
+
+type cacheItem struct {
+    value  []byte
+    expiry time.Time
+}
+
+// NewTTLMemoryCache 创建带TTL的内存缓存
+func NewTTLMemoryCache() *TTLMemoryCache {
+    cache := &TTLMemoryCache{
+        data: make(map[string]*cacheItem),
+    }
+    
+    // 启动清理goroutine
+    go cache.cleanup()
+    
+    return cache
+}
+
+// Set 设置缓存值
+func (c *TTLMemoryCache) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+    data, err := json.Marshal(value)
+    if err != nil {
+        return err
+    }
+    
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    
+    c.data[key] = &cacheItem{
+        value:  data,
+        expiry: time.Now().Add(ttl),
+    }
+    
+    return nil
+}
+
+// Get 获取缓存值
+func (c *TTLMemoryCache) Get(ctx context.Context, key string, value interface{}) error {
+    c.mu.RLock()
+    defer c.mu.RUnlock()
+    
+    item, exists := c.data[key]
+    if !exists {
+        return fmt.Errorf("key not found")
+    }
+    
+    if time.Now().After(item.expiry) {
+        delete(c.data, key)
+        return fmt.Errorf("key expired")
+    }
+    
+    return json.Unmarshal(item.value, value)
+}
+
+// Delete 删除缓存值
+func (c *TTLMemoryCache) Delete(ctx context.Context, key string) error {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    
+    delete(c.data, key)
+    return nil
+}
+
+// Close 关闭缓存
+func (c *TTLMemoryCache) Close() error {
+    return nil
+}
+
+// cleanup 清理过期缓存
+func (c *TTLMemoryCache) cleanup() {
+    ticker := time.NewTicker(time.Minute)
+    defer ticker.Stop()
+    
+    for range ticker.C {
+        c.mu.Lock()
+        now := time.Now()
+        for key, item := range c.data {
+            if now.After(item.expiry) {
+                delete(c.data, key)
+            }
+        }
+        c.mu.Unlock()
+    }
+}
+
+// 使用TTLMemoryCache作为默认的内存缓存
+var _ Cache = (*TTLMemoryCache)(nil)

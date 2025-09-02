@@ -1,0 +1,129 @@
+# 复杂微服务配置示例 - 电商订单服务
+project:
+  name: "order-service"
+  description: "订单管理微服务"
+  version: "2.0.0"
+
+# 聚合根配置
+aggregates:
+  - name: "order"
+    description: "订单聚合根"
+    fields:
+      - name: "id"
+        type: "string"
+        required: true
+        description: "订单ID"
+      - name: "user_id"
+        type: "string"
+        required: true
+        description: "用户ID"
+      - name: "total_amount"
+        type: "decimal"
+        required: true
+        description: "订单总金额"
+      - name: "status"
+        type: "enum"
+        required: true
+        description: "订单状态"
+        enum_values: ["pending", "confirmed", "shipped", "delivered", "cancelled"]
+      - name: "shipping_address"
+        type: "object"
+        required: true
+        description: "收货地址"
+      - name: "items"
+        type: "array"
+        required: true
+        description: "订单商品"
+      - name: "created_at"
+        type: "datetime"
+        required: true
+        description: "创建时间"
+      - name: "updated_at"
+        type: "datetime"
+        required: true
+        description: "更新时间"
+
+  - name: "order_item"
+    description: "订单商品"
+    fields:
+      - name: "id"
+        type: "string"
+        required: true
+        description: "商品ID"
+      - name: "product_id"
+        type: "string"
+        required: true
+        description: "产品ID"
+      - name: "quantity"
+        type: "integer"
+        required: true
+        description: "数量"
+      - name: "price"
+        type: "decimal"
+        required: true
+        description: "单价"
+      - name: "subtotal"
+        type: "decimal"
+        required: true
+        description: "小计"
+
+# 事件配置
+events:
+  - name: "order_created"
+    description: "订单创建事件"
+    aggregate: "order"
+  - name: "order_confirmed"
+    description: "订单确认事件"
+    aggregate: "order"
+  - name: "order_shipped"
+    description: "订单发货事件"
+    aggregate: "order"
+  - name: "order_delivered"
+    description: "订单送达事件"
+    aggregate: "order"
+  - name: "order_cancelled"
+    description: "订单取消事件"
+    aggregate: "order"
+  - name: "payment_completed"
+    description: "支付完成事件"
+    aggregate: "order"
+
+# 服务配置
+services:
+  rest_api:
+    enabled: true
+    port: 8080
+    prefix: "/api/v2"
+    middleware:
+      - "cors"
+      - "auth"
+      - "rate_limit"
+  grpc:
+    enabled: true
+    port: 50051
+    reflection: true
+  event_store:
+    enabled: true
+    type: "nats"
+    url: "nats://nats-cluster:4222"
+    cluster_id: "order-cluster"
+  database:
+    enabled: true
+    type: "postgresql"
+    host: "postgres"
+    port: 5432
+    database: "orders"
+    ssl_mode: "require"
+
+# 监控配置
+monitoring:
+  metrics:
+    enabled: true
+    port: 9090
+    path: "/metrics"
+  tracing:
+    enabled: true
+    jaeger_url: "http://jaeger:14268/api/traces"
+  health_check:
+    enabled: true
+    path: "/health"
