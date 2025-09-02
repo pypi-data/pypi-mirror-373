@@ -1,0 +1,158 @@
+# NotifyOn Python SDK
+
+Python SDK for NotifyOn - Real-time notifications for long-running agent tasks.
+
+## Installation
+
+```bash
+pip install notifyon
+```
+
+## Quick Start
+
+```python
+from notifyon import NotifyOn
+
+# Initialize the client
+notifyon = NotifyOn(api_key="your_api_key")
+
+# Send a notification
+notifyon.send("user_123")
+```
+
+## Configuration
+
+### Using Environment Variables
+
+Set your API key as an environment variable:
+
+```bash
+export NOTIFYON_API_KEY=your_api_key
+```
+
+Then initialize without passing the key:
+
+```python
+from notifyon import NotifyOn
+
+notifyon = NotifyOn()
+notifyon.send("user_123")
+```
+
+### Using Context Manager
+
+The SDK supports context manager for automatic cleanup:
+
+```python
+from notifyon import NotifyOn
+
+with NotifyOn(api_key="your_api_key") as notifyon:
+    notifyon.send("user_123", "Task complete")
+```
+
+## API Reference
+
+### NotifyOn Class
+
+#### `__init__(api_key=None, api_url=None)`
+
+Initialize the NotifyOn client.
+
+**Parameters:**
+
+- `api_key` (str, optional): Your NotifyOn API key. If not provided, looks for `NOTIFYON_API_KEY` environment variable.
+- `api_url` (str, optional): Custom API URL for self-hosted or development environments.
+
+#### `send(user_id, message=None)`
+
+Send a notification to a user.
+
+**Parameters:**
+
+- `user_id` (str): The external user ID to notify.
+- `message` (str, optional): Custom message for the notification.
+
+**Returns:**
+
+- `dict`: Response from the API
+
+**Raises:**
+
+- `NotifyOnError`: If there's an API error
+- `ConfigurationError`: If API key is missing
+- `ValueError`: If user_id is not provided
+
+## Error Handling
+
+```python
+from notifyon import NotifyOn, NotifyOnError
+
+try:
+    notifyon = NotifyOn(api_key="your_api_key")
+    notifyon.send("user_123", "Processing complete")
+except NotifyOnError as e:
+    print(f"Failed to send notification: {e}")
+```
+
+## Examples
+
+### Basic Usage
+
+```python
+from notifyon import NotifyOn
+import os
+
+# Using environment variable
+notifyon = NotifyOn()
+
+# Notify when a long task completes
+def process_data(user_id):
+    # Your long-running task here
+    result = perform_analysis()
+
+    # Notify the user
+    notifyon.send(user_id, "Analysis complete")
+
+    return result
+```
+
+### With Error Handling
+
+```python
+from notifyon import NotifyOn, NotifyOnError
+
+notifyon = NotifyOn(api_key="your_api_key")
+
+def safe_notify(user_id, message):
+    try:
+        notifyon.send(user_id, message)
+        print(f"Notification sent to {user_id}")
+    except NotifyOnError as e:
+        print(f"Failed to notify {user_id}: {e}")
+        # Handle the error appropriately
+```
+
+### Batch Processing
+
+```python
+from notifyon import NotifyOn
+
+notifyon = NotifyOn(api_key="your_api_key")
+
+def process_batch(user_ids, task):
+    results = []
+
+    for user_id in user_ids:
+        # Process task for each user
+        result = task(user_id)
+        results.append(result)
+
+        # Notify each user when their task is done
+        notifyon.send(user_id, f"Your {task.__name__} is complete")
+
+    return results
+```
+
+## License
+
+MIT
