@@ -1,0 +1,320 @@
+=pod
+
+=encoding utf8
+
+=head1 NAME
+
+B<jmc> - JSON Model Compiler
+
+=head1 SYNOPSIS
+
+ jmc [-h] [--version] [--debug] [--verbose] [--quiet] [--doc {pod,syn,help,man}] [--man]
+     [--maps MAPS] [--auto] [--entry ENTRY] [--regex-engine {re,re2,pcre2}]
+     [--allow-duplicates] [--loose-int] [--strict-int] [--loose-float]
+     [--strict-float] [--loose-number] [--strict-number] [--loose] [--check]
+     [-[-no]-optimize] [-[-no]-reporting] [-[-no]-inline]
+     [--format {json,yaml,py,c,js,plpgsql,pl,java}] [-[-no]-sort] [--indent INDENT]
+     [--gen {exec,module,code,none} | --executable | --module | --code | --no-gen]
+     [--cc CC] [--cflags CFLAGS] [--cppflags CPPFLAGS] [--ldflags LDFLAGS]
+     [--include [INCLUDE ...]] [--library [LIBRARY ...]] [--define [DEFINE ...]]
+     [--javac JAVAC] [--jflags JFLAGS]
+     [--name NAME] [-[-no]-report] [--none] [--true] [--false] [--test-vector]
+     [--map-threshold MAP_THRESHOLD] [--map-share]
+     [--op {P,U,J,N,E,C} | --preproc | --dump | --jdump | --nope | --export | --compile]
+     [--output OUTPUT] model [values ...]
+
+=head1 DESCRIPTION
+
+The JSON Model Compiler command processes a L<JSON Model|https://json-model.org/> to
+generate modules or scripts in C, JS, Python, PL/pgSQL, Perl, or a more-or-less equivalent
+JSON Schema or pydantic type declarations.
+
+=head1 ARGUMENTS
+
+=over 4
+
+=item B<model>
+
+model to process, a local file or a URL.
+
+=item B<values...>
+
+list of  value files to check.
+
+=back
+
+=head1 OPTIONS
+
+Here are the most useful options:
+
+=head2 Metadata
+
+=over 4
+
+=item B<--help>/B<-h>
+
+show auto-generated synopsis and exit.
+
+=item B<--version>
+
+show command version and exit.
+
+=item B<--doc {pod,syn,help,man}>
+
+show help in some format and exit.
+
+=item B<--man>
+
+show man page and exit.
+
+=back
+
+=head2 Verbosity
+
+=over 4
+
+=item B<--verbose>/B<-v>
+
+set verbose mode.
+
+=item B<--quiet>
+
+set quiet mode, only show warnings.
+
+=item B<--debug>
+
+set debug mode, which is very verbose.
+
+=back
+
+=head2 Input
+
+=over 4
+
+=item B<--maps "URL PATH">/B<-m …>
+
+map remote urls to a local path.
+
+=item B<--auto>/B<-a>
+
+infer url to path mapping from declared model URL (C<.$."">).
+
+=item B<--check>
+
+whether to check the model for errors at various stages.
+
+=item B<--allow-duplicates>: accept JSON with objects containing duplicated properties.
+
+=back
+
+=head2 Processing
+
+=over 4
+
+=item B<--op {P,E,C,U,J,N}>
+
+operation to run (preprocessing, export, compile, dump, jdump, none).
+
+=item B<--{loose,strict}-{int,float,number}> B<--loose>
+
+whether to assume loose JSON numbers, i.e. accept I<42.0> as an integer or I<42> as a float.
+Default is strict, but JS, PL/pgSQL and Perl backends are always loose due to the language
+and type capabilities.
+
+=item B<--re RELIB>
+
+regular expression library to use, default is to use B<re2> when available,
+else the internal library.
+
+=item B<--optimize>/B<-O>
+
+whether to optimize the model (partial eval, constraint simplifications, flattening,
+dead code elimination, xor to or conversion…).
+
+=back
+
+=head2 Output
+
+=over 4
+
+=item B<--output FILE>/B<-o FILE>
+
+output file, the suffix of which is used for setting the default format and generation.
+
+=item B<--format FMT>/B<-F FMT>
+
+output language, to override defaults.
+
+=item B<--gen GEN>
+
+whether to generate an B<exec>utable, a B<module>, source B<code> or nothing B<none>,
+to overide defaults.
+
+=item B<--entry ENTRY>
+
+name of the entry function to generate.
+
+=item B<--package PKG>
+
+name of package for generated module, if appliable.
+
+=item B<--map-threshold THRESHOLD>
+
+maximum number of props to inline property checks in objects.
+
+=item B<--map-share>
+
+whether to share common maps, may result in smaller generated code.
+
+=back
+
+=head2 C Compilation
+
+=over 4
+
+=item B<--cc COMPILER>
+
+compiler to use, defaut is C<cc>.
+
+=item B<--{cpp,c,ld}flags ...>
+
+set raw C<cpp>, C<cc> or C<ld> flags.
+
+=item B<-I DIR> B<-D VAR=VAL>
+
+cpp include path and definitions.
+
+=item B<-L DIR>
+
+C<ld> link path.
+
+=item B<--static>
+
+generate a statically linked executable.
+
+=item B<--inline> B<--no-inline>
+
+generate inline hints.
+
+=back
+
+=head2 Java Compilation
+
+=over 4
+
+=item B<--javac JAVAC>
+
+Java compiler.
+
+=item B<--jflags JFLAGS>
+
+Java compiler flags.
+
+=back
+
+=head2 Testing
+
+When testing values:
+
+=over 4
+
+=item B<--name NAME>/B<-n NAME>
+
+name of model to use, default is empty string for the root model.
+
+=item B<--test-vector>
+
+assume a test vector input format for tested values.
+
+=item B<--none>/B<--true>/B<--false>
+
+expected result of test values, return an error status if unexpected values are encountered.
+
+=item B<--report>
+
+generate a report about why a value failed. Default is just to say PASS or FAIL.
+
+=back
+
+=head1 OPERATIONS
+
+This section describes the main operations implemented by the compiler:
+
+=head2 Preprocessing
+
+The optimized proprocessed JSON Model is shown with C<-P -o preprocessed.json>.
+
+=head2 Compilation
+
+The compiler can generate code to actualy validate JSON data as:
+
+=over 4
+
+=item B<native>
+
+C source (C<-o model.c>), object file (C<-o model.o>) or compiled executable (C<-o model.out>);
+
+=item B<byte-code>
+
+Java source (C<-o model.java>) or compiled class (C<-o model.class>);
+
+=item B<scripts>
+
+Python (C<-o model.py>), JavaScript (C<-o model.js>) or Perl (C<-o model.pl>);
+
+=item B<modules>
+
+Python (C<-o model.py --module>), JavaScript (C<-o model.mjs>), Perl (C<-o model.pm>),
+PL/pgSQL (C<-o model.sql>), Java (C<-o model.java>) ready to be imported and used
+in the corresponding language.
+
+=back
+
+=head2 Export
+
+The compiler can export models to other data type declaration formats:
+
+=over 4
+
+=item B<JSON Schema>
+
+formatted in JSON (C<-E -o schema.json>) or yaml (C<-E -o schema.yaml>).
+
+=item B<Python Pydantic>
+
+generate classes and types with C<-E -o Models.py>).
+
+=back
+
+=head1 AUTHORS
+
+Fabien Coelho (Mines Paris - PSL) and Claire Yannou-Medrala (MESR).
+
+
+=head1 COPYRIGHT
+
+This software is dedicated to the public domain.
+
+=head1 SEE ALSO
+
+=over 4
+
+=item L<JSON Model Web Site|https://json-model.org/>
+
+Including
+L<JSON Model Tutorial|https://json-model.org/#/TUTO>,
+L<JSON Model HOWTO|https://json-model.org/#/HOWTO>,
+L<JSON Model Specification|https://json-model.org/#/SPEC>, and
+L<JSON Model illustrative models|https://json-model.org/#/MODELS>.
+
+=item L<JSON Model Sources|https://github.com/clairey-zx81/json-model>
+
+Source code on GitHub.
+
+=item L<JSON Model Issues|https://github.com/clairey-zx81/json-model/issues>
+
+Report bugs on GitHub.
+
+=back
+
+=cut
