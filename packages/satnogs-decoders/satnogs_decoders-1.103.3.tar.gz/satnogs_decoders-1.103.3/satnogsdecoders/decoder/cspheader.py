@@ -1,0 +1,130 @@
+# This is a generated file! Please edit source .ksy file and use kaitai-struct-compiler to rebuild
+
+import kaitaistruct
+from kaitaistruct import KaitaiStruct, KaitaiStream, BytesIO
+
+
+if getattr(kaitaistruct, 'API_VERSION', (0, 9)) < (0, 9):
+    raise Exception("Incompatible Kaitai Struct Python API: 0.9 or later is required, but you have %s" % (kaitaistruct.__version__))
+
+class Cspheader(KaitaiStruct):
+    """
+    .. seealso::
+       Source - https://en.wikipedia.org/wiki/Cubesat_Space_Protocol
+    """
+    def __init__(self, _io, _parent=None, _root=None):
+        self._io = _io
+        self._parent = _parent
+        self._root = _root if _root else self
+        self._read()
+
+    def _read(self):
+        self.csp_header = Cspheader.CspHeaderT(self._io, self, self._root)
+        self.csp_data = Cspheader.CspDataT(self._io, self, self._root)
+
+    class CspHeaderT(KaitaiStruct):
+        def __init__(self, _io, _parent=None, _root=None):
+            self._io = _io
+            self._parent = _parent
+            self._root = _root if _root else self
+            self._read()
+
+        def _read(self):
+            self.csp_flags = []
+            for i in range(4):
+                self.csp_flags.append(self._io.read_u1())
+
+
+        @property
+        def source(self):
+            if hasattr(self, '_m_source'):
+                return self._m_source
+
+            self._m_source = ((self.csp_flags[3] >> 1) & 31)
+            return getattr(self, '_m_source', None)
+
+        @property
+        def rdp(self):
+            if hasattr(self, '_m_rdp'):
+                return self._m_rdp
+
+            self._m_rdp = ((self.csp_flags[0] >> 1) & 1)
+            return getattr(self, '_m_rdp', None)
+
+        @property
+        def src_port(self):
+            if hasattr(self, '_m_src_port'):
+                return self._m_src_port
+
+            self._m_src_port = (self.csp_flags[1] & 63)
+            return getattr(self, '_m_src_port', None)
+
+        @property
+        def destination(self):
+            if hasattr(self, '_m_destination'):
+                return self._m_destination
+
+            self._m_destination = (((self.csp_flags[2] | (self.csp_flags[3] << 8)) >> 4) & 31)
+            return getattr(self, '_m_destination', None)
+
+        @property
+        def dst_port(self):
+            if hasattr(self, '_m_dst_port'):
+                return self._m_dst_port
+
+            self._m_dst_port = (((self.csp_flags[1] | (self.csp_flags[2] << 8)) >> 6) & 63)
+            return getattr(self, '_m_dst_port', None)
+
+        @property
+        def priority(self):
+            if hasattr(self, '_m_priority'):
+                return self._m_priority
+
+            self._m_priority = (self.csp_flags[3] >> 6)
+            return getattr(self, '_m_priority', None)
+
+        @property
+        def reserved(self):
+            if hasattr(self, '_m_reserved'):
+                return self._m_reserved
+
+            self._m_reserved = (self.csp_flags[0] >> 4)
+            return getattr(self, '_m_reserved', None)
+
+        @property
+        def xtea(self):
+            if hasattr(self, '_m_xtea'):
+                return self._m_xtea
+
+            self._m_xtea = ((self.csp_flags[0] >> 2) & 1)
+            return getattr(self, '_m_xtea', None)
+
+        @property
+        def hmac(self):
+            if hasattr(self, '_m_hmac'):
+                return self._m_hmac
+
+            self._m_hmac = ((self.csp_flags[0] >> 3) & 1)
+            return getattr(self, '_m_hmac', None)
+
+        @property
+        def crc(self):
+            if hasattr(self, '_m_crc'):
+                return self._m_crc
+
+            self._m_crc = (self.csp_flags[0] & 1)
+            return getattr(self, '_m_crc', None)
+
+
+    class CspDataT(KaitaiStruct):
+        def __init__(self, _io, _parent=None, _root=None):
+            self._io = _io
+            self._parent = _parent
+            self._root = _root if _root else self
+            self._read()
+
+        def _read(self):
+            self.csp_payload = self._io.read_bytes_full()
+
+
+

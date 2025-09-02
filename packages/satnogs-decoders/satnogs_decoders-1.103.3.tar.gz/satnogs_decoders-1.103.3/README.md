@@ -1,0 +1,289 @@
+# SatNOGS Decoders
+
+Kaitai Structs, preprocessors and helper scripts for decoding SatNOGS received data.
+
+## Adding a new decoder
+
+This project uses the [Kaitai Struct](https://kaitai.io/) language and compiler to describe the various telemetry formats.
+To add a new decoder, write a Kaitai struct and add it to the folder
+[ksy](https://gitlab.com/librespacefoundation/satnogs/satnogs-decoders/-/tree/master/ksy).
+More details are given in the wiki guide [SatNOGS: Adding a new data decoder](https://wiki.satnogs.org/Adding_a_new_data_decoder).
+
+Every new telemetry decoder _should_ have references to original documentation (highly recommended, but not enforced).
+Those references can be added with `doc-ref` key, see [kaitai docs: Documenting your spec](https://doc.kaitai.io/user_guide.html#ksy-documentation).
+
+- Naming conventions:
+  * Satellite Name (arbitrary): `CubeBel-1`
+  * Kaitai Struct filename: `cubebel1.ksy`
+  * Compiled Python output: `cubebel1.py`
+  * Python class name: `Cubebel1`
+
+This is an example Kaitai struct:
+```yaml
+meta:
+  id: my_satellite
+  title: MySatellite Telemetry Protocol
+  endian: be
+  doc-ref: |
+    https://example.com/mysatellite/protocol-spec-v1.pdf
+  doc: |
+      :field timestamp: timestamp
+      :field battery_voltage_v: battery_voltage_v
+      :field temperature_c: temperature_c
+seq:
+  - id: sync
+    contents: [0xde, 0xad]
+  - id: frame_type
+    type: u1
+    enum: frame_types
+  - id: timestamp
+    type: u4
+  - id: battery_voltage
+    type: u2
+  - id: temperature
+    type: s2
+  - id: crc16
+    type: u2
+
+instances:
+  battery_voltage_v:
+    value: battery_voltage * 0.1
+  temperature_c:
+    value: temperature * 0.5
+
+enums:
+  frame_types:
+    0: beacon
+    1: telemetry
+    2: payload_data
+```
+
+A real Kaitai struct is [cubebel1.ksy](https://gitlab.com/librespacefoundation/satnogs/satnogs-decoders/-/blob/master/ksy/cubebel1.ksy).
+
+Note for existing users:
+Registering of new decoders in `satnogsdecoders/decoder/__init__.py` is no longer necessary.
+
+
+## Installation in development mode
+
+Within the root directory of this repository run `docker-ksc` script to compile KSY to Python code (requires Docker):
+```
+$ ./contrib/docker-ksc.sh
+```
+The above command will output the compiled files under `satnogsdecoders/decoder` directory.
+
+Then, install the package from source code directory as usual:
+```
+pip install -e .
+```
+
+## Helper Scripts
+
+Some helper commands will only be available after installing the package.
+
+### Installation
+
+The helper scripts need a few additional dependencies which can be installed via pip:
+```
+pip install -r contrib/manage/requirements.txt
+```
+
+### Fetch telemetry
+
+To fetch telemetry you will need an API Token. You will have to register yourself on [https://db.satnogs.org](https://db.satnogs.org) in order to get it.
+
+Once you have your token create a new file `.env` in the current directory based on "./contrib/manage/env-dist" and add your token:
+
+```
+SATNOGS_DB_API_TOKEN=1234567890asdfghjkl
+```
+
+
+```
+$ ./contrib/manage/fetch_telemetry.py --help
+usage: fetch_telemetry.py [-h] [--source SOURCE] [--base_dir BASE_DIR] [--max MAX] norad_id
+
+Fetch and store all telemetry data from a satnogs-db instance for a given satellite.
+
+positional arguments:
+  norad_id             NORAD ID of the satellite
+
+optional arguments:
+  -h, --help           show this help message and exit
+  --source SOURCE      satnogs-db Instance: satnogs, satnogs-dev or sputnix
+  --base_dir BASE_DIR  Base directory of the telemetry storage
+  --max MAX            Maximum number of fetched frames. Default: 25
+```
+
+
+### Push telemetry
+
+```
+$ ./contrib/manage/push_telemetry.py --help
+usage: push_telemetry.py [-h] [--target TARGET] [--max MAX] telemetry_filename norad_id_import norad_id_export
+
+Push all telemetry data to the target db instance from a local json dump file for a given satellite.
+
+positional arguments:
+  telemetry_filename  Filname of the telemetry data json dump
+  norad_id_import     NORAD ID of the satellite in the data
+  norad_id_export     NORAD ID of the satellite in the target db instance
+
+optional arguments:
+  -h, --help          show this help message and exit
+  --target TARGET     target satnogs-db Instance: satnogs, satnogs-dev or sputnix
+  --max MAX           Maximum number of frames to be submitted.
+```
+
+
+### Export raw frames
+
+```
+$ ./contrib/manage/export_raw.py --help
+usage: export_raw.py [-h] norad_id source_file satellite_name
+
+Export raw frames from local telemtry storage json files.
+
+positional arguments:
+  norad_id        NORAD ID of the satellite
+  source_file     Source telemetry storage file (json)
+  satellite_name  Satellite name
+
+optional arguments:
+  -h, --help      show this help message and exit
+```
+
+### Decode frame
+
+```
+$ decode_frame --help
+usage: decode_frame [-h] [--raw-frame] decoder_name raw_frame_file
+
+Decode a raw frame with the selected decoder (generated by Kaitai) and print its json representation, either of the telemetry frame directly, or the transformed result based on the fields specified in the struct docstring.
+
+positional arguments:
+  decoder_name    name of the decoder (e.g. siriussat)
+  raw_frame_file  Path to the file containing the raw frame
+
+options:
+  -h, --help      show this help message and exit
+  --raw-frame     Show the full decoded frame. If not selected (default), show only selected fields as specified by the docstring.
+```
+
+### Fetch frames from network
+
+```
+$ ./contrib/manage/fetch_frames_from_network.py --help
+usage: fetch_frames_from_network.py [-h] norad_id start end target_dir
+
+Fetch all frames received in thespecified timeframe from a given satellite in
+satnogs-network (prod) and store themto individual raw files.
+
+positional arguments:
+  norad_id    NORAD ID of the satellite
+  start       Start date, YYYY-mm-dd
+  end         End date, YYYY-mm-dd
+  target_dir  target directory for the downloaded raw frames
+
+optional arguments:
+  -h, --help  show this help message and exit
+```
+
+### Example Usage
+
+Transfer frames from db-dev to db-dev (duplicating frames...):
+```
+$ ./contrib/manage/fetch_telemetry.py 40967 --source satnogs-dev --max 10 --base_dir ./telemetry/
+https://db-dev.satnogs.org/api/telemetry/?satellite=40967
+Fetched 25 frames.
+Stored in ./telemetry/satnogs-dev/40967/20180927195606_all_telemetry.json
+
+
+$ ./contrib/manage/push_telemetry.py ./telemetry/satnogs-dev/40967/20180927195606_all_telemetry.json 40967 40967 --target satnogs-dev --max 3
+0 SR1GEO_DEV01-JO73mi 2018-09-20T21:40:24Z
+1 SR1GEO_DEV01-JO73mi 2018-09-20T21:40:19Z
+2 SR1GEO_DEV01-JO73mi 2018-09-20T21:40:14Z
+Exported 3 frames.
+```
+
+Decode a frame by Siriussat:
+```
+
+$ decode_frame siriussat contrib/siriussat/packets/data_219992_2018-08-22T13-46-52
+{
+    "dest_callsign": "R2ANF ",
+    "src_callsign": "RS13S ",
+    ...
+}
+```
+
+Download frames from satnogs-network (prod instance) for Fox-1A (norad id: 40967) received in the specified timeframe:
+```
+$ mkdir fox1a
+$ ./contrib/manage/fetch_frames_from_network.py 40967 2018-10-26T00:00:00 2018-10-26T01:00:00 ./fox1a/
+Fetched 45 frames.
+```
+
+## Existing decoders
+- AAUSAT4 by OZ3RF & DL4PD
+- ACRUX-1 by DL4PD
+- Aisat by DL7NDR
+- AMICALSAT by deckbsd
+- ARMADILLO by DL4PD
+- Astrocast 0.1 & 0.2 by DL7NDR
+- ASU PHOENIX by DL4PD & deckbsd
+- AMSAT FOX DUV by DL4PD
+- AX.25 frame decoder by DL4PD
+- CAS-4A & CAS-4B by cshields
+- CASAA-Sat decoder by DL7NDR
+- CHOMPTT by DL4PD
+- CO-57 (CW) by DL7NDR
+- CO-58 (CW) by DL7NDR
+- CO-65 (CW) by DL7NDR
+- CO-66 (CW) by DL7NDR
+- CosmoGirl-Sat by DL7NDR
+- CroCube by DL7NDR (extended version for Digi and CW)
+- CubeBel-1 by DL4PD
+- CubeBel-2 by mixaill
+- Delfi N3xt by pierros
+- Elfin-A & -B by DL4PD
+- ENSO by deckbsd
+- Entrysat by DL4PD
+- FO-29 by DL7NDR
+- GEOSCAN by R1NAV
+- GRBAlpha by DL7NDR (bugfixed and extended)
+- GRBBeta by DL7NDR
+- GreenCube by K8DP
+- GT-1 by dillan1
+- HADES-R by K8DP
+- HADES-ICM by K8DP
+- HYPE by DL7NDR
+- IO-86 by DL7NDR
+- Kashiwa by DL7NDR
+- KOSEN-1 by DL7NDR
+- Lightsail-2 by DL4PD
+- Lucky-7 by DL7NDR
+- NO-44 (PCSat) by DL7NDR
+- Ops-sat by deckbsd
+- Painani by DL4PD
+- PEGASUS by FHWNGroundStation (OE3XFH)
+- Polyitan-1 by deckbsd
+- QBEE by Ansgar Schmidt
+- RHOK-SAT by Rhodes College
+- Sakura by DL7NDR & 徳永 大輝 (TOKUNAGA Daiki)
+- SanoSat-1 (extended version for gr_satellites uploads, RTTY and CW beacon and Digipeater messages) by DL7NDR
+- Siriussat-1 & -2 by kerel
+- skCUBE by borispilka & kerel
+- SNUGLITE by DL7NDR
+- SR-0 DemoSat by DL7NDR
+- STARS (CW) by DL7NDR
+- Strand-1 by kerel
+- TARGIT by dillan1
+- TeikyoSat-4 (CW) by DL7NDR
+- TBEX-A/-B by DL4PD
+- Unisat-6 by cshields
+- Veronika by DL7NDR (extends the original version by features for digipeater and adds cw beacon decoder)
+- Yomogi by DL7NDR & 徳永 大輝 (TOKUNAGA Daiki)
+
+## License
+Helper scripts: AGPL-3.0-or-later
