@@ -1,0 +1,1 @@
+from .web_tabs_panel import WebTabsPanel
