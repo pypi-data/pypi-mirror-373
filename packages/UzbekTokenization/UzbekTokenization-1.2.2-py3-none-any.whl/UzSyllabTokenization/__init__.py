@@ -1,0 +1,1 @@
+from .UzSyllabTokenizer import tokenize
