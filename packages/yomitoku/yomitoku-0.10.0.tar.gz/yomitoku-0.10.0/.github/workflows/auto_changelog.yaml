@@ -1,0 +1,59 @@
+---
+name: Change Log Generator
+
+on:
+  workflow_run:
+    workflows: ["Release Drafter"] 
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write     # PR を作成するため
+  issues: write # ラベルを追加するため
+
+
+jobs:
+  changelog:
+    if: |
+      github.event_name == 'push' ||
+      ! contains(
+        github.event.pull_request.labels.*.name,
+        'changelog'
+      )
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - run: gem install github_changelog_generator
+      - name: Generate CHANGELOG
+        env:
+          CHANGELOG_GITHUB_TOKEN: ${{ secrets.GH_CHANGELOG_TOKEN }}
+        # Use the environment variable to pass the token to the generator
+        run: |
+          github_changelog_generator \
+            --user ${{ github.repository_owner }} \
+            --project ${{ github.event.repository.name }} \
+            --no-issues
+      - name: Create Pull Request
+        id: cpr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: chore/changelog-${{ github.run_id }}
+          base:   ${{ github.event.workflow_run.head_branch }}
+          title: "docs: Update CHANGELOG"
+          body: |
+            Automated CHANGELOG update triggered by Release Drafter.
+            - Workflow run: ${{ github.run_id }}
+          commit-message: "docs: update CHANGELOG"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          signoff: false 
+          delete-branch: true   
+          labels: |
+            changelog
+            automated
