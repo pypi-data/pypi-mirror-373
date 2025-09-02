@@ -1,0 +1,57 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+
+  test-action:
+
+    name: Test Github Action
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: List prerequisites non-recursively
+      id: non-recursive-prerequisites
+      uses: ./
+      with:
+        working-directory: test
+        target: test1
+    - name: Check non-recursive prerequisites
+      run: |
+        test "${{ steps.non-recursive-prerequisites.outputs.prerequisites }}" = "prereq"
+        echo ${{ steps.non-recursive-prerequisites.outputs.hash }}
+    - name: List recursive prerequisites
+      id: recursive-prerequisites
+      uses: ./
+      with:
+        working-directory: test
+        target: test1
+        flags: --recursive
+    - name: Check recursive prerequisites
+      run: |
+        test "${{ steps.recursive-prerequisites.outputs.prerequisites }}" = "preprereq1 preprereq2"
+        echo ${{ steps.recursive-prerequisites.outputs.hash }}
+    - name: Hash directory prerequisite
+      id: hash-dir-prerequisite
+      uses: ./
+      with:
+        working-directory: test
+        target: test2
+        flags: --recursive
+    - name: Check directory prerequisite hash
+      run: |
+        test "${{ steps.hash-dir-prerequisite.outputs.prerequisites }}" = "dirprereq"
+        test "${{ steps.hash-dir-prerequisite.outputs.hash }}" = "c64a77871513eadd52ec0e278bfbac1db866b77f66ebe91725b378b8bf43e29c"
+    - name: Install package
+      run: |
+        python -m pip install .
+    - name: List dependent targets non-recursively
+      working-directory: test
+      run: |
+        test $(list-dependent-make-targets preprereq1) = prereq
+    - name: List dependent targets recursively
+      working-directory: test
+      run: |
+        test "$(list-dependent-make-targets preprereq1 -r | xargs)" = ".DEFAULT_GOAL prereq test1"
