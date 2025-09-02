@@ -1,0 +1,644 @@
+Metadata-Version: 2.4
+Name: mcpbytes-lambda-stdio
+Version: 0.1.1
+Summary: Stdio transport adapter for mcpbytes-lambda MCP servers
+Project-URL: Homepage, https://mcpbytes.com/
+Project-URL: Repository, https://github.com/MCPBytes/mcpbytes-lambda
+Project-URL: Issues, https://github.com/MCPBytes/mcpbytes-lambda/issues
+Project-URL: Documentation, https://github.com/MCPBytes/mcpbytes-lambda#readme
+Author-email: "MCPBytes.com" <hello@mcpbytes.com>
+License-Expression: Apache-2.0
+Keywords: mcp,model-context-protocol,stdio,transport
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Internet :: WWW/HTTP :: HTTP Servers
+Classifier: Topic :: Software Development :: Libraries :: Application Frameworks
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.12
+Requires-Dist: mcpbytes-lambda-core>=0.2.0
+Description-Content-Type: text/markdown
+
+# mcpbytes-lambda-stdio
+
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![MCP 2025-06-18](https://img.shields.io/badge/MCP-2025--06--18-green.svg)](https://spec.modelcontextprotocol.io/)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
+Ultra-minimal stdio transport adapter for [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers. 
+Enables local MCP server deployment with line-delimited JSON-RPC over stdin/stdout for Claude Desktop, VS Code MCP, and other MCP clients.
+
+## 🚀 **Quick Start**
+
+```python
+import sys
+from mcpbytes_lambda.core import MCPServer
+from mcpbytes_lambda.stdio import StdioAdapter
+
+# Create your MCP server with tools
+mcp = MCPServer(name="local-server", version="1.0.0")
+
+@mcp.tool(name="hello", description="Say hello")
+def hello(name: str) -> str:
+    return f"Hello, {name}!"
+
+def main():
+    """Local MCP server mode - stdio transport."""
+    adapter = StdioAdapter()
+    
+    try:
+        while True:
+            # Read JSON-RPC line from stdin
+            line = sys.stdin.readline()
+            if not line:
+                break
+                
+            # Process: stdin → JSON-RPC → tool execution → JSON-RPC → stdout
+            response_json = mcp.handle(line, adapter)
+            
+            # Write response to stdout
+            sys.stdout.write(response_json)
+            sys.stdout.flush()
+            
+    except (KeyboardInterrupt, EOFError):
+        sys.exit(0)
+
+if __name__ == "__main__":
+    main()
+```
+
+**Configure in Claude Desktop:**
+```json
+{
+  "mcpServers": {
+    "local-server": {
+      "command": "python3",
+      "args": ["/path/to/your/server.py"]
+    }
+  }
+}
+```
+
+## ✨ **Features**
+
+- **📺 Line-Delimited JSON-RPC** - Standard MCP stdio transport protocol
+- **🏠 Local Development** - Perfect for Claude Desktop and local MCP clients
+- **⚡ Zero Overhead** - Minimal transport layer with direct JSON passthrough
+- **🔄 Dual-Mode Support** - Same tools work in both Lambda and local environments
+- **🧪 Easy Testing** - Simple command-line testing with JSON inputs
+- **📊 Structured Output** - Full MCP 2025-06-18 compliance
+- **🔧 Developer-Friendly** - Seamless local development workflow
+
+## 📋 **Requirements**
+
+- Python 3.12+
+- `mcpbytes-lambda-core` package
+- Standard input/output streams (terminal, process pipes)
+
+## 🏗️ **Architecture**
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   MCP Client    │───▶│ Stdio Adapter   │───▶│   MCP Core      │
+│ (Claude Desktop)│    │ (stdin/stdout)  │    │   JSON-RPC      │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       ▼                       │
+         │              ┌─────────────────┐              │
+         │              │ Line-Delimited  │              │
+         │              │   JSON-RPC      │              │
+         │              │  .strip() only  │              │
+         │              └─────────────────┘              │
+         │                                                │
+         ▼                                                ▼
+┌─────────────────┐                              ┌─────────────────┐
+│   MCP Client    │◀─────────────────────────────│   Tool Results  │
+│   Integration   │                              │   JSON-RPC      │
+└─────────────────┘                              └─────────────────┘
+```
+
+## 🛠️ **Usage Examples**
+
+### **Basic Stdio Server**
+
+```python
+import sys
+from mcpbytes_lambda.core import MCPServer, ToolResult, TextContent
+from mcpbytes_lambda.stdio import StdioAdapter
+
+mcp = MCPServer(name="my-tools", version="1.0.0")
+
+@mcp.tool(name="file.read")
+def read_file(path: str) -> ToolResult:
+    """Read a text file."""
+    try:
+        with open(path, 'r') as f:
+            content = f.read()
+        return ToolResult(
+            content=[TextContent(text=content)],
+            isError=False
+        )
+    except Exception as e:
+        return ToolResult(
+            content=[TextContent(text=f"Error reading file: {e}")],
+            isError=True
+        )
+
+def main():
+    adapter = StdioAdapter()
+    
+    while True:
+        try:
+            line = sys.stdin.readline()
+            if not line:
+                break
+                
+            response = mcp.handle(line, adapter)
+            sys.stdout.write(response)
+            sys.stdout.flush()
+            
+        except (KeyboardInterrupt, EOFError):
+            break
+
+if __name__ == "__main__":
+    main()
+```
+
+### **Dual-Mode Server (Lambda + Stdio)**
+
+```python
+import sys
+from typing import Dict, Any
+from mcpbytes_lambda.core import MCPServer
+from mcpbytes_lambda.stdio import StdioAdapter
+from mcpbytes_lambda.apigw import ApiGatewayAdapter
+
+# Shared MCP server instance
+mcp = MCPServer(name="dual-mode-server", version="1.0.0")
+
+@mcp.tool(name="calculate")
+def calculate(expression: str) -> str:
+    """Safely evaluate mathematical expressions."""
+    try:
+        # Basic calculator logic here
+        result = eval(expression.replace('^', '**'))  # Simple example
+        return f"{expression} = {result}"
+    except Exception as e:
+        return f"Error: {e}"
+
+def main():
+    """Local stdio mode."""
+    print("Starting MCP Server (stdio mode)", file=sys.stderr)
+    adapter = StdioAdapter()
+    
+    try:
+        while True:
+            line = sys.stdin.readline()
+            if not line:
+                break
+                
+            response = mcp.handle(line, adapter)
+            sys.stdout.write(response)
+            sys.stdout.flush()
+            
+    except (KeyboardInterrupt, EOFError):
+        print("Shutting down MCP Server", file=sys.stderr)
+
+def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
+    """AWS Lambda mode."""
+    adapter = ApiGatewayAdapter()
+    
+    if adapter.need_preflight(event):
+        return adapter.preflight_response(event.get("headers"))
+    
+    response = mcp.handle(event, adapter, headers=event.get("headers"))
+    return adapter.add_cors(response, event.get("headers"))
+
+if __name__ == "__main__":
+    main()
+```
+
+### **With Logging and Error Handling**
+
+```python
+import sys
+import logging
+from mcpbytes_lambda.core import MCPServer
+from mcpbytes_lambda.stdio import StdioAdapter
+
+# Configure logging to stderr (stdout reserved for MCP protocol)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stderr
+)
+logger = logging.getLogger(__name__)
+
+mcp = MCPServer(name="robust-server", version="1.0.0")
+
+@mcp.tool(name="system.info")
+def system_info() -> Dict[str, str]:
+    """Get system information."""
+    import platform
+    import os
+    
+    return {
+        "platform": platform.system(),
+        "python_version": platform.python_version(),
+        "cwd": os.getcwd(),
+        "pid": os.getpid()
+    }
+
+def main():
+    logger.info("Starting MCP Server (stdio mode)")
+    adapter = StdioAdapter()
+    
+    try:
+        while True:
+            line = sys.stdin.readline()
+            if not line:
+                logger.info("EOF received, shutting down")
+                break
+                
+            line = line.strip()
+            if not line:
+                continue
+                
+            logger.debug(f"Processing request: {line[:100]}...")
+            
+            try:
+                response = mcp.handle(line, adapter)
+                sys.stdout.write(response)
+                sys.stdout.flush()
+                logger.debug("Response sent successfully")
+                
+            except Exception as e:
+                logger.error(f"Request processing failed: {e}", exc_info=True)
+                # Send error response
+                error_response = {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32603, "message": "Internal error"}
+                }
+                sys.stdout.write(json.dumps(error_response) + '\n')
+                sys.stdout.flush()
+                
+    except (KeyboardInterrupt, EOFError):
+        logger.info("Shutting down MCP Server")
+    except Exception as e:
+        logger.error(f"Fatal error: {e}", exc_info=True)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+```
+
+## 🖥️ **Client Configuration**
+
+### **Claude Desktop**
+
+Add to `~/.config/claude_desktop_config.json` (macOS/Linux) or `%AppData%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "my-mcp-server": {
+      "command": "python3",
+      "args": ["/full/path/to/your/server.py"],
+      "env": {
+        "PYTHONPATH": "/path/to/your/packages"
+      }
+    }
+  }
+}
+```
+
+**With virtual environment:**
+```json
+{
+  "mcpServers": {
+    "my-server": {
+      "command": "/path/to/venv/bin/python",
+      "args": ["/path/to/server.py"]
+    }
+  }
+}
+```
+
+**Using uv:**
+```json
+{
+  "mcpServers": {
+    "my-server": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/project", "python", "server.py"]
+    }
+  }
+}
+```
+
+### **VS Code MCP Extension**
+
+Add to `.vscode/mcp.json`:
+
+```json
+{
+  "servers": {
+    "my-mcp-server": {
+      "command": "python3",
+      "args": ["/path/to/server.py"],
+      "cwd": "/path/to/project"
+    }
+  }
+}
+```
+
+### **Custom MCP Client**
+
+```python
+import subprocess
+import json
+
+# Start MCP server process
+process = subprocess.Popen(
+    ["python3", "server.py"],
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    text=True
+)
+
+# Send initialization
+request = {
+    "jsonrpc": "2.0",
+    "method": "initialize",
+    "id": "init-1"
+}
+
+process.stdin.write(json.dumps(request) + '\n')
+process.stdin.flush()
+
+# Read response
+response = process.stdout.readline()
+result = json.loads(response)
+print("Initialize result:", result)
+
+# List tools
+request = {
+    "jsonrpc": "2.0",
+    "method": "tools/list",
+    "id": "list-1"
+}
+
+process.stdin.write(json.dumps(request) + '\n')
+process.stdin.flush()
+
+response = process.stdout.readline()
+tools = json.loads(response)
+print("Available tools:", tools)
+
+# Clean shutdown
+process.stdin.close()
+process.wait()
+```
+
+## 🧪 **Testing**
+
+### **Command Line Testing**
+
+Create `test_requests.jsonl`:
+```json
+{"jsonrpc": "2.0", "method": "initialize", "id": "1"}
+{"jsonrpc": "2.0", "method": "tools/list", "id": "2"}
+{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "hello", "arguments": {"name": "World"}}, "id": "3"}
+```
+
+Test your server:
+```bash
+python3 server.py < test_requests.jsonl
+```
+
+### **Interactive Testing**
+
+```bash
+# Start server
+python3 server.py
+
+# Type JSON-RPC requests (press Enter after each):
+{"jsonrpc": "2.0", "method": "initialize", "id": "1"}
+{"jsonrpc": "2.0", "method": "tools/list", "id": "2"}
+{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "my.tool", "arguments": {"param": "value"}}, "id": "3"}
+
+# Press Ctrl+C or Ctrl+D to exit
+```
+
+### **Unit Tests**
+
+```python
+import io
+import sys
+from contextlib import redirect_stdout, redirect_stdin
+
+def test_stdio_adapter():
+    from mcpbytes_lambda.stdio import StdioAdapter
+    
+    adapter = StdioAdapter()
+    
+    # Test line processing
+    line = '{"jsonrpc": "2.0", "method": "initialize", "id": "1"}\n'
+    core_request = adapter.to_core_request(line)
+    assert core_request == '{"jsonrpc": "2.0", "method": "initialize", "id": "1"}'
+    
+    # Test response formatting
+    response = {"jsonrpc": "2.0", "id": "1", "result": {"test": True}}
+    output = adapter.from_core_response(response)
+    assert output.endswith('\n')
+    assert '"test": true' in output.lower()
+
+def test_server_integration():
+    # Mock stdin/stdout for testing
+    input_data = '{"jsonrpc": "2.0", "method": "initialize", "id": "test"}\n'
+    
+    with redirect_stdin(io.StringIO(input_data)):
+        with redirect_stdout(io.StringIO()) as output:
+            # Run one iteration of server loop
+            try:
+                line = sys.stdin.readline()
+                if line:
+                    response = mcp.handle(line, StdioAdapter())
+                    sys.stdout.write(response)
+            except EOFError:
+                pass
+    
+    result = output.getvalue()
+    assert '"jsonrpc": "2.0"' in result
+    assert '"id": "test"' in result
+```
+
+### **Integration Testing with Process**
+
+```python
+import subprocess
+import json
+import time
+
+def test_mcp_server_process():
+    # Start server process
+    process = subprocess.Popen(
+        ["python3", "server.py"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
+    
+    try:
+        # Test initialize
+        init_request = {
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "id": "test-init"
+        }
+        
+        process.stdin.write(json.dumps(init_request) + '\n')
+        process.stdin.flush()
+        
+        # Read response with timeout
+        response_line = process.stdout.readline()
+        assert response_line, "No response received"
+        
+        response = json.loads(response_line)
+        assert response["jsonrpc"] == "2.0"
+        assert response["id"] == "test-init"
+        assert "result" in response
+        
+    finally:
+        process.terminate()
+        process.wait(timeout=5)
+```
+
+## 🚀 **Development Workflow**
+
+### **Project Structure**
+
+```
+my-mcp-server/
+├── server.py          # Main server file
+├── requirements.txt   # Dependencies
+├── test_requests.jsonl # Test cases
+├── .env              # Environment variables
+├── README.md         # Documentation
+└── tests/
+    ├── __init__.py
+    ├── test_tools.py
+    └── test_server.py
+```
+
+### **Development Script**
+
+```python
+#!/usr/bin/env python3
+"""Development helper for MCP server."""
+
+import sys
+import json
+import argparse
+from pathlib import Path
+
+def create_test_request(method: str, params: dict = None, id_val: str = "1") -> str:
+    """Create a JSON-RPC test request."""
+    request = {
+        "jsonrpc": "2.0",
+        "method": method,
+        "id": id_val
+    }
+    if params:
+        request["params"] = params
+    return json.dumps(request)
+
+def main():
+    parser = argparse.ArgumentParser(description="MCP Server Development Helper")
+    parser.add_argument("--test", action="store_true", help="Run test requests")
+    parser.add_argument("--method", help="Test specific method")
+    parser.add_argument("--params", help="JSON parameters for method")
+    
+    args = parser.parse_args()
+    
+    if args.test:
+        # Generate common test requests
+        requests = [
+            create_test_request("initialize", id_val="init-1"),
+            create_test_request("tools/list", id_val="list-1"),
+        ]
+        
+        if args.method:
+            params = json.loads(args.params) if args.params else {}
+            requests.append(create_test_request(args.method, params, "custom-1"))
+        
+        for req in requests:
+            print(req)
+    else:
+        # Run the actual server
+        from server import main as server_main
+        server_main()
+
+if __name__ == "__main__":
+    main()
+```
+
+### **Debugging Tips**
+
+1. **Use stderr for logging** (stdout is reserved for MCP protocol)
+2. **Test with simple JSON files** before integrating with clients
+3. **Validate JSON-RPC format** - clients are strict about compliance
+4. **Handle EOF gracefully** - clients may close stdin unexpectedly
+5. **Flush stdout** after each response to ensure delivery
+
+## 📊 **Performance Considerations**
+
+### **Memory Usage**
+- **Minimal overhead** - No HTTP parsing or transport layers
+- **Streaming processing** - Handle one request at a time
+- **No buffering** - Direct stdin/stdout interaction
+
+### **Latency**
+- **Near-zero transport overhead** - Simple string operations
+- **Direct JSON processing** - No intermediate representations
+- **Immediate response** - No batching or queuing
+
+### **Reliability**
+- **Process isolation** - Each client gets its own server process
+- **Automatic cleanup** - Process termination cleans up resources
+- **Simple error handling** - Failures are contained to single requests
+
+## 🤝 **Contributing**
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Make your changes and add tests
+4. Run tests: `python -m pytest`
+5. Test with actual MCP clients (Claude Desktop, etc.)
+6. Submit a pull request
+
+## 📄 **License**
+
+Apache 2.0 License - see [LICENSE](../../LICENSE) for details.
+
+## 🔗 **Related Packages**
+
+- [`mcpbytes-lambda-core`](../core/) - Transport-agnostic MCP server core
+- [`mcpbytes-lambda-apigw`](../apigw/) - API Gateway transport adapter
+- [`mcpbytes-lambda-invoke`](../invoke/) - Direct Lambda invocation adapter
+
+## 📚 **Documentation**
+
+- [MCP Specification](https://spec.modelcontextprotocol.io/)
+- [MCP Stdio Transport](https://spec.modelcontextprotocol.io/specification/basic/transports/#stdio)
+- [Claude Desktop MCP Guide](https://docs.anthropic.com/claude/docs/mcp)
+- [Project Examples](../../examples/)
+
+---
+
+Built with ❤️ for the MCP ecosystem
