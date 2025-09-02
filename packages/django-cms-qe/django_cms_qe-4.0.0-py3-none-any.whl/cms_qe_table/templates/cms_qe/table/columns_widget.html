@@ -1,0 +1,122 @@
+{% load static i18n %}
+{{ select }}
+
+<link rel="stylesheet" type="text/css" href="{% static "cms_qe/css/table/columns-widget.css" %}">
+
+<div>
+    <p>
+        {% translate 'Drag & drop certain columns to "Selected columns" list to show them on the page. You can also change columns order.' %}
+    </p>
+
+    <div class="cms-qe-table-columns">
+
+        <div class="field-box">
+            <label class="required">{% translate "Unselected columns" %}:</label>
+            <ul id="{{ id }}_unselected_columns" class="actions-list cms-qe-table-column"></ul>
+        </div>
+
+        <div class="field-box">
+            <label class="required">{% translate "Selected columns" %}:</label>
+            <ul id="{{ id }}_selected_columns" class="actions-list cms-qe-table-column"></ul>
+        </div>
+
+    </div>
+</div>
+<script src="{% static "cms_qe/js/table/Sortable.min.js" %}"></script>
+
+<script>
+
+    // Support for table_widget.html.
+
+    var cmsQeTableColumnSelect = document.querySelector('#{{ id }}');
+    var cmsQeTableColumnValue = {% if value %}{{ value|safe }}{% else %}[]{% endif %};
+
+    var cmsQeTableUnselectedElm = document.getElementById('{{ id }}_unselected_columns');
+    var cmsQeTableSelectedElm = document.getElementById('{{ id }}_selected_columns');
+
+    cmsQeTableColumnSelect.style.display = 'none';
+    document.querySelector('label[for={{ id }}]').style.display = 'none';
+
+    function cmsQeTableResetColumns() {
+        while (cmsQeTableColumnSelect.options.length > 0) {
+            cmsQeTableColumnSelect.remove(0);
+        }
+        cmsQeTableUnselectedElm.innerHTML = '';
+        cmsQeTableSelectedElm.innerHTML = '';
+    }
+
+    function cmsQeTableSetColumns(sameTable, columns) {
+        for (var i = 0; i < columns.length; i++) {
+            var name = columns[i][0];
+            var verboseName = columns[i][1];
+            var selected = (sameTable && cmsQeTableColumnValue.indexOf(name) !== -1);
+
+            var opt = document.createElement('option');
+            opt.value = name;
+            opt.innerHTML = verboseName;
+            opt.selected = selected;
+
+            var li = document.createElement('li');
+            li.setAttribute('data-id', name);
+            li.innerHTML = verboseName;
+
+            cmsQeTableColumnSelect.appendChild(opt);
+            if (selected) {
+                cmsQeTableSelectedElm.appendChild(li);
+            } else {
+                cmsQeTableUnselectedElm.appendChild(li);
+            }
+        }
+        sortList(cmsQeTableUnselectedElm);
+    }
+
+    function sortList(elm) {
+        var items = [];
+        for (var i = elm.childNodes.length; i--;) {
+            if (elm.childNodes[i].nodeName === 'LI') {
+                items.push(elm.childNodes[i]);
+            }
+        }
+        items.sort(function (a, b) {
+            return a.innerHTML.localeCompare(b.innerHTML);
+        });
+        elm.innerHTML = '';
+        for (var i = 0; i < items.length; i++) {
+            elm.appendChild(items[i]);
+        }
+    }
+
+    new Sortable(cmsQeTableUnselectedElm, {
+        group: 'cms_qe_table_columns',
+        sort: false,
+        onAdd: function (evt) {
+            var opt = cmsQeTableGetOptionByValue(evt.item.getAttribute('data-id'));
+            opt.selected = false;
+            // Unselected Option is removed and append at the end for better using in sorting of selected options.
+            // Otherwise, then there will be problems with inserting option on a specific index
+            // because the unselected options will be mixed with the selected ones
+            // (see functions onAdd and onUpdate in selectedColumnsSortable below)
+            cmsQeTableColumnSelect.removeChild(opt);
+            cmsQeTableColumnSelect.appendChild(opt);
+            sortList(cmsQeTableUnselectedElm);
+        }
+    });
+
+    new Sortable(cmsQeTableSelectedElm, {
+        group: 'cms_qe_table_columns',
+        onAdd: cmsQeTableUpdateSelectedItem,
+        onUpdate: cmsQeTableUpdateSelectedItem
+    });
+
+    function cmsQeTableUpdateSelectedItem(event) {
+        var opt = cmsQeTableGetOptionByValue(event.item.getAttribute('data-id'));
+        opt.selected = true;
+        cmsQeTableColumnSelect.removeChild(opt);
+        cmsQeTableColumnSelect.insertBefore(opt, cmsQeTableColumnSelect.children[event.newIndex]);
+    }
+
+    function cmsQeTableGetOptionByValue(value) {
+        return document.querySelector('#{{ id }} > option[value="' + value + '"]');
+    }
+
+</script>
