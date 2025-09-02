@@ -1,0 +1,42 @@
+import logging
+
+from vortex.sqla_orm.OrmCrudHandler import OrmCrudHandler, OrmCrudHandlerExtension
+
+from peek_abstract_chunked_data_loader._private.PluginNames import abstracDataLoaderFilt
+from peek_abstract_chunked_data_loader._private.storage.AppServerSettingsTuple import \
+    AppServerSettingsTuple
+
+logger = logging.getLogger(__name__)
+
+# This dict matches the definition in the Admin angular app.
+filtKey = {"key": "admin.Edit." + AppServerSettingsTuple.tupleType()}
+filtKey.update(abstracDataLoaderFilt)
+
+
+# This is the CRUD hander
+class __CrudHandler(OrmCrudHandler):
+    pass
+
+
+class __ExtUpdateObservable(OrmCrudHandlerExtension):
+    """ Update Observable ORM Crud Extension
+
+    This extension is called after events that will alter data,
+    it then notifies the observer.
+
+    """
+
+    def _tellObserver(self, tuple_, tuples, session, payloadFilt):
+        # TODO, Call the agent RPC to reload
+        return True
+
+    afterUpdateCommit = _tellObserver
+
+
+# This method creates an instance of the handler class.
+def makeAppSetttingsHandler(dbSessionCreator):
+    handler = __CrudHandler(dbSessionCreator, AppServerSettingsTuple,
+                            filtKey, retreiveAll=True)
+
+    handler.addExtension(AppServerSettingsTuple, __ExtUpdateObservable())
+    return handler

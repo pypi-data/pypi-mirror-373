@@ -1,0 +1,295 @@
+import logging
+import random
+from collections import namedtuple
+from datetime import datetime, timedelta
+from typing import List
+
+import pytz
+from peek_abstract_chunked_data_loader._private.server.agent_handlers.RpcForAgent import \
+    RpcForAgent
+from peek_abstract_chunked_data_loader._private.server.agent_handlers.RpcForAgentImport import \
+    RpcForAgentImport
+from peek_abstract_chunked_data_loader._private.storage.AppServerSettingsTuple import \
+    AppServerSettingsTuple
+from peek_abstract_chunked_data_loader._private.storage.ChunkLoadStateTuple import \
+    ChunkLoadStateTuple
+from peek_abstract_chunked_data_loader._private.storage.CustomAttrTuple import \
+    CustomAttrTuple
+from peek_abstract_chunked_data_loader._private.storage.CustomHeaderTuple import \
+    CustomHeaderTuple
+from peek_abstract_chunked_data_loader._private.storage.Setting import \
+    CHUNK_LOAD_PARALLELISM, CHUNK_HEX_LENGTH, CHUNK_POLL_PERIOD, CHUNK_POLL_SIZE
+from twisted.internet import reactor, task
+from twisted.internet.defer import inlineCallbacks, Deferred
+from vortex.DeferUtil import vortexLogFailure
+from vortex.Payload import Payload
+
+from .DataImportChunk import DataImportChunk
+
+logger = logging.getLogger(__name__)
+
+QueueItem = namedtuple("QueueItem", ['chunkHex', 'date', 'hash', 'remove'])
+ChunkDetails = namedtuple('ChunkDetails', ['size', 'date', 'chunkHex'])
+
+
+class DataImportChunks:
+    """ Data Import Chunks
+
+    Check if we have not imported them or if they have been updated, then import them
+
+    """
+
+    def __init__(self, enmacOrmSessionCreator,
+                 appSettings: AppServerSettingsTuple):
+
+        self._enmacOrmSessionCreator = enmacOrmSessionCreator
+        self._appSettings = appSettings
+
+        self._chunkInfoByHex = {}
+        self._queuedChunks = {}
+        self._inProgressChunks = set()
+
+        self._nextChunkIter = self._nextChunk()
+
+        self.PARALLELISM: int = 2
+        self.HEX_LEN: int = 3
+        self.CHUNK_COUNT: int = 0
+        self.CHUNK_HEXES: List[str] = []
+        self.CHUNK_POLL_PERIOD: float = 5.00
+        self.CHUNK_POLL_SIZE: int = 15
+
+        self._customAttrTuples: List[CustomAttrTuple] = []
+        self._customHeaderTuples: List[CustomHeaderTuple] = []
+
+        self._lastServerUpdate = datetime.now(pytz.utc)
+
+        self._pollLoopingCall = task.LoopingCall(self._queueMoreTimerCall)
+
+    # ------------------------------------------------------------------------------------
+    # STARTUP METHODS
+
+    @inlineCallbacks
+    def load(self):
+        self._customAttrTuples = yield RpcForAgent.getCustomAttributes()
+        self._customHeaderTuples = yield RpcForAgent.getCustomHeaders()
+        settings = yield RpcForAgent.getLoaderSettings()
+        self.PARALLELISM = settings[CHUNK_LOAD_PARALLELISM.name]
+        self.HEX_LEN = settings[CHUNK_HEX_LENGTH.name]
+        self.CHUNK_POLL_PERIOD = settings[CHUNK_POLL_PERIOD.name]
+        self.CHUNK_POLL_SIZE = settings[CHUNK_POLL_SIZE.name]
+
+        self.CHUNK_COUNT = 16 ** self.HEX_LEN
+        fmt = '%0' + str(self.HEX_LEN) + 'x'
+
+        self.CHUNK_HEXES = [fmt % v for v in range(0, self.CHUNK_COUNT)]
+        random.shuffle(self.CHUNK_HEXES)
+
+        infoTuples = yield RpcForAgentImport.loadStateInfoTuples()
+        self._loadInfoTuples(infoTuples)
+
+    def shutdown(self):
+        self._inProgressChunks = set()
+        self._queuedChunks = {}
+        if self._pollLoopingCall.running:
+            self._pollLoopingCall.stop()
+
+    def _loadInfoTuples(self, infos: List[ChunkLoadStateTuple]):
+
+        logger.debug("Loading %s chunk states" % len(infos))
+
+        for info in infos:
+            key = info.chunkHex
+            info.updateInProgressDate = None
+            self._chunkInfoByHex[key] = info
+
+            if key in self._inProgressChunks:
+                self._inProgressChunks.remove(key)
+
+    def start(self):
+
+        # Queue up all chunks on startup
+        for chunkHex in self.CHUNK_HEXES:
+            self._queueNextChunk(chunkHex)
+
+        self._processNext()
+        d = self._pollLoopingCall.start(self.CHUNK_POLL_PERIOD, now=False)
+        d.addErrback(vortexLogFailure, logger, consumeError=True)
+
+    # ------------------------------------------------------------------------------------
+    # UTIL METHODS
+
+    def _makeImportGroupHash(self, chunkHex: str) -> str:
+        return "pofEquipLoader:%s" % chunkHex
+
+    def _nextChunk(self) -> str:
+        nextChunkIndex = 0
+        while True:
+            yield self.CHUNK_HEXES[nextChunkIndex]
+
+            nextChunkIndex += 1
+
+            if nextChunkIndex >= len(self.CHUNK_HEXES):
+                nextChunkIndex = 0
+
+    # ------------------------------------------------------------------------------------
+    # INFO METHODS
+
+    def _getInfo(self, chunkHex):
+
+        if chunkHex in self._chunkInfoByHex:
+            return self._chunkInfoByHex[chunkHex]
+
+        info = ChunkLoadStateTuple(chunkHex=chunkHex)
+
+        self._chunkInfoByHex[chunkHex] = info
+        return info
+
+    # ------------------------------------------------------------------------------------
+    # Queue More Timer
+
+    def _queueMoreTimerCall(self):
+        if self._queuedChunks:
+            return
+
+        # Queue up a few more chunks
+        while len(self._queuedChunks) < self.CHUNK_POLL_SIZE:
+            self._queueNextChunk(next(self._nextChunkIter))
+
+        self._processNext()
+
+    # ------------------------------------------------------------------------------------
+    # LOADER METHODS
+    def _queueNextChunk(self, chunkHex: str):
+        info = self._getInfo(chunkHex)
+
+        date = datetime.now(pytz.utc)
+
+        if info.updateInProgressDate is not None:
+            diffSeconds = (date - info.updateInProgressDate).seconds
+            if diffSeconds < 120:  # two minutes
+                return
+            else:
+                logger.critical("Chunk %s failed to import due to timeout", chunkHex)
+
+        if chunkHex in self._queuedChunks:
+            self._queuedChunks.pop(chunkHex)
+
+        if chunkHex in self._inProgressChunks:
+            self._inProgressChunks.remove(chunkHex)
+
+        self._queuedChunks[chunkHex] = QueueItem(chunkHex=chunkHex,
+                                                 date=date,
+                                                 hash=None,
+                                                 remove=False)
+
+    def _processNext(self):
+
+        while len(self._inProgressChunks) < self.PARALLELISM and len(self._queuedChunks):
+            chunkKey, queueItem = self._queuedChunks.popitem()
+            self._inProgressChunks.add(chunkKey)
+            d = self._importChunk(chunkKey, queueItem)
+            # Just catch and log errors, don't wait for it
+            d.addErrback(vortexLogFailure, logger, consumeError=True)
+
+        self._nofifyAdmin()
+
+    def _nofifyAdmin(self):
+        # Don't over do the notifications
+        notTooSoon = (datetime.now(pytz.utc)
+                      > self._lastServerUpdate + timedelta(seconds=2))
+
+        if notTooSoon or len(self._inProgressChunks) == 0:
+            self._lastServerUpdate = datetime.now(pytz.utc)
+            # noinspection PyCallByClass
+            d = RpcForAgent.updateLoaderStatus(
+                total=len(self._chunkInfoByHex),
+                queued=len(self._queuedChunks),
+                processing=len(self._inProgressChunks)
+            )
+
+            # Ignore timeout errors
+            d.addErrback(lambda _: None)
+
+    @inlineCallbacks
+    def _importChunk(self, chunkHex, queueItem: QueueItem) -> Deferred:
+        assert chunkHex in self._inProgressChunks, (
+                "ChunkHex %s is no longer in progress" % chunkHex
+        )
+
+        startTime = datetime.now(pytz.utc)
+        info = self._chunkInfoByHex[chunkHex]
+        info.updateInProgressDate = datetime.now(pytz.utc)
+
+        try:
+
+            if queueItem.remove:
+                logger.debug("Removing display items for deleted chunk %s", chunkHex)
+                docs = []
+                searchObjs = []
+                docsHash = ''
+                searchHash = ''
+
+            else:
+                chunkImporter = DataImportChunk(self._enmacOrmSessionCreator,
+                                                 self._customAttrTuples,
+                                                 self._customHeaderTuples)
+
+                docsHash, docs, searchHash, searchObjs = yield chunkImporter.import_(
+                    queueItem.chunkHex,
+                    self._makeImportGroupHash(queueItem.chunkHex)
+                )
+
+                logger.debug("Loaded %s docs and %s searchObs for chunkHex %s in %s",
+                             len(docs), len(searchObjs),
+                             chunkHex, datetime.now(pytz.utc) - startTime)
+
+            info = self._chunkInfoByHex[chunkHex]
+            docsUpdated = info.lastDocumentHash != docsHash
+            searchUpdated = info.lastSearchHash != searchHash
+
+            if docsUpdated:
+                logger.debug("Importing chunk %s documents" % chunkHex)
+
+                encodedPayload = yield Payload(tuples=docs).toEncodedPayloadDefer()
+
+                yield RpcForAgentImport.importForDocDb(
+                    docDbEncodedPayload=encodedPayload
+                )
+
+                info.lastDocumentHash = docsHash
+
+            if searchUpdated:
+                logger.debug("Importing chunk %s search objects" % chunkHex)
+
+                encodedPayload = yield Payload(tuples=searchObjs).toEncodedPayloadDefer()
+
+                yield RpcForAgentImport.importForSearch(
+                    searchEncodedPayload=encodedPayload
+                )
+
+                info.lastSearchHash = searchHash
+
+            if docsUpdated or searchUpdated:
+                info.lastImportDate = queueItem.date
+                info = yield RpcForAgentImport.storeStateInfoTuple(info)
+                logger.debug("Import chunk %s successful" % chunkHex)
+
+            info.updateInProgressDate = None
+            self._chunkInfoByHex[chunkHex] = info
+
+            # This should always be present
+            if not chunkHex in self._inProgressChunks:
+                raise Exception("Page %s was removed from queue before it had completed"
+                                % chunkHex)
+
+            self._inProgressChunks.remove(chunkHex)
+
+        except Exception as e:
+            logger.debug(
+                "Failed to import the group %s, it will be retried\n%s"
+                % (chunkHex, str(e)))
+
+            info.updateInProgressDate = None
+            self._queueNextChunk(chunkHex)
+
+        reactor.callLater(0, self._processNext)

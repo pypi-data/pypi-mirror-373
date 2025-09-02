@@ -1,0 +1,196 @@
+import hashlib
+import logging
+from collections import namedtuple
+from datetime import datetime
+from typing import List, Tuple, Dict, Any
+
+import pytz
+from peek_core_search.tuples.ImportSearchObjectTuple import ImportSearchObjectTuple
+# Load the tuples we'll be sending to the server\
+from peek_core_docdb.tuples.ImportDocumentTuple import ImportDocumentTuple
+from peek_abstract_chunked_data_loader._private.storage.CustomAttrTuple import \
+    CustomAttrTuple
+from peek_abstract_chunked_data_loader._private.storage.CustomHeaderTuple import \
+    CustomHeaderTuple
+from twisted.internet.defer import inlineCallbacks
+from vortex.DeferUtil import deferToThreadWrapWithLogger
+
+logger = logging.getLogger(__name__)
+
+ComponentLocationT = namedtuple(
+    "ComponentLocationT",
+    ["dispKey", "x", "y", "alias", "name"]
+)
+
+
+class DataImportChunk:
+    """ Data Import Chunk
+
+    """
+
+    modelSetKey = 'pofDiagram'
+    documentTypeKey = 'Item'
+    searcObjectType = 'Item'
+
+    def __init__(self, enmacOrmSessionCreator, customAttrTuples: List[CustomAttrTuple],
+                 customHeaderTuples: List[CustomHeaderTuple]):
+        self._enmacOrmSessionCreator = enmacOrmSessionCreator
+        self._customAttrTuples = customAttrTuples
+        self._customHeaderTuples = customHeaderTuples
+
+    @inlineCallbacks
+    def import_(self, chunkHex: str, importGroupHash: str
+                ) -> Tuple[str, List[ImportDocumentTuple],
+                           str, List[ImportSearchObjectTuple]]:
+
+        qryResults, fieldNameLookup = yield self._loadChunkData(chunkHex)
+
+        docs = [self._makeDocument(importGroupHash, c, fieldNameLookup)
+                for c in qryResults]
+
+        searchObjs = [self._makeSearchObj(importGroupHash, c)
+                      for c in qryResults]
+
+        return self._hashList(docs), docs, self._hashList(searchObjs), searchObjs
+
+    def _hashList(self, objs):
+        m = hashlib.sha256()
+        m.update(b'zeroth item padding')
+        for obj in objs:
+            m.update(str(obj).encode())
+        return m.hexdigest()
+
+    @deferToThreadWrapWithLogger(logger)
+    def _loadChunkData(self, chunkHex: str) -> Tuple[List[Any], Dict[str, str]]:
+        """ Load Chunk Data
+
+        """
+        startTime = datetime.now(pytz.utc)
+
+        enmacSession = self._enmacOrmSessionCreator()
+        try:
+            attrJoins, attrNameLookup, attrSelects = self._buildCustomAttrSql()
+            headerNameLookup, headerSelects = self._buildCustomHeaderSql()
+
+            fieldNameLookup = {}
+            fieldNameLookup.update(attrNameLookup)
+            fieldNameLookup.update(headerNameLookup)
+
+            sql = '''
+                    with dist_sq as (
+                      SELECT ZONE_NAME, COMPONENT_ID
+                      FROM COMPONENT_DYNAMIC
+                            JOIN CONTROL_ZONE dz ON DISTRICT_ZONE_ID = dz.ZONE_ID
+                      WHERE substr(COMPONENT_ID, %(substr_start)s,%(substr_end)s) = '%(chunk)s'
+                      GROUP BY zone_name, COMPONENT_ID
+                    )
+                    select ch.component_id,
+                            ch.component_alias,
+                            ch.component_pathname,
+                            COALESCE(ch.COMPONENT_SOURCE_ID,ch.COMPONENT_DEST_ID) as IS_CONDUCTOR,
+                            dist_sq.zone_name
+                            %(headerSelects)s
+                            %(attrSelects)s
+                     from component_header ch
+                        JOIN dist_sq ON ch.COMPONENT_ID = dist_sq.COMPONENT_ID
+                        %(attrJoins)s
+                     where substr(ch.component_id, %(substr_start)s,%(substr_end)s) = '%(chunk)s'
+                     order by ch.component_id
+                     ''' % {
+                'substr_start': 10 - len(chunkHex),
+                'substr_end': len(chunkHex),
+                'chunk': chunkHex,
+                'headerSelects': headerSelects,
+                'attrSelects': attrSelects,
+                'attrJoins': attrJoins,
+            }
+
+            qryResults = list(enmacSession.execute(sql).fetchall())
+
+            logger.debug("Fetched %s results for chunkHex %s in %s",
+                         len(qryResults),
+                         chunkHex, datetime.now(pytz.utc) - startTime)
+
+            return qryResults, fieldNameLookup
+
+        finally:
+            enmacSession.close()
+
+    def _buildCustomHeaderSql(self):
+        headerSelect = '''
+                         , ch.%(name)s h%(num)sv
+                         '''
+        headerSelects = ''
+        headerNameLookup = {}
+        for index, header in enumerate(self._customHeaderTuples):
+            headerNameLookup['h%sv' % index] = header.peekName
+            vals = {
+                'num': index,
+                'name': header.pofName
+            }
+            headerSelects += headerSelect % vals
+
+        return headerNameLookup, headerSelects
+
+    def _buildCustomAttrSql(self):
+        attrSelect = '''
+                         , a%(num)s.attribute_value a%(num)sv
+                         '''
+        attrJoin = '''
+                         LEFT JOIN component_attributes a%(num)s
+                                ON a%(num)s.component_id = ch.component_id
+                                AND a%(num)s.attribute_name = '%(name)s'
+                         '''
+        attrSelects = ''
+        attrJoins = ''
+        attrNameLookup = {}
+        for index, attr in enumerate(self._customAttrTuples):
+            attrNameLookup['a%sv' % index] = attr.uiAttrTitle
+            vals = {
+                'num': index,
+                'name': attr.pofAttrName
+            }
+            attrSelects += attrSelect % vals
+            attrJoins += attrJoin % vals
+        return attrJoins, attrNameLookup, attrSelects
+
+    def _makeSearchObj(self, importGroupHash: str, qryResult) -> ImportSearchObjectTuple:
+
+        searchObj = ImportSearchObjectTuple()
+        searchObj.key = qryResult.component_id
+        searchObj.objectType = self.searcObjectType
+
+        if qryResult.is_conductor:
+            searchObj.properties = {}
+
+        else:
+            searchObj.properties = {
+                "alias": qryResult.component_alias,
+                "name": qryResult.component_pathname
+            }
+
+        searchObj.routes = []
+
+        return searchObj
+
+    def _makeDocument(self, importGroupHash: str, qryResult,
+                      fieldNameLookup: Dict[str, str]) -> ImportDocumentTuple:
+
+        doc = ImportDocumentTuple()
+
+        doc.key = qryResult.component_id
+        doc.modelSetKey = self.modelSetKey
+        doc.importGroupHash = importGroupHash
+        doc.documentTypeKey = self.documentTypeKey
+        doc.document = {
+            "alias": qryResult.component_alias,
+            "name": qryResult.component_pathname,
+            "district zone": qryResult.zone_name
+        }
+
+        for attrKey, attrName in fieldNameLookup.items():
+            val = qryResult[attrKey]
+            if val is not None and val is not '':
+                doc.document[attrName] = val
+
+        return doc

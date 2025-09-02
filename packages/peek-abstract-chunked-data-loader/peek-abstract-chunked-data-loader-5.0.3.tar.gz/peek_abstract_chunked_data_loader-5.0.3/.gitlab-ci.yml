@@ -1,0 +1,42 @@
+stages:
+    - test
+sast:
+    stage: test
+include:
+    -   template: Auto-DevOps.gitlab-ci.yml
+    allow_failure: false
+    image: nexus.synerty.com:5000/peek-alma8-test
+    only:
+        - pushes
+        - web
+        - triggers
+        - merge_requests
+    script:
+        - export PIP_INDEX=http://${NEXUS_USER}:${NEXUS_PASSWORD}@${NEXUS_URL}/repository/pypi-all/pypi
+        - export PIP_INDEX_URL=http://${NEXUS_USER}:${NEXUS_PASSWORD}@${NEXUS_URL}/repository/pypi-all/simple
+        - export PIP_TRUSTED_HOST=${NEXUS_URL}
+        - pip install .
+        - trial --reporter=subunit `find peek_* -name "*Test.py"` | subunit-1to2 | subunit2junitxml -o report.xml 1> /dev/null
+        - echo "Tests have succeeded, this package will be uploaded to nexus as 0.0.0"
+        - echo "This will only happen in the peek group project and master branch"
+        - rm -rf dist
+        - sed -i 's/version = "0.0.0"/version = "'0.0.0+b${CI_PIPELINE_ID}'"/g' pyproject.toml
+        - export TWINE_REPOSITORY_URL=http://${NEXUS_URL}/repository/pypi-internal/
+        - export TWINE_USERNAME=${NEXUS_USER}
+        - export TWINE_PASSWORD=${NEXUS_PASSWORD}
+        - if [[ ${CI_PROJECT_NAMESPACE} == peek/* ]] && [[ ${CI_COMMIT_REF_NAME} == 'master' ]];
+            then
+            wget https://gitlab.synerty.com/peek/community/synerty-peek/-/raw/master/gitlab/scripts/rm-from-nexux.py
+            && python -m build --sdist
+            && python rm-from-nexux.py "http://${NEXUS_URL}" "${NEXUS_USER}" "${NEXUS_PASSWORD}" "${CI_PROJECT_NAME}"
+            && twine upload dist/*.gz;
+            fi
+    stage: test
+    artifacts:
+        reports:
+            junit: report.xml
+    tags:
+        - linux
+
+
+
