@@ -1,0 +1,44 @@
+# beetle-logging
+### Formatted output using the Python "logging" package.
+
+# Installation
+Install via PyPI using pip or uv
+
+`pip install bettle-logging`
+
+`uv add bettle-logging`
+
+# Usage
+
+```
+# Import logging and beetle packages
+import logging
+from beetle_logging import beetle
+
+# Init the beetle class
+bt = beetle(__name__, fileLogging=False)
+
+# Set logging level
+bt.setStreamLevel(logging.DEBUG)
+
+# Create messages!
+bt.logger.debug("This is a debug message")
+bt.logger.info("This is an info message")
+bt.logger.error("This is an error")
+bt.logger.critical("This is a critical message")
+```
+
+Output:
+
+![alt text](https://raw.githubusercontent.com/gabe927/beetle-logging/refs/heads/main/images/test_output.png)
+
+Adding beetle to existing projects is easy! Using the "getLogger" function, existing usage of the logging package can use the standard formatting from beetle.
+
+```
+logger = logging.getLogger(__name__)
+
+logger.debug("This is a debug message")
+logger.info("This is an info message")
+logger.error("This is an error")
+logger.critical("This is a critical message")
+```
