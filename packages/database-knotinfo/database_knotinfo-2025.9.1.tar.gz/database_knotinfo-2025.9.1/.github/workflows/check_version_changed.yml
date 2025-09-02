@@ -1,0 +1,103 @@
+# This workflow checks if the content of the original databases
+# has changed. If this is the case a new release is produced.
+
+name: Check version changed
+
+on:
+  schedule:
+    # set schedule date
+    - cron:  '00 22 01 * *'
+  workflow_dispatch:
+
+
+jobs:
+  # This workflow contains two jobs called search and build
+  search:
+    name: Search Database
+    # search for differences to the origianl databases
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checks-out the repository under $GITHUB_WORKSPACE, so our job can access it
+      - name: Checkout code
+        id: checkout_code
+        uses: actions/checkout@v2
+
+      # Installs python dependencies
+      - name: Python dependencies
+        id: python_dependencies
+        run: pip install pandas xlrd xlsx2csv
+
+      # Runs a python script searching for new changes in the database
+      - name: Create CSV
+        id: create_knotinfo_csv
+        run: ./create_knotinfo_csv.py
+
+      # Runs a shell script to push a new version to the repository if necessary
+      - name: New version tag
+        id: new_version_tag
+        run: ./new_version_tag.sh > new_version_tag.out
+
+  build:
+    needs: search
+    name: Create Releases
+    runs-on: ubuntu-latest
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so our job can access it
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      # Setting the tag name
+      - name: Set tag name
+        id: set_tag_name
+        run: |
+          git pull
+          TAG=`./get_release_tag.sh`
+          echo "TAG_NAME=$TAG" >> $GITHUB_ENV
+
+      # Create GitHub release
+      - name: Create GitHub Release
+        id: create_github_release
+        if: ${{ env.TAG_NAME != '' }}
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          release_name: Release ${{ env.TAG_NAME }}
+
+          body: |
+            Changes in this Release
+            - Automatically generated Release according to changes in the original databases
+            - See the web-sites of KnotInfo and LinkInfo for more information
+          draft: false
+          prerelease: false
+
+      # Create PyPI release
+      - name: Set up Python
+        if: ${{ env.TAG_NAME != '' }}
+        uses: actions/setup-python@v1
+        with:
+          python-version: '3.12'
+
+      - name: Install pypa/build
+        if: ${{ env.TAG_NAME != '' }}
+        run: >-
+          python -m
+          pip install
+          build
+          --user
+      - name: Build a binary wheel and a source tarball
+        if: ${{ env.TAG_NAME != '' }}
+        run: >-
+          python -m
+          build
+          --sdist
+          --wheel
+          --outdir dist/
+
+      - name: Publish distribution 📦 to PyPI
+        if: ${{ env.TAG_NAME != '' }}
+        uses: pypa/gh-action-pypi-publish@master
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
