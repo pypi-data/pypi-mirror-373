@@ -1,0 +1,178 @@
+[build-system]
+requires = ["setuptools>=61", "setuptools_scm"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+version_scheme = "post-release"
+local_scheme = "node-and-date"
+
+[project]
+name = "python-build-utils"
+dynamic = ["version"]
+description = "Small collection of command line utilities to assist with building your python wheels"
+authors = [{ name = "Eelco van Vliet", email = "eelco@davelab.nl" }]
+readme = "README.md"
+keywords = ["python"]
+requires-python = ">=3.10,<4.0"
+classifiers = [
+  "Intended Audience :: Developers",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = ["click>=8.1.8", "rich>=13.9.4"]
+
+[project.optional-dependencies]
+all = ["pipdeptree>=2.26.0", "setuptools>=79.0.0", "cython>=3.0.12"]
+dep = ["pipdeptree>=2.26.0"]
+setup = ["setuptools>=79.0.0", "cython>=3.0.12"]
+
+[project.urls]
+Repository = "https://github.com/dave-Lab-and-Engineering/python-build-utils"
+
+[dependency-groups]
+dev = [
+  "pytest>=7.2.0",
+  "pytest-cov>=6.0.0",
+  "coverage[toml]>=7.6.1",
+  "pytest-pretty>=1.2.0",
+  "pre-commit>=2.20.0",
+  "mypy>=0.991",
+  "ruff>=0.9.2",
+  "deptry>=0.22.0",
+  "coveralls>=4.0.1",
+  "mkdocs>=1.4.2",
+  "mkdocs-material>=8.5.10",
+  "mkdocstrings[python]>=0.26.1",
+  "mkdocstrings-python>=1.16.0",
+  "pipdeptree>=2.26.0",
+  "codecov>=2.1.13",
+  "setuptools>=79.0.0",
+  "cython>=3.0.12",
+]
+
+[project.scripts]
+python-build-utils = "python_build_utils.cli_tools:cli"
+
+# ========================================================================================
+# 🔹 FORMATTING & LINTING
+# ========================================================================================
+
+# === mypy ===
+[tool.mypy]
+files = ["src"]
+disallow_untyped_defs = true
+disallow_any_unimported = true
+no_implicit_optional = true
+check_untyped_defs = true
+warn_return_any = true
+warn_unused_ignores = true
+show_error_codes = true
+ignore_missing_imports = true
+
+# === ruff ===
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+fix = true
+
+[tool.ruff.format]
+preview = true
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "E501",   # line too long
+  "E731",   # do not assign a lambda expression, use a def
+  "S603",   # subprocess call without shell=True (intentional)
+  "D203",   # blank line before class (conflicts with D211)
+  "D213",   # multi-line docstring second line (conflicts with D212)
+  "COM812",
+  "ANN401",
+  "SLF001",
+  "ARG001",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["python_build_utils"]
+lines-after-imports = 2
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+# === deptry ===
+[tool.deptry.ignore]
+ignored_dependencies = ["python_build_utils"]
+DEP002 = ["pipdeptree"]
+
+[tool.deptry.package_module_name_map]
+cython = "Cython"
+setuptools = "setuptools"
+
+# === coverage ===
+[tool.coverage.report]
+skip_empty = true
+
+[tool.coverage.run]
+branch = true
+source = ["python_build_utils"] # <- match package name (underscore)
+omit = ["tests/*"]
+
+[tool.coverage.paths]
+source = ["src/python_build_utils", "*/site-packages/python_build_utils"]
+
+
+# === pytest ===
+[tool.pytest.ini_options]
+addopts = [
+  "--cov=python_build_utils",  # <- underscore, geen streepje
+  "--cov-report=term-missing",
+  "--cov-report=html",
+  "--verbose",
+]
+testpaths = ["tests"]
+norecursedirs = ["dist", "build", ".tox"]
+pythonpath = ["src"]
+
+# === tox (met uv) ===
+[tool.tox]
+requires = ["tox>4", "tox-uv>=1.11.3"]
+isolated_build = true
+env_list = ["py310", "py311", "py312", "py313", "fix", "dev", "type", "build"]
+
+[tool.tox.env_run_base]
+description = "Invoke pytest to run automated tests under {env_name} with coverage"
+changedir = "{toxinidir}"
+allowlist_externals = ["pytest", "uv"]
+dependency_groups = ["dev"]
+commands = [["pytest"]]
+
+[tool.tox.env.build]
+description = "Build the package using uv"
+changedir = "{toxinidir}"
+commands = [["uv", "build"]]
+allowlist_externals = ["uv"]
+
+[tool.tox.env.fix]
+runner = "uv-venv-runner"
+description = "Run code formatter and linter (auto-fix)"
+skip_install = true
+dependency_groups = ["dev"]
+deps = ["pre-commit-uv >= 4.1.1"]
+commands = [["pre-commit", "run", "--all-files", "--show-diff-on-failure"]]
+
+[tool.tox.env.type]
+runner = "uv-venv-lock-runner"
+description = "Run type checker via mypy"
+dependency_groups = ["dev"]
+commands = [["mypy", "{posargs:src}"]]
+
+[tool.tox.env.dev]
+runner = "uv-venv-lock-runner"
+description = "Dev environment"
+dependency_groups = ["dev"]
+commands = [["uv", "pip", "tree"]]
