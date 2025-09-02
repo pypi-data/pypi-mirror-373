@@ -1,0 +1,166 @@
+# AI Search API for CrewAI - Contextual Prompts Guide
+
+[![PyPI version](https://badge.fury.io/py/crewai-aisearchapi.svg)](https://badge.fury.io/py/crewai-aisearchapi)
+[![Python Support](https://img.shields.io/pypi/pyversions/crewai-aisearchapi.svg)](https://pypi.org/project/crewai-aisearchapi/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A **Python integration for CrewAI** that connects your agents to the [AI Search API](https://aisearchapi.io/?utm_source=pypi).  
+It enables **contextual prompts, multi-message context handling, and intelligent answers with source citations**.
+
+👉 Get your **free API key** from the [AI Search API dashboard](https://app.aisearchapi.io/dashboard?utm_source=pypi).
+
+---
+
+## Features
+
+- **🔍 Prompt + Context Search**: Send a query plus structured context for better results  
+- **💬 Multi-Message Context**: Pass multiple user messages for conversational awareness  
+- **📚 Sources Included**: Responses come with citations when available  
+- **⚡ CrewAI Integration**: Works with `Agent`, `Task`, `Crew` out of the box  
+- **🖥️ Works with Local LLMs**: Use Ollama for reasoning + the search API for live info  
+- **🛡️ Robust Error Handling**: Clear exceptions when context roles or models are invalid  
+
+---
+
+## Installation
+
+```bash
+pip install crewai-aisearchapi
+```
+
+---
+
+## Quick Start (with Ollama + CrewAI)
+
+```python
+from crewai import Agent, Task, Crew, Process, LLM
+from crewai_aisearchapi import AISearchTool
+
+llm = LLM(
+    model="ollama/llama3.2:3b",          # use a local model
+    base_url="http://localhost:11434",   # Ollama default
+    temperature=0.2,
+)
+
+tool = AISearchTool(api_key="your-api-key")
+
+agent = Agent(
+    role="Researcher",
+    goal="Answer questions with context and sources.",
+    backstory="Careful and concise.",
+    tools=[tool],
+    llm=llm,
+    verbose=True,
+)
+
+task = Task(
+    description="Answer: '{question}'. Keep it short.",
+    expected_output="2–4 sentences.",
+    agent=agent,
+    markdown=True,
+)
+
+crew = Crew(agents=[agent], tasks=[task], process=Process.sequential, verbose=True)
+
+if __name__ == "__main__":
+    print(crew.kickoff(inputs={"question": "What is RLHF in AI?"}))
+```
+
+---
+
+## Contextual Prompts
+
+The AI Search API is designed to handle **context-rich prompts**.  
+All context messages must use `"role": "user"`.
+
+```python
+result = tool.run({
+    "prompt": "Explain how RLHF improves AI safety.",
+    "context": [
+        {"role": "user", "content": "Keep it simple, I'm new to ML."},
+        {"role": "user", "content": "Add one practical example."}
+    ],
+    "response_type": "markdown"
+})
+```
+
+This produces an answer that considers both your question and the context messages.
+
+---
+
+## Configuration Options
+
+```python
+from crewai_aisearchapi import AISearchTool, AISearchToolConfig
+
+config = AISearchToolConfig(
+    default_response_type="markdown",
+    include_sources=True,
+    timeout=30,
+    verbose=True
+)
+
+tool = AISearchTool(api_key="your-api-key", config=config)
+```
+
+---
+
+## Handling Responses
+
+The tool returns a formatted string containing:
+- **Answer** (the AI response)  
+- **Sources** (when available)  
+- **Response Time**  
+
+Example:
+
+```markdown
+Reinforcement Learning with Human Feedback (RLHF) helps align AI models with human intent...
+
+**Sources:**
+- [1] https://example.com/rlhf-overview
+- [2] https://research.example.org/rlhf
+
+*Response time: 120ms*
+```
+
+---
+
+## Environment Variables
+
+```bash
+export AISEARCH_API_KEY="your-api-key"
+```
+
+In Python:
+
+```python
+import os
+from crewai_aisearchapi import AISearchTool
+
+tool = AISearchTool(api_key=os.getenv("AISEARCH_API_KEY"))
+```
+
+---
+
+## Troubleshooting
+
+- **`model not found`** → Ensure you pulled the Ollama model:  
+  `ollama pull llama3.2:3b`  
+- **`Each context message must have role "user"`** → Convert `system` → `user` in your context.  
+- **API key errors** → Check `AISEARCH_API_KEY` is set correctly in your environment.  
+
+---
+
+## License
+
+MIT License - see the [LICENSE](LICENSE) file.
+
+---
+
+## Support
+
+- **Dashboard & API Key**: [AI Search API Dashboard](https://app.aisearchapi.io/dashboard?utm_source=pypi)  
+- **Docs**: [docs.aisearchapi.io](https://docs.aisearchapi.io/)  
+- **Homepage**: [aisearchapi.io](https://aisearchapi.io/?utm_source=pypi)  
+- **Issues**: [GitHub Issues](https://github.com/aisearchapi/crewai-aisearchapi/issues)  
