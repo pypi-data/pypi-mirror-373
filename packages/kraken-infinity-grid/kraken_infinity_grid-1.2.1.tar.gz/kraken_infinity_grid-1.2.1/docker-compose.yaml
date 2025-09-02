@@ -1,0 +1,89 @@
+# -*- mode: yaml; coding: utf-8 -*-
+#
+# Copyright (C) 2023 Benjamin Thomas Schwertfeger
+# All rights reserved.
+# https://github.com/btschwertfeger
+#
+
+# This Docker Compose file creates a PostgreSQL and kraken-infinity-grid
+# container.
+#
+# In order to use this file to run the trading algorithm, a few environment
+# variables must be set, see
+# https://kraken-infinity-grid.readthedocs.io/en/latest/configuration.html#environment-variables
+# for more information.
+#
+# Note: For running multiple instances of the kraken-infinity-grid in parallel,
+# you can simply duplicate and configure the service, as it supports sharing the
+# same database.
+
+services:
+  postgresql:
+    image: postgres:13-bookworm
+    environment:
+      TZ: Europe/Berlin
+      POSTGRES_USER: kraken_infinity_grid
+      POSTGRES_PASSWORD: kraken_infinity_grid
+      POSTGRES_DB: kraken_infinity_grid
+    restart: on-failure
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kraken_infinity_grid"]
+      interval: 10s
+      retries: 5
+    networks:
+      - internal_network
+
+  kraken-infinity-grid:
+    # If using the image from Docker Hub, consider using a release tag instead
+    # of "latest":
+    image: btschwertfeger/kraken-infinity-grid:latest
+    # Or build the image from sources if you have cloned the repository:
+    # build: .
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      TZ: Europe/Berlin
+      # General settings
+      KRAKEN_API_KEY: ${KRAKEN_API_KEY}
+      KRAKEN_SECRET_KEY: ${KRAKEN_SECRET_KEY}
+      KRAKEN_BOT_VERBOSE: false
+      KRAKEN_DRY_RUN: false
+      # Strategy settings
+      KRAKEN_RUN_NAME: ${KRAKEN_RUN_NAME}
+      KRAKEN_RUN_USERREF: ${KRAKEN_RUN_USERREF}
+      KRAKEN_RUN_BASE_CURRENCY: ${KRAKEN_RUN_BASE_CURRENCY}
+      KRAKEN_RUN_QUOTE_CURRENCY: ${KRAKEN_RUN_QUOTE_CURRENCY}
+      KRAKEN_RUN_AMOUNT_PER_GRID: ${KRAKEN_RUN_AMOUNT_PER_GRID}
+      KRAKEN_RUN_INTERVAL: ${KRAKEN_RUN_INTERVAL}
+      KRAKEN_RUN_N_OPEN_BUY_ORDERS: ${KRAKEN_RUN_N_OPEN_BUY_ORDERS}
+      KRAKEN_RUN_MAX_INVESTMENT: ${KRAKEN_RUN_MAX_INVESTMENT}
+      KRAKEN_RUN_STRATEGY: ${KRAKEN_RUN_STRATEGY}
+      # Notification settings
+      KRAKEN_RUN_TELEGRAM_TOKEN: ${KRAKEN_RUN_TELEGRAM_TOKEN}
+      KRAKEN_RUN_TELEGRAM_CHAT_ID: ${KRAKEN_RUN_TELEGRAM_CHAT_ID}
+      KRAKEN_RUN_EXCEPTION_TOKEN: ${KRAKEN_RUN_EXCEPTION_TOKEN}
+      KRAKEN_RUN_EXCEPTION_CHAT_ID: ${KRAKEN_RUN_EXCEPTION_CHAT_ID}
+      # Database settings
+      KRAKEN_RUN_DB_USER: ${KRAKEN_RUN_DB_USER}
+      KRAKEN_RUN_DB_NAME: ${KRAKEN_RUN_DB_NAME}
+      KRAKEN_RUN_DB_PASSWORD: ${KRAKEN_RUN_DB_PASSWORD}
+      KRAKEN_RUN_DB_HOST: ${KRAKEN_RUN_DB_HOST}
+      KRAKEN_RUN_DB_PORT: ${KRAKEN_RUN_DB_PORT}
+    restart: on-failure
+    volumes:
+      - infinity-grid-cache:/root/.cache/gridbot:rw
+    networks:
+      - internal_network
+
+volumes:
+  infinity-grid-cache:
+    external: false
+  postgres-data:
+    external: false
+
+networks:
+  internal_network:
+    driver: bridge
