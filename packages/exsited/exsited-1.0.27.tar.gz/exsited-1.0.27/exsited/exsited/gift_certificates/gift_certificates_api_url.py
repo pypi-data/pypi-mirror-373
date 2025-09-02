@@ -1,0 +1,11 @@
+class GiftCertificatesApiUrl:
+    GIFT_CERTIFICATES = "/api/v3/gift_certificates"
+    GIFT_CERTIFICATE_DETAIL = "/api/v3/gift_certificates/{uuid}"
+    GIFT_CERTIFICATE_ALLOCATIONS = "/api/v3/gift_certificates/{uuid}/allocations"
+    GIFT_CERTIFICATE_TRANSACTIONS = "/api/v3/gift_certificates/{uuid}/transactions"
+    GIFT_CERTIFICATE_CREATE = "/api/v3/gift_certificates"
+    GIFT_CERTIFICATE_DISABLE = "/api/v3/gift_certificates/{uuid}/disable"
+    GIFT_CERTIFICATE_ENABLE = "/api/v3/gift_certificates/{uuid}/enable"
+    GIFT_CERTIFICATE_ALLOCATE = "/api/v3/gift_certificates/{uuid}/allocate"
+    GIFT_CERTIFICATE_DEALLOCATE = "/api/v3/gift_certificates/{uuid}/deallocate"
+    GIFT_CERTIFICATE_AMEND = "/api/v3/gift_certificates/{uuid}/amend"
