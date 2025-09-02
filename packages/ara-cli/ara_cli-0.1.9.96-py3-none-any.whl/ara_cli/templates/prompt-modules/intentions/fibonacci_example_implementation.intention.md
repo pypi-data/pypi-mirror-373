@@ -1,0 +1,2 @@
+### INTENTION and CONTEXT
+My intention is to implement the fibonacci algorithm in the `fibonacci.py` python module that prints out the fibonacci numbers up to a certain limit, which is then imported and used in `__main__.py` as new command `ara fibonacci [limit]`.
