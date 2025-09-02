@@ -1,0 +1,144 @@
+import copy
+
+from iam_builder.templates import (
+    iam_base_template,
+    iam_lookup,
+    get_athena_read_access,
+    get_pass_role_to_glue_policy,
+    get_read_only_policy,
+    get_write_only_policy,
+    get_read_write_policy,
+    get_deny_policy,
+    get_s3_list_bucket_policy,
+    get_secrets,
+    get_kms_permissions,
+    get_secretsmanager_read_only_policy,
+    get_glue_permissions,
+)
+from iam_builder.iam_schema import validate_iam
+from iam_builder.exceptions import PrivilegedRoleValidationError, IAMValidationError
+import re
+
+
+def build_iam_policy(config: dict) -> dict:  # noqa: C901
+    """
+    Takes a configuration for an IAM policy and returns the policy as a dict.
+    """
+    validate_iam(config)
+
+    iam: dict = copy.deepcopy(iam_base_template)
+
+    list_buckets = []
+
+    # Define if has athena permission
+    if "athena" in config:
+        dump_bucket = config["athena"].get("dump_bucket", ["mojap-athena-query-dump"])
+        if not isinstance(dump_bucket, list):
+            dump_bucket = [dump_bucket]
+        dump_bucket = [bucket.replace("_", "-") for bucket in dump_bucket]
+
+        iam["Statement"].extend(get_athena_read_access(dump_bucket))
+
+        if config["athena"].get("write", False):
+            iam["Statement"].extend(iam_lookup["athena_write_access"])
+
+        # Needed for s3tools package
+        list_buckets.extend(dump_bucket)
+
+    # Test to run glue jobs
+    if "glue_job" in config and config["glue_job"]:
+        iam["Statement"].extend(iam_lookup["glue_job"])
+        # Add ability to pass itself to glue job
+        pass_role = get_pass_role_to_glue_policy(config["iam_role_name"])
+        iam["Statement"].append(pass_role)
+
+    # Deal with read only access
+    if "s3" in config:
+        if "read_only" in config["s3"]:
+            s3_read_only = get_read_only_policy(config["s3"]["read_only"])
+            iam["Statement"].append(s3_read_only)
+
+            # Get buckets to list
+            list_buckets.extend([p.split("/")[0] for p in config["s3"]["read_only"]])
+
+        # Deal with write only access
+        if "write_only" in config["s3"]:
+            s3_write_only = get_write_only_policy(config["s3"]["write_only"])
+            iam["Statement"].append(s3_write_only)
+
+            # Get buckets to list
+            list_buckets.extend([p.split("/")[0] for p in config["s3"]["write_only"]])
+
+        if "read_write" in config["s3"]:
+            s3_read_write = get_read_write_policy(config["s3"]["read_write"])
+            iam["Statement"].append(s3_read_write)
+
+            # Get buckets to list
+            list_buckets.extend([p.split("/")[0] for p in config["s3"]["read_write"]])
+
+        if "deny" in config["s3"]:
+            s3_deny = get_deny_policy(config["s3"]["deny"])
+            iam["Statement"].append(s3_deny)
+
+            # Get buckets to list
+            list_buckets.extend([p.split("/")[0] for p in config["s3"]["deny"]])
+
+    if list_buckets:
+        s3_list_bucket = get_s3_list_bucket_policy(list_buckets)
+        iam["Statement"].append(s3_list_bucket)
+
+    if "secrets" in config:
+        secrets = config["secrets"]
+        if isinstance(secrets, str) or secrets:
+            readwrite = secrets == "readwrite"
+            secrets_statement = get_secrets(config["iam_role_name"], readwrite)
+            iam["Statement"].append(secrets_statement)
+            iam["Statement"].extend(iam_lookup["decrypt_statement"])
+
+    if "secretsmanager" in config:
+        # Deal with read only access
+        if "read_only" in config["secretsmanager"]:
+            secretsmanager_read_only = get_secretsmanager_read_only_policy(
+                config["secretsmanager"]["read_only"]
+            )
+            iam["Statement"].append(secretsmanager_read_only)
+        else:
+            raise ValueError(
+                f"requested access level {config['secretsmanager']} is not yet "
+                "implemented for SecretsManager in iam_builder, try specifying "
+                "’read_only’ instead."
+            )
+
+    if "kms" in config:
+        kms_arns = config["kms"]
+        kms_permissions = get_kms_permissions(kms_arns)
+        iam["Statement"].append(kms_permissions)
+
+    if "bedrock" in config and config["bedrock"]:
+        iam["Statement"].extend(iam_lookup["bedrock"])
+
+    if "cloudwatch_athena_query_executions" in config:
+        iam["Statement"].extend(
+            iam_lookup["cloudwatch_athena_query_executions"]
+        )
+
+    if "is_cadet_deployer" in config:
+        if "cadet" not in config["iam_role_name"].lower():
+            raise PrivilegedRoleValidationError(
+                "\'is_cadet_deployer\' is only valid for CaDeT deployment roles"
+            )
+        iam["Statement"].extend(iam_lookup["cadet_deployer"])
+
+    if "allowed_database_names" in config:
+        allowed_db_names = config["allowed_database_names"]
+        invalid_db_characters = r"[^a-zA-Z\_\*\s]"
+        for db in allowed_db_names:
+            if re.search(invalid_db_characters, db):
+                raise IAMValidationError(
+                    f"Invalid characters in database name: {db}. "
+                    "Only letters, numbers, underscores and asterisks are allowed."
+                )
+        glue_catalog_permissions = get_glue_permissions(allowed_db_names)
+        iam["Statement"].append(glue_catalog_permissions)
+
+    return iam
