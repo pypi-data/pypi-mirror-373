@@ -1,0 +1,134 @@
+<nz-modal
+    (nzOnCancel)="closePopup()"
+    [nzFooter]="null"
+    [nzVisible]="popupShown"
+    nzTitle="Select Layers"
+    [nzWidth]="900"
+>
+    <ng-container *nzModalContent>
+        <input
+            [(ngModel)]="filterText"
+            nz-input
+            placeholder="Filter"
+            type="text"
+            nz-tooltip
+            [nzTooltipMouseEnterDelay]="1.0"
+            nzTooltipTitle="Enter some text here to filter the list"
+            nzTooltipPlacement="top"
+        />
+        <p *ngIf="noItems()">
+            There are no layers matching your filter or no layers available.
+        </p>
+        <div *ngIf="!noItems()" class="scroll-outer">
+            <nz-table nzSize="small" nzTemplateMode>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Order</th>
+                        <th>Visible</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <ng-container *ngFor="let item of items">
+                        <ng-container
+                            *ngTemplateOutlet="layerRowTemplate; context: { $implicit: item, depth: 0 }"
+                        ></ng-container>
+                    </ng-container>
+                </tbody>
+            </nz-table>
+        </div>
+
+        <ng-template #layerRowTemplate let-item let-depth="depth">
+            <tr class="layer-row" [class.child-layer]="item.parentKey">
+                <td>
+                    <div
+                        class="layer-name-container"
+                        [style.margin-left.px]="depth * 24"
+                    >
+                        <span
+                            *ngIf="item.hasChildren"
+                            class="tree-toggle-icon"
+                            (click)="toggleLayerCollapse(item)"
+                        >
+                            <span
+                                nz-icon
+                                [nzType]="isLayerCollapsed(item) ? 'caret-right' : 'caret-down'"
+                                class="expand-collapse-icon"
+                            ></span>
+                        </span>
+                        <span
+                            *ngIf="!item.hasChildren && item.parentKey"
+                            class="leaf-spacer"
+                        ></span>
+                        <span class="layer-name">{{ item.name }}</span>
+                    </div>
+                </td>
+                <td>{{ item.order }}</td>
+                <td>
+                    <div class="checkbox-with-inherited">
+                        <label
+                            nz-checkbox
+                            [nzIndeterminate]="item.visible === null"
+                            [nzChecked]="item.visible === true"
+                            (nzCheckedChange)="toggleLayerVisible(item)"
+                        >
+                        </label>
+                        <span
+                            *ngIf="item.visible === null"
+                            class="inherited-text"
+                            >(inherited)</span
+                        >
+                    </div>
+                </td>
+                <td>
+                    <button
+                        nz-button
+                        nz-dropdown
+                        [nzTrigger]="'click'"
+                        [nzDropdownMenu]="moreMenu"
+                    >
+                        <span nz-icon nzType="more"></span>
+                    </button>
+                    <nz-dropdown-menu #moreMenu="nzDropdownMenu">
+                        <ul nz-menu nzSelectable="false">
+                            <li nz-menu-item (click)="resetToDefaults(item)">
+                                <span nz-icon nzType="reload"></span>
+                                Reset to Default
+                            </li>
+                            <li
+                                *ngIf="item.hasChildren"
+                                nz-menu-item
+                                (click)="toggleAllDescendants(item, true)"
+                            >
+                                <span nz-icon nzType="eye"></span>
+                                All On
+                            </li>
+                            <li
+                                *ngIf="item.hasChildren"
+                                nz-menu-item
+                                (click)="toggleAllDescendants(item, false)"
+                            >
+                                <span nz-icon nzType="eye-invisible"></span>
+                                All Off
+                            </li>
+                            <li
+                                *ngIf="item.hasChildren"
+                                nz-menu-item
+                                (click)="resetAllToDefaults(item)"
+                            >
+                                <span nz-icon nzType="reload"></span>
+                                Reset All to Defaults
+                            </li>
+                        </ul>
+                    </nz-dropdown-menu>
+                </td>
+            </tr>
+            <ng-container *ngFor="let child of getVisibleChildren(item)">
+                <ng-container
+                    *ngTemplateOutlet="layerRowTemplate; context: { $implicit: child, depth: depth + 1 }"
+                ></ng-container>
+            </ng-container>
+        </ng-template>
+    </ng-container>
+</nz-modal>
