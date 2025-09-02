@@ -1,0 +1,2 @@
+class ApiModelError(BaseException):
+    pass
