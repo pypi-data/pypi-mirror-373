@@ -1,0 +1,48 @@
+{% if approval_result and approval_result.approval_counts %}
+<!-- HTML Approval Results -->
+{% set sorted_candidates = approval_result.approval_counts.items() | list %}
+{% set sorted_candidates = sorted_candidates | sort(attribute='1', reverse=true) %}
+{% set sorted_candidates = sorted_candidates | selectattr('0', 'ne', None) | list %}
+
+<ul>
+    {% set winners = approval_result.winners %}
+    {% set winnerstr = ", ".join(winners) %}
+    {% set winnerintro = "Approval Winners (tie)" if winners | length > 1 else "Approval Winner" %}
+    <li><b>{{winnerintro}}</b>:
+      {% if FPTP_candnames %}
+        {%- set winner_tokens = winnerstr.split(',') -%}
+        {%- for tok in winner_tokens -%}
+          <span class="color-box" style="background-color: {{ colordict[tok.strip()] | default('#ccc') }};"></span>{{ FPTP_candnames[tok.strip()] if tok.strip() in FPTP_candnames else tok.strip() }}{% if not loop.last %}, {% endif %}
+        {%- endfor -%}
+      {% else %}
+        {{ winnerstr }}
+      {% endif %}
+    </li>
+    <li><b>Approval Results</b>:
+        <ul>
+  {% for cand_token, count in sorted_candidates %}
+  {% if count > 0 %}
+  {% set candidate_name = FPTP_candnames.get(cand_token, cand_token) if FPTP_candnames else cand_token %}
+  {% set percentage = (count / approval_result.total_votes * 100) | round(2) if approval_result.total_votes > 0 else 0 %}
+  {% set is_winner = cand_token in approval_result.winners %}
+  <li>
+    <span class="color-box" style="background-color: {{ colordict[cand_token] | default('#ccc') }};"></span>
+    {{ candidate_name }}{% if candidate_name != cand_token %} ({{ cand_token }}){% endif %}
+    &mdash; {{ "{:,}".format(count) }} approvals ({{ percentage }}% of ballots)
+    {% if is_winner %}(✅ winner){% endif %}
+  </li>
+  {% endif %}
+  {% endfor %}
+  </ul>
+
+  {% if approval_result.approval_counts.get(None, 0) > 0 %}
+  <li><b>Invalid ballots</b>: {{ "{:,}".format(approval_result.approval_counts[None]) }}</li>
+  {% endif %}
+
+  <li><b>Total</b>: {{ "{:,}".format(approval_result.total_votes) }} ballots ({{ "{:,}".format(approval_result.total_approvals) }} total approvals)</li>
+</ul>
+
+{% else %}
+<!-- Fallback to text display if no JSON data available -->
+<pre>{{ approval_text }}</pre>
+{% endif %}

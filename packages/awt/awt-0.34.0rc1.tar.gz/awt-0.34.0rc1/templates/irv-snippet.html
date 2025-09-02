@@ -1,0 +1,256 @@
+<style>
+.highblue {
+    background-color: #cceff6;
+}
+.highred {
+    background-color: #ffeeee;
+}
+.new-elim {
+    background-color: #f0f0f0;
+}
+.highlight {
+    background-color: #ffffdd;
+}
+.irv-colorblock {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 4px;
+    vertical-align: middle;
+    border: 1px solid #000;
+    font-size: 0;
+}
+.irv-cell {
+    position: relative;
+    padding-right: 40px;
+    padding-top: 20px;
+}
+.irv-transfer-indicator {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 32px;
+    height: 16px;
+    background-color: #333;
+    border: 1px solid #666;
+    cursor: pointer;
+    border-radius: 2px;
+    display: flex;
+    overflow: hidden;
+}
+.irv-transfer-indicator:hover {
+    border-color: #999;
+}
+.irv-transfer-indicator.active {
+    border-color: #007acc;
+    box-shadow: 0 0 4px rgba(0, 122, 204, 0.5);
+}
+.transfer-arrow {
+    position: absolute;
+    width: 32px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    color: rgba(65, 65, 65, 0.8);
+    font-weight: bold;
+    pointer-events: none;
+    z-index: 10;
+    background-color: rgba(255, 255, 255, 0);
+}
+.data-bar {
+    display: flex;
+    width: 100%;
+    height: 100%;
+}
+.irv-popover {
+    position: absolute;
+    background: white;
+    border: 2px solid #333;
+    border-radius: 4px;
+    padding: 8px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    z-index: 1000;
+    min-width: 200px;
+    max-width: 400px;
+    font-size: 12px;
+    line-height: 1.3;
+    display: none;
+    top: 20px;
+    right: 0;
+}
+.irv-cell.first-col .irv-popover {
+    right: auto;
+    left: 0;
+}
+.irv-popover.show {
+    display: block;
+}
+{% if colordict %}
+{% for cand, color in colordict.items() %}
+.irv-color-{{ cand | escape_css }} { background-color: {{ color }}; }
+{% endfor %}
+{% endif %}
+
+</style>
+<div id="irv-display-container"
+     data-rounds-data='{{ IRV_dict['roundmeta'] | tojson | safe }}'
+     data-candidate-names='{{ IRV_candnames | tojson | safe }}'>
+  <ul>
+    {% set has_tie = false %}
+    {% set canddict = IRV_dict['canddict'] %}
+    {% set winner = IRV_dict['winner'] %}
+    {% set winnerstr = IRV_dict['winnerstr'] %}
+    {% set winnerintro = "IRV/RCV Winners (tie)" if winner | length > 1 else "IRV/RCV Winner" %}
+    {% set irv_result = resblob['IRV_result'] %}
+    {% set numrounds = IRV_dict['rounds']|length %}
+    {% set startingqty = IRV_dict['roundmeta'][0]['startingqty'] %}
+    {% set majority = IRV_dict['roundmeta'][0]['startingqty'] // 2 + 1 %}
+
+    <li><b>{{winnerintro}}</b>:
+      {% if winner and IRV_candnames %}
+        {%- for winner_token in winner -%}
+          <span class="color-box" style="background-color: {{ colordict[winner_token] | default('#ccc') }};"></span>{{ IRV_candnames[winner_token] if winner_token in IRV_candnames else winner_token }}{% if not loop.last %}, {% endif %}
+        {%- endfor -%}
+      {% elif winnerstr %}
+        {{ winnerstr }}
+      {% else %}
+        No winner determined
+      {% endif %}
+      with {{ "{:,}".format(irv_result['winner_votes']) }} votes ({{ "%.1f"|format(irv_result['winner_percentage']) }}%) in final round
+    </li>
+
+    {% if irv_result['runner_up'] %}
+      <li>Runner-up: <span class="color-box" style="background-color: {{ colordict[irv_result['runner_up']] | default('#ccc') }};"></span>{{ IRV_candnames[irv_result['runner_up']] if IRV_candnames and irv_result['runner_up'] in IRV_candnames else irv_result['runner_up'] }} with {{ "{:,}".format(irv_result['runner_up_votes']) }} votes ({{ "%.1f"|format(irv_result['runner_up_percentage']) }}%) in final round</li>
+    {% endif %}
+
+    <li>Exhausted ballots in final round: {{ "{:,}".format(irv_result['final_round_exhausted']) }} ({{ "%.1f"|format(irv_result['final_round_exhausted_percentage']) }}%)</li>
+    <li>Number of rounds: {{ irv_result['num_rounds'] }}</li>
+    <li>Ballots counted in final round: {{ "{:,}".format(irv_result['final_round_counted']) }} ({{ "%.1f"|format(irv_result['final_round_counted_percentage']) }}%)</li>
+    <li>Majority of ballots: {{ "{:,}".format(irv_result['majority_threshold']) }} ({{ "%.1f"|format(irv_result['majority_threshold_percentage']) }}%)</li>
+    <li><b>Total ballots:</b> {{ "{:,}".format(irv_result['total_ballots']) }}</li>
+  </ul>
+  <div class="hscroll">
+  <table>
+    <tr>
+      {% for i in range(IRV_dict['rounds'] | length) %}
+      <th>Round {{ i + 1 }}</th>
+      {% endfor %}
+    </tr>
+    <tr>
+      {% set flags = namespace(overvote=false) %}
+      {% for i in range(IRV_dict['roundmeta'] | length) %}
+      {% set round = IRV_dict['roundmeta'][i] %}
+      <td><b>Overview</b>:<br>
+        {% set threshold=round['countedqty'] // 2 + 1 %}
+        <small>Active ballots: {{ "{:,}".format(round['startingqty']) }}
+          ({{ "%.1f"|format((round['startingqty'] / startingqty * 100) if startingqty else 0) }}%)<br/>
+          <br/>
+          Exhausted ballots:
+                {{ "{:,}".format(round['exhaustedqty']) }}
+                ({{ "%.1f"|format((round['exhaustedqty'] / startingqty * 100) if startingqty else 0) }}%)<br/>
+          {% if round['overvoteqty'] > 0 %}
+          Overvotes:
+            {{ "{:,}".format(round['overvoteqty']) }}
+            ({{ "%.1f"|format((round['overvoteqty'] / startingqty * 100) if startingqty else 0) }}%)<br/>
+            <br>
+          {% set flags.overvote=true %}
+            {% endif %}
+            Counted ballots: {{ "{:,}".format(round['countedqty']) }}
+            ({{ "%.1f"|format((round['countedqty'] / startingqty * 100) if startingqty else 0) }}%)
+            <br>
+          {% if threshold < majority %}
+          Winning threshold: {{ "{:,}".format(threshold) }}
+          ({{ "%.2f"|format((threshold / startingqty * 100) if startingqty else 0) }}%)<br/>
+          {% endif %}
+          {% if round['bottomtie'] %}
+          TIE(†): {{ round['bottomtie'] | join(", ") }} <br/>
+          {% endif %}
+        </small>
+      </td>
+      {% endfor %}
+    </tr>
+    {% for cand in IRV_dict['rounds'][0].keys() %}
+    {% if cand in winner %}
+    {% set rowclass = "highlight" %}
+    {% else %}
+    {% set rowclass = "" %}
+    {% endif %}
+    <tr class="{{rowclass}}">
+      {% for i in range(IRV_dict['rounds'] | length) %}
+        {% set round_data = IRV_dict['rounds'][i] %}
+        {% set round_meta = IRV_dict['roundmeta'][i] %}
+        {% set colclass = "first-col" if i == 0 else "" %}
+        {% if cand in winner and (i + 1) == numrounds %}
+          <td class="irv-cell {{ colclass }}"><b>IRV/RCV winner</b>:<br>
+            {% if colordict.get(cand) %}<span class="irv-colorblock irv-color-{{ cand | escape_css }}"></span>{% endif %}
+            {{ IRV_candnames.get(cand, cand) }}: {{ "{:,}".format(round_data.get(cand, 0)) }}
+            ({{ "%.1f"|format((round_data.get(cand, 0) / startingqty * 100) if startingqty else 0) }}%)✅
+            {% set round = IRV_dict['roundmeta'][i] %}
+            {% if round.transfers or round.next_choices %}
+              <div class="irv-transfer-indicator" data-round-index="{{ i }}" data-candidate-key="{{ cand }}">
+                <!-- Data bar segments will be populated by JavaScript -->
+                <div class="transfer-arrow">→</div>
+              </div>
+              <div class="irv-popover">
+                <!-- Content will be populated by JavaScript -->
+              </div>
+            {% endif %}
+          </td>
+        {% elif round_data.get(cand) and cand in round_meta.get('eliminated', []) %}
+          <td class="new-elim irv-cell {{ colclass }}">
+            {% if colordict.get(cand) %}<span class="irv-colorblock irv-color-{{ cand | escape_css }}"></span>{% endif %}
+            {{ IRV_candnames.get(cand, cand) }}: {{ "{:,}".format(round_data.get(cand, 0)) }} ({{ "%.1f"|format((round_data.get(cand, 0) / startingqty * 100) if startingqty else 0) }}%)
+            {% if round_meta.get('batch_elim') %}
+              (🛑batch eliminated †)
+            {% elif cand in round_meta.get('bottomtie', []) %}
+              (🛑randomly eliminated ††)
+            {% else %}
+              (🛑eliminated)
+            {% endif %}
+            {% set round = IRV_dict['roundmeta'][i] %}
+            {% if round.transfers or round.next_choices %}
+              <div class="irv-transfer-indicator" data-round-index="{{ i }}" data-candidate-key="{{ cand }}">
+                <!-- Data bar segments will be populated by JavaScript -->
+                <div class="transfer-arrow">→</div>
+              </div>
+              <div class="irv-popover">
+                <!-- Content will be populated by JavaScript -->
+              </div>
+            {% endif %}
+          </td>
+        {% elif round_data.get(cand) %}
+          <td class="irv-cell {{ colclass }}">
+            {% if colordict.get(cand) %}<span class="irv-colorblock irv-color-{{ cand | escape_css }}"></span>{% endif %}
+            {{ IRV_candnames.get(cand, cand) }}: {{ "{:,}".format(round_data.get(cand, 0)) }} ({{ "%.1f"|format((round_data.get(cand, 0) / startingqty * 100) if startingqty else 0) }}%)
+            {% set round = IRV_dict['roundmeta'][i] %}
+            {% if round.transfers or round.next_choices %}
+              <div class="irv-transfer-indicator" data-round-index="{{ i }}" data-candidate-key="{{ cand }}">
+                <!-- Data bar segments will be populated by JavaScript -->
+                <div class="transfer-arrow">→</div>
+              </div>
+              <div class="irv-popover">
+                <!-- Content will be populated by JavaScript -->
+              </div>
+            {% endif %}
+          </td>
+        {% else %}
+          <td class="greyedOut irv-cell {{ colclass }}">
+            {% if colordict.get(cand) %}<span class="irv-colorblock irv-color-{{ cand | escape_css }}" style="opacity: 0.5;"></span>{% endif %}
+            <s>{{ IRV_candnames.get(cand, cand) }}</s>
+          </td>
+        {% endif %}
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% if flags.overvote %}
+  <p><small>Overvotes are ballots where multiple candidates are ranked at the same, highest-ranking position.</small></p>
+  {% endif %}
+  {% if IRV_dict['has_tie'] %}
+  <span class="footnote">† - This example employs a limited form "batch elimination", where a batch of multiple candidates who (in sum total) do not have enough remaining top preferences to defeat the next highest candidate in the rankings.</span>
+  <span class="footnote">†† - When a tie occurs, per the laws in the City and County of San Francisco and the laws in the state of Maine, the losing candidate for the round is randomly eliminated.</span>
+  {% endif %}
+ </div>
