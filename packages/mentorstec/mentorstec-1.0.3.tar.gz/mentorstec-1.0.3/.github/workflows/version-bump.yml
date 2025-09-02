@@ -1,0 +1,87 @@
+name: 🔢 Bump de Versão
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Tipo de versão'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  bump-version:
+    name: 📈 Atualizar Versão
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Fazer checkout do código
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+    
+    - name: 🐍 Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: 📦 Instalar dependências
+      run: |
+        python -m pip install --upgrade pip
+        pip install bump2version
+    
+    - name: 🔢 Fazer bump da versão
+      run: |
+        echo "📈 Fazendo bump da versão (${{ github.event.inputs.version_type }})"
+        bump2version ${{ github.event.inputs.version_type }} --verbose
+        
+        # Obter nova versão
+        NEW_VERSION=$(python -c "import mentors_event_hub; print(mentors_event_hub.__version__)")
+        echo "✅ Nova versão: $NEW_VERSION"
+        
+        # Salvar para próximo step
+        echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+    
+    - name: 📤 Commit e push da nova versão
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        git add .
+        git commit -m "🔖 Bump version to ${{ env.NEW_VERSION }}"
+        git tag "v${{ env.NEW_VERSION }}"
+        
+        git push origin main
+        git push origin "v${{ env.NEW_VERSION }}"
+    
+    - name: 📋 Criar Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ env.NEW_VERSION }}
+        release_name: 🚀 Release v${{ env.NEW_VERSION }}
+        body: |
+          ## 📦 Nova Versão: v${{ env.NEW_VERSION }}
+          
+          ### 🔄 Mudanças
+          - Bump de versão (${{ github.event.inputs.version_type }})
+          
+          ### 💾 Instalação
+          ```bash
+          pip install --upgrade mentors-event-hub
+          ```
+          
+          ### 🔗 Links
+          - [PyPI](https://pypi.org/project/mentors-event-hub/${{ env.NEW_VERSION }}/)
+          - [Documentação](https://github.com/Mentorstec/mentors-event-hub#readme)
+          
+          ---
+          🤖 Release automático criado via GitHub Actions
+        draft: false
+        prerelease: false
