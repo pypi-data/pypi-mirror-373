@@ -1,0 +1,135 @@
+@testing_solution
+@ais
+Feature: Test decode of AIS message from bitarry and its encode in NMEAv4
+
+    @bitarray_to_nmea_through_decode
+    Scenario Outline: from bitarray to NMEAv4 sentences through decode
+
+        When MSG = decode AIS message of type <type> from bitarray <msg_bitarray>
+        Then MSG.mmsi == <mmsi>
+        
+        When MSG_NMEA_SENTENCES = encode AIS message MSG
+            | talker_id | radio_channel | seq_id | group_id |
+            | 'AIVDM'   | <channel>     | 0      | 0        |
+        Given EXPECTED_NMEA_SENTENCES = split text <msg_nmea> on separator '\n'
+        Then MSG_NMEA_SENTENCES == EXPECTED_NMEA_SENTENCES
+        
+        
+        Examples: each type
+            | type | mmsi      | msg_bitarray                                 | channel | msg_nmea                                          |
+            | 1    | 230025450 | '0436D7A3A940000062ABFB241938839120EE000000' | 'A'     | '!AIVDM,1,1,,A,13KG`rU0001RbwdT6CR3TB3f0000,0*4E' |
+            | 2    | 667001237 | '089F0686554000088CC9321A9949AE103BBA08EA0C' | 'A'     | '!AIVDM,1,1,,A,29t6QUE000R<jC8JVDVf43fr2>`<,0*4A' |
+            | 3    | 273448320 | '0C4131F60140000A6047D0987C0890001F6C080000' | 'A'     | '!AIVDM,1,1,,A,344iuP5000aPAu2HO0R@01ud2000,0*5C' |
+            | 4    | 2573110   | '10009D0CD87E31E3EE9C0C880208758701C00008CA' | 'A'     | '!AIVDM,1,1,,A,402M3=Qv<N?fW0j80PQmQh7000S:,0*61' |
+            | 5    | 533006100 | '147F141C500236215393575340002D34204094C3153000000000000000340684C21C40000000000000000000000000000000000000' | 'B'     | '\\g:1-2-0*6E\\!AIVDM,2,1,0,B,57tD7502=R5CTmMC@00e=210U<<E<0000000000l1`C27400000000000000,0*42\n\\g:2-2-0*6D\\!AIVDM,2,2,0,B,00000000000,2*27' |
+            | 6    | 235102035 | '18380D7D4E008DA6A2001D239B009875505C32000100020002020002890700004A31505C00' | 'A'     | '!AIVDM,1,1,,A,63P=ODp0SJJR01lSVh2HME1L<P0100800P800`T7001:<E1L00,4*3E' |
+            | 7    | 276691000 | '1C41F7E0E000A8D450'                         | 'A'     | '!AIVDM,1,1,,A,747op>00b=A@,0*6D' |
+            | 8    | 0         | '200000000019F8B31F1E352BB61C0AD6D5077A949880983BC1F03B18072E1C' | 'A'     | '!AIVDM,1,1,,A,8000000Iv;<O7SDceQh:meD7NaBHP9PshO0s60Lf70,4*13' |
+            | 9    | 41541     | '24000289140AC00E5AAE160B1976774834021081F4' | 'B'     | '!AIVDM,1,1,,B,9002RA@:h0qJcQH;6GIoB3@2487l,0*66' |
+            | 10   | 240685000 | '2839623F2039385A20'                         | 'B'     | '!AIVDM,1,1,,B,:3UR?j0q>5`P,0*04' |
+            | 11   | 241213000 | '2C398279207E31F20D221B26B0056B1E13C0080000' | 'B'     | '!AIVDM,1,1,,B,;3V2NB1v<O8=8QdVd0Ec7Q?02000,0*36' |
+            # In error due to a @ that is removed at decode step in last field that has a variable length
+            #| 12   | 400000011 | '325F5E102D71F6889E5C1387215387CF3CB280138480654C3206551600D006F5034010' | 'B'     | '!AIVDM,1,1,,B,<UuN42miu`RNG1>78E>7kkjjP1>4P6E<<PIE5P3@1gD3@10,2*17' |
+            | 13   | 255805859 | '343CFD268C97A36DB0'                         | 'B'     | '!AIVDM,1,1,,B,=3ku9`jG`nnh,0*49' |
+            # In error with difference on fill_bits number. After analyse, it seems normal to have for this raw a fill_bits=2, whereas expected fill_bits is 0 in following test case
+            #| 14   | 970012793 | '38E744E1E44C149481415350'                   | 'B'     | '!AIVDM,1,1,,B,>>M4pNA<59B1@E=@,0*18' |
+            | 15   | 2442101   | '3C00950DD43A2F72605000'                     | 'B'     | '!AIVDM,1,1,,B,?02E3M@r;o9PD00,2*6A' |
+            | 16   | 2444010   | '4000952BA83101A2A8320000'                   | 'B'     | '!AIVDM,1,1,,B,@02E:rPi0J:`<P00,0*1F' |
+            | 17   | 4310302   | '450107147851F80A6F6026AC18B6100DFD68F86C'   | 'B'     | '!AIVDM,1,1,,B,A@4757QAv0agH2Jd6;H@3Om`v6h,2*7F' |
+            | 18   | 338318773 | '4850A956D40000DCC408A1BD095DE10FFEE5DE0006' | 'B'     | '!AIVDM,1,1,,B,B52aEe@00=k42:6u2EoQ3wsUoP06,0*5A' |
+            | 19   | 58015575  | '4C0DD4FD5C0011229C15B8E4AE1200024F80C9EAC068A4E395B8C1BE72800000000001010620A0' | 'A'     | '!AIVDM,1,1,,A,C0oDwEh04B:L5KSTcQ800Tv0jNc0J:CSUKS1gW:0000000411R2P,0*20' |
+            | 20   | 2276020   | '50008AEAD032C2EBB8'                         | 'A'     | '!AIVDM,1,1,,A,D02:re0jhffp,0*0F' |
+            | 21   | 20        | '5400000050099B0059000000000000000000000000830044DE0DFBA01008208F8000' | 'A'     | '!AIVDM,1,1,,A,E0000509Vh1I0000000000000000Ph14oPos`10888v000,4*1C' |
+            | 22   | 2241048   | '580088C860827828035070D5486A0E1AA902000000' | 'A'     | '!AIVDM,1,1,,A,F028j622N2P3D73EB6`>6bT20000,0*04' |
+            | 23   | 992611270 | '5CECA82F1808A5CFAF410A81F161800000002C00'   | 'A'     | '!AIVDM,1,1,,A,G>j`;iP8aLvg@@b1tF600000;00,2*0D' |
+            | 24   | 235099648 | '60380D5801254D2507220E721D12F80000880C4040' | 'B'     | '!AIVDM,1,1,,B,H3P=F04UCBD78Pqj7A;p00283410,0*14' |
+            | 25   | 338302778 | '6450A85CE8F045C2515543D12FEA81F3E76EE56193' | 'B'     | '!AIVDM,1,1,,B,I52`G>ShAL9AED?A;vb1tvMfqF6C,0*36' |
+            | 26   | 7300010   | '6801BD8EA9F8C0D5E91E80C0645601000000080000' | 'B'     | '!AIVDM,1,1,,B,J06uSbWph=Ga7`30I5H100002000,0*2A' |
+            | 27   | 244060910 | '6F3A304BBB0029BCF33407FC'                   | 'B'     | '!AIVDM,1,1,,B,Kk`hBsd0:Kkk=0Ot,0*2F' |
+
+
+    @nmea_to_bitarray_through_decode
+    Scenario Outline: from NMEAv4 sentences to bitarray through decode
+
+        Given NMEA_SENTENCES = split text <msg_nmea> on separator '\n'
+        When MSG = decode NMEA AIS message NMEA_SENTENCES
+        Then MSG.mmsi == <mmsi>
+        
+        When MSG_RAW = convert AIS message MSG to hexadecimal string
+        Then MSG_RAW == <msg_bitarray>
+        
+        
+        Examples: each type
+            | type | mmsi      | msg_bitarray                                 | msg_nmea                                          |
+            | 1    | 230025450 | '0436D7A3A940000062ABFB241938839120EE000000' | '!AIVDM,1,1,,A,13KG`rU0001RbwdT6CR3TB3f0000,0*4E' |
+            | 2    | 667001237 | '089F0686554000088CC9321A9949AE103BBA08EA0C' | '!AIVDM,1,1,,A,29t6QUE000R<jC8JVDVf43fr2>`<,0*4A' |
+            | 3    | 273448320 | '0C4131F60140000A6047D0987C0890001F6C080000' | '!AIVDM,1,1,,A,344iuP5000aPAu2HO0R@01ud2000,0*5C' |
+            | 4    | 2573110   | '10009D0CD87E31E3EE9C0C880208758701C00008CA' | '!AIVDM,1,1,,A,402M3=Qv<N?fW0j80PQmQh7000S:,0*61' |
+            | 5    | 533006100 | '147F141C500236215393575340002D34204094C3153000000000000000340684C21C40000000000000000000000000000000000000' | '\\g:1-2-0*6E\\!AIVDM,2,1,0,B,57tD7502=R5CTmMC@00e=210U<<E<0000000000l1`C27400000000000000,0*42\n\\g:2-2-0*6D\\!AIVDM,2,2,0,B,00000000000,2*27' |
+            | 6    | 235102035 | '18380D7D4E008DA6A2001D239B009875505C32000100020002020002890700004A31505C00' | '!AIVDM,1,1,,A,63P=ODp0SJJR01lSVh2HME1L<P0100800P800`T7001:<E1L00,4*3E' |
+            | 7    | 276691000 | '1C41F7E0E000A8D450' | '!AIVDM,1,1,,A,747op>00b=A@,0*6D' |
+            | 8    | 0         | '200000000019F8B31F1E352BB61C0AD6D5077A949880983BC1F03B18072E1C' | '!AIVDM,1,1,,A,8000000Iv;<O7SDceQh:meD7NaBHP9PshO0s60Lf70,4*13' |
+            | 9    | 41541     | '24000289140AC00E5AAE160B1976774834021081F4' | '!AIVDM,1,1,,B,9002RA@:h0qJcQH;6GIoB3@2487l,0*66' |
+            | 10   | 240685000 | '2839623F2039385A20' | '!AIVDM,1,1,,B,:3UR?j0q>5`P,0*04' |
+            | 11   | 241213000 | '2C398279207E31F20D221B26B0056B1E13C0080000' | '!AIVDM,1,1,,B,;3V2NB1v<O8=8QdVd0Ec7Q?02000,0*36' |
+            # Next both are working, since decode is removing @ padding characters
+            | 12   | 400000011 | '325F5E102D71F6889E5C1387215387CF3CB280138480654C3206551600D006F5034010' | '!AIVDM,1,1,,B,<UuN42miu`RNG1>78E>7kkjjP1>4P6E<<PIE5P3@1gD3@10,2*17' |
+            | 12   | 400000011 | '325F5E102D71F6889E5C1387215387CF3CB280138480654C3206551600D006F5034010' | '!AIVDM,1,1,,B,<UuN42miu`RNG1>78E>7kkjjP1>4P6E<<PIE5P3@1gD3@1,0*25' |
+            | 13   | 255805859 | '343CFD268C97A36DB0' | '!AIVDM,1,1,,B,=3ku9`jG`nnh,0*49' |
+            | 14   | 970012793 | '38E744E1E44C149481415350' | '!AIVDM,1,1,,B,>>M4pNA<59B1@E=@,0*18' |
+            | 15   | 2442101   | '3C00950DD43A2F72605000' | '!AIVDM,1,1,,B,?02E3M@r;o9PD00,2*6A' |
+            | 16   | 2444010   | '4000952BA83101A2A8320000' | '!AIVDM,1,1,,B,@02E:rPi0J:`<P00,0*1F' |
+            | 17   | 4310302   | '450107147851F80A6F6026AC18B6100DFD68F86C' | '!AIVDM,1,1,,B,A@4757QAv0agH2Jd6;H@3Om`v6h,2*7F' |
+            | 18   | 338318773 | '4850A956D40000DCC408A1BD095DE10FFEE5DE0006' | '!AIVDM,1,1,,B,B52aEe@00=k42:6u2EoQ3wsUoP06,0*5A' |
+            | 19   | 58015575  | '4C0DD4FD5C0011229C15B8E4AE1200024F80C9EAC068A4E395B8C1BE72800000000001010620A0' | '!AIVDM,1,1,,A,C0oDwEh04B:L5KSTcQ800Tv0jNc0J:CSUKS1gW:0000000411R2P,0*20' |
+            | 20   | 2276020   | '50008AEAD032C2EBB8' | '!AIVDM,1,1,,A,D02:re0jhffp,0*0F' |
+            | 21   | 20        | '5400000050099B0059000000000000000000000000830044DE0DFBA01008208F8000' | '!AIVDM,1,1,,A,E0000509Vh1I0000000000000000Ph14oPos`10888v000,4*1C' |
+            | 22   | 2241048   | '580088C860827828035070D5486A0E1AA902000000' | '!AIVDM,1,1,,A,F028j622N2P3D73EB6`>6bT20000,0*04' |
+            | 23   | 992611270 | '5CECA82F1808A5CFAF410A81F161800000002C00' | '!AIVDM,1,1,,A,G>j`;iP8aLvg@@b1tF600000;00,2*0D' |
+            | 24   | 235099648 | '60380D5801254D2507220E721D12F80000880C4040' | '!AIVDM,1,1,,B,H3P=F04UCBD78Pqj7A;p00283410,0*14' |
+            | 25   | 338302778 | '6450A85CE8F045C2515543D12FEA81F3E76EE56193' | '!AIVDM,1,1,,B,I52`G>ShAL9AED?A;vb1tvMfqF6C,0*36' |
+            | 26   | 7300010   | '6801BD8EA9F8C0D5E91E80C0645601000000080000' | '!AIVDM,1,1,,B,J06uSbWph=Ga7`30I5H100002000,0*2A' |
+            | 27   | 244060910 | '6F3A304BBB0029BCF33407FC' | '!AIVDM,1,1,,B,Kk`hBsd0:Kkk=0Ot,0*2F' |
+
+    @bitarray_to_nmea_without_decode
+    Scenario Outline: from bitarray to NMEAv4 sentences without decode
+
+        When OBTAINED_NMEA_SENTENCES = encode AIS raw payload <msg_payload> to NMEA
+            | talker_id | radio_channel | seq_id | group_id |
+            | 'AIVDM'   | <channel>     | 0      | 0        |
+        Given EXPECTED_NMEA_SENTENCES = split text <msg_nmea> on separator '\n'
+        Then OBTAINED_NMEA_SENTENCES == EXPECTED_NMEA_SENTENCES
+        
+        
+        Examples: each type
+            | type | msg_payload                                  | channel | msg_nmea                                          |
+            | 1    | '0436D7A3A940000062ABFB241938839120EE000000' | 'A'     | '!AIVDM,1,1,,A,13KG`rU0001RbwdT6CR3TB3f0000,0*4E' |
+            | 2    | '089F0686554000088CC9321A9949AE103BBA08EA0C' | 'A'     | '!AIVDM,1,1,,A,29t6QUE000R<jC8JVDVf43fr2>`<,0*4A' |
+            | 3    | '0C4131F60140000A6047D0987C0890001F6C080000' | 'A'     | '!AIVDM,1,1,,A,344iuP5000aPAu2HO0R@01ud2000,0*5C' |
+            | 4    | '10009D0CD87E31E3EE9C0C880208758701C00008CA' | 'A'     | '!AIVDM,1,1,,A,402M3=Qv<N?fW0j80PQmQh7000S:,0*61' |
+            | 5    | '147F141C500236215393575340002D34204094C3153000000000000000340684C21C40000000000000000000000000000000000000' | 'B'     | '\\g:1-2-0*6E\\!AIVDM,2,1,0,B,57tD7502=R5CTmMC@00e=210U<<E<0000000000l1`C27400000000000000,0*42\n\\g:2-2-0*6D\\!AIVDM,2,2,0,B,00000000000,2*27' |
+            | 6    | '18380D7D4E008DA6A2001D239B009875505C32000100020002020002890700004A31505C00' | 'A'     | '!AIVDM,1,1,,A,63P=ODp0SJJR01lSVh2HME1L<P0100800P800`T7001:<E1L00,4*3E' |
+            | 7    | '1C41F7E0E000A8D450'                         | 'A'     | '!AIVDM,1,1,,A,747op>00b=A@,0*6D' |
+            | 8    | '200000000019F8B31F1E352BB61C0AD6D5077A949880983BC1F03B18072E1C' | 'A'     | '!AIVDM,1,1,,A,8000000Iv;<O7SDceQh:meD7NaBHP9PshO0s60Lf70,4*13' |
+            | 9    | '24000289140AC00E5AAE160B1976774834021081F4' | 'B'     | '!AIVDM,1,1,,B,9002RA@:h0qJcQH;6GIoB3@2487l,0*66' |
+            | 10   | '2839623F2039385A20'                         | 'B'     | '!AIVDM,1,1,,B,:3UR?j0q>5`P,0*04' |
+            | 11   | '2C398279207E31F20D221B26B0056B1E13C0080000' | 'B'     | '!AIVDM,1,1,,B,;3V2NB1v<O8=8QdVd0Ec7Q?02000,0*36' |
+            | 12   | '325F5E102D71F6889E5C1387215387CF3CB280138480654C3206551600D006F5034010' | 'B'     | '!AIVDM,1,1,,B,<UuN42miu`RNG1>78E>7kkjjP1>4P6E<<PIE5P3@1gD3@10,2*17' |
+            | 13   | '343CFD268C97A36DB0'                         | 'B'     | '!AIVDM,1,1,,B,=3ku9`jG`nnh,0*49' |
+            | 14   | '38E744E1E44C149481415350'                   | 'B'     | '!AIVDM,1,1,,B,>>M4pNA<59B1@E=@,0*18' |
+            | 15   | '3C00950DD43A2F72605000'                     | 'B'     | '!AIVDM,1,1,,B,?02E3M@r;o9PD00,2*6A' |
+            | 16   | '4000952BA83101A2A8320000'                   | 'B'     | '!AIVDM,1,1,,B,@02E:rPi0J:`<P00,0*1F' |
+            | 17   | '450107147851F80A6F6026AC18B6100DFD68F86C'   | 'B'     | '!AIVDM,1,1,,B,A@4757QAv0agH2Jd6;H@3Om`v6h,2*7F' |
+            | 18   | '4850A956D40000DCC408A1BD095DE10FFEE5DE0006' | 'B'     | '!AIVDM,1,1,,B,B52aEe@00=k42:6u2EoQ3wsUoP06,0*5A' |
+            | 19   | '4C0DD4FD5C0011229C15B8E4AE1200024F80C9EAC068A4E395B8C1BE72800000000001010620A0' | 'A'     | '!AIVDM,1,1,,A,C0oDwEh04B:L5KSTcQ800Tv0jNc0J:CSUKS1gW:0000000411R2P,0*20' |
+            | 20   | '50008AEAD032C2EBB8'                         | 'A'     | '!AIVDM,1,1,,A,D02:re0jhffp,0*0F' |
+            | 21   | '5400000050099B0059000000000000000000000000830044DE0DFBA01008208F8000' | 'A'     | '!AIVDM,1,1,,A,E0000509Vh1I0000000000000000Ph14oPos`10888v000,4*1C' |
+            | 22   | '580088C860827828035070D5486A0E1AA902000000' | 'A'     | '!AIVDM,1,1,,A,F028j622N2P3D73EB6`>6bT20000,0*04' |
+            | 23   | '5CECA82F1808A5CFAF410A81F161800000002C00'   | 'A'     | '!AIVDM,1,1,,A,G>j`;iP8aLvg@@b1tF600000;00,2*0D' |
+            | 24   | '60380D5801254D2507220E721D12F80000880C4040' | 'B'     | '!AIVDM,1,1,,B,H3P=F04UCBD78Pqj7A;p00283410,0*14' |
+            | 25   | '6450A85CE8F045C2515543D12FEA81F3E76EE56193' | 'B'     | '!AIVDM,1,1,,B,I52`G>ShAL9AED?A;vb1tvMfqF6C,0*36' |
+            | 26   | '6801BD8EA9F8C0D5E91E80C0645601000000080000' | 'B'     | '!AIVDM,1,1,,B,J06uSbWph=Ga7`30I5H100002000,0*2A' |
+            | 27   | '6F3A304BBB0029BCF33407FC'                   | 'B'     | '!AIVDM,1,1,,B,Kk`hBsd0:Kkk=0Ot,0*2F' |
+
+
+            
