@@ -1,0 +1,25 @@
+# --- HTTP Status Codes ---
+HTTP_RESPONSE_STATUS_OK = 200
+HTTP_RESPONSE_STATUS_NO_DATA = 204
+HTTP_RESPONSE_STATUS_ALL_OK_LAST = 300
+HTTP_RESPONSE_STATUS_BAD_REQUEST = 400
+HTTP_RESPONSE_STATUS_UNAUTHORIZED = 401
+
+# --- SFDC API Paths ---
+SFDC_QUERY_PATH = '/services/data/v57.0/query/'
+SFDC_COMPOSITE_BATCH = '/services/data/v57.0/composite/batch'
+SFDC_BULK_QUERY_URL = '/services/data/v57.0/jobs/query/'
+SFDC_BULK_JOB_URL = '/services/data/v57.0/jobs/ingest/'
+
+# --- HTTP Methods ---
+HTTP_GET = 'get'
+HTTP_POST = 'post'
+HTTP_PATCH = 'patch'
+HTTP_PUT = 'put'
+
+# --- Job Types ---
+JOB_TYPE_QUERY = 'QUERY'
+JOB_TYPE_INGEST = 'INGEST'
+
+REQUEST_TIMEOUT = 100
+BULK_JOB_RECORDS_NUMBER = 50000
