@@ -1,0 +1,127 @@
+name: rompy-oceanum
+resources:
+  tasks:
+    - name: generate
+      image: "us-central1-docker.pkg.dev/oceanum-prod/oceanum-public/rompy:latest"
+      command: rompy generate --config-from-env -vv  --simple-logs
+      outputs:
+        artifacts:
+          - name: workspace
+            path: /tmp/rompy
+      resources:
+        cpu: 1
+        memory: 1G
+      env:
+        - name: ROMPY_MODEL
+          value: "swan"
+        - name: ROMPY_LOG_LEVEL
+          value: "INFO"
+
+    - name: run
+      image: "us-central1-docker.pkg.dev/oceanum-prod/oceanum-public/swan:latest"
+      inputs:
+        artifacts:
+          - name: workspace
+            path: /tmp/rompy
+      command: bash -c "cd /tmp/rompy && mpirun --allow-run-as-root -n 2 /usr/local/bin/swan.exe"
+      resources:
+        cpu: 2
+        memory: 5G
+      outputs:
+        artifacts:
+          - name: grid
+            path: /tmp/rompy/swangrid.nc
+          - name: spectra
+            path: /tmp/rompy/swanspec.nc
+      # env:
+      #   - name: ROMPY_MODEL
+      #     value: "swan"
+      #   - name: OMPI_ALLOW_RUN_AS_ROOT
+      #     value: "1"
+      #   - name: OMPI_ALLOW_RUN_AS_ROOT_CONFIRM
+      #     value: "1"
+      #   - name: OMP_NUM_THREADS
+      #     value: "2"
+      #   - name: ROMPY_BACKEND_TYPE
+      #     value: "local"
+      #   - name: ROMPY_BACKEND_COMMAND
+      #     value: "mpirun -n 2 /usr/local/bin/swan.exe"
+      #   - name: ROMPY_BACKEND_SHELL
+      #     value: "true"
+      #   - name: ROMPY_BACKEND_CAPTURE_OUTPUT
+      #     value: "true"
+
+    - name: register
+      image: "us-central1-docker.pkg.dev/oceanum-prod/oceanum-public/rompy:latest"
+      command: rompy postprocess --config-from-env --processor datamesh -v --simple-logs
+      inputs:
+        artifacts:
+          - name: grid
+            path: /tmp/rompy/swangrid.nc
+          - name: spectra
+            path: /tmp/rompy/swanspec.nc
+      resources:
+        cpu: 1
+        memory: 1G
+      env:
+        - name: ROMPY_MODEL
+          value: "swan"
+        - name: DATAMESH_PROCESSOR
+          value: "datamesh"
+        - name: DATAMESH_OUTPUT_PATTERNS
+          value: "*.nc,*.dat,*.csv"
+        - name: DATAMESH_TAGS
+          value: "swan,wave-model,oceanum"
+
+  pipelines:
+    - name: swan-from-rompy
+      arguments:
+        parameters:
+          - name: datamesh-token
+            env: DATAMESH_TOKEN
+          - name: rompy-config
+            env: ROMPY_CONFIG
+      defaults:
+        env:
+          - name: ROMPY_MODEL
+            value: "swan"
+          - name: OMPI_ALLOW_RUN_AS_ROOT
+            value: "1"
+          - name: OMPI_ALLOW_RUN_AS_ROOT_CONFIRM
+            value: "1"
+        retryStrategy:
+          limit: 1
+      dag:
+        - name: generate
+          taskRef: generate
+          dependencies: []
+        - name: run
+          taskRef: run
+          arguments:
+            artifacts:
+              - name: workspace
+                stepRef:
+                  name: generate
+                  artifactRef: workspace
+          dependencies:
+            - name: generate
+        - name: register
+          taskRef: register
+          arguments:
+            artifacts:
+              - name: grid
+                stepRef:
+                  name: run
+                  artifactRef: grid
+              - name: spectra
+                stepRef:
+                  name: run
+                  artifactRef: spectra
+          dependencies:
+            - name: run
+
+  stages:
+    - name: dev
+      resources:
+        pipelines:
+          - swan-from-rompy
