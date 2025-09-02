@@ -1,0 +1,82 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/redshift-utils-mcp/
+    permissions:
+      id-token: write  # For trusted publishing
+      contents: write   # For creating releases
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+
+    - name: Install dependencies
+      run: |
+        uv pip install --system build twine
+
+    - name: Build package
+      run: |
+        python -m build
+        ls -la dist/
+
+    - name: Check distribution
+      run: |
+        twine check dist/*
+
+    - name: Test package installation
+      run: |
+        python -m venv test_env
+        source test_env/bin/activate
+        pip install dist/*.whl
+        redshift-utils-mcp --help
+        deactivate
+        rm -rf test_env
+
+    # Optional: Publish to Test PyPI first
+    - name: Publish to Test PyPI
+      if: github.event_name == 'push' && contains(github.ref, 'test')
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+      run: |
+        twine upload --repository testpypi dist/*
+
+    # Publish to production PyPI
+    - name: Publish to PyPI
+      if: github.event_name == 'release' || (github.event_name == 'push' && !contains(github.ref, 'test'))
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      run: |
+        twine upload dist/*
+
+    # Create GitHub Release with artifacts
+    - name: Upload Release Assets
+      if: github.event_name == 'push'
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          dist/*.whl
+          dist/*.tar.gz
+        fail_on_unmatched_files: true
+        generate_release_notes: true
