@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+  <!-- Edit Purchase order original tree view for hide DDAA orders -->
+  <record id="purchase.purchase_form_action" model="ir.actions.act_window">
+    <field name="name">Purchase Orders</field>
+    <field name="type">ir.actions.act_window</field>
+    <field name="res_model">purchase.order</field>
+    <field name="view_mode">tree,kanban,form,pivot,graph,calendar,activity</field>
+    <field name="view_id" ref="purchase.purchase_order_view_tree"/>
+    <field name="domain">[('state', 'in', ('purchase', 'done')), ('is_ddaa_order', '=', False)]</field>    
+    <field name="search_view_id" ref="purchase.purchase_order_view_search"/>
+    <field name="context">{}</field>
+    <field name="help" type="html">
+      <p class="o_view_nocontent_smiling_face">
+        Create a quotation
+      </p><p>
+        It will be converted into a purchase order.
+      </p>
+    </field>
+  </record>
+
+  <!-- Edit Requests for Quotation original tree view for hide DDAA orders -->
+  <record id="purchase.purchase_rfq" model="ir.actions.act_window">
+    <field name="name">Requests for Quotation</field>
+    <field name="type">ir.actions.act_window</field>
+    <field name="res_model">purchase.order</field>
+    <field name="view_mode">tree,kanban,form,pivot,graph,calendar,activity</field>
+    <field name="view_id" ref="purchase.purchase_order_tree"/>
+    <field name="domain">[('is_ddaa_order', '=', False)]</field>    
+    <field name="context">{}</field>
+    <field name="search_view_id" ref="purchase.view_purchase_order_filter"/>
+    <field name="context">{'quotation_only': True}</field>
+    <field name="help" type="html">
+      <p class="o_view_nocontent_smiling_face">
+        Create a request for quotation
+      </p><p>
+        The quotation contains the history of the discussion
+        you had with your vendor.
+      </p>
+    </field>
+  </record>
+
+  <!-- Always show confirmation date in purchase orders-->
+  <record id="purchase_order_tree_editorial" model="ir.ui.view">
+    <field name="name">purchase.order.tree.editorial</field>
+    <field name="model">purchase.order</field>
+    <field name="inherit_id" ref="purchase.purchase_order_tree"/>
+    <field name="arch" type="xml">
+      <xpath expr="//field[@name='date_approve']" position="replace">
+        <field name="date_approve" optional="show"/>
+      </xpath>
+    </field>
+  </record>
+
+  <record id="purchase_order_editorial_form_view" model="ir.ui.view">
+    <field name="name">purchase.order.editorial.form.view</field>
+    <field name="model">purchase.order</field>
+    <field name="inherit_id" ref="purchase.purchase_order_form"/>
+    <field name="arch" type="xml">
+
+      <xpath expr="//field[@name='picking_type_id']" position="after">
+        <field name="available_products" invisible="1" />
+      </xpath>
+
+      <!-- Hide products with visibility limited by provider -->
+      <xpath expr="//field[@name='order_line']/tree//field[@name='product_id']" position="attributes">
+        <attribute name="domain">
+            [('purchase_ok', '=', True),
+            ('id', 'in', parent.available_products), 
+            '|', 
+            ('company_id', '=', False), 
+            ('company_id', '=', parent.company_id)]
+        </attribute>
+      </xpath>
+
+      <xpath expr="//page/field[@name='order_line']/tree/field[@name='product_id']" position="after">
+          <field name="product_barcode" optional="show"/>
+      </xpath>
+
+      <xpath expr="//page/field[@name='order_line']/tree/field[@name='qty_invoiced']" position="after">
+        <field name="liquidated_qty" string="Liquidados" column_invisible="parent.state not in ('purchase', 'done')" optional="show" readonly="1"/>
+      </xpath>
+      
+    </field>
+  </record>
+  
+  <!-- View for buttons liquidated purchases + deposit purchases in product template view -->
+  <record id="editorial_purchase_order_line_tree" model="ir.ui.view">
+      <field name="name">editorial.purchase.order.line.tree</field>
+      <field name="model">purchase.order.line</field>
+      <field name="arch" type="xml">
+          <tree>
+              <field name="order_id"/>
+              <field name="product_id"/>
+              <field name="date_approve"/>
+              <field name="product_uom_qty"/>
+              <field name="qty_received"/>
+              <field name="liquidated_qty"/>
+          </tree>
+      </field>
+  </record>
+
+</odoo>
