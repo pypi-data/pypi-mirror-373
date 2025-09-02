@@ -1,0 +1,196 @@
+WHITESPACE     = _{ " " | "\t" | "\n" }
+COMMENT        = _{ ("//" ~ (!"\n" ~ ANY)*) | ("/*" ~ (!"*/" ~ ANY)* ~ "*/") }
+ident          = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+parameter_name = @{ (ASCII_ALPHANUMERIC | "_")* }
+char_single    =  {
+    !("'" | "\\") ~ ANY
+  | "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t" | "'")
+  | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
+char_double    =  {
+    !("\"" | "\\") ~ ANY
+  | "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t" | "'")
+  | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
+char_tick      =  {
+    !("`" | "\\") ~ ANY
+  | "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t" | "'")
+  | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
+nothing_ident  = @{ "###"+ }
+
+// Query
+queries = _{ SOI ~ query ~ (";" ~ query)* ~ ";"? ~ EOI }
+
+query = { statement* }
+
+nothing = { nothing_ident? }
+
+// fragments
+
+labels       = { ":" ~ label_expression }
+pattern      = { ident? ~ labels? ~ (map | parameter)? }
+node_pattern = { "(" ~ pattern ~ ")" }
+
+directed_edge_pattern   = { (")-[" ~ pattern ~ "]->(") | (nothing ~ ")-->(") }
+reversed_edge_pattern   = { (")<-[" ~ pattern ~ "]-(") | (nothing ~ ")<--(") }
+undirected_edge_pattern = { (")-[" ~ pattern ~ "]-(") | (")<-[" ~ pattern ~ "]->(") | (nothing ~ ")--(") }
+edge_pattern            = { "(" ~ pattern ~ ((directed_edge_pattern | reversed_edge_pattern | undirected_edge_pattern) ~ pattern)+ ~ ")" }
+
+path_pattern = { ident ~ "=" ~ "(" ~ pattern ~ (directed_edge_pattern | reversed_edge_pattern | undirected_edge_pattern) ~ pattern ~ ")" }
+
+node_or_edge_pattern         = _{ edge_pattern | node_pattern }
+node_or_edge_or_path_pattern = _{ edge_pattern | node_pattern | path_pattern }
+
+// Modifiers
+
+order_by_kw = @{ "ORDER" ~ WHITESPACE+ ~ "BY" ~ !ASCII_ALPHA }
+limit_kw    = @{ "LIMIT" ~ !ASCII_ALPHA }
+skip_kw     = @{ "SKIP" ~ !ASCII_ALPHA }
+
+limit                    = { limit_kw ~ expression }
+order_by                 = { order_by_kw ~ (order_by_desc_expression | order_by_asc_expression) ~ ("," ~ (order_by_desc_expression | order_by_asc_expression))* }
+order_by_asc_expression  = { expression ~ ("ASCENDING" | "ASC")? }
+order_by_desc_expression = { expression ~ ("DESCENDING" | "DESC") }
+skip                     = { skip_kw ~ expression }
+modifiers                = {
+    (limit ~ ((order_by ~ skip?) | (skip? ~ order_by?)))
+  | (order_by ~ ((limit ~ skip?) | (skip? ~ limit?)))
+  | (skip ~ ((order_by ~ limit?) | (limit? ~ order_by?)))
+}
+
+where_modifier = { "WHERE" ~ expression }
+
+// Statements
+statement = {
+    create_graph_statement
+  | drop_graph_if_exists_statement
+  | drop_graph_statement
+  | use_graph_statement
+  | create_statement
+  | optional_match_statement
+  | match_statement
+  | return_statement
+  | call_statement
+  | with_statement
+  | unwind_statement
+  | delete_statement
+  | detach_delete_statement
+  | set_statement
+  | remove_statement
+}
+
+star = { "*" }
+
+create_graph_statement   = { "CREATE" ~ "GRAPH" ~ ident }
+drop_graph_statement     = { "DROP" ~ "GRAPH" ~ ident }
+drop_graph_if_exists_statement     = { "DROP" ~ "GRAPH" ~ "IF" ~ "EXISTS" ~ ident }
+use_graph_statement      = { "USE" ~ ident }
+
+create_statement         = { "CREATE" ~ node_or_edge_pattern ~ ("," ~ node_or_edge_pattern)* }
+match_statement          = { "MATCH" ~ node_or_edge_or_path_pattern ~ ("," ~ node_or_edge_or_path_pattern)* ~ where_modifier? }
+optional_match_statement = { "OPTIONAL" ~ match_statement }
+return_statement         = { "RETURN" ~ (star | named_expression) ~ ("," ~ named_expression)* ~ modifiers? }
+call_statement           = { "CALL" ~ function_name ~ "()" }
+with_statement           = { "WITH" ~ (star | named_expression) ~ ("," ~ named_expression)* ~ where_modifier? ~ modifiers? }
+unwind_statement         = { "UNWIND" ~ named_expression }
+delete_statement         = { "DELETE" ~ expression ~ ("," ~ expression)* }
+detach_delete_statement  = { "DETACH" ~ "DELETE" ~ expression ~ ("," ~ expression)* }
+set_statement            = { "SET" ~ set_expression ~ ("," ~ set_expression)* }
+remove_statement         = { "REMOVE" ~ remove_expression ~ ("," ~ remove_expression)* }
+
+// literals
+int            = @{ ("+" | "-")? ~ ('0'..'9')+ }
+octa_int       = @{ ("+" | "-")? ~ "0o" ~ ('0'..'9' | 'a' .. 'f' | 'A' .. 'F')+ }
+hexa_int       = @{ ("+" | "-")? ~ "0x" ~ ('0'..'9' | 'a' .. 'f' | 'A' .. 'F')+ }
+null_lit       =  { "null" }
+true_lit       =  { "true" }
+false_lit      =  { "false" }
+num            = @{ (int? ~ "." ~ ASCII_DIGIT+ ~ (^"e" ~ int)?) | (int ~ ^"e" ~ int) }
+string_literal = ${ ("'" ~ inner_single ~ "'") | ("\"" ~ inner_double ~ "\"") | ("`" ~ inner_tick ~ "`") }
+inner_tick     = @{ char_tick* }
+inner_double   = @{ char_double* }
+inner_single   = @{ char_single* }
+function_name  =  { ident ~ ("." ~ ident)* }
+
+// Expression
+
+set_expression       = _{ set_eq_expression | set_add_expression | set_label_expression }
+set_eq_expression    =  { set_eq_member_access ~ "=" ~ expression }
+set_add_expression   =  { set_eq_member_access ~ "+=" ~ expression }
+remove_expression    = _{ remove_member_access | set_label_expression }
+set_label_expression =  { ident ~ (":" ~ ident)+ }
+set_eq_member_access =  { (("(" ~ ident ~ ")") | ident) ~ ("." ~ ident)* }
+remove_member_access =  { (("(" ~ ident ~ ")") | ident) ~ ("." ~ ident)+ }
+
+expression = { prefix* ~ expression_term ~ postfix* ~ (infix ~ prefix? ~ expression_term ~ postfix*)* }
+
+infix   = _{ addition | subtraction | multiplication | division | modulo | exponent | or | and | xor | equal | different | in_ | not_in | superior_equal | inferior_equal | superior | inferior }
+postfix = _{ is_null | is_not_null | member_access | range_access | range_access_to | index_access }
+prefix  = _{ negation | not }
+
+addition       = { "+" }
+subtraction    = { "-" }
+multiplication = { "*" }
+division       = { "/" }
+modulo         = { "%" }
+exponent       = { "^" }
+
+xor_kw         = @{ "XOR" ~ !ASCII_ALPHA }
+xor            =  { xor_kw }
+or_kw          = @{ "OR" ~ !ASCII_ALPHA }
+or             =  { or_kw }
+and_kw         = @{ "AND" ~ !ASCII_ALPHA }
+and            =  { and_kw }
+equal          =  { "=" }
+different      =  { "<>" }
+inferior_kw    = @{ "<" ~ (!">" | !"=") }
+inferior       =  { inferior_kw }
+superior_kw    = @{ ">" ~ !"=" }
+superior       =  { superior_kw }
+inferior_equal =  { "<=" }
+superior_equal =  { ">=" }
+not_in         =  { "NOT" ~ "IN" }
+in_            =  { "IN" }
+
+negation =  { "-" ~ !int }
+not_kw   = @{ "NOT" ~ !ASCII_ALPHA }
+not      =  { not_kw }
+
+is_null         = { "IS" ~ "NULL" }
+is_not_null     = { "IS" ~ "NOT" ~ "NULL" }
+member_access   = { ("." ~ (ident | string_literal))+ }
+index_access    = { "[" ~ expression ~ "]" }
+range_access    = { "[" ~ expression ~ ".." ~ expression? ~ "]" }
+range_access_to = { "[" ~ ".." ~ expression ~ "]" }
+
+label_check_expression = { ident ~ (":" ~ ident)+ }
+
+parenthesised_expression = { "(" ~ expression ~ ")" }
+named_expression         = { (expression ~ "AS" ~ ident) | expression }
+function_call            = { function_name ~ "(" ~ (expression ~ ("," ~ expression)*)? ~ ")" }
+function_star            = { function_name ~ "(" ~ "*" ~ ")" }
+expression_term          = { null_lit | true_lit | false_lit | num | hexa_int | octa_int | int | string_literal | map | array | label_check_expression | parameter | parenthesised_expression | function_call | function_star | ident }
+
+parameter = { "$" ~ parameter_name }
+
+pair = { (ident | string_literal) ~ ":" ~ expression }
+
+array = {
+    "[" ~ "]"
+  | "[" ~ expression ~ ("," ~ expression)* ~ "]"
+}
+
+map = {
+    "{" ~ "}"
+  | "{" ~ pair ~ ("," ~ pair)* ~ "}"
+}
+
+// label_expression
+
+label_expression = _{ label_inclusion }
+
+label_inclusion   = { label_alternative ~ (":" ~ label_expression)* }
+label_alternative = { label_atom ~ ("|" ~ label_expression)* }
+label_atom        = { label_group | ":"? ~ ident }
+label_group       = { "(" ~ label_expression ~ ")" }
