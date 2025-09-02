@@ -1,0 +1,240 @@
+import { test } from '@jupyterlab/galata';
+
+import { expect } from '@playwright/test';
+
+test.describe('General Tests', () => {
+  test.beforeEach(({ page }) => {
+    page.setDefaultTimeout(600000);
+
+    page.on('console', message => {
+      console.log('CONSOLE MSG ---', message.text());
+    });
+  });
+
+  test('xeus-javascript should execute some code', async ({ page }) => {
+    await page.goto('lab/index.html');
+
+    const xjs = page.locator('[title="JavaScript (xjavascript)"]').first();
+    await xjs.click();
+
+    // Wait for kernel to be idle
+    await page.locator('#jp-main-statusbar').getByText('Idle').waitFor();
+
+    await page.notebook.addCell('code', 'console.log("hello from javascript")');
+    await page.notebook.runCell(1);
+
+    // Wait for kernel to be idle
+    await page.locator('#jp-main-statusbar').getByText('Idle').waitFor();
+
+    const cell = await page.notebook.getCellOutput(1);
+
+    const text = await cell?.textContent();
+
+    if (!text) {
+      throw new Error('Failed to get cell output');
+    }
+
+    if (!/hello from javascript/.test(text)) {
+      throw new Error('Cell output does not contain expected value');
+    }
+  });
+
+  test('xeus-cpp should execute code', async ({ page }) => {
+    await page.goto('lab/index.html');
+
+    let notebook = 'cpp.ipynb';
+
+    await page.notebook.open(notebook);
+    await page.notebook.runCellByCell();
+
+    notebook = 'cpp-third-party-libs.ipynb';
+
+    await page.notebook.open(notebook);
+    await page.notebook.runCellByCell();
+  });
+
+  test('xeus-python should execute code', async ({ page }) => {
+    await page.goto('lab/index.html');
+
+    const notebook = 'Lorenz.ipynb';
+
+    await page.notebook.open(notebook);
+    await page.notebook.runCellByCell();
+  });
+
+  test('xeus-r should execute code', async ({ page }) => {
+    await page.goto('lab/index.html');
+
+    const notebook = 'r.ipynb';
+
+    await page.notebook.open(notebook);
+    await page.notebook.runCellByCell();
+  });
+
+  test('(Multi-kernels test) xeus-python from env-default should execute some code', async ({
+    page
+  }) => {
+    await page.goto('lab/index.html');
+
+    const xpython = page
+      .locator('[title="Python 3.13 (XPython) [env-python]"]')
+      .first();
+    await xpython.click();
+
+    // Wait for kernel to be idle
+    await page.locator('#jp-main-statusbar').getByText('Idle').waitFor();
+
+    await page.notebook.addCell('code', 'import bqplot; print("ok")');
+    await page.notebook.runCell(1);
+
+    // Wait for kernel to be idle
+    await page.locator('#jp-main-statusbar').getByText('Idle').waitFor();
+
+    const cell = await page.notebook.getCellOutput(1);
+
+    expect(await cell?.screenshot()).toMatchSnapshot(
+      'jupyter-xeus-execute.png'
+    );
+  });
+
+  test('(Multi-kernels test) xeus-python from env-python have packages', async ({
+    page
+  }) => {
+    await page.goto('lab/index.html');
+
+    const xpython = page
+      .locator('[title="Python 3.13 (XPython) [env-default]"]')
+      .first();
+    await xpython.click();
+
+    // Wait for kernel to be idle
+    await page.locator('#jp-main-statusbar').getByText('Idle').waitFor();
+
+    // xeus-python from env-default does not have bqplot installed.
+    await page.notebook.addCell('code', 'import bqplot');
+    await page.notebook.runCell(1);
+
+    // Wait for kernel to be idle
+    await page.locator('#jp-main-statusbar').getByText('Idle').waitFor();
+
+    const cell = await page.notebook.getCellOutput(1);
+
+    expect(await cell?.screenshot()).toMatchSnapshot(
+      'jupyter-xeus-execute-env2.png'
+    );
+  });
+
+  test('the kernel should have access to the file system', async ({ page }) => {
+    await page.goto('lab/index.html');
+
+    // Create a Python notebook
+    const xpython = page
+      .locator('[title="Python 3.13 (XPython) [env-default]"]')
+      .first();
+    await xpython.click();
+
+    await page.notebook.save();
+
+    await page.notebook.setCell(0, 'code', 'import os; os.listdir()');
+    await page.notebook.runCell(0);
+
+    const cell = await page.notebook.getCellOutput(0);
+    const cellContent = await cell?.textContent();
+    const name = 'Untitled.ipynb';
+    expect(cellContent).toContain(name);
+  });
+
+  test('Stdin using python kernel', async ({ page }) => {
+    await page.goto('lab/index.html');
+
+    // Create a Python notebook
+    const xpython = page
+      .locator('[title="Python 3.13 (XPython) [env-default]"]')
+      .first();
+    await xpython.click();
+
+    await page.notebook.save();
+
+    await page.notebook.setCell(0, 'code', 'name = input("Prompt:")');
+    let cell0 = page.notebook.runCell(0); // Do not await yet.
+
+    // Run cell containing `input`.
+    await page.locator('.jp-Stdin >> text=Prompt:').waitFor();
+    await page.keyboard.insertText('My Name');
+    await page.keyboard.press('Enter');
+    await cell0; // await end of cell.
+
+    let output = await page.notebook.getCellTextOutput(0);
+    expect(output![0]).toEqual('Prompt: My Name\n');
+
+    await page.notebook.setCell(
+      0,
+      'code',
+      'import getpass; pw = getpass.getpass("Password:")'
+    );
+    cell0 = page.notebook.runCell(0); // Do not await yet.
+
+    // Run cell containing `input`.
+    await page.locator('.jp-Stdin >> text=Password:').waitFor();
+    await page.keyboard.insertText('hidden123');
+    await page.keyboard.press('Enter');
+    await cell0; // await end of cell.
+
+    output = await page.notebook.getCellTextOutput(0);
+    expect(output![0]).toEqual('Password: ········\n');
+  });
+
+  test('pip install using python kernel', async ({ page }) => {
+    await page.goto('lab/index.html');
+
+    // Create a Python notebook
+    const xpython = page
+      .locator('[title="Python 3.13 (XPython) [env-default]"]')
+      .first();
+    await xpython.click();
+
+    await page.notebook.save();
+
+    await page.notebook.setCell(0, 'code', 'import py2vega');
+    await page.notebook.runCell(0);
+
+    let output = await page.notebook.getCellTextOutput(0);
+    expect(output![0]).toContain('ModuleNotFoundError');
+
+    await page.notebook.setCell(1, 'code', '%pip install py2vega');
+    await page.notebook.runCell(1);
+
+    await page.notebook.setCell(2, 'code', 'import py2vega; print("ok")');
+    await page.notebook.runCell(2);
+
+    output = await page.notebook.getCellTextOutput(2);
+    expect(output![0]).not.toContain('ModuleNotFoundError');
+  });
+
+  test('conda install using python kernel', async ({ page }) => {
+    await page.goto('lab/index.html');
+
+    // Create a Python notebook
+    const xpython = page
+      .locator('[title="Python 3.13 (XPython) [env-default]"]')
+      .first();
+    await xpython.click();
+
+    await page.notebook.save();
+
+    await page.notebook.setCell(0, 'code', 'import ipycanvas');
+    await page.notebook.runCell(0);
+
+    let output = await page.notebook.getCellTextOutput(0);
+    expect(output![0]).toContain('ModuleNotFoundError');
+
+    await page.notebook.setCell(1, 'code', '%conda install ipycanvas');
+    await page.notebook.runCell(1);
+
+    await page.notebook.setCell(2, 'code', 'import ipycanvas; print("ok")');
+    await page.notebook.runCell(2);
+
+    output = await page.notebook.getCellTextOutput(2);
+    expect(output![0]).not.toContain('ModuleNotFoundError');
+  });
+});
