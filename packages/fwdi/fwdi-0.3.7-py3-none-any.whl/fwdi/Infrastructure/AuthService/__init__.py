@@ -1,0 +1,2 @@
+from .auth_service_static import AuthServiceFWDI
+from .auth_service_inst import AuthServiceV2FWDI
