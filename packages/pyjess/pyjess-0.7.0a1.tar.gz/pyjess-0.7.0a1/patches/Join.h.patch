@@ -1,0 +1,145 @@
+diff --git a/src/Join.h b/src/Join.h
+index b43a6a3..b523b80 100644
+--- a/src/Join.h
++++ b/src/Join.h
+@@ -10,6 +10,8 @@
+ #ifndef JOIN_H
+ #define JOIN_H
+ 
++#include "Annulus.h"
++#include "Box.h"
+ #include "Region.h"
+ 
+ // ==================================================================
+@@ -21,6 +23,24 @@
+ 
+ typedef enum {innerJoin,outerJoin} JoinType;
+ 
++// ==================================================================
++// type Join
++// ==================================================================
++// count				The number of regions in the join
++// type					The type of the join (inner or outer)
++// R[k]					The kth region in the join
++// Box					A bounding box around the join region.
++// ==================================================================
++
++typedef struct _Join Join;
++
++struct _Join
++{
++	int count;
++    JoinType type;
++	Annulus *R[0];
++};
++
+ // ==================================================================
+ // Construction methods for region type Join
+ // ==================================================================
+@@ -28,8 +48,104 @@ typedef enum {innerJoin,outerJoin} JoinType;
+ // free(J)					Frees join AND nested regions (J->free)
+ // ==================================================================
+ 
+-extern Region *Join_create(Region**,int,JoinType);
+-extern void Join_free(Region*);
++extern Join *Join_allocate(int,JoinType);
++extern Join *Join_create(const Annulus**,int,JoinType);
++extern void Join_computeBox(const Join*,Box*);
++extern void Join_free(Join*);
++
++// ==================================================================
++// Oracles
++// ==================================================================
++
++// int Join_ro(Region *R,double *min,double *max,int dim);
++// int Join_po(Region *R,double *min,double *max,int dim);
++
++// int Join_oro(Region *R,double *min,double *max,int dim);
++// int Join_iro(Region *R,double *min,double *max,int dim);
++// int Join_opo(Region *R,double *x,int dim);
++// int Join_ipo(Region *R,double *x,int dim);
++
++// ==================================================================
++// The oracles
++// ==================================================================
++
++static inline int _Join_oro(const Join *J,const double* restrict min, const double* restrict max)
++{
++	Annulus* A;
++	int k;
++
++	for(k=0; k<J->count; k++)
++	{
++		A=(Annulus*) J->R[k];
++		if(_Annulus_ro(A,min,max))
++		{
++			return 1;
++		}
++	}
++
++	return 0;
++}
++
++static inline int _Join_iro(const Join *J,const double* restrict min,const double* restrict max)
++{
++	Annulus* A;
++	int k;
++
++	for(k=0; k<J->count; k++)
++	{
++		A=(Annulus*) J->R[k];
++		if(!(_Annulus_ro(A,min,max)))
++		{
++			return 0;
++		}
++	}
++
++	return 1;
++}
++
++static inline int _Join_opo(const Join *J,const double *x)
++{
++	Annulus* A;
++	int k;
++
++	for(k=0; k<J->count; k++)
++	{
++		A=(Annulus*) J->R[k];
++		if(_Annulus_po(A,x))
++		{
++			return 1;
++		}
++	}
++
++	return 0;
++}
++
++static inline int _Join_ipo(const Join *J,const double *x)
++{
++	Annulus* A;
++	int k;
++
++	for(k=0; k<J->count; k++)
++	{
++		A=(Annulus*) J->R[k];
++		if(!(_Annulus_po(A,x)))
++		{
++			return 0;
++		}
++	}
++
++	return 1;
++}
++
++static inline int _Join_ro(const Join *J,const double* restrict min, const double* restrict max)
++{
++    return (J->type == innerJoin) ? _Join_iro(J,min,max) : _Join_oro(J,min,max);
++}
++
++static inline int _Join_po(const Join *J,const double *x)
++{
++    return (J->type == innerJoin) ? _Join_ipo(J,x) : _Join_opo(J,x);
++}
+ 
+ // ==================================================================
+ 
