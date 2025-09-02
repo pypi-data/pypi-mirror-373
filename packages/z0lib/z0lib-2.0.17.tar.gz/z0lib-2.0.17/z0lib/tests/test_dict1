@@ -1,0 +1,278 @@
+#!/bin/bash
+# -*- coding: utf-8 -*-
+# Regression tests on z0lib
+#
+# Based on template 2.1.0
+[ $BASH_VERSINFO -lt 4 ] && echo "This script $0 requires bash 4.0+!" && exit 4
+READLINK=$(which readlink 2>/dev/null)
+export READLINK
+THIS=$(basename "$0")
+TDIR=$(readlink -f $(dirname $0))
+ME=$(readlink -e $0)
+if [[ -d $HOME/devel || -z $HOME_DEVEL || ! -d $HOME_DEVEL ]]; then
+  [[ -d $HOME/odoo/devel ]] && HOME_DEVEL="$HOME/odoo/devel" || HOME_DEVEL="$HOME/devel"
+fi
+PYPATH=""
+[[ $(basename $PWD) == "tests" && $(basename $PWD/../..) == "build" ]] && PYPATH="$(dirname $PWD)"
+[[ $(basename $PWD) == "tests" && $(basename $PWD/../..) == "build" && -d $PWD/../scripts ]] && PYPATH="$PYPATH $(readlink -f $PWD/../scripts)"
+x=$ME; while [[ $x != $HOME && $x != "/" && ! -d $x/lib && ! -d $x/bin && ! -d $x/pypi ]]; do x=$(dirname $x); done
+[[ -d $x/pypi ]] && PYPATH="$PYPATH $x/pypi"
+[[ -d $x/pypi/z0lib ]] && PYPATH="$PYPATH $x/pypi/z0lib"
+[[ -d $x/pypi/z0lib/z0lib ]] && PYPATH="$PYPATH $x/pypi/z0lib/z0lib"
+[[ -d $x/tools ]] && PYPATH="$PYPATH $x/tools"
+[[ -d $x/tools/z0lib ]] && PYPATH="$PYPATH $x/tools/z0lib"
+[[ -d $x/bin ]] && PYPATH="$PYPATH $x/bin"
+[[ -d $x/lib ]] && PYPATH="$PYPATH $x/lib"
+[[ -d $HOME_DEVEL/venv/bin ]] && PYPATH="$PYPATH $HOME_DEVEL/venv/bin"
+[[ -d $HOME_DEVEL/../tools ]] && PYPATH="$PYPATH $(readlink -f $HOME_DEVEL/../tools)"
+# [[ -x $TDIR/../bin/python3 ]] && PYTHON=$(readlink -f $TDIR/../bin/python3) || [[ -x $TDIR/python3 ]] && PYTHON="$TDIR/python3" || PYTHON=$(which python3 2>/dev/null) || PYTHON="python"
+# [[ -z $PYPATH ]] && PYPATH=$(echo -e "import os,sys\no=os.path\na=o.abspath\nj=o.join\nd=o.dirname\nb=o.basename\nf=o.isfile\np=o.isdir\nC=a('"$TDIR"')\nD='"$HOME_DEVEL"'\nif not p(D) and '/devel/' in C:\n D=C\n while b(D)!='devel':  D=d(D)\nN='venv_tools'\nU='setup.py'\nO='tools'\nH=o.expanduser('~')\nT=j(d(D),O)\nR=j(d(D),'pypi') if b(D)==N else j(D,'pypi')\nW=D if b(D)==N else j(D,'venv')\nS='site-packages'\nX='scripts'\ndef pt(P):\n P=a(P)\n if b(P) in (X,'tests','travis','_travis'):\n  P=d(P)\n if b(P)==b(d(P)) and f(j(P,'..',U)):\n  P=d(d(P))\n elif b(d(C))==O and f(j(P,U)):\n  P=d(P)\n return P\ndef ik(P):\n return P.startswith((H,D,K,W)) and p(P) and p(j(P,X)) and f(j(P,'__init__.py')) and f(j(P,'__main__.py'))\ndef ak(L,P):\n if P not in L:\n  L.append(P)\nL=[C]\nK=pt(C)\nfor B in ('z0lib','zerobug','odoo_score','clodoo','travis_emulator'):\n for P in [C]+sys.path+os.environ['PATH'].split(':')+[W,R,T]:\n  P=pt(P)\n  if B==b(P) and ik(P):\n   ak(L,P)\n   break\n  elif ik(j(P,B,B)):\n   ak(L,j(P,B,B))\n   break\n  elif ik(j(P,B)):\n   ak(L,j(P,B))\n   break\n  elif ik(j(P,S,B)):\n   ak(L,j(P,S,B))\n   break\nak(L,os.getcwd())\nprint(' '.join(L))\n"|$PYTHON)
+[[ $TRAVIS_DEBUG_MODE -ge 8 ]] && echo "PYPATH=$PYPATH"
+for d in $PYPATH /etc; do
+  if [[ -e $d/z0librc ]]; then
+    . $d/z0librc
+    Z0LIBDIR=$(readlink -e $d)
+    break
+  fi
+done
+[[ -z "$Z0LIBDIR" ]] && echo "Library file z0librc not found in <$PYPATH>!" && exit 72
+[[ $TRAVIS_DEBUG_MODE -ge 8 ]] && echo "Z0LIBDIR=$Z0LIBDIR"
+TESTDIR=$(findpkg "" "$TDIR . .." "tests")
+[[ $TRAVIS_DEBUG_MODE -ge 8 ]] && echo "TESTDIR=$TESTDIR"
+RUNDIR=$(readlink -e $TESTDIR/..)
+[[ $TRAVIS_DEBUG_MODE -ge 8 ]] && echo "RUNDIR=$RUNDIR"
+Z0TLIBDIR=$(findpkg z0testrc "$PYPATH" "zerobug")
+[[ -z "$Z0TLIBDIR" ]] && echo "Library file z0testrc not found!" && exit 72
+. $Z0TLIBDIR
+Z0TLIBDIR=$(dirname $Z0TLIBDIR)
+[[ $TRAVIS_DEBUG_MODE -ge 8 ]] && echo "Z0TLIBDIR=$Z0TLIBDIR"
+
+# DIST_CONF=$(findpkg ".z0tools.conf" "$PYPATH")
+# TCONF="$HOME/.z0tools.conf"
+CFG_init "ALL"
+link_cfg_def
+link_cfg $DIST_CONF $TCONF
+[[ $TRAVIS_DEBUG_MODE -ge 8 ]] && echo "DIST_CONF=$DIST_CONF" && echo "TCONF=$TCONF"
+get_pypi_param ALL
+RED="\e[1;31m"
+GREEN="\e[1;32m"
+CLR="\e[0m"
+
+__version__=2.0.9
+
+
+base_test () {
+    local keys vals i
+    keys=(k01    k02    k03    k04    K-X    ^K.*)
+    vals=("aaaa" "bbbb" "cccc" "dddd" "eeee" "any")
+    for i in {0..5}; do
+      CFG_set "${keys[i]}" "${vals[i]}" "0"
+    done
+    for i in {0..4}; do
+      TRES=$(CFG_find "0" ${keys[i]})
+      test_result "CFG_find 0 ${keys[i]}" "${vals[i]}" "$TRES"
+    done
+    keys=(k11    k12    k13    k14    K-X    ^K.*)
+    vals=("AAAA" "BBBB" "CCCC" "DDDD" "EEEE" "ANY")
+    for i in {0..5}; do
+      CFG_set "${keys[i]}" "${vals[i]}" "1"
+    done
+    for i in {0..4}; do
+      TRES=$(CFG_find "1" ${keys[i]})
+      test_result "CFG_find 1 ${keys[i]}" "${vals[i]}" "$TRES"
+    done
+    keys=(k01 k02 k03 k04)
+    for i in {0..3}; do
+      TRES=$(CFG_find "1" ${keys[i]})
+      test_result "CFG_find 1 ${keys[i]}" "" "$TRES"
+    done
+    keys=(k21 k22 k23 k24 ^K.*)
+    vals=("Aaaa" "Bbbb" "Cccc" "Dddd" "Any")
+    for i in {0..4}; do
+      CFG_set "${keys[i]}" "${vals[i]}" "2"
+    done
+    for i in {0..3}; do
+      TRES=$(CFG_find "2" ${keys[i]})
+      test_result "CFG_find 2 ${keys[i]}" "${vals[i]}" "$TRES"
+    done
+    keys=(k01 k02 k03 k04)
+    for i in {0..3}; do
+      TRES=$(CFG_find "2" ${keys[i]})
+      test_result "CFG_find 2 ${keys[i]}" "" "$TRES"
+    done
+    keys=(k11 k12 k13 k14)
+    for i in {0..3}; do
+      TRES=$(CFG_find "2" ${keys[i]})
+      test_result "CFG_find 2 ${keys[i]}" "" "$TRES"
+    done
+    keys=(k31 k32 k33 k34 ^K.*)
+    vals=("AAaa" "BBbb" "CCcc" "DDdd" "ANy")
+    for i in {0..4}; do
+      CFG_set "${keys[i]}" "${vals[i]}" "3"
+    done
+    for i in {0..3}; do
+      TRES=$(CFG_find "3" ${keys[i]})
+      test_result "CFG_find 3 ${keys[i]}" "${vals[i]}" "$TRES"
+    done
+}
+
+test_01() {
+    DEFDICT0="Dirty"
+    DEFRULE0="Dirty!"
+    DEFDICT1="Dirty"
+    DEFRULE1="Dirty!"
+    DEFDICT2="Dirty"
+    DEFRULE2="Dirty!"
+    DEFDICT3="Dirty"
+    DEFRULE4="Dirty!"
+    fh=$(xuname "-f")
+    x=$(xuname "-v")
+    local v=$(echo $x|awk -F. '{print $1}')
+    disto=$(xuname "-d")$v
+    for i in {0..3}; do
+      CFG_init $i
+      test_result "FH=$XU_FH  #$i" "$fh" "$XU_FH"
+      test_result "DISTO=$XU_DISTO  #$i" "$disto" "$XU_DISTO"
+    done
+    base_test
+
+    keys=(k01 k02 k03 k04)
+    for i in {0..3}; do
+      TRES=$(CFG_find "3" ${keys[i]})
+      test_result "CFG_find 3 ${keys[i]}" "" "$TRES"
+    done
+    keys=(k11 k12 k13 k14)
+    for i in {0..3}; do
+      TRES=$(CFG_find "3" ${keys[i]})
+      test_result "CFG_find 3 ${keys[i]}" "" "$TRES"
+    done
+    keys=(k21 k22 k23 k24)
+    for i in {0..3}; do
+      TRES=$(CFG_find "3" ${keys[i]})
+      test_result "CFG_find 3 ${keys[i]}" "" "$TRES"
+    done
+
+    TRES=$(CFG_find "0" "K9")
+    test_result "CFG_find 0 K9" "any" "$TRES"
+    TRES=$(CFG_find "1" K9)
+    test_result "CFG_find 1 K9" "ANY" "$TRES"
+
+    fh=$(xuname "-f")
+    x=$(xuname "-v")
+    local v=$(echo $x|awk -F. '{print $1}')
+    disto=$(xuname "-d")$v
+    CFG_set "k01" "global_a" "0" "-f"
+    TRES=$(CFG_find "0" "k01")
+    test_result "CFG_find 0 k01" "global_a" "$TRES"
+    CFG_set "k01" "local_a" "0" "-d"
+    TRES=$(CFG_find "0" "k01")
+    test_result "CFG_find 0 k01" "local_a" "$TRES"
+
+    CFG_set "k01" "global_A" "1" "-f"
+    TRES=$(CFG_find "1" "k01")
+    test_result "CFG_find 1 k01" "global_A" "$TRES"
+    CFG_set "k01" "local_A" "1" "-d"
+    TRES=$(CFG_find "1" "k01")
+    test_result "CFG_find 1 k01" "local_A" "$TRES"
+
+    CFG_set "k01" "Global_A" "2" "-f"
+    TRES=$(CFG_find "2" "k01")
+    test_result "CFG_find 2 k01" "Global_A" "$TRES"
+    CFG_set "k01" "Local_A" "2" "-d"
+    TRES=$(CFG_find "2" "k01")
+    test_result "CFG_find 2 k01" "Local_A" "$TRES"
+
+    CFG_set "k01" "GLobal_A" "3" "-f"
+    TRES=$(CFG_find "3" "k01")
+    test_result "CFG_find 3 k01" "GLobal_A" "$TRES"
+    CFG_set "k01" "LOcal_A" "3" "-d"
+    TRES=$(CFG_find "3" "k01")
+    test_result "CFG_find 3 k01" "LOcal_A" "$TRES"
+
+    CFG_set "^K.*" "global_any" "0" "-f"
+    TRES=$(CFG_find "0" "K9")
+    test_result "CFG_find 0 K9" "global_any" "$TRES"
+    CFG_set "^K.*" "local_any" "0" "-d"
+    TRES=$(CFG_find "0" "K9")
+    test_result "CFG_find 0 K9" "local_any" "$TRES"
+
+    CFG_set "^K.*" "global_ANY" "1" "-f"
+    TRES=$(CFG_find "1" "K9")
+    test_result "CFG_find 1 K9" "global_ANY" "$TRES"
+    CFG_set "^K.*" "local_ANY" "1" "-d"
+    TRES=$(CFG_find "1" "K9")
+    test_result "CFG_find 1 K9" "local_ANY" "$TRES"
+
+    CFG_set "^K.*" "Global_ANY" "2" "-f"
+    TRES=$(CFG_find "2" "K9")
+    test_result "CFG_find 2 K9" "Global_ANY" "$TRES"
+    CFG_set "^K.*" "Local_ANY" "2" "-d"
+    TRES=$(CFG_find "2" "K9")
+    test_result "CFG_find 2 K9" "Local_ANY" "$TRES"
+
+    CFG_set "^K.*" "GLobal_ANY" "3" "-f"
+    TRES=$(CFG_find "3" "K9")
+    test_result "CFG_find 3 K9" "GLobal_ANY" "$TRES"
+    CFG_set "^K.*" "LOcal_ANY" "3" "-d"
+    TRES=$(CFG_find "3" "K9")
+    test_result "CFG_find 3 K9" "LOcal_ANY" "$TRES"
+
+    fh=$(xuname "-f")
+    x=$(xuname "-v")
+    local v=$(echo $x|awk -F. '{print $1}')
+    disto=$(xuname "-d")$v
+    CFG_set "kx01" "local_ax" "0" "$fh"
+    TRES=$(CFG_find "0" "kx01")
+    test_result "CFG_find 0 kx01" "local_ax" "$TRES"
+    CFG_set "kx01" "global_ax" "0" "$disto"
+    TRES=$(CFG_find "0" "kx01")
+    test_result "CFG_find 0 kx01" "global_ax" "$TRES"
+    CFG_set "kx11" "local_ax" "1" "$fh"
+    TRES=$(CFG_find "1" "kx11")
+    test_result "CFG_find 1 kx11" "local_ax" "$TRES"
+    CFG_set "kx11" "global_ax" "1" "$disto"
+    TRES=$(CFG_find "1" "kx11")
+    test_result "CFG_find 1 kx11" "global_ax" "$TRES"
+    CFG_set "kx21" "local_ax" "2" "$fh"
+    TRES=$(CFG_find "2" "kx21")
+    test_result "CFG_find 2 kx21" "local_ax" "$TRES"
+    CFG_set "kx21" "global_ax" "2" "$disto"
+    TRES=$(CFG_find "2" "kx21")
+    test_result "CFG_find 2 kx21" "global_ax" "$TRES"
+    CFG_set "kx31" "local_ax" "3" "$fh"
+    TRES=$(CFG_find "3" "kx31")
+    test_result "CFG_find 3 kx31" "local_ax" "$TRES"
+    CFG_set "kx31" "global_ax" "3" "$disto"
+    TRES=$(CFG_find "3" "kx31")
+    test_result "CFG_find 3 kx31" "global_ax" "$TRES"
+
+    for i in {0..3}; do
+      CFG_init $i
+    done
+
+    base_test
+}
+
+
+Z0BUG_init
+parseoptest -l$TESTDIR/test_z0lib.log "$@"
+sts=$?
+[[ $sts -ne 127 ]] && exit $sts
+for p in z0librc odoorc travisrc zarrc z0testrc; do
+  if [[ -f $RUNDIR/$p ]]; then
+    [[ $p == "z0librc" ]] && Z0LIBDIR="$RUNDIR" && source $RUNDIR/$p
+    [[ $p == "odoorc" ]] && ODOOLIBDIR="$RUNDIR" && source $RUNDIR/$p
+    [[ $p == "travisrc" ]] && TRAVISLIBDIR="$RUNDIR" && source $RUNDIR/$p
+    [[ $p == "zarrc" ]] && ZARLIB="$RUNDIR" && source $RUNDIR/$p
+    [[ $p == "z0testrc" ]] && Z0TLIBDIR="$RUNDIR" && source $RUNDIR/$p
+  fi
+done
+
+
+UT1_LIST=
+UT_LIST=
+[[ "$(type -t Z0BUG_setup)" == "function" ]] && Z0BUG_setup
+Z0BUG_main_file "$UT1_LIST" "$UT_LIST"
+sts=$?
+[[ "$(type -t Z0BUG_teardown)" == "function" ]] && Z0BUG_teardown
+exit $sts
