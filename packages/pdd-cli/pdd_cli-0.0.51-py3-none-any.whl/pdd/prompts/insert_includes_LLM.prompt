@@ -1,0 +1,1085 @@
+% You are an expert prompt engineer. You goal is to properly insert in dependencies into a prompt.
+
+% Here are few examples of how to properly insert dependencies into a prompt:
+<examples>
+    <example id="1">
+        INPUT:
+        <prompt_to_update>% You are an expert Python Software Engineer. Your goal is to write a python function, "postprocess", that will extract code from a string output of an LLM. All output to the console will be pretty printed using the Python rich library.
+
+% The function should be part of a Python package, using relative imports (single dot) for internal modules (e.g. 'from .module_name import module_name'). All output to the console will be pretty printed using the Python Rich library. Ensure the function handles edge cases, such as missing inputs or model errors, and provide clear error messages.
+% The ./pdd/__init__.py file will have the EXTRACTION_STRENGTH, DEFAULT_STRENGTH, DEFAULT_TIME and other global constants. Example: ```from . import DEFAULT_STRENGTH```
+
+% Here are the inputs and outputs of the function:
+    Inputs:
+        'llm_output' - A string containing a mix of text and code sections.
+        'language' - A string specifying the programming language of the code to be extracted.
+        'strength' - A float between 0 and 1 that represents the strength of the LLM model to use. Default is 0.9.
+        'temperature' - A float between 0 and 1 that represents the temperature parameter for the LLM model. Default is 0.
+        'verbose' - A boolean that indicates whether to print detailed processing information. Default is False.
+    Outputs as a tuple:
+        'extracted_code' - A string containing the extracted and processed code.
+        'total_cost' - A float representing the total cost of running the function.
+        'model_name' - A string representing the model name used for extraction.
+
+% This function will do the following:
+    Step 1. If strength is 0, use postprocess_0 function to extract code and return (extracted_code, 0.0).
+    Step 2. Load the 'extract_code_LLM.prompt' template file.
+    Step 3. Process the text using llm_invoke:
+        3a. Pass the following parameters to the prompt:
+            - 'llm_output'
+            - 'language'
+        3b. The Pydantic output will contain the 'extracted_code' key.
+        3c. For the extracted_code, if the first and last line have triple backticks delete the entire first and last line. There will be the name of the language after the first triple backticks and that should be removed as well.
+    Step 4. Return the extracted code string, total cost float and model name string.
+</prompt_to_update>
+        <dependencies_to_insert>% Here is how to use the internal modules:
+    <internal_modules>
+        For loading prompt templates:
+        <load_prompt_template_example>
+            from pdd.load_prompt_template import load_prompt_template
+from rich import print
+
+def main():
+    prompt_name = "generate_test_LLM"  # Name of the prompt file without extension
+    prompt = load_prompt_template(prompt_name)
+    if prompt:
+        print("[blue]Loaded Prompt Template:[/blue]")
+        print(prompt)
+
+if __name__ == "__main__":
+    main()
+        </load_prompt_template_example>
+
+        For running prompts with llm_invoke:
+        <llm_invoke_example>
+            from pydantic import BaseModel, Field
+from pdd.llm_invoke import llm_invoke
+from collections import defaultdict
+
+# Define a Pydantic model for structured output
+class Joke(BaseModel):
+    setup: str = Field(description="The setup of the joke")
+    punchline: str = Field(description="The punchline of the joke")
+
+def main():
+    """
+    Main function to demonstrate the usage of `llm_invoke`.
+    """
+    # Dictionary to track strength ranges for each model
+    model_ranges = defaultdict(list)
+    current_model = None
+    range_start = 0.0
+    
+    prompt = "Tell me a joke about {topic}"
+    input_json = {"topic": "programmers"}
+    temperature = 1
+    verbose = False
+    
+    strength = 0.0
+    while strength <= 1:
+        print(f"\nStrength: {strength}")
+        
+        # Example 1: Unstructured Output
+        print("\n--- Unstructured Output ---")
+        response = llm_invoke(
+            prompt=prompt,
+            input_json=input_json,
+            strength=strength,
+            temperature=temperature,
+            verbose=verbose
+        )
+        
+        # Track model changes for strength ranges
+        if current_model != response['model_name']:
+            if current_model is not None:
+                model_ranges[current_model].append((range_start, strength - 0.005))
+            current_model = response['model_name']
+            range_start = strength
+        
+        print(f"Result: {response['result']}")
+        print(f"Cost: ${response['cost']:.6f}")
+        print(f"Model Used: {response['model_name']}")
+        
+        # Example 2: Structured Output with Pydantic Model
+        prompt_structured = (
+            "Generate a joke about {topic}. \n"
+            "Return it in this exact JSON format:\n"
+            "{{ \n"
+            '    "setup": "your setup here",\n'
+            '    "punchline": "your punchline here"\n'
+            "}}\n"
+            "Return ONLY the JSON with no additional text or explanation."
+        )
+        input_json_structured = {"topic": "data scientists"}
+        output_pydantic = Joke
+        
+        print("\n--- Structured Output ---")
+        try:
+            response_structured = llm_invoke(
+                prompt=prompt_structured,
+                input_json=input_json_structured,
+                strength=strength,
+                temperature=temperature,
+                verbose=True,
+                output_pydantic=output_pydantic
+            )
+            print(f"Result: {response_structured['result']}")
+            print(f"Cost: ${response_structured['cost']:.6f}")
+            print(f"Model Used: {response_structured['model_name']}")
+
+            # Access structured data
+            joke: Joke = response_structured['result']
+            print(f"\nJoke Setup: {joke.setup}")
+            print(f"Joke Punchline: {joke.punchline}")
+        except Exception as e:
+            print(f"Error encountered during structured output: {e}")
+        
+        strength += 0.005
+        # round to 3 decimal places
+        strength = round(strength, 3)
+    
+    # Add the final range for the last model
+    model_ranges[current_model].append((range_start, 1.0))
+    
+    # Print out the strength ranges for each model
+    print("\n=== Model Strength Ranges ===")
+    for model, ranges in model_ranges.items():
+        print(f"\n{model}:")
+        for start, end in ranges:
+            print(f"  Strength {start:.3f} to {end:.3f}")
+
+if __name__ == "__main__":
+    main()
+        </llm_invoke_example>
+    </internal_modules>
+</dependencies_to_insert>
+
+        OUTPUT:
+        <updated_prompt>% You are an expert Python Software Engineer. Your goal is to write a python function, "postprocess", that will extract code from a string output of an LLM. All output to the console will be pretty printed using the Python rich library.
+
+% The function should be part of a Python package, using relative imports (single dot) for internal modules (e.g. 'from .module_name import module_name'). All output to the console will be pretty printed using the Python Rich library. Ensure the function handles edge cases, such as missing inputs or model errors, and provide clear error messages.
+% The ./pdd/__init__.py file will have the EXTRACTION_STRENGTH, DEFAULT_STRENGTH, DEFAULT_TIME and other global constants. Example: ```from . import DEFAULT_STRENGTH```
+
+% Here are the inputs and outputs of the function:
+    Inputs:
+        'llm_output' - A string containing a mix of text and code sections.
+        'language' - A string specifying the programming language of the code to be extracted.
+        'strength' - A float between 0 and 1 that represents the strength of the LLM model to use. Default is 0.9.
+        'temperature' - A float between 0 and 1 that represents the temperature parameter for the LLM model. Default is 0.
+        'verbose' - A boolean that indicates whether to print detailed processing information. Default is False.
+    Outputs as a tuple:
+        'extracted_code' - A string containing the extracted and processed code.
+        'total_cost' - A float representing the total cost of running the function.
+        'model_name' - A string representing the model name used for extraction.
+
+% Here is how to use the internal modules:
+    <internal_modules>
+        For loading prompt templates:
+        <load_prompt_template_example>
+            from pdd.load_prompt_template import load_prompt_template
+from rich import print
+
+def main():
+    prompt_name = "generate_test_LLM"  # Name of the prompt file without extension
+    prompt = load_prompt_template(prompt_name)
+    if prompt:
+        print("[blue]Loaded Prompt Template:[/blue]")
+        print(prompt)
+
+if __name__ == "__main__":
+    main()
+        </load_prompt_template_example>
+
+        For running prompts with llm_invoke:
+        <llm_invoke_example>
+            from pydantic import BaseModel, Field
+from pdd.llm_invoke import llm_invoke
+from collections import defaultdict
+
+# Define a Pydantic model for structured output
+class Joke(BaseModel):
+    setup: str = Field(description="The setup of the joke")
+    punchline: str = Field(description="The punchline of the joke")
+
+def main():
+    """
+    Main function to demonstrate the usage of `llm_invoke`.
+    """
+    # Dictionary to track strength ranges for each model
+    model_ranges = defaultdict(list)
+    current_model = None
+    range_start = 0.0
+    
+    prompt = "Tell me a joke about {topic}"
+    input_json = {"topic": "programmers"}
+    temperature = 1
+    verbose = False
+    
+    strength = 0.0
+    while strength <= 1:
+        print(f"\nStrength: {strength}")
+        
+        # Example 1: Unstructured Output
+        print("\n--- Unstructured Output ---")
+        response = llm_invoke(
+            prompt=prompt,
+            input_json=input_json,
+            strength=strength,
+            temperature=temperature,
+            verbose=verbose
+        )
+        
+        # Track model changes for strength ranges
+        if current_model != response['model_name']:
+            if current_model is not None:
+                model_ranges[current_model].append((range_start, strength - 0.005))
+            current_model = response['model_name']
+            range_start = strength
+        
+        print(f"Result: {response['result']}")
+        print(f"Cost: ${response['cost']:.6f}")
+        print(f"Model Used: {response['model_name']}")
+        
+        # Example 2: Structured Output with Pydantic Model
+        prompt_structured = (
+            "Generate a joke about {topic}. \n"
+            "Return it in this exact JSON format:\n"
+            "{{ \n"
+            '    "setup": "your setup here",\n'
+            '    "punchline": "your punchline here"\n'
+            "}}\n"
+            "Return ONLY the JSON with no additional text or explanation."
+        )
+        input_json_structured = {"topic": "data scientists"}
+        output_pydantic = Joke
+        
+        print("\n--- Structured Output ---")
+        try:
+            response_structured = llm_invoke(
+                prompt=prompt_structured,
+                input_json=input_json_structured,
+                strength=strength,
+                temperature=temperature,
+                verbose=True,
+                output_pydantic=output_pydantic
+            )
+            print(f"Result: {response_structured['result']}")
+            print(f"Cost: ${response_structured['cost']:.6f}")
+            print(f"Model Used: {response_structured['model_name']}")
+
+            # Access structured data
+            joke: Joke = response_structured['result']
+            print(f"\nJoke Setup: {joke.setup}")
+            print(f"Joke Punchline: {joke.punchline}")
+        except Exception as e:
+            print(f"Error encountered during structured output: {e}")
+        
+        strength += 0.005
+        # round to 3 decimal places
+        strength = round(strength, 3)
+    
+    # Add the final range for the last model
+    model_ranges[current_model].append((range_start, 1.0))
+    
+    # Print out the strength ranges for each model
+    print("\n=== Model Strength Ranges ===")
+    for model, ranges in model_ranges.items():
+        print(f"\n{model}:")
+        for start, end in ranges:
+            print(f"  Strength {start:.3f} to {end:.3f}")
+
+if __name__ == "__main__":
+    main()
+        </llm_invoke_example>
+    </internal_modules>
+
+% This function will do the following:
+    Step 1. If strength is 0, use postprocess_0 function to extract code and return (extracted_code, 0.0).
+    Step 2. Load the 'extract_code_LLM.prompt' template file.
+    Step 3. Process the text using llm_invoke:
+        3a. Pass the following parameters to the prompt:
+            - 'llm_output'
+            - 'language'
+        3b. The Pydantic output will contain the 'extracted_code' key.
+        3c. For the extracted_code, if the first and last line have triple backticks delete the entire first and last line. There will be the name of the language after the first triple backticks and that should be removed as well.
+    Step 4. Return the extracted code string, total cost float and model name string.
+</updated_prompt>
+    <example>
+
+    <example id="2">
+        INPUT:
+        <prompt_to_update>% You are an expert Python engineer. Your goal is to write a Python function, "conflicts_in_prompts", that takes two prompts as input and finds conflicts between them and suggests how to resolve those conflicts.
+
+% The function should be part of a Python package, using relative imports (single dot) for internal modules (e.g. 'from .module_name import module_name'). All output to the console will be pretty printed using the Python Rich library. Ensure the function handles edge cases, such as missing inputs or model errors, and provide clear error messages.
+% The ./pdd/__init__.py file will have the EXTRACTION_STRENGTH, DEFAULT_STRENGTH, DEFAULT_TIME and other global constants. Example: ```from . import DEFAULT_STRENGTH```
+
+% Here are the inputs and outputs of the function:
+    Inputs: 
+        'prompt1' - First prompt in the pair of prompts we are comparing.
+        'prompt2' - Second prompt in the pair of prompts we are comparing.
+        'strength' - A float that is the strength of the LLM model to use. Default is 0.5.
+        'temperature' - A float that is the temperature of the LLM model to use. Default is 0.
+    Outputs:
+        'changes_list' - A list of JSON objects, each containing the name of a prompt that needs to be changed and detailed instructions on how to change it.
+        'total_cost' - A float that is the total cost of the model run
+        'model_name' - A string that is the name of the selected LLM model
+
+% Here is an example of a LangChain Expression Language (LCEL) program: <lcel_example>import os
+from langchain_core.prompts import PromptTemplate
+from langchain_community.cache import SQLiteCache
+from langchain_community.llms.mlx_pipeline import MLXPipeline
+from langchain.globals import set_llm_cache
+from langchain_core.output_parsers import JsonOutputParser, PydanticOutputParser # Parsers are only avaiable in langchain_core.output_parsers not langchain.output_parsers
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough, ConfigurableField
+
+from langchain_openai import AzureChatOpenAI
+from langchain_fireworks import Fireworks 
+from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI # Chatbot and conversational tasks
+from langchain_openai import OpenAI # General language tasks
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_vertexai import ChatVertexAI
+from langchain_groq import ChatGroq
+from langchain_together import Together
+
+from langchain.callbacks.base import BaseCallbackHandler
+from langchain.schema import LLMResult
+
+import json
+
+from langchain_community.chat_models.mlx import ChatMLX
+from langchain_core.messages import HumanMessage
+
+from langchain_ollama.llms import OllamaLLM
+from langchain_aws import ChatBedrockConverse
+
+# Define a base output parser (e.g., PydanticOutputParser)
+from pydantic import BaseModel, Field
+
+
+
+class CompletionStatusHandler(BaseCallbackHandler):
+    def __init__(self):
+        self.is_complete = False
+        self.finish_reason = None
+        self.input_tokens = None
+        self.output_tokens = None
+
+    def on_llm_end(self, response: LLMResult, **kwargs) -> None:
+        self.is_complete = True
+        if response.generations and response.generations[0]:
+            generation = response.generations[0][0]
+            self.finish_reason = generation.generation_info.get('finish_reason').lower()
+            
+            # Extract token usage
+            if hasattr(generation.message, 'usage_metadata'):
+                usage_metadata = generation.message.usage_metadata
+                self.input_tokens = usage_metadata.get('input_tokens')
+                self.output_tokens = usage_metadata.get('output_tokens')
+        # print("response:",response)
+        print("Extracted information:")
+        print(f"Finish reason: {self.finish_reason}")
+        print(f"Input tokens: {self.input_tokens}")
+        print(f"Output tokens: {self.output_tokens}")
+
+# Set up the LLM with the custom handler
+handler = CompletionStatusHandler()
+# Always setup cache to save money and increase speeds
+set_llm_cache(SQLiteCache(database_path=".langchain.db"))
+
+
+# Create the LCEL template. Make note of the variable {topic} which will be filled in later.
+prompt_template = PromptTemplate.from_template("Tell me a joke about {topic}")
+
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro-exp-03-25", temperature=0, callbacks=[handler])
+# Combine with a model and parser to output a string
+chain = prompt_template |llm| StrOutputParser()
+
+# Run the template. Notice that the input is a dictionary with a single key "topic" which feeds it into the above prompt template. This is needed because the prompt template has a variable {topic} which needs to be filled in when invoked.
+result = chain.invoke({"topic": "cats"})
+print("********Google:", result)
+
+
+llm = ChatVertexAI(model="gemini-2.5-pro-exp-03-25", temperature=0, callbacks=[handler])
+# Combine with a model and parser to output a string
+chain = prompt_template |llm| StrOutputParser()
+
+# Run the template. Notice that the input is a dictionary with a single key "topic" which feeds it into the above prompt template. This is needed because the prompt template has a variable {topic} which needs to be filled in when invoked.
+result = chain.invoke({"topic": "cats"})
+print("********GoogleVertex:", result)
+
+
+# Define your desired data structure.
+class Joke(BaseModel):
+    setup: str = Field(description="question to set up a joke")
+    punchline: str = Field(description="answer to resolve the joke")
+
+
+# Set up a parser
+parser = JsonOutputParser(pydantic_object=Joke)
+
+# Create a prompt template
+prompt = PromptTemplate(
+    template="Answer the user query.\n{format_instructions}\n{query}\n",
+    input_variables=["query"],
+    partial_variables={"format_instructions": parser.get_format_instructions()},
+)
+
+llm_no_struct = ChatOpenAI(model="gpt-4o-mini", temperature=0, 
+                           callbacks=[handler]) 
+llm = llm_no_struct.with_structured_output(Joke) # with structured output forces the output to be a specific object, in this case Joke. Only OpenAI models have structured output
+# Chain the components. 
+#  The class `LLMChain` was deprecated in LangChain 0.1.17 and will be removed in 1.0. Use RunnableSequence, e.g., `prompt | llm` instead.
+chain = prompt | llm 
+
+# Invoke the chain with a query. 
+# IMPORTANT: chain.run is now obsolete. Use chain.invoke instead.
+result = chain.invoke({"query": "Tell me a joke about openai."})
+print("4o mini JSON: ",result)
+print(result.setup) # How to access the structured output
+
+llm = ChatOpenAI(model="o1", temperature=1, 
+                           callbacks=[handler],model_kwargs = {"max_completion_tokens" : 1000})
+# Chain the components. 
+#  The class `LLMChain` was deprecated in LangChain 0.1.17 and will be removed in 1.0. Use RunnableSequence, e.g., `prompt | llm` instead.
+chain = prompt | llm | parser
+
+# Invoke the chain with a query. 
+# IMPORTANT: chain.run is now obsolete. Use chain.invoke instead.
+result = chain.invoke({"query": "Tell me a joke about openai."})
+print("o1 JSON: ",result)
+
+# Get DEEPSEEK_API_KEY environmental variable
+
+deepseek_api_key = os.getenv('DEEPSEEK_API_KEY')
+
+# Ensure the API key is retrieved successfully
+if deepseek_api_key is None:
+    raise ValueError("DEEPSEEK_API_KEY environment variable is not set")
+
+llm = ChatOpenAI(
+    model='deepseek-chat', 
+    openai_api_key=deepseek_api_key, 
+    openai_api_base='https://api.deepseek.com',
+    temperature=0, callbacks=[handler]
+)
+
+# Chain the components
+chain = prompt | llm | parser
+
+# Invoke the chain with a query
+result = chain.invoke({"query": "Write joke about deepseek."})
+print("deepseek",result)
+
+
+# Set up a parser
+parser = PydanticOutputParser(pydantic_object=Joke)
+# Chain the components
+chain = prompt | llm | parser
+
+# Invoke the chain with a query
+result = chain.invoke({"query": "Write joke about deepseek and pydantic."})
+print("deepseek pydantic",result)
+
+# Set up the Azure ChatOpenAI LLM instance
+llm_no_struct = AzureChatOpenAI(
+    model="o4-mini",
+    temperature=1,
+    callbacks=[handler]
+)
+llm = llm_no_struct.with_structured_output(Joke) # with structured output forces the output to be a specific JSON format
+# Chain the components: prompt | llm | parser
+chain = prompt | llm # returns a Joke object
+
+# Invoke the chain with a query
+result = chain.invoke({"query": "What is Azure?"})  # Pass a dictionary if `invoke` expects it
+print("Azure Result:", result)
+
+# Set up a parser
+parser = JsonOutputParser(pydantic_object=Joke)
+
+llm = Fireworks(
+    model="accounts/fireworks/models/llama4-maverick-instruct-basic",
+    temperature=0, callbacks=[handler])
+# Chain the components
+chain = prompt | llm | parser
+
+# Invoke the chain with a query
+# no money in account
+# result = chain.invoke({"query": "Tell me a joke about the president"})
+# print("fireworks",result)
+
+
+
+
+
+prompt = ChatPromptTemplate.from_template(
+    "Tell me a short joke about {topic}"
+)
+chat_openai = ChatOpenAI(model="gpt-3.5-turbo", callbacks=[handler])
+openai = OpenAI(model="gpt-3.5-turbo-instruct", callbacks=[handler])
+anthropic = ChatAnthropic(model="claude-2", callbacks=[handler])
+model = (
+    chat_openai
+    .with_fallbacks([anthropic])
+    .configurable_alternatives(
+        ConfigurableField(id="model"),
+        default_key="chat_openai",
+        openai=openai,
+        anthropic=anthropic,
+    )
+)
+
+chain = (
+    {"topic": RunnablePassthrough()} 
+    | prompt 
+    | model 
+    | StrOutputParser()
+)
+result = chain.invoke({"topic": "Tell me a joke about the president"})
+print("config alt:",result)
+
+
+
+llm = ChatAnthropic(
+    model="claude-3-7-sonnet-latest",
+    max_tokens=5000,  # Total tokens for the response
+    thinking={"type": "enabled", "budget_tokens": 2000},  # Tokens for internal reasoning
+)
+
+response = llm.invoke("What is the cube root of 50.653?")
+print(json.dumps(response.content, indent=2))
+
+
+llm = ChatGroq(temperature=0, model_name="qwen-qwq-32b", callbacks=[handler])
+system = "You are a helpful assistant."
+human = "{text}"
+prompt = ChatPromptTemplate.from_messages([("system", system), ("human", human)])
+
+chain = prompt | llm | StrOutputParser()
+print(chain.invoke({"text": "Explain the importance of low latency LLMs."}))
+
+
+llm = Together(
+    model="meta-llama/Llama-3-70b-chat-hf",
+    max_tokens=500, callbacks=[handler]
+)
+chain = prompt | llm | StrOutputParser()
+print(chain.invoke({"text": "Explain the importance of together.ai."}))
+
+
+# Define a prompt template with placeholders for variables
+prompt_template = PromptTemplate.from_template("Tell me a {adjective} joke about {content}.")
+
+# Format the prompt with the variables
+formatted_prompt = prompt_template.format(adjective="funny", content="data scientists")
+
+# Print the formatted prompt
+print(formatted_prompt)
+
+
+# Set up the LLM with the custom handler
+handler = CompletionStatusHandler()
+
+
+llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0.9, callbacks=[handler])
+
+prompt = PromptTemplate.from_template("What is a good name for a company that makes {product}?")
+
+chain = prompt | llm
+
+# Invoke the chain
+response = chain.invoke({"product":"colorful socks"})
+
+# Check completion status
+print(f"Is complete: {handler.is_complete}")
+print(f"Finish reason: {handler.finish_reason}")
+print(f"Response: {response}")
+print(f"Input tokens: {handler.input_tokens}")
+print(f"Output tokens: {handler.output_tokens}")
+
+
+
+template = """Question: {question}"""
+
+prompt = ChatPromptTemplate.from_template(template)
+
+model = OllamaLLM(model="qwen2.5-coder:32b")
+
+chain = prompt | model
+
+output = chain.invoke({"question": "Write a python function that calculates Pi"})
+print(output)
+
+
+
+llm = MLXPipeline.from_model_id(
+    "mlx-community/quantized-gemma-2b-it",
+    pipeline_kwargs={"max_tokens": 10, "temp": 0.1},
+)
+
+
+chat_model = ChatMLX(llm=llm)
+messages = [HumanMessage(content="What happens when an unstoppable force meets an immovable object?")]
+response = chat_model.invoke(messages)
+print(response.content)
+
+
+
+llm = ChatBedrockConverse(
+    model_id="anthropic.claude-3-5-sonnet-20240620-v1:0",
+    # Additional parameters like temperature, max_tokens can be set here
+)
+
+messages = [HumanMessage(content="What happens when an unstoppable force meets an immovable sonnet?")]
+response = llm.invoke(messages)
+print(response.content)</lcel_example>
+
+% This function will use Langchain to do the following:
+    Step 1. Use $PDD_PATH environment variable to get the path to the project. Load the '$PDD_PATH/prompts/conflict_LLM.prompt' and '$PDD_PATH/prompts/extract_conflicts_LLM.prompt' files.
+    Step 2. Then this will create a Langchain LCEL template from the conflict_LLM prompt.
+    Step 3. This will use llm_selector for the model, imported from a relative path.
+    Step 4. Pretty print a message letting the user know it is running and how many tokens (using token_counter from llm_selector) are in the prompt and the cost. The cost from llm_selector is in dollars per million tokens.
+    Step 5. Run the prompts through the model using Langchain LCEL with string output.
+        5a. Pass the following string parameters to the prompt during invoke:
+            - 'PROMPT1'
+            - 'PROMPT2'
+        5b.  Pretty print the output of 5a which will be in Markdown format.
+    Step 6. Create a Langchain LCEL template using a .8 strength llm_selector and token counter from the extract_conflicts_LLM prompt that outputs JSON:
+        6a. Pass the following string parameters to the prompt during invocation: 'llm_output' (this string is from Step 5a).
+        6b. Calculate input and output token count using token_counter from llm_selector and pretty print the running message with the token count and cost.
+        6c. Use 'get' function to extract 'changes_list' list values using from the dictionary output.
+    Step 7. Return the changes_list, total_cost and model_name.</prompt_to_update>
+        <dependencies_to_insert>% Here are examples of how to use internal modules:
+<internal_example_modules>
+    % Example of selecting a Langchain LLM and counting tokens using llm_selector: <llm_selector_example>from pdd.llm_selector import llm_selector
+
+def main() -> None:
+    """
+    Main function to demonstrate the usage of the llm_selector function.
+    """
+    # Define the strength and temperature parameters
+    strength: float = 0.5  # Example strength value for the LLM model
+    temperature: float = 1.0  # Example temperature value for the LLM model
+
+    try:       
+        while strength <= 1.1: 
+            # Call the llm_selector function with the specified strength and temperature
+            llm, token_counter, input_cost, output_cost, model_name = llm_selector(strength, temperature)
+            print(f"Strength: {strength}")
+            
+            # Print the details of the selected LLM model
+            print(f"Selected LLM Model: {model_name}")
+            print(f"Input Cost per Million Tokens: {input_cost}")
+            print(f"Output Cost per Million Tokens: {output_cost}")
+
+            # Example usage of the token counter function
+            sample_text: str = "This is a sample text to count tokens."
+            token_count: int = token_counter(sample_text)
+            print(f"Token Count for Sample Text: {token_count}")
+            print(f"model_name: {model_name}")
+            strength += 0.05
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+    except ValueError as e:
+        print(f"Error: {e}")
+
+if __name__ == "__main__":
+    main()</llm_selector_example>
+</internal_example_modules></dependencies_to_insert>
+
+        OUTPUT:
+        <updated_prompt>% You are an expert Python engineer. Your goal is to write a Python function, "conflicts_in_prompts", that takes two prompts as input and finds conflicts between them and suggests how to resolve those conflicts.
+
+% The function should be part of a Python package, using relative imports (single dot) for internal modules (e.g. 'from .module_name import module_name'). All output to the console will be pretty printed using the Python Rich library. Ensure the function handles edge cases, such as missing inputs or model errors, and provide clear error messages.
+% The ./pdd/__init__.py file will have the EXTRACTION_STRENGTH, DEFAULT_STRENGTH, DEFAULT_TIME and other global constants. Example: ```from . import DEFAULT_STRENGTH```
+
+% Here are the inputs and outputs of the function:
+    Inputs: 
+        'prompt1' - First prompt in the pair of prompts we are comparing.
+        'prompt2' - Second prompt in the pair of prompts we are comparing.
+        'strength' - A float that is the strength of the LLM model to use. Default is 0.5.
+        'temperature' - A float that is the temperature of the LLM model to use. Default is 0.
+    Outputs:
+        'changes_list' - A list of JSON objects, each containing the name of a prompt that needs to be changed and detailed instructions on how to change it.
+        'total_cost' - A float that is the total cost of the model run
+        'model_name' - A string that is the name of the selected LLM model
+
+% Here is an example of a LangChain Expression Language (LCEL) program: <lcel_example>import os
+from langchain_core.prompts import PromptTemplate
+from langchain_community.cache import SQLiteCache
+from langchain_community.llms.mlx_pipeline import MLXPipeline
+from langchain.globals import set_llm_cache
+from langchain_core.output_parsers import JsonOutputParser, PydanticOutputParser # Parsers are only avaiable in langchain_core.output_parsers not langchain.output_parsers
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough, ConfigurableField
+
+from langchain_openai import AzureChatOpenAI
+from langchain_fireworks import Fireworks 
+from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI # Chatbot and conversational tasks
+from langchain_openai import OpenAI # General language tasks
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_vertexai import ChatVertexAI
+from langchain_groq import ChatGroq
+from langchain_together import Together
+
+from langchain.callbacks.base import BaseCallbackHandler
+from langchain.schema import LLMResult
+
+import json
+
+from langchain_community.chat_models.mlx import ChatMLX
+from langchain_core.messages import HumanMessage
+
+from langchain_ollama.llms import OllamaLLM
+from langchain_aws import ChatBedrockConverse
+
+# Define a base output parser (e.g., PydanticOutputParser)
+from pydantic import BaseModel, Field
+
+
+
+class CompletionStatusHandler(BaseCallbackHandler):
+    def __init__(self):
+        self.is_complete = False
+        self.finish_reason = None
+        self.input_tokens = None
+        self.output_tokens = None
+
+    def on_llm_end(self, response: LLMResult, **kwargs) -> None:
+        self.is_complete = True
+        if response.generations and response.generations[0]:
+            generation = response.generations[0][0]
+            self.finish_reason = generation.generation_info.get('finish_reason').lower()
+            
+            # Extract token usage
+            if hasattr(generation.message, 'usage_metadata'):
+                usage_metadata = generation.message.usage_metadata
+                self.input_tokens = usage_metadata.get('input_tokens')
+                self.output_tokens = usage_metadata.get('output_tokens')
+        # print("response:",response)
+        print("Extracted information:")
+        print(f"Finish reason: {self.finish_reason}")
+        print(f"Input tokens: {self.input_tokens}")
+        print(f"Output tokens: {self.output_tokens}")
+
+# Set up the LLM with the custom handler
+handler = CompletionStatusHandler()
+# Always setup cache to save money and increase speeds
+set_llm_cache(SQLiteCache(database_path=".langchain.db"))
+
+
+# Create the LCEL template. Make note of the variable {topic} which will be filled in later.
+prompt_template = PromptTemplate.from_template("Tell me a joke about {topic}")
+
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro-exp-03-25", temperature=0, callbacks=[handler])
+# Combine with a model and parser to output a string
+chain = prompt_template |llm| StrOutputParser()
+
+# Run the template. Notice that the input is a dictionary with a single key "topic" which feeds it into the above prompt template. This is needed because the prompt template has a variable {topic} which needs to be filled in when invoked.
+result = chain.invoke({"topic": "cats"})
+print("********Google:", result)
+
+
+llm = ChatVertexAI(model="gemini-2.5-pro-exp-03-25", temperature=0, callbacks=[handler])
+# Combine with a model and parser to output a string
+chain = prompt_template |llm| StrOutputParser()
+
+# Run the template. Notice that the input is a dictionary with a single key "topic" which feeds it into the above prompt template. This is needed because the prompt template has a variable {topic} which needs to be filled in when invoked.
+result = chain.invoke({"topic": "cats"})
+print("********GoogleVertex:", result)
+
+
+# Define your desired data structure.
+class Joke(BaseModel):
+    setup: str = Field(description="question to set up a joke")
+    punchline: str = Field(description="answer to resolve the joke")
+
+
+# Set up a parser
+parser = JsonOutputParser(pydantic_object=Joke)
+
+# Create a prompt template
+prompt = PromptTemplate(
+    template="Answer the user query.\n{format_instructions}\n{query}\n",
+    input_variables=["query"],
+    partial_variables={"format_instructions": parser.get_format_instructions()},
+)
+
+llm_no_struct = ChatOpenAI(model="gpt-4o-mini", temperature=0, 
+                           callbacks=[handler]) 
+llm = llm_no_struct.with_structured_output(Joke) # with structured output forces the output to be a specific object, in this case Joke. Only OpenAI models have structured output
+# Chain the components. 
+#  The class `LLMChain` was deprecated in LangChain 0.1.17 and will be removed in 1.0. Use RunnableSequence, e.g., `prompt | llm` instead.
+chain = prompt | llm 
+
+# Invoke the chain with a query. 
+# IMPORTANT: chain.run is now obsolete. Use chain.invoke instead.
+result = chain.invoke({"query": "Tell me a joke about openai."})
+print("4o mini JSON: ",result)
+print(result.setup) # How to access the structured output
+
+llm = ChatOpenAI(model="o1", temperature=1, 
+                           callbacks=[handler],model_kwargs = {"max_completion_tokens" : 1000})
+# Chain the components. 
+#  The class `LLMChain` was deprecated in LangChain 0.1.17 and will be removed in 1.0. Use RunnableSequence, e.g., `prompt | llm` instead.
+chain = prompt | llm | parser
+
+# Invoke the chain with a query. 
+# IMPORTANT: chain.run is now obsolete. Use chain.invoke instead.
+result = chain.invoke({"query": "Tell me a joke about openai."})
+print("o1 JSON: ",result)
+
+# Get DEEPSEEK_API_KEY environmental variable
+
+deepseek_api_key = os.getenv('DEEPSEEK_API_KEY')
+
+# Ensure the API key is retrieved successfully
+if deepseek_api_key is None:
+    raise ValueError("DEEPSEEK_API_KEY environment variable is not set")
+
+llm = ChatOpenAI(
+    model='deepseek-chat', 
+    openai_api_key=deepseek_api_key, 
+    openai_api_base='https://api.deepseek.com',
+    temperature=0, callbacks=[handler]
+)
+
+# Chain the components
+chain = prompt | llm | parser
+
+# Invoke the chain with a query
+result = chain.invoke({"query": "Write joke about deepseek."})
+print("deepseek",result)
+
+
+# Set up a parser
+parser = PydanticOutputParser(pydantic_object=Joke)
+# Chain the components
+chain = prompt | llm | parser
+
+# Invoke the chain with a query
+result = chain.invoke({"query": "Write joke about deepseek and pydantic."})
+print("deepseek pydantic",result)
+
+# Set up the Azure ChatOpenAI LLM instance
+llm_no_struct = AzureChatOpenAI(
+    model="o4-mini",
+    temperature=1,
+    callbacks=[handler]
+)
+llm = llm_no_struct.with_structured_output(Joke) # with structured output forces the output to be a specific JSON format
+# Chain the components: prompt | llm | parser
+chain = prompt | llm # returns a Joke object
+
+# Invoke the chain with a query
+result = chain.invoke({"query": "What is Azure?"})  # Pass a dictionary if `invoke` expects it
+print("Azure Result:", result)
+
+# Set up a parser
+parser = JsonOutputParser(pydantic_object=Joke)
+
+llm = Fireworks(
+    model="accounts/fireworks/models/llama4-maverick-instruct-basic",
+    temperature=0, callbacks=[handler])
+# Chain the components
+chain = prompt | llm | parser
+
+# Invoke the chain with a query
+# no money in account
+# result = chain.invoke({"query": "Tell me a joke about the president"})
+# print("fireworks",result)
+
+
+
+
+
+prompt = ChatPromptTemplate.from_template(
+    "Tell me a short joke about {topic}"
+)
+chat_openai = ChatOpenAI(model="gpt-3.5-turbo", callbacks=[handler])
+openai = OpenAI(model="gpt-3.5-turbo-instruct", callbacks=[handler])
+anthropic = ChatAnthropic(model="claude-2", callbacks=[handler])
+model = (
+    chat_openai
+    .with_fallbacks([anthropic])
+    .configurable_alternatives(
+        ConfigurableField(id="model"),
+        default_key="chat_openai",
+        openai=openai,
+        anthropic=anthropic,
+    )
+)
+
+chain = (
+    {"topic": RunnablePassthrough()} 
+    | prompt 
+    | model 
+    | StrOutputParser()
+)
+result = chain.invoke({"topic": "Tell me a joke about the president"})
+print("config alt:",result)
+
+
+
+llm = ChatAnthropic(
+    model="claude-3-7-sonnet-latest",
+    max_tokens=5000,  # Total tokens for the response
+    thinking={"type": "enabled", "budget_tokens": 2000},  # Tokens for internal reasoning
+)
+
+response = llm.invoke("What is the cube root of 50.653?")
+print(json.dumps(response.content, indent=2))
+
+
+llm = ChatGroq(temperature=0, model_name="qwen-qwq-32b", callbacks=[handler])
+system = "You are a helpful assistant."
+human = "{text}"
+prompt = ChatPromptTemplate.from_messages([("system", system), ("human", human)])
+
+chain = prompt | llm | StrOutputParser()
+print(chain.invoke({"text": "Explain the importance of low latency LLMs."}))
+
+
+llm = Together(
+    model="meta-llama/Llama-3-70b-chat-hf",
+    max_tokens=500, callbacks=[handler]
+)
+chain = prompt | llm | StrOutputParser()
+print(chain.invoke({"text": "Explain the importance of together.ai."}))
+
+
+# Define a prompt template with placeholders for variables
+prompt_template = PromptTemplate.from_template("Tell me a {adjective} joke about {content}.")
+
+# Format the prompt with the variables
+formatted_prompt = prompt_template.format(adjective="funny", content="data scientists")
+
+# Print the formatted prompt
+print(formatted_prompt)
+
+
+# Set up the LLM with the custom handler
+handler = CompletionStatusHandler()
+
+
+llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0.9, callbacks=[handler])
+
+prompt = PromptTemplate.from_template("What is a good name for a company that makes {product}?")
+
+chain = prompt | llm
+
+# Invoke the chain
+response = chain.invoke({"product":"colorful socks"})
+
+# Check completion status
+print(f"Is complete: {handler.is_complete}")
+print(f"Finish reason: {handler.finish_reason}")
+print(f"Response: {response}")
+print(f"Input tokens: {handler.input_tokens}")
+print(f"Output tokens: {handler.output_tokens}")
+
+
+
+template = """Question: {question}"""
+
+prompt = ChatPromptTemplate.from_template(template)
+
+model = OllamaLLM(model="qwen2.5-coder:32b")
+
+chain = prompt | model
+
+output = chain.invoke({"question": "Write a python function that calculates Pi"})
+print(output)
+
+
+
+llm = MLXPipeline.from_model_id(
+    "mlx-community/quantized-gemma-2b-it",
+    pipeline_kwargs={"max_tokens": 10, "temp": 0.1},
+)
+
+
+chat_model = ChatMLX(llm=llm)
+messages = [HumanMessage(content="What happens when an unstoppable force meets an immovable object?")]
+response = chat_model.invoke(messages)
+print(response.content)
+
+
+
+llm = ChatBedrockConverse(
+    model_id="anthropic.claude-3-5-sonnet-20240620-v1:0",
+    # Additional parameters like temperature, max_tokens can be set here
+)
+
+messages = [HumanMessage(content="What happens when an unstoppable force meets an immovable sonnet?")]
+response = llm.invoke(messages)
+print(response.content)</lcel_example>
+
+% Here are examples of how to use internal modules:
+<internal_example_modules>
+    % Example of selecting a Langchain LLM and counting tokens using llm_selector: <llm_selector_example>from pdd.llm_selector import llm_selector
+
+def main() -> None:
+    """
+    Main function to demonstrate the usage of the llm_selector function.
+    """
+    # Define the strength and temperature parameters
+    strength: float = 0.5  # Example strength value for the LLM model
+    temperature: float = 1.0  # Example temperature value for the LLM model
+
+    try:       
+        while strength <= 1.1: 
+            # Call the llm_selector function with the specified strength and temperature
+            llm, token_counter, input_cost, output_cost, model_name = llm_selector(strength, temperature)
+            print(f"Strength: {strength}")
+            
+            # Print the details of the selected LLM model
+            print(f"Selected LLM Model: {model_name}")
+            print(f"Input Cost per Million Tokens: {input_cost}")
+            print(f"Output Cost per Million Tokens: {output_cost}")
+
+            # Example usage of the token counter function
+            sample_text: str = "This is a sample text to count tokens."
+            token_count: int = token_counter(sample_text)
+            print(f"Token Count for Sample Text: {token_count}")
+            print(f"model_name: {model_name}")
+            strength += 0.05
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+    except ValueError as e:
+        print(f"Error: {e}")
+
+if __name__ == "__main__":
+    main()</llm_selector_example>
+</internal_example_modules>
+
+% This function will use Langchain to do the following:
+    Step 1. Use $PDD_PATH environment variable to get the path to the project. Load the '$PDD_PATH/prompts/conflict_LLM.prompt' and '$PDD_PATH/prompts/extract_conflicts_LLM.prompt' files.
+    Step 2. Then this will create a Langchain LCEL template from the conflict_LLM prompt.
+    Step 3. This will use llm_selector for the model, imported from a relative path.
+    Step 4. Pretty print a message letting the user know it is running and how many tokens (using token_counter from llm_selector) are in the prompt and the cost. The cost from llm_selector is in dollars per million tokens.
+    Step 5. Run the prompts through the model using Langchain LCEL with string output.
+        5a. Pass the following string parameters to the prompt during invoke:
+            - 'PROMPT1'
+            - 'PROMPT2'
+        5b.  Pretty print the output of 5a which will be in Markdown format.
+    Step 6. Create a Langchain LCEL template using a .8 strength llm_selector and token counter from the extract_conflicts_LLM prompt that outputs JSON:
+        6a. Pass the following string parameters to the prompt during invocation: 'llm_output' (this string is from Step 5a).
+        6b. Calculate input and output token count using token_counter from llm_selector and pretty print the running message with the token count and cost.
+        6c. Use 'get' function to extract 'changes_list' list values using from the dictionary output.
+    Step 7. Return the changes_list, total_cost and model_name.</updated_prompt>
+    <example>
+<examples>
+
+% Generate the output for following inputs based on above examples:
+<prompt_to_update>{actual_prompt_to_update}</prompt_to_update>
+<dependencies_to_insert>{actual_dependencies_to_insert}</dependencies_to_insert>
+
+% The output prompt will be in JSON format with the following keys:
+    - 'explanation': A string containing of why the dependencies were inserted in a certain location in the prompt.
+    - 'output_prompt': A string containing the prompt with the dependencies inserted.
