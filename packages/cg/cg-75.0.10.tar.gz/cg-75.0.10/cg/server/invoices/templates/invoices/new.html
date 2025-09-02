@@ -1,0 +1,137 @@
+{% extends 'invoices/layout.html' %}
+
+{% block body %}
+<div class="container mt-5 mb-5">
+  <h1>Make new invoice ({{record_type}})</h1>
+  <br>
+  <form action="{{ url_for('invoices.new', record_type=record_type) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+    <input type="hidden" name="record_type" value="{{ record_type }}">
+    <div class="row">
+      <div class="col">
+        <select name="customer" class="form-control" required>
+          <option>Select customer...</option>
+          {% for customer in customers_to_invoice %}
+          <option value="{{ customer.internal_id }}" {{ 'selected' if args.customer == customer.internal_id }}>
+            {{ customer.internal_id}} - {{customer.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col">
+        <button class="btn btn-primary">Load {{record_type}}s</button>
+      </div>
+    </div>
+  </form>
+  <form name="listForm" action="{{ url_for('invoices.index')}}" method="POST" class="mt-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+    <input type="hidden" name="customer" value="{{ args.customer }}">
+    <input type="hidden" name="record_type" value="{{record_type}}">
+    <label>Discount (%)</label>
+    <input type="number" class="form-control" name="discount" value="0">
+    <div class="form-group">
+      <label>Comment</label>
+      <textarea class="form-control" name="comment" rows="3"></textarea>
+    </div>
+
+    Total Price Standard: <input type="text" size="7" name="total" value="0"/>
+    <button class="btn btn-primary float-right" type="submit">Generate invoice</button>
+    <tr><input type="checkbox" onClick="check_all()" /> Select all</tr>
+    <tr><input type="checkbox" onClick="check_subset()" /> Select Subset</tr>
+    <br><br><br>
+    <div class="container">
+      <input class="form-control" id="Search" type="text" placeholder="Search..">
+      <br>
+    <table class="table">
+      <thead>
+      <tr>
+        <th>{{record_type}}</th>
+        <th>Customer</th>
+        <th>Order</th>
+        <th>Ticket</th>
+        <th>Application</th>
+        <th>Created at</th>
+        <th>Delivered at</th>
+        <th>Price: Stan/Prio/Res/Expr</th>
+          {%if record_type=='Sample'%}
+          <th>Sample Comment</th>
+          {%endif%}
+      </tr>
+      </thead>
+      <tbody id="myTable">
+      {% for record in records %}
+      <tr>
+        <td>
+          <label class="form-check-label">
+            {%if record_type=='Pool'%}
+            <input class="form-check-input" onchange="checkTotal()" type="checkbox" name="records" id="{{ record.application_version.price_standard }}"  value="{{ record.id }}"> {{ record.id }}
+            {% else %}
+            <input class="form-check-input" onchange="checkTotal()" type="checkbox" name="records" id="{{ record.application_version.price_standard }}" value="{{ record.internal_id }}"> {{ record.internal_id }}
+            {%endif%}
+          </label>
+        </td>
+        <td>{{record.customer.name}}</td>
+        <td>{{record.order}}</td>
+        <td>{{record.ticket}}</td>
+        <td>{{ record.application_version.application.tag }}</td>
+        <td>{{record.created_at.date()}}</td>
+        <td>{{record.delivered_at.date()}}</td>
+        <td>{% if record.application_version.price_standard %}{{record.application_version.price_standard}}{% else %}{% endif %}/
+            {% if record.application_version.price_priority %}{{record.application_version.price_priority}}{% else %}{% endif %}/
+            {% if record.application_version.price_research %}{{record.application_version.price_research}}{% else %}{% endif %}/
+            {% if record.application_version.price_express %}{{record.application_version.price_express}}{% else %}{% endif %}
+        </td>
+          {%if record_type=='Sample'%}
+           <td>{{record.comment}}</td>
+          {%endif%}
+      </tr>
+      {% endfor %}
+    </tbody>
+    </table>
+  </div>
+  </form>
+</div>
+{% endblock %}
+
+
+{% block scripts %}
+
+<script language="JavaScript">
+
+  function check_all() {
+    $("input[name='records']").each(function() {
+      this.checked = !this.checked
+    })
+    checkTotal()
+  }
+
+  function check_subset() {
+    total_price = 0;
+    $("input[name='records']").each(function() {
+      if (total_price + parseInt(this.id) <= {{total_price_threshold}}) {
+        this.checked = !this.checked
+        total_price += parseInt(this.id)
+      }
+    })
+    checkTotal()
+  }
+
+  function checkTotal() {
+    value = 0
+    $("input[name='records']:checked").each(function() {
+      value += parseInt(this.id)
+    })
+    $("input[name='total']").val(value)
+  }
+
+  $(document).ready(function(){
+    $("#Search").on("keyup", function() {
+      var value = $(this).val().toLowerCase();
+      $("#myTable tr").filter(function() {
+        $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1)
+      });
+    });
+  });
+  </script>
+{% endblock %}
+
