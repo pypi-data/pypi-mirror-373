@@ -1,0 +1,13 @@
+# -*- coding: utf-8 -*-
+
+# Copyright (c) 2012 - 2025 Detlev Offenbach <detlev@die-offenbachs.de>
+#
+
+"""
+Module implementing the Windows entry point.
+"""
+
+if __name__ == "__main__":
+    from eric7_snap import main
+
+    main()
