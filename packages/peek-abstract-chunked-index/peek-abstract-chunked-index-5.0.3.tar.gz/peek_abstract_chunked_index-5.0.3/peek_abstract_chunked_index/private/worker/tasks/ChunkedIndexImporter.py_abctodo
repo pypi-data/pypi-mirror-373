@@ -1,0 +1,280 @@
+from collections import defaultdict
+from datetime import datetime
+from typing import List, Dict, Set, Tuple
+
+import pytz
+from peek_plugin_base.worker.task_db_conn import TaskDbConn
+from sqlalchemy import select, bindparam, and_
+
+from vortex.Payload import Payload
+
+from peek_abstract_chunked_index._private.storage.ModelSet import \
+    ModelSet
+from peek_abstract_chunked_index._private.storage.ChunkedIndex import \
+    ChunkedIndex
+from peek_abstract_chunked_index._private.storage.ChunkedIndexCompilerQueue import \
+    ChunkedIndexCompilerQueue
+from peek_abstract_chunked_index._private.storage.ChunkedType import \
+    ChunkedType
+from peek_plugin_base.worker.task import addPeekWorkerTask
+from peek_abstract_chunked_index._private.worker.tasks._ChunkedIndexCalcChunkKey import \
+    makeChunkKey
+from peek_abstract_chunked_index.tuples.ChunkedImportTuple import ChunkedImportTuple
+from peek_abstract_chunked_index.tuples.ChunkedTuple import ChunkedTuple
+
+
+
+@addPeekWorkerTask()
+def createOrUpdateChunkeds(chunkedsEncodedPayload: bytes) -> None:
+    # Decode arguments
+    newChunkeds: List[ChunkedImportTuple] = (
+        Payload().fromEncodedPayload(chunkedsEncodedPayload).tuples
+    )
+
+    _validateNewChunkedIndexs(newChunkeds)
+
+    modelSetIdByKey = _loadModelSets()
+
+    # Do the import
+    try:
+
+        chunkedIndexByModelKey = defaultdict(list)
+        for chunkedIndex in newChunkeds:
+            chunkedIndexByModelKey[chunkedIndex.modelSetKey].append(chunkedIndex)
+
+        for modelSetKey, chunkedIndexs in chunkedIndexByModelKey.chunkeds():
+            modelSetId = modelSetIdByKey.get(modelSetKey)
+            if modelSetId is None:
+                modelSetId = _makeModelSet(modelSetKey)
+                modelSetIdByKey[modelSetKey] = modelSetId
+
+            chunkedTypeIdsByName = _prepareLookups(chunkedIndexs, modelSetId)
+            _insertOrUpdateObjects(chunkedIndexs, modelSetId, chunkedTypeIdsByName)
+
+    except Exception as e:
+        logger.debug("Retrying import index-blueprintobjects, %s", e)
+        raise
+
+
+def _validateNewChunkedIndexs(newChunkeds: List[ChunkedImportTuple]) -> None:
+    for chunkedIndex in newChunkeds:
+        if not chunkedIndex.key:
+            raise Exception("key is empty for %s" % chunkedIndex)
+
+        if not chunkedIndex.modelSetKey:
+            raise Exception("modelSetKey is empty for %s" % chunkedIndex)
+
+        if not chunkedIndex.chunkedTypeKey:
+            raise Exception("chunkedTypeKey is empty for %s" % chunkedIndex)
+
+        # if not chunkedIndex.chunkedIndex:
+        #     raise Exception("chunkedIndex is empty for %s" % chunkedIndex)
+
+
+def _loadModelSets() -> Dict[str, int]:
+    # Get the model set
+    engine = TaskDbConn.getDbEngine()
+    conn = engine.connect()
+    try:
+        modelSetTable = ModelSet.__table__
+        results = list(conn.execute(select(
+            columns=[modelSetTable.c.id, modelSetTable.c.key]
+        )))
+        modelSetIdByKey = {o.key: o.id for o in results}
+        del results
+
+    finally:
+        conn.close()
+    return modelSetIdByKey
+
+
+def _makeModelSet(modelSetKey: str) -> int:
+    # Get the model set
+    dbSession = TaskDbConn.getDbSession()
+    try:
+        newChunked = ModelSet(key=modelSetKey, name=modelSetKey)
+        dbSession.add(newChunked)
+        dbSession.commit()
+        return newChunked.id
+
+    finally:
+        dbSession.close()
+
+
+def _prepareLookups(newChunkeds: List[ChunkedImportTuple], modelSetId: int
+                    ) -> Dict[str, int]:
+    """ Check Or Insert Chunkeds
+
+    """
+
+    dbSession = TaskDbConn.getDbSession()
+
+    startTime = datetime.now(pytz.utc)
+
+    try:
+
+        chunkedTypeKeys = set()
+
+        for o in newChunkeds:
+            o.chunkedTypeKey = o.chunkedTypeKey.lower()
+            chunkedTypeKeys.add(o.chunkedTypeKey)
+
+        # Prepare Object Types
+        chunkedTypes = (
+            dbSession.query(ChunkedType)
+                .filter(ChunkedType.modelSetId == modelSetId)
+                .all()
+        )
+        chunkedTypeKeys -= set([o.key for o in chunkedTypes])
+
+        if not chunkedTypeKeys:
+            chunkedTypeIdsByKey = {o.key: o.id for o in chunkedTypes}
+
+        else:
+            for newType in chunkedTypeKeys:
+                dbSession.add(ChunkedType(
+                    key=newType, name=newType, modelSetId=modelSetId
+                ))
+
+            dbSession.commit()
+
+            chunkedTypes = dbSession.query(ChunkedType).all()
+            chunkedTypeIdsByKey = {o.key: o.id for o in chunkedTypes}
+
+        logger.debug("Prepared lookups in %s", (datetime.now(pytz.utc) - startTime))
+
+        return chunkedTypeIdsByKey
+
+    except Exception as e:
+        dbSession.rollback()
+        raise
+
+    finally:
+        dbSession.close()
+
+
+def _insertOrUpdateObjects(newChunkeds: List[ChunkedImportTuple],
+                           modelSetId: int,
+                           chunkedTypeIdsByName: Dict[str, int]) -> None:
+    """ Insert or Update Objects
+
+    1) Find objects and update them
+    2) Insert object if the are missing
+
+    """
+
+    chunkedIndexTable = ChunkedIndex.__table__
+    queueTable = ChunkedIndexCompilerQueue.__table__
+
+    startTime = datetime.now(pytz.utc)
+
+    engine = TaskDbConn.getDbEngine()
+    conn = engine.connect()
+    transaction = conn.begin()
+
+    try:
+        importHashSet = set()
+        dontDeleteObjectIds = []
+        objectIdByKey: Dict[str, int] = {}
+
+        objectKeys = [o.key for o in newChunkeds]
+        chunkKeysForQueue: Set[Tuple[int, str]] = set()
+
+        # Query existing objects
+        results = list(conn.execute(select(
+            columns=[chunkedIndexTable.c.id, chunkedIndexTable.c.key,
+                     chunkedIndexTable.c.chunkKey, chunkedIndexTable.c.packedJson],
+            whereclause=and_(chunkedIndexTable.c.key.in_(objectKeys),
+                             chunkedIndexTable.c.modelSetId == modelSetId)
+        )))
+
+        foundObjectByKey = {o.key: o for o in results}
+        del results
+
+        # Get the IDs that we need
+        newIdGen = TaskDbConn.prefetchDeclarativeIds(
+            ChunkedIndex, len(newChunkeds) - len(foundObjectByKey)
+        )
+
+        # Create state arrays
+        inserts = []
+        updates = []
+
+        # Work out which objects have been updated or need inserting
+        for chunkedImportTuple in newChunkeds:
+            importHashSet.add(chunkedImportTuple.importGroupHash)
+
+            existingObject = foundObjectByKey.get(chunkedImportTuple.key)
+            importChunkedTypeId = chunkedTypeIdsByName[
+                chunkedImportTuple.chunkedTypeKey]
+
+            packedJson = ChunkedTuple.packJson(chunkedImportTuple,
+                                             modelSetId, importChunkedTypeId)
+
+            # Work out if we need to update the object type
+            if existingObject:
+                updates.append(
+                    dict(b_id=existingObject.id,
+                         b_typeId=importChunkedTypeId,
+                         b_packedJson=packedJson)
+                )
+                dontDeleteObjectIds.append(existingObject.id)
+
+            else:
+                id_ = next(newIdGen)
+                existingObject = ChunkedIndex(
+                    id=id_,
+                    modelSetId=modelSetId,
+                    chunkedTypeId=importChunkedTypeId,
+                    key=chunkedImportTuple.key,
+                    importGroupHash=chunkedImportTuple.importGroupHash,
+                    chunkKey=makeChunkKey(chunkedImportTuple.modelSetKey,
+                                          chunkedImportTuple.key),
+                    packedJson=packedJson
+                )
+                inserts.append(existingObject.tupleToSqlaBulkInsertDict())
+
+            objectIdByKey[existingObject.key] = existingObject.id
+            chunkKeysForQueue.add((modelSetId, existingObject.chunkKey))
+
+        if importHashSet:
+            conn.execute(
+                chunkedIndexTable
+                    .delete(and_(~chunkedIndexTable.c.id.in_(dontDeleteObjectIds),
+                                 chunkedIndexTable.c.importGroupHash.in_(importHashSet)))
+            )
+
+        # Insert the ChunkedIndex Objects
+        if inserts:
+            conn.execute(chunkedIndexTable.insert(), inserts)
+
+        if updates:
+            stmt = (
+                chunkedIndexTable.update()
+                    .where(chunkedIndexTable.c.id == bindparam('b_id'))
+                    .values(chunkedTypeId=bindparam('b_typeId'),
+                            packedJson=bindparam('b_packedJson'))
+            )
+            conn.execute(stmt, updates)
+
+        if chunkKeysForQueue:
+            conn.execute(
+                queueTable.insert(),
+                [dict(modelSetId=m, chunkKey=c) for m, c in chunkKeysForQueue]
+            )
+
+        if inserts or updates or chunkKeysForQueue:
+            transaction.commit()
+        else:
+            transaction.rollback()
+
+        logger.debug("Inserted %s updated %s queued %s chunks in %s",
+                     len(inserts), len(updates), len(chunkKeysForQueue),
+                     (datetime.now(pytz.utc) - startTime))
+
+    except Exception:
+        transaction.rollback()
+        raise
+
+    finally:
+        conn.close()
