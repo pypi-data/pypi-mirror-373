@@ -1,0 +1,2 @@
+execute score @e[type=armor_stand,tag=mdl_server,limit=1] counter matches ..2 run function test:main_while_body_0
+execute score @e[type=armor_stand,tag=mdl_server,limit=1] counter matches ..2 run function test:main_while_0
