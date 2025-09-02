@@ -1,0 +1,125 @@
+from __future__ import annotations
+
+from opentelemetry import trace
+from opentelemetry.context import (
+    Context,
+    get_current,
+    get_value,
+    set_value,
+)
+from opentelemetry.propagators.textmap import (
+    CarrierT,
+    Getter,
+    Setter,
+    TextMapPropagator,
+    default_getter,
+    default_setter,
+)
+from opentelemetry.trace import (
+    NonRecordingSpan,
+    SpanContext,
+    TraceFlags,
+)
+from opentelemetry.semconv.trace import SpanAttributes
+
+import sentry_sdk
+from sentry_sdk.consts import (
+    BAGGAGE_HEADER_NAME,
+    SENTRY_TRACE_HEADER_NAME,
+)
+from sentry_sdk.opentelemetry.consts import (
+    SENTRY_BAGGAGE_KEY,
+    SENTRY_TRACE_KEY,
+    SENTRY_SCOPES_KEY,
+)
+from sentry_sdk.tracing_utils import (
+    Baggage,
+    extract_sentrytrace_data,
+    should_propagate_trace,
+)
+from sentry_sdk.opentelemetry.scope import validate_scopes
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Optional, Set
+
+
+class SentryPropagator(TextMapPropagator):
+    """
+    Propagates tracing headers for Sentry's tracing system in a way OTel understands.
+    """
+
+    def extract(
+        self,
+        carrier: CarrierT,
+        context: Optional[Context] = None,
+        getter: Getter[CarrierT] = default_getter,
+    ) -> Context:
+        if context is None:
+            context = get_current()
+
+        # TODO-neel-potel cleanup with continue_trace / isolation_scope
+        sentry_trace = getter.get(carrier, SENTRY_TRACE_HEADER_NAME)
+        if not sentry_trace:
+            return context
+
+        sentrytrace = extract_sentrytrace_data(sentry_trace[0])
+        if not sentrytrace:
+            return context
+
+        context = set_value(SENTRY_TRACE_KEY, sentrytrace, context)
+
+        trace_id, span_id = sentrytrace["trace_id"], sentrytrace["parent_span_id"]
+
+        span_context = SpanContext(
+            trace_id=int(trace_id, 16),  # type: ignore
+            span_id=int(span_id, 16),  # type: ignore
+            # we simulate a sampled trace on the otel side and leave the sampling to sentry
+            trace_flags=TraceFlags(TraceFlags.SAMPLED),
+            is_remote=True,
+        )
+
+        baggage_header = getter.get(carrier, BAGGAGE_HEADER_NAME)
+
+        if baggage_header:
+            baggage = Baggage.from_incoming_header(baggage_header[0])
+        else:
+            # If there's an incoming sentry-trace but no incoming baggage header,
+            # for instance in traces coming from older SDKs,
+            # baggage will be empty and frozen and won't be populated as head SDK.
+            baggage = Baggage(sentry_items={})
+
+        baggage.freeze()
+        context = set_value(SENTRY_BAGGAGE_KEY, baggage, context)
+
+        span = NonRecordingSpan(span_context)
+        modified_context = trace.set_span_in_context(span, context)
+        return modified_context
+
+    def inject(
+        self,
+        carrier: CarrierT,
+        context: Optional[Context] = None,
+        setter: Setter[CarrierT] = default_setter,
+    ) -> None:
+        scopes = validate_scopes(get_value(SENTRY_SCOPES_KEY, context))
+        if not scopes:
+            return
+
+        (current_scope, _) = scopes
+
+        span = current_scope.span
+        if span:
+            span_url = span.get_attribute(SpanAttributes.HTTP_URL)
+            if span_url and not should_propagate_trace(
+                sentry_sdk.get_client(), span_url
+            ):
+                return
+
+        for key, value in current_scope.iter_trace_propagation_headers():
+            setter.set(carrier, key, value)
+
+    @property
+    def fields(self) -> Set[str]:
+        return {SENTRY_TRACE_HEADER_NAME, BAGGAGE_HEADER_NAME}
