@@ -1,0 +1,163 @@
+---
+- name: Build python-osism image
+  hosts: all
+
+  vars:
+    image: "{{ docker_image | default('') }}"
+    python_venv_dir: /tmp/venv
+
+  environment:
+    registry: "{{ docker_registry }}"
+    repository: "{{ docker_namespace }}/osism{{ '-' + image if image else '' }}"
+    version: "{{ zuul['tag'] | default('latest') }}"
+    image: "{{ image }}"
+    COSIGN_PASSWORD: "{{ secret.COSIGN_PASSWORD | default('') }}"
+    COSIGN_PRIVATE_KEY: "{{ secret.COSIGN_PRIVATE_KEY | default('') }}"
+    DTRACK_SERVER: "https://dtrack.osism.tech"
+    DTRACK_API_KEY: "{{ secret.DTRACK_API_KEY | default('') }}"
+
+  tasks:
+    - name: Log into registry
+      community.docker.docker_login:
+        registry_url: "{{ docker_registry }}"
+        username: "{{ secret.DOCKER_USERNAME }}"
+        password: "{{ secret.DOCKER_PASSWORD }}"
+      when: push_image | default(false) | bool
+
+    - name: Run build script
+      ansible.builtin.shell:
+        executable: /bin/bash
+        chdir: "{{ zuul.project.src_dir }}/{{ image }}"
+        cmd: |
+          set -e
+          set -o pipefail
+          set -x
+
+          created=$(date --rfc-3339=ns)
+          revision=$(git rev-parse --short HEAD)
+
+          # At the moment we publish the pypi package itself still with Github Actions.
+          # Because of this we have to wait for the Pypi package here. This can be removed
+          # again in the future when we have the publish process on Zuul.
+          wait_for_pypi_version() {
+              local max_attempts="$1"
+              local version="$2"
+              local attempt_num=1
+
+              while true; do
+                  AVAILABLE_VERSION=$(curl -s https://pypi.org/pypi/osism/json | jq -r ".releases | keys[]" | grep "^${version}$" || exit 0)
+                  if [[ "$AVAILABLE_VERSION" == "$version" ]]; then
+                      break
+                  else
+                      if (( attempt_num++ == max_attempts )); then
+                          return 1
+                      else
+                          sleep 60
+                      fi
+                  fi
+              done
+          }
+
+          if [[ $version != "latest" ]]; then
+              wait_for_pypi_version 20 "${version:1}"
+          fi
+
+          docker buildx build \
+              --build-arg "VERSION=$version" \
+              --label "org.opencontainers.image.created=$created" \
+              --label "org.opencontainers.image.documentation=https://osism.tech/docs/" \
+              --label "org.opencontainers.image.licenses=ASL 2.0" \
+              --label "org.opencontainers.image.revision=$revision" \
+              --label "org.opencontainers.image.source=https://github.com/osism/python-osism" \
+              --label "org.opencontainers.image.title=osism${image:+-$image}" \
+              --label "org.opencontainers.image.url=https://quay.io/organization/osism" \
+              --label "org.opencontainers.image.vendor=OSISM GmbH" \
+              --label "org.opencontainers.image.version=$version" \
+              --load \
+              --tag "$revision" \
+              .  # <-- there is a dot
+
+          docker images
+      changed_when: true
+
+    - name: Run push script
+      ansible.builtin.shell:
+        executable: /bin/bash
+        chdir: "{{ zuul.project.src_dir }}/{{ image }}"
+        cmd: |
+          set -e
+          set -o pipefail
+          set -x
+
+          revision=$(git rev-parse --short HEAD)
+
+          if [[ -n $registry ]]; then
+              repository="$registry/$repository"
+          fi
+
+          {% raw %}
+          if [[ $version != "latest" ]]; then
+              version="${version:1:${#version}-1}"
+          fi
+          {% endraw %}
+
+          docker tag "$revision" "$repository:$version"
+          docker push "$repository:$version"
+      when: push_image | default(false) | bool
+      changed_when: true
+      no_log: true
+
+    - name: Run cosign script
+      ansible.builtin.shell:
+        executable: /bin/bash
+        chdir: "{{ zuul.project.src_dir }}/{{ image }}"
+        cmd: |
+          set -e
+          set -o pipefail
+          set -x
+
+          if [[ -n $registry ]]; then
+              repository="$registry/$repository"
+          fi
+
+          {% raw %}
+          if [[ $version != "latest" ]]; then
+              version="${version:1:${#version}-1}"
+          fi
+          {% endraw %}
+
+          curl -O -L "https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64"
+          chmod +x cosign-linux-amd64
+          ./cosign-linux-amd64 sign --yes --key env://COSIGN_PRIVATE_KEY "$repository:$version"
+
+      when: push_image | default(false) | bool
+      changed_when: true
+
+    - name: Run sbom script
+      ansible.builtin.shell:
+        executable: /bin/bash
+        chdir: "{{ zuul.project.src_dir | default('.') }}/{{ image }}"
+        cmd: |
+          set -e
+          set -o pipefail
+          set -x
+
+          if [[ -n $registry ]]; then
+              repository="$registry/$repository"
+          fi
+
+          {% raw %}
+          if [[ $version != "latest" ]]; then
+              version="${version:1:${#version}-1}"
+          fi
+          {% endraw %}
+
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sudo sh -s -- -b /usr/local/bin
+          /usr/local/bin/syft scan "$repository:$version" -o cyclonedx-json > sbom.json
+          {{ python_venv_dir }}/bin/dtrackauditor \
+            -p "osism${image:+-$image}" \
+            -v "$version" \
+            -f sbom.json \
+            -a
+      when: push_sbom | default(false) | bool
+      changed_when: true
