@@ -1,0 +1,42 @@
+# Advanced Lion Optimizer
+
+This repository provides an enhanced implementation of the Lion optimizer, incorporating several state-of-the-art techniques to improve performance, stability, and memory efficiency. It includes two base variants: the original **[Lion](https://github.com/lucidrains/lion-pytorch)** and **[D-Adapt-Lion](https://github.com/facebookresearch/dadaptation)**.
+
+---
+
+## Features
+
+### 1. Fused Backward Pass
+Reduces memory overhead by hooking gradients as they become available during the backward pass, eliminating the need to store them explicitly via the `step_parameter` method.
+
+***
+
+### 2. Stochastic Rounding for BF16 Training
+Achieves **FP32-level performance** in BF16 training by implementing stochastic rounding for the final update. This allows for faster training with lower-precision data types without sacrificing accuracy.
+-   **References**:
+    -   "[Revisiting BFloat16 Training](https://arxiv.org/abs/2010.06192)"
+    -   "[Stochastic Rounding for LLM Training: Theory and Practice](https://arxiv.org/abs/2502.20566)"
+
+***
+
+### 3. Gradient Orthogonalization
+Improves **model generalization** and enhances **numerical stability** by modifying gradients to be orthogonal to the parameters.
+-   **Reference**: "[Grokking at the Edge of Numerical Stability](https://arxiv.org/abs/2501.04697)"
+
+***
+
+### 4. Variance Reduction
+Theoretically accelerates the **convergence speed of Lion by 33.33%** while making training more stable in noisy, small-batch environments. The main trade-off is the requirement of an additional state to store gradients from the previous step.
+-   **Reference**: "[Convergence Analysis of the Lion Optimizer in Centralized and Distributed Settings](https://arxiv.org/abs/2508.12327)"
+
+***
+
+### 5. Cautious Lion Variant
+Includes the "Cautious" variant of Lion, an approach introduced to refine the optimization process and improve training outcomes.
+-   **Reference**: "[Cautious Optimizers: Improving Training with One Line of Code](https://arxiv.org/abs/2411.16085)"
+
+***
+
+### 6. Per-Parameter Gradient Norm Clipping
+Enhances training stability by applying gradient norm clipping on a per-parameter basis, preventing erratic updates from large gradients.
+-   **Reference**: "[Lions and Muons: Optimization via Stochastic Frank-Wolfe](https://arxiv.org/abs/2506.04192)" (The paper uses a clipping value of 4-5).
