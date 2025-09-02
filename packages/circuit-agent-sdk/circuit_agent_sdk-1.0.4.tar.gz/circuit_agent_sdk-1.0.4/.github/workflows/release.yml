@@ -1,0 +1,99 @@
+name: Release to PyPI
+
+on:
+  # ONLY manual trigger - no automatic releases
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (must match pyproject.toml)'
+        required: true
+        type: string
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Verify version matches
+        run: |
+          PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          if [ "$PYPROJECT_VERSION" != "${{ github.event.inputs.version }}" ]; then
+            echo "❌ Version mismatch!"
+            echo "pyproject.toml has: $PYPROJECT_VERSION"
+            echo "You requested: ${{ github.event.inputs.version }}"
+            echo "Please update pyproject.toml first or provide matching version"
+            exit 1
+          fi
+          echo "✅ Version verified: ${{ github.event.inputs.version }}"
+
+      - name: Check if tag already exists
+        run: |
+          if git rev-parse "v${{ github.event.inputs.version }}" >/dev/null 2>&1; then
+            echo "❌ Tag v${{ github.event.inputs.version }} already exists locally"
+            exit 1
+          fi
+          if git ls-remote --tags origin | grep "v${{ github.event.inputs.version }}"; then
+            echo "❌ Tag v${{ github.event.inputs.version }} already exists on remote"
+            exit 1
+          fi
+          echo "✅ Tag v${{ github.event.inputs.version }} is available"
+
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+          uv pip install --system twine
+
+      - name: Run final checks
+        run: |
+          echo "🔍 Running final quality checks..."
+          uv run ruff check .
+          uv run ruff format --check .
+          make type-check
+          make test
+
+      - name: Build package
+        run: |
+          echo "📦 Building package..."
+          uv build
+          ls -la dist/
+
+      - name: Create git tag
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions-bot"
+          git tag -a "v${{ github.event.inputs.version }}" -m "Release v${{ github.event.inputs.version }}"
+          git push origin "v${{ github.event.inputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: Release v${{ github.event.inputs.version }}
+          draft: false
+          prerelease: false
+          files: dist/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          echo "📦 Publishing to PyPI..."
+          uv run twine upload dist/*
+          echo "✅ Published successfully!"
