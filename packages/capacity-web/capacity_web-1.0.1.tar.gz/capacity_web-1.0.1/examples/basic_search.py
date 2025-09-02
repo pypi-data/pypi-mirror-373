@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+基础网络搜索 - Capacity Web Package 示例
+运行: uv run basic_search.py
+"""
+
+# /// script
+# dependencies = ["capacity-web>=1.0.0"]
+# ///
+
+from capacity_web import search_with_nextchat
+
+# 简洁实现 - 只调用能力并输出结果
+result = search_with_nextchat("武汉天气")
+print(result)
