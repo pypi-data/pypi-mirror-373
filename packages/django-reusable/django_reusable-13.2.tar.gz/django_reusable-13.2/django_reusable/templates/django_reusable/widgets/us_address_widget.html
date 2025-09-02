@@ -1,0 +1,192 @@
+<style>
+    .us-address-widget {
+        border: 1px solid #ddd;
+        padding: 10px;
+        border-radius: 4px;
+        display: inline-block !important;
+        max-width: 300px;
+        min-width: 300px;
+    }
+
+    .us-address-widget .panel-header {
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .us-address-widget label {
+        display: block;
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+
+    .us-address-widget .block {
+        margin-top: 10px;
+    }
+</style>
+
+<div class="us-address-widget">
+    <!-- Collapsed view (readonly) -->
+    <div id="{{ widget.name }}_collapsed" class="address-collapsed">
+        <div class="panel-header">
+            <strong>{{ formatted_display }}</strong>
+            <span id="{{ widget.name }}_caret">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-caret-down-fill" viewBox="0 0 16 16">
+                  <path d="M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z"/>
+                </svg>
+            </span>
+        </div>
+    </div>
+
+    <!-- Expanded view (editable fields) -->
+    <div id="{{ widget.name }}_expanded" class="address-expanded" style="display: none;">
+        <div class="panel-header">
+            <strong></strong>
+            <span id="{{ widget.name }}_caret_expanded">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
+                     class="bi bi-caret-up" viewBox="0 0 16 16">
+                  <path d="M3.204 11h9.592L8 5.519zm-.753-.659 4.796-5.48a1 1 0 0 1 1.506 0l4.796 5.48c.566.647.106 1.659-.753 1.659H3.204a1 1 0 0 1-.753-1.659"/>
+                </svg>
+            </span>
+        </div>
+
+        <div>
+            <label for="{{ widget.name }}_street_address">Street Address:</label>
+            <input type="text" id="{{ widget.name }}_street_address" name="{{ widget.name }}_street_address"
+                   value="{{ value.street_address|default:'' }}"
+                   autocomplete="address-line1">
+        </div>
+
+        <div class="block">
+            <label for="{{ widget.name }}_street_address_2">Street Address 2 (Optional):</label>
+            <input type="text" id="{{ widget.name }}_street_address_2" name="{{ widget.name }}_street_address_2"
+                   value="{{ value.street_address_2|default:'' }}"
+                   autocomplete="address-line2">
+        </div>
+
+        <div class="block">
+            <label for="{{ widget.name }}_city">City:</label>
+            <input type="text" id="{{ widget.name }}_city" name="{{ widget.name }}_city"
+                   value="{{ value.city|default:'' }}"
+                   autocomplete="address-level2">
+        </div>
+
+        <div style="display: flex;" class="block">
+            <div style="padding-right: 10px;">
+                <label for="{{ widget.name }}_state">State:</label>
+                <select id="{{ widget.name }}_state" name="{{ widget.name }}_state"
+                        autocomplete="address-level1" style="width: 100px;">
+                    {% for state_code, state_name in us_states %}
+                        <option value="{{ state_code }}"
+                                {% if state_code == value.state %}selected{% endif %}>{{ state_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label for="{{ widget.name }}_zip_code">ZIP
+                    Code:</label>
+                <input type="text" id="{{ widget.name }}_zip_code" name="{{ widget.name }}_zip_code"
+                       value="{{ value.zip_code|default:'' }}"
+                       style="width: 100px;"
+                       autocomplete="postal-code"
+                       placeholder="12345 or 12345-6789">
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        // Make functions globally available for event handlers
+        if (!window.usAddressWidgetFunctions) {
+            window.usAddressWidgetFunctions = {
+                toggleWidget: toggleWidget,
+                updateCollapsedView: updateCollapsedView
+            };
+        }
+        // Only initialize the global event handlers once
+        if (!window.usAddressWidgetInitialized) {
+            window.usAddressWidgetInitialized = true;
+
+            // Use event delegation for dynamically added elements - click on panel headers
+            $(document).on('click', '.address-collapsed .panel-header', function () {
+                var $collapsed = $(this).closest('.address-collapsed');
+                var widgetName = $collapsed.attr('id').replace('_collapsed', '');
+                window.usAddressWidgetFunctions.toggleWidget(widgetName);
+            });
+
+            $(document).on('click', '.address-expanded .panel-header', function () {
+                var $expanded = $(this).closest('.address-expanded');
+                var widgetName = $expanded.attr('id').replace('_expanded', '');
+                window.usAddressWidgetFunctions.toggleWidget(widgetName);
+            });
+
+            // Use event delegation for form field changes
+            $(document).on('change', '[id$="_street_address"], [id$="_street_address_2"], [id$="_city"], [id$="_state"], [id$="_zip_code"]', function () {
+                var fieldId = $(this).attr('id');
+                var widgetName = fieldId.replace(/_(?:street_address|street_address_2|city|state|zip_code)$/, '');
+                var $collapsedDiv = $('#' + widgetName + '_collapsed');
+
+                if ($collapsedDiv.is(':visible')) {
+                    window.usAddressWidgetFunctions.updateCollapsedView(widgetName);
+                }
+            });
+            $(".error > .us-address-widget .address-collapsed .panel-header").click();
+        }
+
+        // Initialize this specific widget instance
+        var currentWidgetName = '{{ widget.name }}';
+        if (currentWidgetName.indexOf('__prefix__') === -1) {
+            if (window.usAddressWidgetFunctions) {
+                window.usAddressWidgetFunctions.updateCollapsedView(currentWidgetName);
+            }
+        }
+
+        function toggleWidget(widgetName) {
+            var $collapsedDiv = $('#' + widgetName + '_collapsed');
+            var $expandedDiv = $('#' + widgetName + '_expanded');
+
+            if ($expandedDiv.is(':hidden')) {
+                // Show expanded view
+                $collapsedDiv.hide();
+                $expandedDiv.show();
+            } else {
+                // Show collapsed view
+                updateCollapsedView(widgetName);
+                $collapsedDiv.show();
+                $expandedDiv.hide();
+            }
+        }
+
+        function updateCollapsedView(widgetName) {
+            // Update the readonly display with current form values
+            var streetAddress = $('#' + widgetName + '_street_address').val() || '';
+            var streetAddress2 = $('#' + widgetName + '_street_address_2').val() || '';
+            var city = $('#' + widgetName + '_city').val() || '';
+            var state = $('#' + widgetName + '_state').val() || '';
+            var zipCode = $('#' + widgetName + '_zip_code').val() || '';
+
+            var parts = [];
+            if (streetAddress.trim()) parts.push(streetAddress.trim());
+            if (streetAddress2.trim()) parts.push(streetAddress2.trim());
+
+            var cityStateZip = [];
+            if (city.trim()) cityStateZip.push(city.trim());
+            if (state.trim()) cityStateZip.push(state.trim());
+            if (zipCode.trim()) cityStateZip.push(zipCode.trim());
+
+            if (cityStateZip.length > 0) {
+                if (cityStateZip.length === 3) {
+                    parts.push(cityStateZip[0] + ', ' + cityStateZip[1] + ' ' + cityStateZip[2]);
+                } else {
+                    parts.push(cityStateZip.join(', '));
+                }
+            }
+
+            var displayText = parts.length > 0 ? parts.join(' • ') : 'No address entered';
+            $('#' + widgetName + '_collapsed').find('strong').html(displayText);
+        }
+    });
+</script>
