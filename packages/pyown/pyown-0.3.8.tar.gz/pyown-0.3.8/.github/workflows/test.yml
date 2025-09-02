@@ -1,0 +1,69 @@
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: Test code
+
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore:
+      - dependabot/**
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [ "3.11", "3.12", "3.13" ]
+
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+          version: "latest"
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install the project
+        run: uv sync --all-extras --group dev --no-group docs
+
+      - name: Lint with ruff
+        id: lint
+        if: matrix.python-version == '3.13'
+        run: uv run ruff check -v
+
+      - name: Check formatting with ruff
+        id: check
+        if: matrix.python-version == '3.13'
+        run: uv run ruff format --check
+
+      - name: Test code
+        id: test
+        run: uv run pytest
+
+      - name: Test code with coverage
+        id: coverage
+        if: matrix.python-version == '3.13'
+        run: uv run coverage run -m pytest && uv run coverage report -m && uv run coverage xml
+        continue-on-error: true
+
+      - name: Upload coverage for pull requests
+        if: matrix.python-version == '3.13' && github.event_name == 'pull_request'
+        uses: orgoro/coverage@v3.2
+        with:
+          coverageFile: ./coverage.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check types
+        id: typing
+        run: uv run mypy -p pyown
