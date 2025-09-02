@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+set -uo pipefail
+
+if [ -z "${CARDANO_NODE_SOCKET_PATH:-}" ]; then
+  echo "CARDANO_NODE_SOCKET_PATH is not set" >&2
+  exit 1
+fi
+
+SOCKET_PATH="$(readlink -m "$CARDANO_NODE_SOCKET_PATH")"
+STATE_CLUSTER="${SOCKET_PATH%/*}"
+STATE_CLUSTER_NAME="${STATE_CLUSTER##*/}"
+
+export PGPASSFILE="$STATE_CLUSTER/pgpass"
+export SMASH_ADMIN="${SMASH_ADMIN:-admin}"
+export SMASH_PASSWORD="${SMASH_PASSWORD:-password}"
+export SMASH_ADMINS_FILE="$STATE_CLUSTER/admins.txt"
+
+echo "${SMASH_ADMIN}, ${SMASH_PASSWORD}" > "$SMASH_ADMINS_FILE"
+
+exec cardano-smash-server --config "./$STATE_CLUSTER_NAME/dbsync-config.yaml" --port %%SMASH_PORT%% --admins "$SMASH_ADMINS_FILE"
