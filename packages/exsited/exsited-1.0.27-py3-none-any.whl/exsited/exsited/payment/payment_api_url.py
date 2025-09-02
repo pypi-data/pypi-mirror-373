@@ -1,0 +1,11 @@
+class PaymentApiUrl:
+    PAYMENT_CREATE = "/api/v3/invoices/{invoice_id}/payments"
+    PAYMENT_CREATE_CARD = "/api/v3/invoices/{invoice_id}/payments"
+    PAYMENT_CREATE_CARD_MULTIPLE = "/api/v3/invoices/payments"
+    PAYMENT_CREATE_DIRECT_DEBIT = "/api/v3/invoices/{invoice_id}/payments"
+    PAYMENT_DETAILS_INVOICE = "/api/v2/invoices/{id}/payments"
+    PAYMENT_DETAILS = "/api/v3/payments/{id}"
+    PAYMENT_ACCOUNT_DETAILS = "/api/v3/accounts/{id}/payments"
+    PAYMENT_ORDER_DETAILS = "/api/v3/orders/{id}/payments"
+    PAYMENT_LIST = "/api/v3/payments"
+    PAYMENT_DELETE = "/api/v2/payments/{id}"

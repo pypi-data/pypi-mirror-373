@@ -1,0 +1,2 @@
+class CommonApiUrl:
+    pass
