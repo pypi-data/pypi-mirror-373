@@ -1,0 +1,39 @@
+name: Test Client
+
+on:
+  pull_request:
+    branches:
+      - "main"
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.dev.txt
+
+      - name: Run ariadne-codegen
+        uses: marqo-ai/retry@master
+        env:
+          SHOPIFY_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ACCESS_TOKEN }}
+        with:
+          timeout_minutes: 1
+          max_attempts: 3
+          command: ariadne-codegen client
+
+      - name: Run integration tests
+        run: pytest -m integration
+        env:
+          TEST_SHOPIFY_DOMAIN: ${{ secrets.TEST_SHOPIFY_DOMAIN }}
+          TEST_SHOPIFY_ACCESS_TOKEN: ${{ secrets.TEST_SHOPIFY_ACCESS_TOKEN }}
