@@ -1,0 +1,73 @@
+name: Build and upload to PyPI
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+  release:
+    types:
+      - published
+
+jobs:
+  build_wheels:
+    strategy:
+      matrix:
+        os-arch:
+          - { os: ubuntu-latest, arch: x86_64 }
+          - { os: ubuntu-24.04-arm, arch: aarch64 }
+
+    name: Build wheels on ${{ matrix.os-arch.os }} ${{ matrix.os-arch.arch }}
+    runs-on: ${{ matrix.os-arch.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set environment variables
+        run: echo "CIBW_ARCHS=${{ matrix.os-arch.arch }}" >> $GITHUB_ENV
+
+      - name: Install Python development headers
+        run: |
+             PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+             sudo apt-get update
+             sudo apt-get install -y python${PYTHON_VERSION}-dev
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.21.3
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-${{ matrix.os-arch.arch }}-wheels-${{ strategy.job-index }}
+          path: ./wheelhouse/*.whl
+
+  build_sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build sdist
+        run: pipx run build --sdist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-sdist
+          path: dist/*.tar.gz
+
+  upload_pypi:
+    needs: [build_wheels, build_sdist]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    if: github.event_name == 'release' && github.event.action == 'published'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          # unpacks all CIBW artifacts into dist/
+          pattern: cibw-*
+          path: dist
+          merge-multiple: true
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
