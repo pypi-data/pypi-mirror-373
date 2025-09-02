@@ -1,0 +1,82 @@
+from .SolidBase import SolidBase as _SolidBase
+from ... import exceptions
+from ...transformation import *
+
+import copy as _copy
+import logging as _log
+
+_log = _log.getLogger(__name__)
+
+
+class MultiUnion(_SolidBase):
+    """
+    Union between two or more solids.
+
+    :param name: of solid
+    :type name: str
+    :param objects: unrotated, untranslated solid objects to form union
+    :param transformations: [[rot1,tra1],[rot2,tra2], [rot3,tra3] .. ] or [[[a,b,g],[dx,dy,dz]],  [[a,b,g],[dx,dy,dz]], [[a,b,g],[dx,dy,dz]], ...]
+    :param registry: for storing solid
+    :type registry: Registry
+    :param addRegistry: Add solid to registry
+    :type addRegitry: bool
+    """
+
+    def __init__(self, name, objects, transformations, registry, addRegistry=True):
+        super().__init__(name, "MultiUnion", registry)
+        # circular import
+        from ...gdml import Defines as _defines
+        from ... import geant4 as _g4
+
+        self.objects = objects
+        self.transformations = [
+            _defines.upgradeToTransformation(t, registry) for t in transformations
+        ]
+
+        self.varNames = ["transformations"]
+        self.varUnits = [None]
+        self.dependents = []
+
+        if addRegistry:
+            registry.addSolid(self)
+
+        for obj in objects:
+            obj.dependents.append(self)
+
+    def __repr__(self):
+        return f"Multi Union {self.name}"
+
+    def __str__(self):
+        # TODO put all information
+        return f"Multi Union {self.name}"
+
+    def mesh(self):
+        _log.debug("MultiUnion.pycsgmesh>")
+
+        result = self.objects[0].mesh()
+        tra2 = self.transformations[0]
+        rot = tbxyz2axisangle(tra2[0].eval())
+        tlate = tra2[1].eval()
+        result.rotate(rot[0], -rad2deg(rot[1]))
+        result.translate(tlate)
+
+        for idx, (solid, tra2) in enumerate(
+            zip(self.objects[1:], self.transformations[1:]), start=1
+        ):
+            # tranformation
+            rot = tbxyz2axisangle(tra2[0].eval())
+            tlate = tra2[1].eval()
+            _log.debug(f"MulUnion.mesh> rot={rot!s} tlate={tlate!s}")
+
+            # get meshes
+            _log.debug(f"union.mesh> mesh {idx}")
+            mesh = solid.mesh()
+
+            # apply transform to second mesh
+            mesh.rotate(rot[0], -rad2deg(rot[1]))
+            mesh.translate(tlate)
+
+            _log.debug("MultiUnion.mesh> union")
+            result = result.union(mesh)
+
+        return result
