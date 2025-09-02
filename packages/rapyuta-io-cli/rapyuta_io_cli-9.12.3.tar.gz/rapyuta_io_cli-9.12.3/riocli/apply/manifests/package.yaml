@@ -1,0 +1,328 @@
+apiVersion: "apiextensions.rapyuta.io/v1"
+kind: "Package"
+metadata:
+  name: "package-ros-cloud" # Required
+  version: "v1.0.0" # Required
+  description: "A RIO cloud ROS package"
+  labels:
+    app: test
+spec:
+  runtime: cloud # Options: [device, cloud (default)]
+  cloud:
+    replicas: 1 # Required
+  executables: # Required
+    - name: "exec-docker"
+      type: docker # Options: [docker (default), preInstalled]
+      command: # Command supports both array and string
+       - "roslaunch talker talker.launch"
+      # command: "roslaunch talker talker.launch"
+      runAsBash: True
+      limits:
+        cpu: 0.025 # Unit: Core Options: [Multiple of 0.025, <= 8]
+        memory: 128 # Unit: MB Options: [Multiple of 128, <= 32768]
+      docker:
+        image: "busybox:latest"
+        pullSecret:
+          depends:
+            kind: secret
+            nameOrGUID: "secret-docker"
+  environmentVars:
+    - name: "key1" # Required
+      default: "value1"
+      description: "An environment variable"
+      exposed: False
+    - name: "key2" # Required
+      default: "value2"
+      description: "An environment variable"
+      exposed: True
+      exposedName: "EXPOSED_KEY2"
+  endpoints: # Only cloud runtime have endpoints
+    - name: "HTTP"
+      type: external-http
+      port: 80
+      targetPort: 80
+    - name: "HTTPS"
+      type: external-https
+      port: 443
+      targetPort: 443
+    - name: "TLS-TCP"
+      type: external-tls-tcp
+      port: 443
+      targetPort: 443
+    - name: "TCP"
+      type: internal-tcp
+      port: 80
+      targetPort: 80
+    - name: "UDP"
+      type: internal-udp
+      port: 80
+      targetPort: 80
+    - name: "TCP-RANGE"
+      type: internal-tcp-range
+      portRange: 22,80,1024-1030
+    - name: "UDP-RANGE"
+      type: internal-udp-range
+      portRange: 53,1024-1025
+  ros:
+    enabled: True
+    version: melodic # Required, Options: [ kinetic, melodic, noetic ]
+    rosEndpoints:
+      - type: topic # Required, Options: [ topic, service, action ]
+        name: "/telemetry"
+        compression: False
+        scoped: False
+        targeted: False
+        qos: low # Options: [low, med, hi, max]
+      - type: service # Required, Options: [ topic, service, action ]
+        name: "/telemetry"
+        compression: False
+        scoped: False
+        targeted: False
+        qos: low
+        timeout: 120 # Constraint: timeout > 0
+      - type: action # Required, Options: [ topic, service, action ]
+        name: "/telemetry"
+        compression: False
+        scoped: False
+        targeted: False
+---
+apiVersion: "apiextensions.rapyuta.io/v1"
+kind: "Package"
+metadata:
+  name: "package-nonros-cloud" # Required
+  version: "v1.0.0" # Required
+  description: "A RIO non ROS cloud package"
+  labels:
+    app: test
+spec:
+  runtime: cloud # Options: [device, cloud (default)]
+  cloud:
+    replicas: 1 # Required
+  executables: # Required
+    - name: "exec-docker"
+      type: docker # Options: [docker (default), preInstalled]
+      command: # Command supports both array and string
+        - "sleep infinity"
+      # command: "sleep infinity"
+      runAsBash: True
+      uid: 1001
+      gid: 1001
+      limits:
+        cpu: 0.025 # Unit: Core Options: [Multiple of 0.025, <= 8]
+        memory: 128 # Unit: MB Options: [Multiple of 128, <= 32768]
+      docker:
+        image: "busybox:latest"
+        pullSecret:
+          depends:
+            kind: secret
+            nameOrGUID: "secret-docker"
+  environmentVars:
+    - name: "key1" # Required
+      default: "value1"
+      description: "An environment variable"
+      exposed: False
+    - name: "key2" # Required
+      default: "value2"
+      description: "An environment variable"
+      exposed: True
+      exposedName: "EXPOSED_KEY2"
+  endpoints: # Only cloud runtime have endpoints
+    - name: "HTTP"
+      type: external-http
+      port: 80
+      targetPort: 80
+    - name: "HTTPS"
+      type: external-https
+      port: 443
+      targetPort: 443
+    - name: "TLS-TCP"
+      type: external-tls-tcp
+      port: 443
+      targetPort: 443
+    - name: "TCP"
+      type: internal-tcp
+      port: 80
+      targetPort: 80
+    - name: "UDP"
+      type: internal-udp
+      port: 80
+      targetPort: 80
+    - name: "TCP-RANGE"
+      type: internal-tcp-range
+      portRange: 22,80,1024-1030
+    - name: "UDP-RANGE"
+      type: internal-udp-range
+      portRange: 53,1024-1025
+---
+apiVersion: "apiextensions.rapyuta.io/v1"
+kind: "Package"
+metadata:
+  name: "package-nonros-device" # Required
+  version: "v1.0.0" # Required
+  description: "A RIO non ROS device package"
+  labels:
+    app: test
+spec:
+  runtime: device # Options: [device, cloud(default)]
+  hostPID: True   # Optional: Enable hostpid to give the host process namespace access to executables
+  device:
+    arch: amd64 # Options: [arm32v7, arm64v8, amd64]
+    restart: always # Options: [always, never, onfailure]
+  executables: # Required
+    - name: "exec-docker-01"
+      type: docker # Options: [docker (default), preInstalled]
+      command:
+       - "roslaunch talker talker.launch"
+      runAsBash: True
+      limits: # Optional
+        cpu: 0.025 # Unit: Core (Optional)
+        memory: 128 # Unit: MB (Optional)
+      livenessProbe: # Optional
+        tcpSocket:
+          port: 8080
+        initialDelaySeconds: 5  # Number of seconds after the container has started before liveness probes are initiated.
+        periodSeconds: 10 # How often (in seconds) to perform the probe.
+        failureThreshold: 1 # Minimum consecutive failures for the probe to be considered failed after having succeeded.
+        successThreshold: 3 # Minimum consecutive successes for the probe to be considered successful after having failed.
+        timeoutSeconds: 10 # Number of seconds after which the probe times out. Minimum: 10
+      docker:
+        image: "busybox:latest"
+        imagePullPolicy: "Always" # Always, Never, IfNotPresent(default)
+        pullSecret:
+          depends:
+            kind: secret
+            nameOrGUID: "secret-docker"
+    - name: "exec-docker-02"
+      type: docker # Options: [docker (default), preInstalled]
+      runAsBash: True
+      limits: # Optional
+        cpu: 0.025 # Unit: Core (Optional)
+        memory: 128 # Unit: MB (Optional)
+      livenessProbe: # Optional
+        httpGet:
+          path: "/"
+          port: 80
+        initialDelaySeconds: 5  # Number of seconds after the container has started before liveness probes are initiated.
+        periodSeconds: 10 # How often (in seconds) to perform the probe.
+        failureThreshold: 1 # Minimum consecutive failures for the probe to be considered failed after having succeeded.
+        successThreshold: 3 # Minimum consecutive successes for the probe to be considered successful after having failed.
+        timeoutSeconds: 10 # Number of seconds after which the probe times out. Minimum: 10
+      docker:
+        image: "nginx:latest"
+        imagePullPolicy: "Always" # Always, Never, IfNotPresent(default)
+    - name: "exec-preInstalled"
+      type: preInstalled # Options: [docker (default), preInstalled]
+      command:
+       - "roslaunch talker talker.launch"
+  environmentArgs:
+    - name: "key1" # Required
+      default: "key1-value"
+      description: "A environment variable"
+      exposed: False
+    - name: "key2" # Required
+      default: "key2-value"
+      description: "A environment variable"
+      exposed: True
+      exposedName: "EXPOSED_KEY2"
+---
+apiVersion: "apiextensions.rapyuta.io/v1"
+kind: "Package"
+metadata:
+  name: "package-ros-device" # Required
+  version: "v1.0.0" # Required
+  description: "A RIO device ROS package"
+  labels:
+    app: test
+spec:
+  runtime: device # Options: [device, cloud(default)]
+  device:
+    arch: amd64 # Options: [arm32v7, arm64v8, amd64]
+    restart: always # Options: [always, never, onfailure]
+  executables: # Required
+    - name: "exec-docker"
+      type: docker # Options: [docker (default), preInstalled]
+      command:
+       - "roslaunch talker talker.launch"
+      runAsBash: True
+      limits:
+        cpu: 0.025 # Unit: Core (Optional)
+        memory: 128 # Unit: MB (Optional)
+      livenessProbe: # Optional
+        exec:
+          command:
+            - "shell-cmd"
+        initialDelaySeconds: 5  # Number of seconds after the container has started before liveness probes are initiated.
+        periodSeconds: 10 # How often (in seconds) to perform the probe.
+        failureThreshold: 1 # Minimum consecutive failures for the probe to be considered failed after having succeeded.
+        successThreshold: 3 # Minimum consecutive successes for the probe to be considered successful after having failed.
+        timeoutSeconds: 10 # Number of seconds after which the probe times out. Minimum: 10
+      docker:
+        image: "busybox:latest"
+        imagePullPolicy: "Always" # Always, Never, IfNotPresent(default)
+        pullSecret:
+          depends:
+            kind: secret
+            nameOrGUID: "secret-docker"
+    - name: "exec-preInstalled"
+      type: preInstalled # Options: [docker (default), preInstalled]
+      command:
+       - "roslaunch talker talker.launch"
+  environmentArgs:
+    - name: "key1" # Required
+      default: "key1-value"
+      description: "A environment variable"
+      exposed: False
+    - name: "key2" # Required
+      default: "key2-value"
+      description: "A environment variable"
+      exposed: True
+      exposedName: "EXPOSED_KEY2"
+  ros:
+    enabled: True
+    version: melodic # Required, Options: [ kinetic, melodic, noetic ]
+    rosEndpoints:
+      - type: topic # Required, Options: [ topic, service, action ]
+        name: "/telemetry"
+        compression: False
+        scoped: False
+        targeted: False
+        qos: low # Options: [low, med, hi, max]
+      - type: service # Required, Options: [ topic, service, action ]
+        name: "/telemetry"
+        compression: False
+        scoped: False
+        targeted: False
+        qos: low
+        timeout: 120 # Constraint: timeout > 0
+      - type: action # Required, Options: [ topic, service, action ]
+        name: "/telemetry"
+        compression: False
+        scoped: False
+        targeted: False
+---
+apiVersion: "apiextensions.rapyuta.io/v1"
+kind: "Package"
+metadata:
+  name: "tc128-talker" # Required
+  version: "v1.0.0" # Required
+  description: "A RIO cloud ROS package"
+  labels:
+    app: test
+spec:
+  runtime: cloud # Options: [device, cloud (default)]
+  cloud:
+    replicas: 1 # Required
+  executables: # Required
+    - name: "exec-build"
+      type: docker # Options: [docker (default), build, preInstalled]
+      command:
+       - "roslaunch talker talker.launch"
+      runAsBash: False
+      limits:
+        cpu: 0.025 # Unit: Core Options: [Multiple of 0.025, <= 8]
+        memory: 128 # Unit: MB Options: [Multiple of 128, <= 32768]
+      docker:
+        image: "quay.io/rapyuta/io_tutorials:latest"
+  ros:
+    enabled: True
+    version: melodic # Required, Options: [ kinetic, melodic, noetic ]
