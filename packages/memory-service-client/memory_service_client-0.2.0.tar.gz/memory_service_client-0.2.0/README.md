@@ -1,0 +1,104 @@
+# Memory Service Client
+
+A Python client library for the Memory Service gRPC API.
+
+## Installation
+
+```bash
+pip install memory-service-client
+```
+
+## Usage
+
+### Basic Usage
+
+```python
+from memory_service_client import MemoryServiceClient
+
+# Connect to the service
+with MemoryServiceClient("localhost:50051") as client:
+    # Process a document
+    response = client.process_document(
+        document_id="doc1",
+        content="This is a sample document content.",
+        title="Sample Document"
+    )
+    print(f"Document processed: {response.status}")
+    
+    # Query knowledge
+    response = client.query_knowledge(
+        query="What is this document about?",
+        top_k=3
+    )
+    print(f"Answer: {response.answer}")
+```
+
+### Using gRPC Stubs Directly
+
+```python
+import grpc
+from memory_service_client import RagServiceStub, ProcessDocumentRequest, ChunkingConfig
+
+# Create channel and stub
+channel = grpc.insecure_channel("localhost:50051")
+stub = RagServiceStub(channel)
+
+# Create request
+request = ProcessDocumentRequest(
+    document_id="doc1",
+    content="Document content",
+    chunking_config=ChunkingConfig(
+        chunk_size=1000,
+        chunk_overlap=100,
+        strategy="sentence"
+    )
+)
+
+# Make the call
+response = stub.ProcessDocument(request)
+print(response)
+```
+
+## API Reference
+
+### MemoryServiceClient
+
+High-level client class that provides convenient methods for interacting with the Memory Service.
+
+#### Methods
+
+- `process_document(document_id, content, title="", source_url="", metadata=None, chunk_size=1000, chunk_overlap=100, chunking_strategy="sentence")`: Process a document for RAG
+- `query_knowledge(query, top_k=5, similarity_threshold=0.7, include_metadata=True, use_reranking=False, llm_model="gpt-3.5-turbo", max_tokens=1000)`: Query the knowledge base
+- `get_document_status(document_id)`: Get document processing status
+- `hello_world(name="World")`: Test connection
+
+### gRPC Messages
+
+The library exposes all protobuf message types:
+
+- `ProcessDocumentRequest`, `ProcessDocumentResponse`
+- `QueryKnowledgeRequest`, `QueryKnowledgeResponse`
+- `DocumentStatusRequest`, `DocumentStatusResponse`
+- `HelloWorldRequest`, `HelloWorldResponse`
+- `ChunkingConfig`, `QueryConfig`
+- `ProcessingStats`, `QueryStats`, `RetrievedChunk`
+
+## Development
+
+```bash
+# Install development dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Format code
+black .
+
+# Lint code
+ruff check .
+```
+
+## License
+
+MIT License
