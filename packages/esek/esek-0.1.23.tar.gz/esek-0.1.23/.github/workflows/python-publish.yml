@@ -1,0 +1,117 @@
+# This workflow will upload a Python Package to PyPI when a release is created
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python#publishing-to-package-registries
+
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: Upload Python Package
+
+on:
+  push:
+    branches: [ "main" ]
+
+
+permissions:
+  contents: write
+
+jobs:
+  bump-tag-and-build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed to get tags
+          
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install build setuptools-scm semver
+      
+      - name: Get latest tag
+        id: get_tag
+        run: |
+          git fetch --tags
+          latest=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+          echo "Latest tag: $latest"
+          echo "latest_tag=$latest" >> $GITHUB_OUTPUT
+
+      - name: Bump patch version
+        id: new_tag
+        run: |
+          export TAG="${{ steps.get_tag.outputs.latest_tag }}"
+          python -c "
+          import semver
+          import os
+          
+          tag = os.environ['TAG']
+          ver = semver.Version.parse(tag.lstrip('v'))
+          new_ver = ver.bump_patch()
+          print(f'New tag: v{new_ver}')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+             print(f'tag=v{new_ver}', file=f)
+          " 
+          
+            
+      - name: Create new tag
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag -a ${{ steps.new_tag.outputs.tag }} -m "Release ${{ steps.new_tag.outputs.tag }}"
+          git push origin ${{ steps.new_tag.outputs.tag }}
+          
+      - name: Build release distributions
+        run: |
+          # NOTE: put your own distribution build steps here.
+          python -m pip install build
+          python -m build
+  
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+
+
+  pypi-publish:
+    runs-on: ubuntu-latest
+    needs:
+      - bump-tag-and-build
+    permissions:
+      # IMPORTANT: this permission is mandatory for trusted publishing
+      id-token: write
+
+    # Dedicated environments with protections for publishing are strongly recommended.
+    # For more information, see: https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#deployment-protection-rules
+    environment:
+      name: pypi
+      # OPTIONAL: uncomment and update to include your PyPI project URL in the deployment status:
+      # url: https://pypi.org/p/esek
+      #
+      # ALTERNATIVE: if your GitHub Release name is the PyPI project version string
+      # ALTERNATIVE: exactly, uncomment the following line instead:
+      url: https://pypi.org/project/esek/${{ github.event.release.name }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Ensure tags are fetched
+          
+      - name: Retrieve release distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+
+      - name: Publish release distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
