@@ -1,0 +1,65 @@
+name: Auto Tag Versioning
+
+on:
+  workflow_run:
+    workflows: ["Testsuite"]
+    types:
+      - completed
+
+jobs:
+  tag:
+    # only tag versions after a new commit to main and after successful testing (not after scheduled/cron testing)
+    if: github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PAT_4C_BOT_MERGE_TO_MAIN }}
+
+      - name: Get latest tag
+        id: get_tag
+        run: |
+          latest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n1)
+          echo "Latest tag: $latest"
+          echo "latest_tag=$latest" >> "$GITHUB_OUTPUT"
+
+      - name: Check if commit is already tagged
+        id: check_tag
+        run: |
+          tag=$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          if [ -n "$tag" ]; then
+            echo "This commit is already tagged with $tag. Skipping auto-tag."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No version tag on this commit. Proceeding."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute next version tag
+        if: steps.check_tag.outputs.skip != 'true'
+        id: new_tag
+        run: |
+          latest="${{ steps.get_tag.outputs.latest_tag }}"
+          version="${latest#v}"
+          IFS='.' read -r major minor patch <<< "$version"
+          minor=$((minor + 1))
+          new_tag="v${major}.${minor}.0"
+          echo "New tag: $new_tag"
+          echo "tag=$new_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Configure Git user
+        if: steps.check_tag.outputs.skip != 'true'
+        run: |
+          git config user.name "4C-Bot"
+          git config user.email "207683181+4C-Bot@users.noreply.github.com"
+
+      - name: Create and push new tag
+        if: steps.check_tag.outputs.skip != 'true'
+        run: |
+          git tag ${{ steps.new_tag.outputs.tag }}
+          git push origin ${{ steps.new_tag.outputs.tag }}
