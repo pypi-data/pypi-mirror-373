@@ -1,0 +1,797 @@
+{% load wagtailimages_tags %}
+{% load wagtailcore_tags wagtailimages_tags %}
+{% block content %}
+<div class="gallery-modern-block">
+    <header>
+        <div class="container">
+            <h2 class="h2-gallery">{{ value.titulo_secao }}</h2>
+            <p class="subtitle">{{ value.subtitulo_secao }}</p>
+        </div>
+    </header>
+    
+    <div class="container">
+        <!-- Filtros -->
+        <div class="filters-container">
+            <div class="filters" id="filters-container-{{ id }}">
+                <button class="filter-btn active" 
+                        type="button"
+                        data-filter="all">Todos</button>
+                {% for categoria in categorias %}
+                <button class="filter-btn" 
+                        type="button"
+                        data-filter="{{ categoria.slug }}">{{ categoria.nome }}</button>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <!-- Gallery Masonry -->
+        <div class="gallery-masonry" id="carousel-gallery-{{ id }}">
+            {% for item in itens_ordenados %}
+            <div class="carousel-item {% cycle 'size-large' 'size-medium' 'size-small' 'size-medium' 'size-tall' 'size-medium' %}" 
+                 data-category="{{ item.categoria|slugify }}">
+                {% image item.imagem fill-1200x800 as img %}
+                <img src="{{ img.url }}" 
+                     alt="{% if item.titulo %}{{ item.titulo }}{% else %}Imagem da galeria {{ forloop.counter }}{% endif %}"
+                     loading="{% if forloop.counter <= 3 %}eager{% else %}lazy{% endif %}">
+                
+                <div class="overlay">
+                    <div class="overlay-content">
+                        {% if item.titulo %}
+                        <h3>{{ item.titulo }}</h3>
+                        {% endif %}
+                        {% if item.data %}
+                        <p>{{ item.data|date:"d/m/Y" }}</p>
+                        {% endif %}
+                        <button class="view-btn" onclick="openLightbox{{ id }}({{ forloop.counter0 }})">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                            Ver
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Informações para JS -->
+                <div class="item-info sr-only">
+                    <span class="item-title">{{ item.titulo|default:"Sem título" }}</span>
+                    <span class="item-date">{{ item.data|date:"d/m/Y"|default:"" }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <!-- Navegação -->
+        <div class="carousel-nav">
+            <button type="button" id="prev-btn-{{ id }}" onclick="prevSlide{{ id }}()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M15 18l-6-6 6-6"/>
+                </svg>
+            </button>
+            <button type="button" id="next-btn-{{ id }}" onclick="nextSlide{{ id }}()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 18l6-6-6-6"/>
+                </svg>
+            </button>
+        </div>
+        
+        <!-- Estado vazio -->
+        <div class="empty-state" id="empty-state-{{ id }}" style="display: none;">
+            <div class="empty-icon">📷</div>
+            <p>Nenhuma imagem encontrada nesta categoria</p>
+        </div>
+    </div>
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox-{{ id }}">
+    <div class="lightbox-backdrop" onclick="closeLightbox{{ id }}()"></div>
+    <div class="lightbox-content">
+        <button class="lightbox-close" onclick="closeLightbox{{ id }}()">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+        
+        <button class="lightbox-nav prev" onclick="prevImage{{ id }}()">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M15 18l-6-6 6-6"/>
+            </svg>
+        </button>
+        
+        <div class="lightbox-image-container">
+            <img id="lightbox-img-{{ id }}" src="" alt="">
+            <div class="lightbox-info">
+                <h3 id="lightbox-title-{{ id }}"></h3>
+                <p id="lightbox-date-{{ id }}"></p>
+            </div>
+        </div>
+        
+        <button class="lightbox-nav next" onclick="nextImage{{ id }}()">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 18l6-6-6-6"/>
+            </svg>
+        </button>
+    </div>
+</div>
+
+<style>
+/* ==================== BASE ==================== */
+.gallery-modern-block {
+    --primary: {{ value.cor_principal|default:"#2563eb" }};
+    --secondary: {{ value.cor_secundaria|default:"#3b82f6" }};
+    --text: #1f2937;
+    --text-light: #6b7280;
+    --bg: #f8fafc;
+    --white: #ffffff;
+    --shadow: 0 4px 20px rgba(0,0,0,0.08);
+    --shadow-lg: 0 20px 40px rgba(0,0,0,0.15);
+    --radius: 16px;
+    --transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.gallery-modern-block {
+    background: var(--bg);
+    padding: 5rem 0;
+    min-height: 70vh;
+    position: relative;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 2rem;
+    position: relative;
+}
+
+/* ==================== HEADER ==================== */
+header {
+    text-align: center;
+    margin-bottom: 4rem;
+}
+
+.h2-gallery {
+    font-size: 3rem;
+    font-weight: 800;
+    color: var(--text);
+    margin-bottom: 1rem;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+}
+
+.subtitle {
+    font-size: 1.2rem;
+    color: var(--text-light);
+    max-width: 600px;
+    margin: 0 auto;
+    line-height: 1.6;
+}
+
+/* ==================== FILTROS ==================== */
+.filters-container {
+    margin-bottom: 3rem;
+    display: flex;
+    justify-content: center;
+}
+
+.filters {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.filter-btn {
+    background: var(--white);
+    border: 2px solid #e2e8f0;
+    border-radius: 50px;
+    padding: 0.875rem 2rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+    box-shadow: var(--shadow);
+}
+
+.filter-btn:hover,
+.filter-btn.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--white);
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg);
+}
+
+/* ==================== LAYOUT MASONRY ==================== */
+.gallery-masonry {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    grid-auto-rows: 120px;
+    gap: 1rem;
+    margin-bottom: 3rem;
+    position: relative;
+}
+
+.carousel-item {
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    transition: var(--transition);
+    cursor: pointer;
+    position: relative;
+    opacity: 0;
+    transform: translateY(30px);
+    animation: slideInUp 0.6s ease-out forwards;
+}
+
+/* Tamanhos dinâmicos para layout masonry */
+.carousel-item.size-large {
+    grid-column: span 3;
+    grid-row: span 4;
+}
+
+.carousel-item.size-medium {
+    grid-column: span 2;
+    grid-row: span 3;
+}
+
+.carousel-item.size-small {
+    grid-column: span 2;
+    grid-row: span 2;
+}
+
+.carousel-item.size-tall {
+    grid-column: span 2;
+    grid-row: span 5;
+}
+
+.carousel-item:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: var(--shadow-lg);
+    z-index: 10;
+}
+
+.carousel-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    transition: var(--transition);
+    display: block;
+}
+
+.carousel-item:hover img {
+    transform: scale(1.1);
+}
+
+/* ==================== OVERLAY ==================== */
+.overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        135deg,
+        rgba(0,0,0,0.1) 0%,
+        rgba(0,0,0,0.3) 50%,
+        rgba(0,0,0,0.8) 100%
+    );
+    display: flex;
+    align-items: flex-end;
+    opacity: 0;
+    transition: var(--transition);
+}
+
+.carousel-item:hover .overlay {
+    opacity: 1;
+}
+
+.overlay-content {
+    padding: 1.5rem;
+    color: var(--white);
+    width: 100%;
+}
+
+.overlay-content h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    line-height: 1.3;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.overlay-content p {
+    font-size: 0.85rem;
+    opacity: 0.9;
+    margin-bottom: 1rem;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+.view-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(255,255,255,0.25);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 12px;
+    padding: 0.5rem 1rem;
+    color: var(--white);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    text-shadow: none;
+}
+
+.view-btn:hover {
+    background: rgba(255,255,255,0.35);
+    transform: translateY(-2px);
+}
+
+/* ==================== NAVEGAÇÃO ==================== */
+.carousel-nav {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    transform: translateY(-50%);
+    display: flex;
+    justify-content: space-between;
+    pointer-events: none;
+    padding: 0 1rem;
+    z-index: 20;
+}
+
+.carousel-nav button {
+    background: var(--white);
+    border: none;
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--transition);
+    box-shadow: var(--shadow);
+    pointer-events: auto;
+    color: var(--text);
+}
+
+.carousel-nav button:hover {
+    background: var(--primary);
+    color: var(--white);
+    transform: scale(1.1);
+    box-shadow: var(--shadow-lg);
+}
+
+/* ==================== ESTADO VAZIO ==================== */
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text-light);
+}
+
+.empty-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+.empty-state p {
+    font-size: 1.125rem;
+    margin: 0;
+}
+
+/* ==================== LIGHTBOX ==================== */
+.lightbox {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 9999;
+    opacity: 0;
+    visibility: hidden;
+    transition: var(--transition);
+}
+
+.lightbox.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.lightbox-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.95);
+}
+
+.lightbox-content {
+    position: relative;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+}
+
+.lightbox-close {
+    position: absolute;
+    top: 2rem;
+    right: 2rem;
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border: none;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    color: var(--white);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+    z-index: 10;
+}
+
+.lightbox-close:hover {
+    background: rgba(255,255,255,0.2);
+    transform: scale(1.1);
+}
+
+.lightbox-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border: none;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    color: var(--white);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+    z-index: 10;
+}
+
+.lightbox-nav:hover {
+    background: rgba(255,255,255,0.2);
+    transform: translateY(-50%) scale(1.1);
+}
+
+.lightbox-nav.prev {
+    left: 2rem;
+}
+
+.lightbox-nav.next {
+    right: 2rem;
+}
+
+.lightbox-image-container {
+    max-width: 90vw;
+    max-height: 90vh;
+    text-align: center;
+}
+
+.lightbox-image-container img {
+    max-width: 100%;
+    max-height: 80vh;
+    object-fit: contain;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+}
+
+.lightbox-info {
+    color: var(--white);
+    margin-top: 1rem;
+    max-width: 600px;
+}
+
+.lightbox-info h3 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.lightbox-info p {
+    font-size: 1rem;
+    opacity: 0.8;
+    margin: 0;
+}
+
+/* ==================== UTILITÁRIOS ==================== */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    border: 0;
+}
+
+/* ==================== ANIMAÇÕES ==================== */
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.carousel-item:nth-child(1) { animation-delay: 0.1s; }
+.carousel-item:nth-child(2) { animation-delay: 0.15s; }
+.carousel-item:nth-child(3) { animation-delay: 0.2s; }
+.carousel-item:nth-child(4) { animation-delay: 0.25s; }
+.carousel-item:nth-child(5) { animation-delay: 0.3s; }
+.carousel-item:nth-child(6) { animation-delay: 0.35s; }
+
+/* ==================== RESPONSIVO ==================== */
+@media (max-width: 1200px) {
+    .gallery-masonry {
+        grid-template-columns: repeat(4, 1fr);
+    }
+    
+    .carousel-item.size-large {
+        grid-column: span 2;
+        grid-row: span 3;
+    }
+}
+
+@media (max-width: 768px) {
+    .gallery-modern-block {
+        padding: 3rem 0;
+    }
+    
+    .container {
+        padding: 0 1rem;
+    }
+    
+    .h2-gallery {
+        font-size: 2.5rem;
+    }
+    
+    .gallery-masonry {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem;
+    }
+    
+    .carousel-item.size-large,
+    .carousel-item.size-medium,
+    .carousel-item.size-small,
+    .carousel-item.size-tall {
+        grid-column: span 1;
+        grid-row: span 2;
+    }
+    
+    .filters {
+        gap: 0.5rem;
+    }
+    
+    .filter-btn {
+        padding: 0.75rem 1.5rem;
+        font-size: 0.9rem;
+    }
+    
+    .carousel-nav button {
+        width: 50px;
+        height: 50px;
+    }
+    
+    .overlay-content {
+        padding: 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .gallery-masonry {
+        grid-template-columns: 1fr;
+    }
+    
+    .carousel-item {
+        grid-row: span 3 !important;
+    }
+    
+    .carousel-nav {
+        display: none;
+    }
+}
+</style>
+
+<script>
+// Variáveis globais para esta instância
+let currentLightboxIndex{{ id }} = 0;
+let currentFilter{{ id }} = 'all';
+let allItems{{ id }} = [];
+
+// Inicializar quando DOM estiver pronto
+document.addEventListener('DOMContentLoaded', function() {
+    initGallery{{ id }}();
+});
+
+function initGallery{{ id }}() {
+    // Coletar todos os itens
+    const items = document.querySelectorAll('#carousel-gallery-{{ id }} .carousel-item');
+    allItems{{ id }} = Array.from(items).map((item, index) => {
+        const img = item.querySelector('img');
+        const titleElement = item.querySelector('.item-title');
+        const dateElement = item.querySelector('.item-date');
+        
+        return {
+            src: img.src,
+            title: titleElement ? titleElement.textContent : 'Sem título',
+            date: dateElement ? dateElement.textContent : '',
+            category: item.getAttribute('data-category'),
+            element: item,
+            index: index
+        };
+    });
+    
+    // Configurar filtros
+    setupFilters{{ id }}();
+    
+    // Configurar eventos de teclado
+    setupKeyboardEvents{{ id }}();
+    
+    console.log('Galeria inicializada com', allItems{{ id }}.length, 'itens');
+}
+
+function setupFilters{{ id }}() {
+    const filterButtons = document.querySelectorAll('#filters-container-{{ id }} .filter-btn');
+    
+    filterButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            // Remover classe ativa
+            filterButtons.forEach(btn => btn.classList.remove('active'));
+            
+            // Adicionar classe ativa
+            button.classList.add('active');
+            
+            // Aplicar filtro
+            const filter = button.getAttribute('data-filter');
+            currentFilter{{ id }} = filter;
+            applyFilter{{ id }}(filter);
+        });
+    });
+}
+
+function applyFilter{{ id }}(filter) {
+    const gallery = document.getElementById('carousel-gallery-{{ id }}');
+    const emptyState = document.getElementById('empty-state-{{ id }}');
+    let visibleCount = 0;
+    
+    allItems{{ id }}.forEach(item => {
+        const shouldShow = filter === 'all' || item.category === filter;
+        
+        if (shouldShow) {
+            item.element.style.display = '';
+            visibleCount++;
+        } else {
+            item.element.style.display = 'none';
+        }
+    });
+    
+    // Mostrar/ocultar estado vazio
+    if (visibleCount === 0) {
+        gallery.style.display = 'none';
+        emptyState.style.display = 'block';
+    } else {
+        gallery.style.display = '';
+        emptyState.style.display = 'none';
+    }
+    
+    console.log('Filtro aplicado:', filter, '- Itens visíveis:', visibleCount);
+}
+
+function prevSlide{{ id }}() {
+    const visibleItems = getVisibleItems{{ id }}();
+    if (visibleItems.length > 0) {
+        currentLightboxIndex{{ id }} = (currentLightboxIndex{{ id }} - 1 + visibleItems.length) % visibleItems.length;
+    }
+}
+
+function nextSlide{{ id }}() {
+    const visibleItems = getVisibleItems{{ id }}();
+    if (visibleItems.length > 0) {
+        currentLightboxIndex{{ id }} = (currentLightboxIndex{{ id }} + 1) % visibleItems.length;
+    }
+}
+
+function getVisibleItems{{ id }}() {
+    return allItems{{ id }}.filter(item => {
+        return currentFilter{{ id }} === 'all' || item.category === currentFilter{{ id }};
+    });
+}
+
+function openLightbox{{ id }}(index) {
+    const lightbox = document.getElementById('lightbox-{{ id }}');
+    currentLightboxIndex{{ id }} = index;
+    
+    updateLightboxImage{{ id }}();
+    
+    lightbox.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    
+    console.log('Lightbox aberto, índice:', index);
+}
+
+function closeLightbox{{ id }}() {
+    const lightbox = document.getElementById('lightbox-{{ id }}');
+    lightbox.classList.remove('active');
+    document.body.style.overflow = '';
+    
+    console.log('Lightbox fechado');
+}
+
+function updateLightboxImage{{ id }}() {
+    const img = document.getElementById('lightbox-img-{{ id }}');
+    const title = document.getElementById('lightbox-title-{{ id }}');
+    const date = document.getElementById('lightbox-date-{{ id }}');
+    
+    const visibleItems = getVisibleItems{{ id }}();
+    const currentItem = visibleItems[currentLightboxIndex{{ id }}];
+    
+    if (currentItem) {
+        img.src = currentItem.src;
+        img.alt = currentItem.title;
+        title.textContent = currentItem.title;
+        date.textContent = currentItem.date;
+        
+        console.log('Imagem atualizada:', currentItem.title);
+    }
+}
+
+function prevImage{{ id }}() {
+    const visibleItems = getVisibleItems{{ id }}();
+    if (visibleItems.length > 0) {
+        currentLightboxIndex{{ id }} = (currentLightboxIndex{{ id }} - 1 + visibleItems.length) % visibleItems.length;
+        updateLightboxImage{{ id }}();
+    }
+}
+
+function nextImage{{ id }}() {
+    const visibleItems = getVisibleItems{{ id }}();
+    if (visibleItems.length > 0) {
+        currentLightboxIndex{{ id }} = (currentLightboxIndex{{ id }} + 1) % visibleItems.length;
+        updateLightboxImage{{ id }}();
+    }
+}
+
+function setupKeyboardEvents{{ id }}() {
+    document.addEventListener('keydown', (e) => {
+        const lightbox = document.getElementById('lightbox-{{ id }}');
+        
+        if (lightbox.classList.contains('active')) {
+            switch(e.key) {
+                case 'Escape':
+                    closeLightbox{{ id }}();
+                    break;
+                case 'ArrowLeft':
+                    prevImage{{ id }}();
+                    break;
+                case 'ArrowRight':
+                    nextImage{{ id }}();
+                    break;
+            }
+        }
+    });
+}
+</script>
+{% endblock %}

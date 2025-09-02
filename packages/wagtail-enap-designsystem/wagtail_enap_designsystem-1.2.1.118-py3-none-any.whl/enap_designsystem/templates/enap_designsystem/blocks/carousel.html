@@ -1,0 +1,474 @@
+{% load static %}
+{% load wagtailcore_tags wagtailimages_tags %}
+{% block content %}
+{% load static wagtailimages_tags %}
+
+<!-- Carrossel com IDs únicos para evitar interferências -->
+<div class="hero-slideshow" 
+     id="hero-slideshow-{{ block.id|default:'main' }}"
+     data-carousel-type="hero"
+     role="region"
+     aria-label="Carrossel personalizado"
+     aria-roledescription="carrossel">    
+    
+    <div class="hero-slideshow-container" 
+         id="hero-container-{{ block.id|default:'main' }}"
+         role="presentation">
+        {% for slide in value.slides %}
+            <div class="hero-slide {% if forloop.first %}slide-active{% endif %}" 
+                 data-slide-index="{{ forloop.counter0 }}"
+                 {% if forloop.first %}aria-hidden="false"{% else %}aria-hidden="true"{% endif %}
+                 role="group"
+                 aria-roledescription="slide"
+                 aria-label="Slide {{ forloop.counter }} de {{ value.slides|length }}">
+                
+                {% if slide.background_image %}
+                    {% image slide.background_image fill-1920x1080 as bg_img %}
+                    <div class="hero-slide-bg" 
+                         style="background-image: url('{{ bg_img.url }}');"
+                         aria-hidden="true"></div>
+                {% endif %}
+                
+                <div class="hero-slide-wrapper">
+                    {% if slide.slide_type == 'title_center' %}
+                        <div class="hero-content-center">
+                            {% if slide.title %}
+                                <!-- Hierarquia de cabeçalhos -->
+                                <h2 class="hero-slide-heading">{{ slide.title }}</h2>
+                            {% endif %}
+                        </div>
+                    {% elif slide.slide_type == 'title_desc_left' %}
+                        <div class="hero-content-left">
+                            <!-- Imagem decorativa com alt apropriado -->
+                            <img src="{% static 'enap_designsystem/icons/grafismo.svg' %}" 
+                                 alt="" 
+                                 class="hero-grafismo"
+                                 aria-hidden="true">
+                            {% if slide.title %}
+                                <h2 class="hero-slide-heading">{{ slide.title }}</h2>
+                            {% endif %}
+                            {% if slide.description %}
+                                <p class="hero-slide-text">{{ slide.description }}</p>
+                            {% endif %}
+                        </div>
+                    {% elif slide.slide_type == 'blank' %}
+                        <!-- Slide em branco - só a imagem de fundo -->
+                        <div class="hero-content-blank"
+                             aria-label="Slide em branco com imagem de fundo"></div>
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+    
+    <!-- Navegação acessível apenas se houver mais de um slide -->
+    {% if value.slides|length > 1 %}
+        <div class="hero-slideshow-nav" role="group" aria-label="Controles do carrossel">
+            <button class="hero-nav-btn hero-nav-prev" 
+                    type="button"
+                    aria-label="Ir para o slide anterior"
+                    aria-controls="hero-container-{{ block.id|default:'main' }}"
+                    onclick="navigateHeroSlide('{{ block.id|default:'main' }}', -1)">
+                <i class="fa-solid fa-circle-chevron-left" aria-hidden="true"></i>
+            </button>
+            <button class="hero-nav-btn hero-nav-next" 
+                    type="button"
+                    aria-label="Ir para o próximo slide"
+                    aria-controls="hero-container-{{ block.id|default:'main' }}"
+                    onclick="navigateHeroSlide('{{ block.id|default:'main' }}', 1)">
+                <i class="fa-solid fa-circle-chevron-right" aria-hidden="true"></i>
+            </button>
+        </div>
+        
+        <!-- Indicadores com IDs únicos e acessibilidade -->
+        <div class="hero-slideshow-indicators" 
+             role="tablist"
+             aria-label="Slides do carrossel">
+            {% for slide in value.slides %}
+                <button class="hero-indicator {% if forloop.first %}indicator-active{% endif %}" 
+                        type="button"
+                        role="tab"
+                        id="hero-indicator-{{ block.id|default:'main' }}-{{ forloop.counter }}"
+                        aria-label="Ir para slide {{ forloop.counter }}{% if slide.title %}: {{ slide.title }}{% endif %}"
+                        aria-controls="hero-container-{{ block.id|default:'main' }}"
+                        data-slide-index="{{ forloop.counter0 }}"
+                        {% if forloop.first %}aria-selected="true" tabindex="0"{% else %}aria-selected="false" tabindex="-1"{% endif %}
+                        onclick="jumpToHeroSlide('{{ block.id|default:'main' }}', {{ forloop.counter0 }})">
+                    <span class="visually-hidden">Slide {{ forloop.counter }}{% if slide.title %}: {{ slide.title }}{% endif %}</span>
+                </button>
+            {% endfor %}
+        </div>
+        
+        <!-- Live region para anúncios -->
+        <div class="visually-hidden" 
+             aria-live="polite" 
+             aria-atomic="true" 
+             id="hero-status-{{ block.id|default:'main' }}">
+            Slide 1 de {{ value.slides|length }}{% if value.slides.0.title %}: {{ value.slides.0.title }}{% endif %}
+        </div>
+    {% endif %}
+</div>
+
+<!-- CSS para acessibilidade -->
+<style>
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+
+/* Layout do hero slideshow */
+.hero-slideshow {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+}
+
+.hero-slideshow-container {
+    position: relative;
+    width: 100%;
+    height: 60vh;
+    min-height: 400px;
+}
+
+.hero-slide {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.5s ease-in-out, visibility 0.5s;
+}
+
+.hero-slide.slide-active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.hero-slide-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.hero-slide-wrapper {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 2rem;
+}
+
+.hero-content-center {
+    text-align: center;
+}
+
+.hero-content-left {
+    justify-content: flex-start;
+    align-items: flex-start;
+    display: flex;
+    flex-direction: column;
+    max-width: 50%;
+}
+
+.hero-slide-heading {
+    color: #fff;
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin: 0 0 1rem 0;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+}
+
+.hero-slide-text {
+    color: #fff;
+    font-size: 1.2rem;
+    margin: 0;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+.hero-grafismo {
+    width: 60px;
+    height: 60px;
+    margin-bottom: 1rem;
+}
+
+/* Navegação */
+.hero-slideshow-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 1rem;
+    pointer-events: none;
+    z-index: 3;
+}
+
+.hero-nav-btn {
+    background: rgba(0, 0, 0, 0.3);
+    border: none;
+    color: #fff;
+    font-size: 2rem;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    cursor: pointer;
+    pointer-events: all;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Melhorias de foco para navegação */
+.hero-nav-btn:focus,
+.hero-indicator:focus {
+    outline: 2px solid var(--enap-primary-color, #1976d2);
+    outline-offset: 2px;
+}
+
+.hero-nav-btn:hover,
+.hero-indicator:hover {
+    opacity: 0.8;
+    transform: scale(1.1);
+    transition: all 0.3s ease;
+}
+
+/* Indicadores */
+.hero-slideshow-indicators {
+    position: absolute;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0.5rem;
+    z-index: 3;
+}
+
+/* Indicadores com melhor visibilidade */
+.hero-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.hero-indicator.indicator-active,
+.hero-indicator[aria-selected="true"] {
+    background: rgba(255, 255, 255, 1);
+    transform: scale(1.2);
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+    .hero-slideshow-container {
+        height: 50vh;
+        min-height: 300px;
+    }
+    
+    .hero-slide-heading {
+        font-size: 1.8rem;
+    }
+    
+    .hero-slide-text {
+        font-size: 1rem;
+    }
+    
+    .hero-content-left {
+        max-width: 80%;
+    }
+    
+    .hero-nav-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 1.5rem;
+    }
+}
+</style>
+    
+<!-- JavaScript melhorado com acessibilidade -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    initHeroSlideshow('{{ block.id|default:'main' }}');
+});
+
+function initHeroSlideshow(slideshowId) {
+    const slideshow = document.getElementById(`hero-slideshow-${slideshowId}`);
+    const container = document.getElementById(`hero-container-${slideshowId}`);
+    const slides = container.querySelectorAll('.hero-slide');
+    const indicators = slideshow.querySelectorAll('.hero-indicator');
+    const statusElement = document.getElementById(`hero-status-${slideshowId}`);
+    
+    console.log(`Inicializando hero slideshow ${slideshowId}`);
+    console.log(`Número de slides: ${slides.length}`);
+    
+    // Ensure first slide is visible
+    if (slides.length > 0) {
+        slides[0].classList.add('slide-active');
+        slides[0].style.display = 'block';
+        slides[0].setAttribute('aria-hidden', 'false');
+        
+        if (indicators.length > 0) {
+            indicators[0].classList.add('indicator-active');
+            indicators[0].setAttribute('aria-selected', 'true');
+            indicators[0].setAttribute('tabindex', '0');
+        }
+        
+        // Atualizar status inicial
+        updateHeroStatus(slideshowId, 0);
+    }
+    
+    // Adicionar navegação por teclado
+    if (slideshow) {
+        slideshow.addEventListener('keydown', function(e) {
+            const focusedElement = document.activeElement;
+            
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                navigateHeroSlide(slideshowId, -1);
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                navigateHeroSlide(slideshowId, 1);
+            } else if (e.key === 'Home' && focusedElement.classList.contains('hero-indicator')) {
+                e.preventDefault();
+                jumpToHeroSlide(slideshowId, 0);
+                indicators[0].focus();
+            } else if (e.key === 'End' && focusedElement.classList.contains('hero-indicator')) {
+                e.preventDefault();
+                jumpToHeroSlide(slideshowId, slides.length - 1);
+                indicators[slides.length - 1].focus();
+            }
+        });
+    }
+}
+
+function updateHeroStatus(slideshowId, slideIndex) {
+    const statusElement = document.getElementById(`hero-status-${slideshowId}`);
+    const slideshow = document.getElementById(`hero-slideshow-${slideshowId}`);
+    const slides = slideshow.querySelectorAll('.hero-slide');
+    
+    if (statusElement && slides[slideIndex]) {
+        const currentSlide = slides[slideIndex];
+        const title = currentSlide.querySelector('.hero-slide-heading');
+        const titleText = title ? title.textContent : 'Slide sem título';
+        statusElement.textContent = `Slide ${slideIndex + 1} de ${slides.length}: ${titleText}`;
+    }
+}
+
+function navigateHeroSlide(slideshowId, direction) {
+    const slideshow = document.getElementById(`hero-slideshow-${slideshowId}`);
+    const container = document.getElementById(`hero-container-${slideshowId}`);
+    const slides = container.querySelectorAll('.hero-slide');
+    const indicators = slideshow.querySelectorAll('.hero-indicator');
+    
+    let currentIndex = Array.from(slides).findIndex(slide => slide.classList.contains('slide-active'));
+    let newIndex = currentIndex + direction;
+    
+    // Circular navigation
+    if (newIndex >= slides.length) newIndex = 0;
+    if (newIndex < 0) newIndex = slides.length - 1;
+    
+    // Remove active from current slide and indicator
+    slides[currentIndex].classList.remove('slide-active');
+    slides[currentIndex].style.display = 'none';
+    slides[currentIndex].setAttribute('aria-hidden', 'true');
+    if (indicators[currentIndex]) {
+        indicators[currentIndex].classList.remove('indicator-active');
+        indicators[currentIndex].setAttribute('aria-selected', 'false');
+        indicators[currentIndex].setAttribute('tabindex', '-1');
+    }
+    
+    // Add active to new slide and indicator
+    slides[newIndex].classList.add('slide-active');
+    slides[newIndex].style.display = 'block';
+    slides[newIndex].setAttribute('aria-hidden', 'false');
+    if (indicators[newIndex]) {
+        indicators[newIndex].classList.add('indicator-active');
+        indicators[newIndex].setAttribute('aria-selected', 'true');
+        indicators[newIndex].setAttribute('tabindex', '0');
+    }
+    
+    // Atualizar status para leitores de tela
+    updateHeroStatus(slideshowId, newIndex);
+}
+
+function jumpToHeroSlide(slideshowId, index) {
+    const slideshow = document.getElementById(`hero-slideshow-${slideshowId}`);
+    const container = document.getElementById(`hero-container-${slideshowId}`);
+    const slides = container.querySelectorAll('.hero-slide');
+    const indicators = slideshow.querySelectorAll('.hero-indicator');
+    
+    // Remove active from all slides and indicators
+    slides.forEach((slide, i) => {
+        slide.classList.remove('slide-active');
+        slide.style.display = 'none';
+        slide.setAttribute('aria-hidden', 'true');
+    });
+    indicators.forEach((indicator, i) => {
+        indicator.classList.remove('indicator-active');
+        indicator.setAttribute('aria-selected', 'false');
+        indicator.setAttribute('tabindex', '-1');
+    });
+    
+    // Add active to selected slide and indicator
+    slides[index].classList.add('slide-active');
+    slides[index].style.display = 'block';
+    slides[index].setAttribute('aria-hidden', 'false');
+    if (indicators[index]) {
+        indicators[index].classList.add('indicator-active');
+        indicators[index].setAttribute('aria-selected', 'true');
+        indicators[index].setAttribute('tabindex', '0');
+        indicators[index].focus(); // Melhor UX
+    }
+    
+    // Atualizar status para leitores de tela
+    updateHeroStatus(slideshowId, index);
+}
+
+// Função para melhor acessibilidade por teclado nos indicadores
+document.addEventListener('DOMContentLoaded', function() {
+    // Adicionar navegação por teclado nos indicadores
+    const allHeroSlideshows = document.querySelectorAll('[data-carousel-type="hero"]');
+    
+    allHeroSlideshows.forEach(function(slideshow) {
+        const indicators = slideshow.querySelectorAll('.hero-indicator');
+        
+        indicators.forEach(function(indicator, index) {
+            indicator.addEventListener('keydown', function(e) {
+                const slideshowId = slideshow.id.replace('hero-slideshow-', '');
+                
+                if (e.key === 'ArrowLeft' && index > 0) {
+                    e.preventDefault();
+                    indicators[index - 1].focus();
+                } else if (e.key === 'ArrowRight' && index < indicators.length - 1) {
+                    e.preventDefault();
+                    indicators[index + 1].focus();
+                } else if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    jumpToHeroSlide(slideshowId, index);
+                }
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

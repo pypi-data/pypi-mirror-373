@@ -1,0 +1,367 @@
+{% load wagtailimages_tags %}
+{% load wagtailcore_tags wagtailimages_tags static %}
+{% block content %}
+<section class="testimonials-section">
+    <div class="wrapper-text-testimonials">
+        <h2 class="testimonials-title">{{ value.title }}</h2>
+        {% if value.description %}
+            <h4 class="testimonials-subtitle">{{ value.description }}</h4>
+        {% endif %}
+    </div>
+
+    <div class="testimonial-carousel-wrapper">
+        <div class="wrapper-testimonial"><div class="testimonial-carousel-container">
+            <div class="testimonial-carousel-items" id="testimonials-carousel">
+                {% for testimonial in value.testimonials %}
+                <div class="testimonial-item-wrapper">
+                    <div class="testimonial-container">
+                        <div class="testimonial-image">
+                            {% if testimonial.image %}
+                                {% image testimonial.image fill-150x150 format-webp as person_img %}
+                                <img src="{{ person_img.url }}" alt="{{ testimonial.name }}">
+                            {% else %}
+                                <img src="https://via.placeholder.com/150" alt="{{ testimonial.name }}">
+                            {% endif %}
+                        </div>
+                        <div class="testimonial-card">
+                            <div class="testimonial-title">{{ testimonial.name }}</div>
+                            <div class="testimonial-description">{{ testimonial.testimonial }}</div>
+                            <div class="testimonial-position">{{ testimonial.position }}</div>
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="testimonial-item-wrapper">
+                    <p>Nenhum depoimento disponível.</p>
+                </div>
+                {% endfor %}
+            </div>
+        
+        </div>
+        </div>
+        <button class="testimonial-control testimonial-control-prev" id="prev-button">
+            <img style="width: 40px; height: 40px;" src="{% static 'enap_designsystem/icons/iconleft.svg' %}" alt="Anterior">
+        </button>
+        <button class="testimonial-control testimonial-control-next" id="next-button">
+            <img style="width: 40px; height: 40px;" src="{% static 'enap_designsystem/icons/iconrig.svg' %}" alt="Próximo">
+        </button>
+    </div>
+</section>
+
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        function initCarousel() {
+            const carousel = document.getElementById('testimonials-carousel');
+            const prevButton = document.getElementById('prev-button');
+            const nextButton = document.getElementById('next-button');
+            const items = carousel.querySelectorAll('.testimonial-item-wrapper');
+            
+            if (items.length === 0) return;
+            
+            let currentIndex = 0;
+            let startX, moveX, initialPosition;
+            let isDragging = false;
+            let isScrolling = false;
+            
+            // Verifica se é dispositivo mobile
+            function isMobile() {
+                return window.innerWidth < 768;
+            }
+            
+            // Número de itens visíveis depende da largura da tela
+            function getVisibleItems() {
+                if (window.innerWidth < 768) return 1;
+                if (window.innerWidth < 992) return 1;
+                return 2;
+            }
+            
+            // NOVA FUNÇÃO: Verifica se há cards à esquerda
+            function hasCardsToLeft() {
+                return currentIndex > 0;
+            }
+            
+            // NOVA FUNÇÃO: Verifica se há cards à direita
+            function hasCardsToRight() {
+                // Método mais simples e confiável
+                return currentIndex < getMaxIndex();
+            }
+            
+            // Verifica se deve mostrar as setas (MELHORADO)
+            function shouldShowArrows() {
+                if (isMobile()) return false;
+                return items.length > getVisibleItems();
+            }
+            
+            // Esconde/mostra botões baseado na existência de cards (MELHORADO)
+            function updateArrowVisibility() {
+                if (!shouldShowArrows()) {
+                    prevButton.style.setProperty('display', 'none', 'important');
+                    nextButton.style.setProperty('display', 'none', 'important');
+                    return;
+                }
+                
+                // Debug: mostra valores no console
+                console.log('Current Index:', currentIndex);
+                console.log('Max Index:', getMaxIndex());
+                console.log('Has Cards Left:', hasCardsToLeft());
+                console.log('Has Cards Right:', hasCardsToRight());
+                
+                // Mostrar/esconder botão anterior baseado se há cards à esquerda
+                if (hasCardsToLeft()) {
+                    prevButton.style.removeProperty('display');
+                    prevButton.style.opacity = '1';
+                    prevButton.style.pointerEvents = 'auto';
+                } else {
+                    prevButton.style.opacity = '0';
+                    prevButton.style.pointerEvents = 'none';
+                }
+                
+                // Mostrar/esconder botão próximo baseado se há cards à direita
+                if (hasCardsToRight()) {
+                    nextButton.style.removeProperty('display');
+                    nextButton.style.setProperty('opacity', '1', 'important');
+                    nextButton.style.setProperty('display', 'flex', 'important');
+                    nextButton.style.setProperty('pointer-events', 'auto', 'important');
+                } else {
+                    nextButton.style.setProperty('opacity', '0', 'important');
+                    nextButton.style.setProperty('pointer-events', 'none', 'important');
+                }
+            }
+            
+            // Obtém a largura de um item considerando a viewport
+            function getItemWidth() {
+                if (window.innerWidth < 480) {
+                    return Math.min(items[0].offsetWidth, window.innerWidth * 0.9);
+                }
+                return items[0].offsetWidth;
+            }
+            
+            function getItemGap() {
+                return window.innerWidth < 768 ? 15 : 25;
+            }
+            
+            function getMaxIndex() {
+                const visibleItems = getVisibleItems();
+                return Math.max(0, items.length - visibleItems);
+            }
+            
+            function getScrollAmount() {
+                return 1;
+            }
+            
+            // Mostra os slides baseado no índice atual
+            function showSlide(index) {
+                currentIndex = Math.max(0, Math.min(index, getMaxIndex()));
+                const itemWidth = getItemWidth();
+                const itemGap = getItemGap();
+                const offset = currentIndex * (itemWidth + itemGap);
+                
+                carousel.style.transform = `translateX(-${offset}px)`;
+                updateArrowVisibility(); // Atualizada para nova função
+            }
+            
+            // NOVA FUNCIONALIDADE: Scroll dinâmico com trackpad/mouse wheel
+            function handleWheel(e) {
+                // Debug: mostra valores do evento
+                console.log('Wheel event:', { deltaX: e.deltaX, deltaY: e.deltaY, shiftKey: e.shiftKey });
+                
+                let deltaX = e.deltaX;
+                
+                // Para mouse wheel: usar Shift + wheel (deltaY vira deltaX)
+                if (e.shiftKey && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+                    deltaX = e.deltaY;
+                }
+                
+                // Detectar qualquer scroll horizontal (sem threshold mínimo)
+                if (Math.abs(deltaX) > 0) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // Obter posição atual do transform
+                    const currentTransform = carousel.style.transform;
+                    const match = currentTransform.match(/translateX\((-?\d*\.?\d*)px\)/);
+                    let currentOffset = match ? parseFloat(match[1]) : 0;
+                    
+                    // Aplicar o movimento proporcional ao deltaX
+                    // Multiplicador para controlar a velocidade (ajuste conforme necessário)
+                    const scrollMultiplier = 1.5;
+                    const newOffset = currentOffset - (deltaX * scrollMultiplier);
+                    
+                    // Calcular limites
+                    const maxOffset = 0; // Limite esquerdo
+                    const itemWidth = getItemWidth();
+                    const itemGap = getItemGap();
+                    const totalItems = items.length;
+                    const visibleItems = getVisibleItems();
+                    const minOffset = -((totalItems - visibleItems) * (itemWidth + itemGap));
+                    
+                    // Aplicar limites com efeito de "elastic" nas bordas
+                    let finalOffset = newOffset;
+                    
+                    if (newOffset > maxOffset) {
+                        // Resistência ao puxar além do início
+                        const overscroll = newOffset - maxOffset;
+                        finalOffset = maxOffset + (overscroll * 0.3);
+                    } else if (newOffset < minOffset) {
+                        // Resistência ao puxar além do fim
+                        const overscroll = newOffset - minOffset;
+                        finalOffset = minOffset + (overscroll * 0.3);
+                    }
+                    
+                    // Aplicar o transform
+                    carousel.style.transition = 'none';
+                    carousel.style.transform = `translateX(${finalOffset}px)`;
+                    
+                    // Atualizar currentIndex baseado na posição
+                    const newIndex = Math.round(Math.abs(finalOffset) / (itemWidth + itemGap));
+                    currentIndex = Math.max(0, Math.min(newIndex, getMaxIndex()));
+                    
+                    // Atualizar setas baseado na nova posição
+                    updateArrowVisibility();
+                    
+                    // Aplicar snap suave quando parar de rolar
+                    clearTimeout(window.snapTimeout);
+                    window.snapTimeout = setTimeout(() => {
+                        carousel.style.transition = 'transform 0.3s ease-out';
+                        showSlide(currentIndex);
+                    }, 150);
+                    
+                    console.log('Smooth scroll:', { 
+                        deltaX, 
+                        currentOffset, 
+                        newOffset: finalOffset,
+                        currentIndex 
+                    });
+                }
+            }
+            
+            // Eventos dos botões (mantidos)
+            prevButton.addEventListener('click', function() {
+                if (hasCardsToLeft()) {
+                    showSlide(currentIndex - getScrollAmount());
+                }
+            });
+            
+            nextButton.addEventListener('click', function() {
+                if (hasCardsToRight()) {
+                    showSlide(currentIndex + getScrollAmount());
+                }
+            });
+            
+            // NOVO: Adicionar evento de scroll do mouse/trackpad
+            carousel.addEventListener('wheel', handleWheel, { passive: false });
+            
+            // Adicionar também no container para capturar melhor
+            const carouselContainer = carousel.parentElement;
+            if (carouselContainer) {
+                carouselContainer.addEventListener('wheel', handleWheel, { passive: false });
+            }
+            
+            // Eventos de arrastar (mantidos com pequenos ajustes)
+            carousel.addEventListener('mousedown', handleStart);
+            carousel.addEventListener('touchstart', handleStart, { passive: true });
+            
+            carousel.addEventListener('mousemove', handleMove);
+            carousel.addEventListener('touchmove', handleMove, { passive: true });
+            
+            carousel.addEventListener('mouseup', handleEnd);
+            carousel.addEventListener('touchend', handleEnd);
+            carousel.addEventListener('mouseleave', handleEnd);
+            
+            function handleStart(e) {
+                isDragging = true;
+                startX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
+                initialPosition = currentIndex * (getItemWidth() + getItemGap());
+                carousel.style.transition = 'none';
+                
+                if (e.type !== 'touchstart') {
+                    e.preventDefault();
+                }
+            }
+            
+            function handleMove(e) {
+                if (!isDragging) return;
+                
+                moveX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
+                const diff = moveX - startX;
+                
+                const maxDrag = getItemWidth() * (items.length - getVisibleItems());
+                let newPosition = diff - initialPosition;
+                
+                if (newPosition > 0) {
+                    newPosition = newPosition * 0.3;
+                } else if (newPosition < -maxDrag) {
+                    const overDrag = newPosition + maxDrag;
+                    newPosition = -maxDrag + (overDrag * 0.3);
+                }
+                
+                carousel.style.transform = `translateX(${newPosition}px)`;
+                
+                if (e.type !== 'touchmove') {
+                    e.preventDefault();
+                }
+            }
+            
+            function handleEnd(e) {
+                if (!isDragging) return;
+                isDragging = false;
+                
+                carousel.style.transition = 'transform 0.3s ease-in-out';
+                
+                if (!moveX) {
+                    showSlide(currentIndex);
+                    return;
+                }
+                
+                const diff = moveX - startX;
+                const threshold = getItemWidth() / 3;
+                
+                if (diff > threshold && hasCardsToLeft()) {
+                    showSlide(currentIndex - getScrollAmount());
+                } else if (diff < -threshold && hasCardsToRight()) {
+                    showSlide(currentIndex + getScrollAmount());
+                } else {
+                    showSlide(currentIndex);
+                }
+            }
+            
+            // Ajuste quando a tela é redimensionada
+            let resizeTimeout;
+            window.addEventListener('resize', function() {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(function() {
+                    updateArrowVisibility(); // Usar nova função
+                    
+                    if (currentIndex > getMaxIndex()) {
+                        currentIndex = getMaxIndex();
+                    }
+                    
+                    carousel.style.transition = 'none';
+                    showSlide(currentIndex);
+                    
+                    setTimeout(() => {
+                        carousel.style.transition = 'transform 0.3s ease-in-out';
+                    }, 50);
+                }, 200);
+            });
+            
+            // Inicializar o carrossel
+            showSlide(0);
+            
+            // Verificação adicional após carregamento
+            setTimeout(function() {
+                updateArrowVisibility();
+                
+                if (shouldShowArrows()) {
+                    updateArrowVisibility(); // Usar nova função
+                }
+                
+                showSlide(currentIndex);
+            }, 500);
+        }
+        
+        setTimeout(initCarousel, 100);
+    });
+</script>
+{% endblock %}
