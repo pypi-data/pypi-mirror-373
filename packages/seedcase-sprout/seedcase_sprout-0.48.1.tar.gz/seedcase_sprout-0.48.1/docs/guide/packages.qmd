@@ -1,0 +1,303 @@
+---
+title: "Creating and managing properties in a data package"
+order: 1
+jupyter: python3
+---
+
+At the core of Sprout is the ["data package"](/docs/glossary.qmd), which
+is a standardized way of structuring and documenting data. This guide
+will show you how to create and manage data packages using Sprout.
+
+{{< include _preamble.qmd >}}
+
+{{< include _python-minimal-package-setup.qmd >}}
+
+## Creating a data package
+
+Sprout is designed assuming the working directory is the root of your
+Python project---where your `.git/` folder and/or `pyproject.toml` file
+are located.
+
+Right now, your file structure should look a bit like:
+
+```{python}
+#| echo: false
+print(file_tree(package_path.root()))
+```
+
+Now, time to make a data package! A data package always needs a
+`datapackage.json` file in the root of the project. It contains a set of
+[properties](/docs/glossary.qmd), or metadata about the data package and
+the data resources within it. Right now, you don't have a
+`datapackage.json` file yet. Before you can create one, you need to
+write out the properties for the data package.
+
+While you could manually create a `datapackage.json` file and then add
+the properties manually to it yourself, this would require that you know
+the exact fields and values to fill in. To ease this process, Sprout
+provides a way to create the properties using Python scripts. So let's
+create this script first, by adding it as a step in the `main.py` file!
+
+The `main.py` file is where you will write the code to create and manage
+your data package, so that you can easily recreate your data package and
+its resources. You can think of it as a pipeline that takes you from
+beginning to end of creating your data package. Open the `main.py` file
+in your Python project, delete everything in it and copy and paste the
+below code into it.
+
+```{python}
+#| eval: false
+#| filename: "main.py"
+import seedcase_sprout as sp
+
+def main():
+    # Create the properties script in the default location.
+    sp.create_properties_script()
+
+if __name__ == "__main__":
+    main()
+```
+
+Then, run this command in the Terminal:
+
+``` {.bash filename="Terminal"}
+uv run main.py
+```
+
+```{python}
+#| include: false
+sp.create_properties_script(package_path.root())
+```
+
+This will create a `package_properties.py` file in the newly created `scripts/`
+folder of your data package.
+
+::: callout-caution
+Because of the way Python scripts and importing works, you should also
+create an `__init__.py` file in the `scripts/` folder. You can do this
+by running the following command in your Terminal:
+
+``` {.bash filename="Terminal"}
+touch scripts/__init__.py
+```
+
+```{python}
+#| include: false
+import subprocess
+# Touch file in scripts/ folder in the package_path
+subprocess.run(["touch", str(package_path.root() / "scripts/__init__.py")])
+```
+:::
+
+The file structure should now look like:
+
+```{python}
+#| echo: false
+# List all files in directory
+print(file_tree(package_path.root()))
+```
+
+Inside the `scripts/package_properties.py` file, you will find a template for
+creating the properties of your data package. It looks like:
+
+```{python}
+#| echo: false
+print(package_path.properties_script().read_text())
+```
+
+You can now start filling in that script by using the comments included,
+such as making sure to fill in the required fields, as well as using the
+documentation for the `PackageProperties` to know what to write. The
+core of a data package is its properties. Without these, your data are
+simply a collection of files without any context or meaning. The
+metadata (properties) are **crucially important** for understanding and
+actually using the data in your data package!
+
+To help with writing the properties, Sprout includes several properties
+data classes, such as `PackageProperties`, `LicenseProperties`, and
+`ContributorProperties`, to make it easier for you to make properties
+with the correct fields filled in. See the
+[`PackageProperties`](/docs/reference/PackageProperties.qmd)
+documentation for more details about these data classes.
+
+For now, let's write some basic properties for your data package. Below
+is an example of a set of properties with required fields filled in
+(including the optional but highly recommended `contributors` field).
+
+```{python}
+#| eval: false
+package_properties = sp.PackageProperties(
+    name="diabetes-study",
+    title="A Study on Diabetes",
+    # You can write Markdown below, with the helper `sp.dedent()`.
+    description=sp.dedent("""
+        # Data from a 2021 study on diabetes prevalence
+
+        This data package contains data from a study conducted in 2021 on the
+        *prevalence* of diabetes in various populations. The data includes:
+
+        - demographic information
+        - health metrics
+        - survey responses about lifestyle
+        """),
+    contributors=[
+        sp.ContributorProperties(
+            title="Jamie Jones",
+            email="jamie_jones@example.com",
+            path="example.com/jamie_jones",
+            roles=["creator"],
+        )
+    ],
+    licenses=[
+        sp.LicenseProperties(
+            name="ODC-BY-1.0",
+            path="https://opendatacommons.org/licenses/by",
+            title="Open Data Commons Attribution License 1.0",
+        )
+    ],
+    # We don't include the rest of the properties script in this guide. The above is only to
+    # show what it might look to write properties in the script.
+)
+```
+
+{{< include _python-package-properties.qmd >}}
+
+Now that you've filled in some of the package properties, it's time to
+create your `datapackage.json` file with these properties. You can use
+the `write_properties()` function for this. But in order to use it
+effectively, it's best included within the `main.py` script within the
+`main()` function, so that it can be run as part of your build pipeline.
+So in your `main.py`, include this code:
+
+<!-- TODO: How to auto-run the code below? -->
+
+```{python}
+#| eval: false
+#| filename: "main.py"
+import seedcase_sprout as sp
+from scripts.package_properties import package_properties
+
+def main():
+    # Create the properties script in default location.
+    sp.create_properties_script()
+    # Write properties from properties script to `datapackage.json`.
+    sp.write_properties(properties=package_properties)
+
+if __name__ == "__main__":
+    main()
+```
+
+```{python}
+#| include: false
+# Only to check that it runs.
+sp.write_properties(
+    properties=properties,
+    path=package_path.properties()
+)
+```
+
+Then, run this command in the Terminal:
+
+``` {.bash filename="Terminal"}
+uv run main.py
+```
+
+::: callout-important
+The `write_properties()` function will give an error if the
+`PackageProperties` object is missing some of its required fields or if
+they are not filled in correctly. In that case, a `datapackage.json`
+file won't be created. So you will have to return to the
+`scripts/package_properties.py` file and fill in the correct properties.
+:::
+
+The `write_properties()` function created the `datapackage.json` file in
+your data package's `diabetes-study` folder, which contains the
+properties you added to it. Now, you will see the added
+`datapackage.json` file in your data package folder.
+
+```{python}
+#| echo: false
+print(file_tree(package_path.root()))
+```
+
+## Creating a README of the properties
+
+Having a *human-readable* version of what is contained in the
+`datapackage.json` file is useful for others who may be working with or
+wanting to learn more about your data package. You can use
+`as_readme_text()` to convert the properties into text that can be added
+to a README file. Let's create a README file with the properties of the
+data package you just created by writing it in the `main.py` file.
+
+```{python}
+#| eval: false
+#| filename: "main.py"
+import seedcase_sprout as sp
+from scripts.package_properties import package_properties
+
+def main():
+    # Create the properties script in default location.
+    sp.create_properties_script()
+    # Save the properties to `datapackage.json`.
+    sp.write_properties(properties=package_properties)
+    # Create text for a README of the data package.
+    readme_text = sp.as_readme_text(package_properties)
+    # Write the README text to a `README.md` file.
+    sp.write_file(readme_text, sp.PackagePath().readme())
+
+if __name__ == "__main__":
+    main()
+```
+
+Sprout splits the README creation functionality into two steps: One to
+make the text and one to write to the file. That way, if you want to add
+or manipulate the text, you can do so before writing it to the file.
+This is useful if you want to add information to the README that you
+don't want included in the `datapackage.json` file. For this guide we
+won't cover how or why to do this.
+
+Next, run this command in the Terminal to make the README file. The
+`write_file()` will always overwrite the existing README file.
+
+``` {.bash filename="Terminal"}
+uv run main.py
+```
+
+```{python}
+#| include: false
+# Only to check that it runs.
+readme_text = sp.as_readme_text(properties)
+sp.write_file(
+    string=readme_text,
+    path=package_path.readme()
+)
+```
+
+Now you can see that the `README.md` file has been created in your data
+package:
+
+```{python}
+#| echo: false
+print(file_tree(package_path.root()))
+```
+
+## Editing package properties
+
+If you made a mistake and want to update the properties in the current
+`datapackage.json`, you can edit the Python script directly where you
+previously made the properties. Since everything is written in Python
+scripts, updating those scripts and re-running your build pipeline
+(`main.py`) will then update everything.
+
+If you need help with filling in the right properties, see the
+documentation for the `PackageProperties` classes or run e.g.,
+`print(sp.PackageProperties())` to get a list of all the fields you can
+fill in for a package.
+
+You now have the basic starting point for adding [data
+resources](/docs/glossary.qmd) to your data package.
+
+```{python}
+#| include: false
+temp_path.cleanup()
+```

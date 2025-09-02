@@ -1,0 +1,324 @@
+---
+title: "Flows"
+toc-depth: 2
+---
+
+::: callout-important
+We created this document mainly as a way to help us as a team all
+understand and agree on what we're making and what needs to be worked
+on. This means that the flows may change quite substantially until we've
+reached a stable full release at `v1.0.0`.
+:::
+
+Based on the [functions](functions.qmd) page that lists and describes
+the main functions and classes that make up the interface in detail
+including their input and output, this document describes and shows how
+all these objects work together and flow into one another.
+
+Each diagram uses specific shapes and lines to represent different
+things:
+
+-   A dotted line between objects/functions means the flow is optional.
+-   A solid line between objects/functions means the flow is required
+    and is the next step.
+-   A cylinder means an object such as a class or file.
+-   A rectangle with rounded corners means an action like a function or
+    method.
+
+::: callout-caution
+For some reason, the diagrams below don't display well on some browsers
+like Firefox. To see them, try using a different browser like Chrome or
+Edge.
+:::
+
+## Creating scripts from templates
+
+There are two functions you can use to help with creating much of the
+"boilerplate" code that implements some of the flows below. They are
+`create_properties_script()` and `create_resource_properties_script()`,
+and they are used to create Python scripts that contain the
+`PackageProperties` or `ResourceProperties` for a data package or
+resource, respectively.
+
+## Creating or updating a package
+
+This is the flow for making a new package. The `write_properties()`
+function will internally call `check_properties()`, but this can also be
+called separately to check the properties before writing them to the
+`datapackage.json` file. The `PackageProperties` input is imported from
+a Python script in the `scripts/` folder of the data package. To update
+the properties in the `datapackage.json` file, you would edit the Python
+script with the properties directly and then rerun your main script to
+overwrite the `datapackage.json` file with the new properties.
+
+```{mermaid}
+%%| label: fig-flow-new-package
+%%| fig-cap: "Diagram showing the flow of objects and functions to create a new package."
+%%| fig-alt: "A flow diagram showing the steps to making a new package."
+flowchart
+    properties[(PackageProperties)]
+    path_properties("PackagePath().properties()")
+    check_properties("check_properties()")
+    write_properties("write_properties()")
+
+    properties -.-> check_properties
+    properties --> write_properties
+    path_properties --> write_properties
+```
+
+## Extracting properties from data
+
+The flow for extracting a resource's field properties from data. This is
+useful when the data is in a format that contains metadata about the
+data, such as a CSV file with a header row that contains the column
+names. While the `extract_field_properties()` function extracts all
+*required* `FieldProperties` from the data, there are many optional
+properties that are still very useful and should be filled in manually.
+The output of the `extract_field_properties()` function can be used to
+generate a Python script to give you a starting point for writing the
+resource properties. Afterwards, if you want to update the resource
+properties, you'll edit this Python script and then re-run your build
+process to generate the `datapackage.json` file with the updated
+properties.
+
+```{mermaid}
+%%| label: fig-flow-extract-field-properties
+%%| fig-cap: "Diagram showing the flow of objects and functions to extract a resource's field properties from data."
+%%| fig-alt: "A flow diagram showing the steps to extract field properties from data."
+flowchart
+    data[("DataFrame<br>(Tidy)")]
+    properties_extracted[("FieldProperties<br>(extracted)")]
+    extract_field_properties("extract_field_properties()")
+    python_script("Python script<br>(generated with<br>extracted properties)")
+    create_script("create_resource_properties_script()")
+
+    data --> extract_field_properties
+    extract_field_properties --> properties_extracted
+    properties_extracted --> create_script
+    create_script --> python_script
+```
+
+## Updating README after changing package or resource properties
+
+The flow for updating the README file after changing the package or
+resource properties. Since the README template text is generated from
+the properties in the `datapackage.json` file, any change to that file
+will require updating the README file. The split between
+`as_readme_text()` and `write_file()` is to allow for testing or
+programmatically modifying the generated README text before writing it
+to the file.
+
+```{mermaid}
+%%| label: fig-flow-update-readme
+%%| fig-cap: "Diagram showing the flow of objects and functions to update the README file after changing the package or resource properties."
+%%| fig-alt: "A flow diagram showing the steps to update the README file after changing the package or resource properties."
+flowchart
+    properties[(PackageProperties)]
+    path_properties("PackagePath().properties()")
+    read_properties("read_properties()")
+    as_readme_text("as_readme_text()")
+    write_file("write_file()")
+    path_readme("PackagePath().readme()")
+
+    path_properties --> read_properties
+    read_properties --> properties
+    properties --> as_readme_text
+    as_readme_text --> write_file
+    path_readme --> write_file
+```
+
+## Checking the properties of packages or resources
+
+The flow to check the `datapackage.json` file's properties is fairly
+simple. You check `PackageProperties` (with or without resources) using
+either the `check_properties()` function or the
+`check_package_properties()` function. You check a specific resource's
+`ResourceProperties` with the `check_resource_properties()` function.
+All these functions are customised wrappers around a generic
+`_check_properties()` function, which uses arguments to decide which
+properties to check. The `_check_properties()` function is itself a
+wrapper around our `check_datapackage` "sub-package" (which we intend to
+split into its own package later).
+
+```{mermaid}
+%%| label: fig-flow-check-properties
+%%| fig-cap: "Diagram showing the flow of objects and functions to check the properties of packages or resources."
+%%| fig-alt: "A flow diagram showing the steps to check the properties of packages or resources."
+flowchart
+    properties[(PackageProperties)]
+    check_properties("check_properties()")
+    check_package_properties("check_package_properties()")
+    resource_properties[(ResourceProperties)]
+    check_resource_properties("check_resource_properties()")
+
+    properties --> check_properties
+    properties --> check_package_properties
+    resource_properties --> check_resource_properties
+```
+
+## Saving new or modified data to batch
+
+A data resource needs data, not just properties. You can add data to any
+data resource that has resource properties. Whenever data is added to a
+data resource, it gets first saved in the `batch/` folder to keep track
+of additions or changes. You add the data when:
+
+-   A new data resource is created and data is added to it.
+-   Additional data is added to an existing data resource.
+-   You need to fix, update, or modify existing data in the resource by
+    correcting the data (e.g. fixing a data entry issue).
+
+The data must be in a tidy format and must have already been loaded in
+as a Polars DataFrame.
+
+```{mermaid}
+%%| label: fig-flow-save-data-to-batch
+%%| fig-cap: "Diagram showing the flow of objects and functions to save new, added, or modified data to a batch."
+%%| fig-alt: "A flow diagram showing the steps to save new, added, or modified data to a batch."
+flowchart
+    data[("DataFrame<br>(original data)")]
+    resource_properties[(ResourceProperties)]
+    write_resource_batch("write_resource_batch()")
+    check_data("check_data()")
+
+    data --> write_resource_batch
+    resource_properties --> write_resource_batch
+    data -.-> check_data
+    resource_properties -.-> check_data
+```
+
+## Checking data against the properties
+
+The data must always match what is described in the properties. This
+means that the data must have the same column names, column types, and
+column constraints. The `check_data()` function will internally call
+several separate functions for these specific checks. Each of these
+functions outputs an error message describing what the problems are if
+the check fails. Otherwise, the input data frame is returned unchanged.
+
+```{mermaid}
+%%| label: fig-flow-check-data-against-properties
+%%| fig-cap: "Diagram showing the flow of objects and functions to check data against the properties."
+%%| fig-alt: "A flow diagram showing the steps to check data against the properties."
+flowchart
+    data[(DataFrame)]
+    resource_properties[(ResourceProperties)]
+    check_data("check_data()")
+    subgraph Internal
+        check_column_names("_check_column_names()")
+        check_column_types("_check_column_types()")
+        check_column_values_constraints("_check_column_values_constraints()")
+        output[("DataFrame<br>or error")]
+    end
+
+    data --> check_data
+    resource_properties --> check_data
+    check_data -.-> Internal
+    check_column_names -.-> output
+    check_column_types -.-> output
+    check_column_values_constraints -.-> output
+    style Internal fill:#ffffff
+```
+
+## Creating or re-creating the resource data
+
+The batch data files are used to keep track of changes to the data. The
+data that will be used is kept clean and ready for analysis, while
+original data is not deleted. This flow converts batch data into the
+final resource data file. The steps are split up so that, if needed or
+desired, you can make modifications to the data before it is written to
+the final resource data. While `write_resource_data()` will call
+`check_data()` internally, this can also be called separately to check
+the data before writing it to the final resource data.
+
+```{mermaid}
+%%| label: fig-flow-create-resource-data
+%%| fig-cap: "Diagram showing the flow of objects and functions to create or re-create the resource data."
+%%| fig-alt: "A flow diagram showing the steps to create or re-create the resource data."
+flowchart
+    path_resource_batch_files("PackagePath().resource_batch_files()")
+    read_resource_batches("read_resource_batches()")
+    list_data[("List[DataFrame]")]
+    join_resource_batches("join_resource_batches()")
+    joined_data[(DataFrame)]
+    write_resource_data("write_resource_data()")
+    resource_properties[(ResourceProperties)]
+    check_data("check_data()")
+
+    path_resource_batch_files --> read_resource_batches
+    read_resource_batches --> list_data
+    list_data --> join_resource_batches
+    join_resource_batches --> joined_data
+    joined_data --> write_resource_data
+    resource_properties --> write_resource_data
+    joined_data -.-> check_data
+    resource_properties -.-> check_data
+```
+
+::: content-hidden
+<!-- TODO: Need to reconsider this flow. Or see it in action first. -->
+
+## Modifying data types or table schema
+
+Sometimes you may need to modify the data types or table schema of the
+data in a resource. Before using this flow, you first need to modify the
+resource properties. The `update_resource_batches()` function will
+update each batch DataFrame with the new data types or table schema.
+Then, you can use `write_resource_batch()` to save the updated data back
+to the batch files. The same file names should be used to overwrite old
+batch files.
+
+```{mermaid}
+%%| label: fig-flow-modify-data-types
+%%| fig-cap: "Diagram showing the flow of objects and functions to modify data types or table schema."
+%%| fig-alt: "A flow diagram showing the steps to modify data types or table schema."
+flowchart
+    path_resource_batch_files("path_resource_batch_files()")
+    read_resource_batches("read_resource_batches()")
+    properties_updated[("ResourceProperties<br>(updated)")]
+    list_data[("List[DataFrame]")]
+    list_data_updated[("List[DataFrame]<br>(updated)")]
+    update_resource_batches("update_resource_batches()")
+    write_resource_batch("write_resource_batch()")
+
+    path_resource_batch_files --> read_resource_batches
+    read_resource_batches --> list_data
+    list_data --> update_resource_batches
+    properties_updated --> update_resource_batches
+    update_resource_batches --> list_data_updated
+    list_data_updated --> write_resource_batch
+    properties_updated --> write_resource_batch
+```
+:::
+
+## Deleting an observational unit
+
+If you need to delete an observational unit from the data, you can use
+this flow. The `delete_observational_unit()` function will delete the
+observational unit from the data and output a list of DataFrames with
+the deletions. The `write_resource_batch()` function will save the
+updated data back to the batch files.
+
+<!-- TODO: I don't know how the saving back to the batch files will work yet. -->
+
+```{mermaid}
+%%| label: fig-flow-delete-observational-unit
+%%| fig-cap: "Diagram showing the flow of objects and functions to delete an observational unit."
+%%| fig-alt: "A flow diagram showing the steps to delete an observational unit."
+flowchart
+    path_resource_batch_files("path_resource_batch_files()")
+    read_resource_batches("read_resource_batches()")
+    list_data_current[("List[DataFrame]<br>(original)")]
+    list_data_deletions[("List[DataFrame]<br>(deletions)")]
+    obs_unit[("dict<br>(observational unit)")]
+    delete_observational_unit("delete_observational_unit()")
+    write_resource_batch("write_resource_batch()")
+
+    path_resource_batch_files --> read_resource_batches
+    read_resource_batches --> list_data_current
+    list_data_current --> delete_observational_unit
+    obs_unit --> delete_observational_unit
+    delete_observational_unit --> list_data_deletions
+    list_data_deletions --> write_resource_batch
+    path_resource_batch_files --> write_resource_batch
+```

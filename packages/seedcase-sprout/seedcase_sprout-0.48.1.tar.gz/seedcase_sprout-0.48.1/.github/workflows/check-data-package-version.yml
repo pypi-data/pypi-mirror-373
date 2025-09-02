@@ -1,0 +1,39 @@
+name: Check Data Package standard version
+
+on:
+  schedule:
+    # Runs every two months
+    - cron: 0 0 1 */2 *
+  workflow_dispatch:
+
+env:
+  CURRENT_VERSION: v2.0
+  DP_REPO: frictionlessdata/datapackage
+
+jobs:
+  check-latest-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch latest version
+        run: |
+          latest_version=$(gh release view --repo $DP_REPO --json tagName -q .tagName)
+          echo "latest_version=$latest_version" >> $GITHUB_ENV
+          echo "Latest version is $latest_version"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create an issue if a new version is available
+        if: env.latest_version != env.CURRENT_VERSION
+        run: |
+          title="New \`$DP_REPO\` version available: $latest_version"
+          body="A new version of [\`$DP_REPO\`](https://github.com/$DP_REPO) is available: $latest_version.
+            Please check if updating Sprout's copy of the Data Package standard is necessary.
+
+            If so:
+              - [ ] Replace the old JSON schema of the Data Package standard with the new one downloaded from the website.
+              - [ ] Update the current version of \`$DP_REPO\` in the '$GH_WORKFLOW' GitHub workflow."
+          gh issue create --title "$title" --body "$body"
+        env:
+          GH_TOKEN: ${{ secrets.UPDATE_DATAPACKAGE }}
+          GH_REPO: ${{ github.repository }}
+          GH_WORKFLOW: ${{ github.workflow }}
