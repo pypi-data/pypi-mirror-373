@@ -1,0 +1,188 @@
+true.
+
+eq X X.
+
+eq_ X Y : unify_with_occurs_check X Y.
+
+the X G : call G.
+
+member X (X _).
+member X (_ Xs) : member X Xs.
+
+append () Xs Xs.
+append (X Xs) Ys (X Zs) : append Xs Ys Zs.
+
+permute () ().
+permute (X Xs) Zs : permute Xs Ys, insert X Ys Zs.
+
+insert X Xs (X Xs).
+insert X (Y Xs) (Y Ys) : insert X Xs Ys.
+
+select X Xs Ys : insert X Ys Xs.
+
+
+% metacall operations require arguments parenthesized.
+
+or X _ : call X.
+or _ Y : call Y.
+
+and X Y: call X, call Y.
+
+not X : if X (fail) (true).
+
+once X : if X (true) (fail).
+
+distinct X Y : not (eq X Y).
+
+var X: `type _ T, `isinstance X T R, `int R 1.
+
+compound X : distinct X (), `type () T, `isinstance X T R, `int R 1.
+
+atomic X :  not (var X), not (compound X).
+
+maplist _ ().
+maplist F (X Xs) : call F X , maplist F Xs.
+
+maplist _ () ().
+maplist F (X Xs) (Y Ys) : call F X Y, maplist F Xs Ys.
+
+maplist _ () () ().
+maplist F (X Xs) (Y Ys) (Z Zs) : call F X Y Z, maplist F Xs Ys Zs.
+
+nth 0 (X _) X .
+nth N (_ Xs) R : when N > 0, with N - 1 as M , nth M Xs R.
+
+max X Y Z : `max X Y Z.
+min X Y Z : `min X Y Z.
+sum X Y Z : `add X Y Z.
+
+between A B X : with B + 1 as SB, `` range A SB X.
+
+arg I T X : `arg T I X.
+setarg I T X : #setarg T I X.
+
+argx I T X: `len T L, ``range 0 L I, `arg T I X.
+
+functor T F N : if (var T) (to_functor T F N) (from_functor T F N).
+
+to_functor T F N : `var_tuple N T, `arg T 0 F.
+
+from_functor T F N : `arg T 0 F, `len T N.
+
+to_tuple Xs T : `from_cons_list_as_tuple Xs T.
+
+to_list Xs T : `from_cons_list Xs T.
+
+to_cons_list T Xs : `to_cons_list T Xs.
+
+
+length Xs L : `from_cons_list Xs LXs, `len LXs L.
+
+to_dict Xs D : `dict Xs D.
+from_dict D Xs : `from_dict D Xs.
+in_dict D K_V : ``in_dict D K_V.
+
+
+setprop O K V : #setattr O K V.
+getprop O K V : `getattr O K V.
+
+stack S : `list S.
+push S X : #meth_call S append (X).
+pop S X : `meth_call S pop () X.
+
+copy_term X CX : `copy_term X CX.
+
+
+findall X G Xs: listof X G S, to_cons_list S Xs.
+
+listof X G S: stack S, collect_ X G S.
+
+collect_ X G S : call G, `copy_term X CX, push S CX, fail.
+collect_ _X _G _S.
+
+
+stop E : getprop E stop S, #S.
+
+in E X : ask E A, more in E A X.
+
+more in E (the X) X.
+more in E (the _) X : in E X.
+
+enum X G (N R) : eng X G E, enum from E R -1 N.
+
+enum from E R I1 I3 : ask E A, with I1 + 1 as I2, enum more E A R I2 I3.
+
+enum more E (the X) X I I.
+enum more E (the _) X I1 I2 : enum from E X I1 I2.
+
+
+first_sols N G R: eng G G E, enum from E R 0 K, if (when K<N) (true) (stop E).
+
+take 0 E () : stop E.
+take K E XXs : when K>0, ask E X, with K - 1 as K1, take_more X K1 E XXs.
+
+take_more no _K E () : stop E.
+take_more (the X) K E (X Xs) : take K E Xs.
+
+loop N N.
+loop N X : with N + 1 as M, ^trust loop M X.
+
+repeat X : call X.
+repeat X : ^trust repeat X.
+
+% arithmetics
+
+% defs that have a var as 1-st arg will start with when or with
+
+with X + Y as Z  : `add X Y Z.
+with X - Y as Z  : `sub X Y Z.
+with X * Y as Z  : `mul X Y Z.
+with X / Y as Z  : `truediv X Y Z.
+with X // Y as Z : `floordiv X Y Z.
+
+succ X S: `add X 1 S.
+pred X P: `sub X 1 P.
+
+when  X < Y  : `lt X Y R, `int R 1.
+when  X > Y  : `gt X Y R, `int R 1.
+when  X <= Y : `le X Y R, `int R 1.
+when  X >= Y : `ge X Y R, `int R 1.
+when  X <> Y : `ne X Y R, `int R 1.
+when  X == Y : `eq X Y R, `int R 1.
+
+writeln X : #print X.
+write X : #write X.
+nl : #print.
+
+% exceptions with engines
+
+throw E : ^(exception E), fail.
+
+catch Goal Catcher Recovery:
+   eng (just Goal) Goal Engine,
+   in Engine Answer,
+   maybe_caught Answer Catcher Goal Recovery.
+
+maybe_caught (exception C) C _ Recovery : call Recovery, ^trust true.
+maybe_caught (exception C) Catcher _ _ : distinct C Catcher, throw C.
+maybe_caught (just G)  _ G _ .
+
+is  Term Type : `has_type Term Type 1.
+
+% quick exception throwing test
+
+exception_test Kind X:
+   catch (thrower X) (Kind X) (#print recovering from Kind X),
+   #print got Kind X.
+
+
+thrower X: #print X is fine so far.
+thrower X : throw (bad X), #print never here.
+thrower X : #print X missed.
+
+etest1 : exception_test bad ball.
+etest2 : exception_test other ball.
+etest3 : catch (eq X 1) fail fail, #print X.
+etest4 : findall X (eq X 1) R,#print R.
+
+bug : #print X X.
