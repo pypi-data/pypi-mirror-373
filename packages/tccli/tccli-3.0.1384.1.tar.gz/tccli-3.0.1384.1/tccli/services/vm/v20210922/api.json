@@ -1,0 +1,2405 @@
+{
+  "actions": {
+    "CancelTask": {
+      "document": "可使用该接口取消审核任务，成功取消后，该接口返回已取消任务的TaskId。",
+      "input": "CancelTaskRequest",
+      "name": "取消任务",
+      "output": "CancelTaskResponse",
+      "status": "online"
+    },
+    "CreateVideoModerationTask": {
+      "document": "本接口（Video Moderation System，VM）用于提交视频文件或视频流进行智能审核任务。使用前请您使用腾讯云主账号登录控制台[开通视频内容安全服务](https://console.cloud.tencent.com/cms)并调整好对应的业务配置。<br>\n### 功能使用说明：\n\n- 前往“[内容安全控制台-视频内容安全](https://console.cloud.tencent.com/cms)”开启使用视频内容安全服务，首次开通服务的用户可免费领用试用套餐包，包含200分钟的处理量（换算1s每帧截图，赠送**12000张图**、**200分钟的音频**处理量），有效期为15天。\n- 该接口为收费接口，计费方式敬请参见[腾讯云视频内容安全定价](https://cloud.tencent.com/product/vm/pricing)。\n\n### 审核并发限制说明:\n\n- **点播视频（异步审核）**\n    - 默认并发路数：10\n    - 队列处理机制：\n        - 当并发任务达到上限时，新任务进入队列等待处理;\n        - 支持通过`Priority`字段配置任务优先级（数值越大优先级越高），默认情况下新送审任务优先处理，旧任务往后排;\n- **直播视频（异步审核）**\n    - 默认并发路数：100\n    - 队列处理机制：\n      - 运行中的审核任务达到上限时，新请求会提示超频错误：`RequestLimitExceeded`，错误详细为：`You have reached the concurrency limit`;\n      - 不支持排队;\n\n### 接口功能说明：\n\n- 支持对视频文件或视频流进行自动检测，从 OCR文本识别、物体检测（实体、广告台标、二维码等）、图像识别及音频审核四个维度，通过深度学习技术识别视频中的违规内容；\n- 支持设置回调地址 Callback 获取检测结果，或通过接口(查看任务详情)主动轮询获取检测结果详情；对于正常审核中的视频任务，如含有违规内容，则截帧图片最长会在**3s**内回调，音频片段会在用户配置的**切片时长 + 2s**内回调；对于在队列中的待审核任务，回调时间为正常审核回调时间+等待时间；\n- 支持通过接口（查看审核任务列表）查询任务队列，用户可根据多种业务信息（业务类型、审核结果、任务状态等）筛选审核任务列表；\n- 支持识别多种违规场景，包括：低俗、谩骂、色情、广告等场景；\n- 支持根据不同的业务场景配置自定义的审核策略；\n- 支持用户自定义配置黑白词库及图片库，打击自定义违规内容（目前仅支持黑名单配置）；\n- 支持用户自定义配置审核任务优先级，当有多个任务排队时，可根据用户配置自动调整任务优先级；\n- 支持批量提交检测任务，**最多可同时创建10个任务**；\n\n### 视频文件流调用说明：\n\n- 视频文件大小支持：**4K视频文件 < 10GB**；**低于4K视频文件 < 5GB**\n- 视频文件分辨率支持：**最佳分辨率为1920x1080 (1080p)**，如果视频文件小于300MB，则分辨率可以大于1080p，分辨率最大支持4K，更大视频可以调用[云转码服务](https://cloud.tencent.com/product/mps/details)转码后再送审；\n- 视频文件支持格式：flv、mkv 、mp4 、rmvb 、avi 、wmv、3gp、ts、mov、rm、mpeg、wmf等。\n- 视频文件支持的访问方式：链接地址（支持HTTP/HTTPS）、腾讯云COS存储；\n- 若传入视频文件的访问链接，则需要注意视频**头文件的读取时间限制为3秒**，为保障被检测视频的稳定性和可靠性，建议您使用腾讯云COS存储或者CDN缓存等；\n- 支持用户配置是否需要开启音频审核，若不开启则将仅对视频文件图像内容进行审核。\n\n### 直播视频流调用说明：\n\n- 视频流时长支持：**24小时以内**，超过需要重新推送审核任务；\n- 视频流分辨率支持：支持**1920x1080 (1080p)**，更高分辨率视频可以调用[直播云转码服务](https://cloud.tencent.com/document/product/267/39889)转码后再送审；\n- 视频流支持格式：rtmp，flv 等主流视频流编码格式。\n- 视频流支持的传输协议：HTTP/HTTPS/RTMP；\n- 支持用户配置是否需要开启音频审核，若不开启则将仅对视频流图像内容进行审核。\n\n### 直播断流处理说明：\n- 请确认已对接[取消任务](https://cloud.tencent.com/document/product/1265/80018)。\n- 如果直播任务取消/结束，则终止直播拉流并退出审核。\n- 在直播任务未取消或结束的情况下，若推流中断（例如 `Operation not permitted` 错误），审核服务将在 10分钟内持续尝试重新拉流。检测到有效的图片或音频数据，审核将自动恢复正常；否则，10分钟后终止拉流并退出审核。此时如有需要，请重新提交审核请求。对于因网络问题导致的拉流失败（如 `HTTP 404 Not Found` 错误），系统将进行最多 16次重试。若成功获取有效数据，审核流程即刻恢复；若所有重试均失败，则同样终止拉流并退出审核，需用户重新送审。",
+      "input": "CreateVideoModerationTaskRequest",
+      "name": "创建视频审核任务",
+      "output": "CreateVideoModerationTaskResponse",
+      "status": "online"
+    },
+    "DescribeTaskDetail": {
+      "document": "通过查看任务详情 DescribeTaskDetail 接口，可主动轮询获取检测结果详情。",
+      "input": "DescribeTaskDetailRequest",
+      "name": "查看任务详情",
+      "output": "DescribeTaskDetailResponse",
+      "status": "online"
+    },
+    "DescribeTasks": {
+      "document": "通过查看审核任务列表接口，可查询任务队列；您可根据多种业务信息（业务类型、审核结果、任务状态等）筛选审核任务列表。",
+      "input": "DescribeTasksRequest",
+      "name": "查看审核任务列表",
+      "output": "DescribeTasksResponse",
+      "status": "online"
+    }
+  },
+  "metadata": {
+    "apiVersion": "2021-09-22",
+    "api_brief": "介绍如何使用API对点播、直播视频内容检测进行操作，包括识别点播、直播视频中的不适宜内容等。",
+    "serviceNameCN": "视频内容安全",
+    "serviceShortName": "vm"
+  },
+  "objects": {
+    "AudioResult": {
+      "document": "音频输出参数",
+      "members": [
+        {
+          "disabled": false,
+          "document": "该字段用于返回审核内容是否命中审核模型；取值：0（**未命中**）、1（**命中**）。",
+          "example": "1",
+          "member": "int64",
+          "name": "HitFlag",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回检测结果所对应的恶意标签。<br>返回值：**Normal**：正常，**Porn**：色情，**Abuse**：谩骂，**Ad**：广告，**Custom**：自定义违规；以及其他令人反感、不安全或不适宜的内容类型。",
+          "example": "Ad",
+          "member": "string",
+          "name": "Label",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回后续操作建议。当您获取到判定结果后，返回值表示具体的后续建议操作。<br>\n返回值：**Block**：建议屏蔽，**Review** ：建议人工复审，**Pass**：建议通过",
+          "example": "Block",
+          "member": "string",
+          "name": "Suggestion",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回当前标签下的置信度，取值范围：0（**置信度最低**）-100（**置信度最高** ），越高代表文本越有可能属于当前返回的标签；如：*色情 99*，则表明该文本非常有可能属于色情内容。",
+          "example": "100",
+          "member": "int64",
+          "name": "Score",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回音频文件经ASR识别后的文本信息。最长可识别**5小时**的音频文件，若超出时长限制，接口将会报错。",
+          "example": "加微信么",
+          "member": "string",
+          "name": "Text",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回审核结果的访问链接（URL）。<br>备注：链接默认有效期为12小时。如果您需要更长时效的链接，请使用[COS预签名](https://cloud.tencent.com/document/product/1265/104001)功能更新签名时效。",
+          "example": "http://tianyu-content-moderation-xxxxx.cos.ap-guangzhou.myqcloud.com/segment-/vod/w-video-aEYxtCA4vq3Zsced/audio_0_1749430717.mp3",
+          "member": "string",
+          "name": "Url",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回音频文件的时长，单位为毫秒。",
+          "example": "30000",
+          "member": "string",
+          "name": "Duration",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回输入参数中的额外附加信息（Extra），如未配置则默认返回值为空。<br>备注：不同客户或Biztype下返回信息不同，如需配置该字段请提交工单咨询或联系售后专员处理。",
+          "example": "\"无\"",
+          "member": "string",
+          "name": "Extra",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回音频文件经ASR识别后产生的文本的详细审核结果。具体结果内容请参见AudioResultDetailLanguageResult数据结构的细节描述。",
+          "example": "无",
+          "member": "AudioResultDetailTextResult",
+          "name": "TextResults",
+          "output_required": true,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回音频文件呻吟检测的详细审核结果。具体结果内容请参见AudioResultDetailMoanResult数据结构的细节描述。",
+          "example": "无",
+          "member": "AudioResultDetailMoanResult",
+          "name": "MoanResults",
+          "output_required": true,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回音频小语种检测的详细审核结果。具体结果内容请参见AudioResultDetailLanguageResult数据结构的细节描述。",
+          "example": "无",
+          "member": "AudioResultDetailLanguageResult",
+          "name": "LanguageResults",
+          "output_required": true,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回当前标签（Lable）下的二级标签。",
+          "example": "add",
+          "member": "string",
+          "name": "SubLabel",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "识别类标签结果信息列表",
+          "example": "无",
+          "member": "RecognitionResult",
+          "name": "RecognitionResults",
+          "output_required": true,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回音频文件说话人检测的详细审核结果",
+          "example": "无",
+          "member": "SpeakerResult",
+          "name": "SpeakerResults",
+          "output_required": false,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回音频文件出行检测的详细审核结果",
+          "example": "无",
+          "member": "TravelResult",
+          "name": "TravelResults",
+          "output_required": false,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回音频文件的三级标签",
+          "example": "add",
+          "member": "string",
+          "name": "SubTag",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回音频文件的三级标签码",
+          "example": "20105",
+          "member": "string",
+          "name": "SubTagCode",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回音频文件歌曲识别的详细审核结果",
+          "example": "无",
+          "member": "LabelResult",
+          "name": "LabelResults",
+          "output_required": false,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "审核命中类型",
+          "example": "text_nlp_tianji",
+          "member": "string",
+          "name": "HitType",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "AudioResultDetailLanguageResult": {
+      "document": "音频小语种检测结果",
+      "members": [
+        {
+          "disabled": false,
+          "document": "语种",
+          "example": "cmn",
+          "member": "string",
+          "name": "Label",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "得分",
+          "example": "99",
+          "member": "int64",
+          "name": "Score",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "开始时间",
+          "example": "0",
+          "member": "float",
+          "name": "StartTime",
+          "output_required": true,
+          "type": "float",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "结束时间",
+          "example": "15",
+          "member": "float",
+          "name": "EndTime",
+          "output_required": true,
+          "type": "float",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "子标签码",
+          "example": "cmn",
+          "member": "string",
+          "name": "SubLabelCode",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "AudioResultDetailMoanResult": {
+      "document": "音频呻吟审核结果",
+      "members": [
+        {
+          "disabled": false,
+          "document": "该字段用于返回检测结果需要检测的内容类型，此处固定为**Moan**（呻吟）以调用呻吟检测功能。",
+          "example": "Moan",
+          "member": "string",
+          "name": "Label",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回呻吟检测的置信度，取值范围：0（**置信度最低**）-100（**置信度最高**），越高代表音频越有可能属于呻吟内容。",
+          "example": "90",
+          "member": "int64",
+          "name": "Score",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回对应呻吟标签的片段在音频文件内的开始时间，单位为毫秒。",
+          "example": "0",
+          "member": "float",
+          "name": "StartTime",
+          "output_required": true,
+          "type": "float",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回对应呻吟标签的片段在音频文件内的结束时间，单位为毫秒。",
+          "example": "15",
+          "member": "float",
+          "name": "EndTime",
+          "output_required": true,
+          "type": "float",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "*内测中，敬请期待*",
+          "example": "Moan",
+          "member": "string",
+          "name": "SubLabelCode",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回当前标签（Lable）下的二级标签。",
+          "example": "Moan",
+          "member": "string",
+          "name": "SubLabel",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回基于恶意标签的后续操作建议。当您获取到判定结果后，返回值表示系统推荐的后续操作；建议您按照业务所需，对不同违规类型与建议值进行处理。<br>返回值：**Block**：建议屏蔽，**Review** ：建议人工复审，**Pass**：建议通过",
+          "example": "Block",
+          "member": "string",
+          "name": "Suggestion",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "AudioResultDetailTextResult": {
+      "document": "音频ASR文本审核结果",
+      "members": [
+        {
+          "disabled": false,
+          "document": "该字段用于返回检测结果所对应的恶意标签。<br>返回值：**Normal**：正常，**Porn**：色情，**Abuse**：谩骂，**Ad**：广告，**Custom**：自定义违规；以及其他令人反感、不安全或不适宜的内容类型。",
+          "example": "Ad",
+          "member": "string",
+          "name": "Label",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回ASR识别出的文本内容命中的关键词信息，用于标注内容违规的具体原因（如：加我微信）。该参数可能会有多个返回值，代表命中的多个关键词；若返回值为空，Score不为空，则代表识别结果所对应的恶意标签（Label）来自于语义模型判断的返回值。",
+          "example": "[\"加好友\"]",
+          "member": "string",
+          "name": "Keywords",
+          "output_required": true,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段**仅当Label为Custom：自定义关键词时该参数有效**,用于返回自定义库的ID，以方便自定义库管理和配置。",
+          "example": "LibId_1",
+          "member": "string",
+          "name": "LibId",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段**仅当Label为Custom：自定义关键词时该参数有效**,用于返回自定义库的名称,以方便自定义库管理和配置。",
+          "example": "测试词库",
+          "member": "string",
+          "name": "LibName",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回当前标签下的置信度，取值范围：0（**置信度最低**）-100（**置信度最高**），越高代表文本越有可能属于当前返回的标签；如：*色情 99*，则表明该文本非常有可能属于色情内容。",
+          "example": "100",
+          "member": "int64",
+          "name": "Score",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回自定义关键词对应的词库类型，取值为**1**（黑白库）和**2**（自定义关键词库），若未配置自定义关键词库,则默认值为1（黑白库匹配）。",
+          "example": "2",
+          "member": "int64",
+          "name": "LibType",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回后续操作建议。当您获取到判定结果后，返回值表示具体的后续建议操作。<br>\n返回值：**Block**：建议屏蔽，**Review** ：建议人工复审，**Pass**：建议通过",
+          "example": "Block",
+          "member": "string",
+          "name": "Suggestion",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回当前标签（Lable）下的二级标签。",
+          "example": "add",
+          "member": "string",
+          "name": "SubLabel",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回命中的关键词信息",
+          "example": "无",
+          "member": "OcrHitInfo",
+          "name": "HitInfos",
+          "output_required": false,
+          "type": "list",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "AudioSegments": {
+      "document": "声音段信息",
+      "members": [
+        {
+          "disabled": false,
+          "document": "截帧时间。\n点播文件：该值为相对于视频偏移时间，单位为秒，例如：0，5，10\n直播流：该值为时间戳，例如：1594650717",
+          "example": "0",
+          "member": "string",
+          "name": "OffsetTime",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "结果集",
+          "example": "无",
+          "member": "AudioResult",
+          "name": "Result",
+          "output_required": true,
+          "type": "object",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "创建时间",
+          "example": "2025-06-09T00:58:30Z",
+          "member": "string",
+          "name": "CreatedAt",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "BucketInfo": {
+      "document": "文件桶信息\n参考腾讯云存储相关说明 https://cloud.tencent.com/document/product/436/44352",
+      "members": [
+        {
+          "disabled": false,
+          "document": "腾讯云对象存储，存储桶名称",
+          "example": "cmsop-appid",
+          "member": "string",
+          "name": "Bucket",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "地域",
+          "example": "ap-guangzhou",
+          "member": "string",
+          "name": "Region",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "对象Key",
+          "example": "/audioDate/20240101/cmsop-audio.mp4",
+          "member": "string",
+          "name": "Object",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "usage": "in"
+    },
+    "CancelTaskRequest": {
+      "document": "CancelTask请求参数结构体",
+      "members": [
+        {
+          "disabled": false,
+          "document": "任务ID",
+          "example": "w-video-aDKaIiA4vq3ZaAA1",
+          "member": "string",
+          "name": "TaskId",
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "type": "object"
+    },
+    "CancelTaskResponse": {
+      "document": "CancelTask返回参数结构体",
+      "members": [
+        {
+          "document": "唯一请求 ID，由服务端生成，每次请求都会返回（若请求因其他原因未能抵达服务端，则该次请求不会获得 RequestId）。定位问题时需要提供该次请求的 RequestId。",
+          "member": "string",
+          "name": "RequestId",
+          "type": "string"
+        }
+      ],
+      "type": "object"
+    },
+    "CreateVideoModerationTaskRequest": {
+      "document": "CreateVideoModerationTask请求参数结构体",
+      "members": [
+        {
+          "disabled": false,
+          "document": "该字段表示特定审核策略的编号，用于接口调度。需要提前在[内容安全控制台](https://console.cloud.tencent.com/cms/clouds/manage)中创建策略后获取该Biztype字段，传入该字段，会根据业务场景在审核时调用相应的审核策略。 备注：Biztype仅为数字、字母与下划线的组合，长度为3-32个字符；不同Biztype关联不同的业务场景与识别能力策略，调用前请确认正确的Biztype。",
+          "example": "1001",
+          "member": "string",
+          "name": "BizType",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "任务类型：可选VIDEO（点播视频），LIVE_VIDEO（直播视频）",
+          "example": "VIDEO",
+          "member": "string",
+          "name": "Type",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "输入的任务信息，最多可以同时创建10个任务",
+          "example": "无",
+          "member": "TaskInput",
+          "name": "Tasks",
+          "required": true,
+          "type": "list"
+        },
+        {
+          "disabled": false,
+          "document": "可选参数，该字段表示回调签名的key信息，用于保证数据的安全性。 签名方法为在返回的HTTP头部添加 X-Signature 的字段，值为： seed + body 的 SHA256 编码和Hex字符串，在收到回调数据后，可以根据返回的body，用 **sha256(seed + body)**, 计算出 `X-Signature` 进行验证。<br>具体使用实例可参考 [回调签名示例](https://cloud.tencent.com/document/product/1265/104001#42dd87d2-580f-46cf-a953-639a787d1eda)。",
+          "example": "sfsfsderwerwe",
+          "member": "string",
+          "name": "Seed",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "接收审核信息回调地址。如果设置了该字段，在审核过程中发现违规音频片段和画面截帧结果将发送至该接口。更多详情请参阅[回调配置说明](https://cloud.tencent.com/document/product/1265/104001)。",
+          "example": "https://example.com/url",
+          "member": "string",
+          "name": "CallbackUrl",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "审核排队优先级。当您有多个视频审核任务排队时，可以根据这个参数控制排队优先级。用于处理插队等逻辑。默认该参数为0",
+          "example": "10",
+          "member": "int64",
+          "name": "Priority",
+          "required": false,
+          "type": "int"
+        },
+        {
+          "disabled": false,
+          "document": "该字段表示待检测对象对应的用户相关信息，若填入则可甄别相应违规风险用户",
+          "example": "无",
+          "member": "User",
+          "name": "User",
+          "required": false,
+          "type": "object"
+        }
+      ],
+      "type": "object"
+    },
+    "CreateVideoModerationTaskResponse": {
+      "document": "CreateVideoModerationTask返回参数结构体",
+      "members": [
+        {
+          "disabled": false,
+          "document": "任务创建结果",
+          "example": "无",
+          "member": "TaskResult",
+          "name": "Results",
+          "output_required": true,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "document": "唯一请求 ID，由服务端生成，每次请求都会返回（若请求因其他原因未能抵达服务端，则该次请求不会获得 RequestId）。定位问题时需要提供该次请求的 RequestId。",
+          "member": "string",
+          "name": "RequestId",
+          "type": "string"
+        }
+      ],
+      "type": "object"
+    },
+    "DescribeTaskDetailRequest": {
+      "document": "DescribeTaskDetail请求参数结构体",
+      "members": [
+        {
+          "disabled": false,
+          "document": "任务ID，创建任务后返回的TaskId字段",
+          "example": "w-video-aqwfdNiA4vq3Zysfa1",
+          "member": "string",
+          "name": "TaskId",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "是否展示所有分片，默认只展示命中规则的分片",
+          "example": "true",
+          "member": "bool",
+          "name": "ShowAllSegments",
+          "required": false,
+          "type": "bool"
+        }
+      ],
+      "type": "object"
+    },
+    "DescribeTaskDetailResponse": {
+      "document": "DescribeTaskDetail返回参数结构体",
+      "members": [
+        {
+          "disabled": false,
+          "document": "该字段用于返回创建视频审核任务后返回的任务ID（在Results参数中），用于标识需要查询任务详情的审核任务。",
+          "example": "w-video-aqwfdNiA4vq3Zysfa1",
+          "member": "string",
+          "name": "TaskId",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回调用视频审核接口时传入的数据ID参数，方便数据的辨别和管理。",
+          "example": "dataid_1",
+          "member": "string",
+          "name": "DataId",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回调用视频审核接口时传入的BizType参数，方便数据的辨别和管理。",
+          "example": "default",
+          "member": "string",
+          "name": "BizType",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回调用视频审核接口时传入的TaskInput参数中的任务名称，方便任务的识别与管理。",
+          "example": "video_name",
+          "member": "string",
+          "name": "Name",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回所查询内容的任务状态。\n<br>取值：**FINISH**（任务已完成）、**PENDING** （任务等待中）、**RUNNING** （任务进行中）、**ERROR** （任务出错）、**CANCELLED** （任务已取消）。",
+          "example": "FINISH",
+          "member": "string",
+          "name": "Status",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回调用视频审核接口时输入的视频审核类型，取值为：**VIDEO**（点播视频）和**LIVE_VIDEO**（直播视频），默认值为VIDEO。",
+          "example": "VIDEO",
+          "member": "string",
+          "name": "Type",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回基于恶意标签的后续操作建议。当您获取到判定结果后，返回值表示系统推荐的后续操作；建议您按照业务所需，对不同违规类型与建议值进行处理。<br>返回值：**Block**：建议屏蔽，**Review** ：建议人工复审，**Pass**：建议通过",
+          "example": "Block",
+          "member": "string",
+          "name": "Suggestion",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回检测结果所对应的恶意标签。<br>返回值：**Porn**：色情，**Abuse**：谩骂，**Ad**：广告，**Custom**：自定义违规；以及其他令人反感、不安全或不适宜的内容类型。",
+          "example": "无",
+          "member": "TaskLabel",
+          "name": "Labels",
+          "output_required": true,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回输入媒体文件的详细信息，包括编解码格式、分片时长等信息。详细内容敬请参考MediaInfo数据结构的描述。",
+          "example": "无",
+          "member": "MediaInfo",
+          "name": "MediaInfo",
+          "output_required": true,
+          "type": "object",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回审核服务的媒体内容信息，主要包括传入文件类型和访问地址。",
+          "example": "无",
+          "member": "InputInfo",
+          "name": "InputInfo",
+          "output_required": true,
+          "type": "object",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回被查询任务创建的时间，格式采用 ISO 8601标准。",
+          "example": "2020-07-13T11:47:01.925Z",
+          "member": "string",
+          "name": "CreatedAt",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回被查询任务最后更新时间，格式采用 ISO 8601标准。",
+          "example": "2020-07-13T11:47:25.840Z",
+          "member": "string",
+          "name": "UpdatedAt",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "在秒后重试",
+          "example": "0",
+          "member": "int64",
+          "name": "TryInSeconds",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回视频中截帧审核的结果，详细返回内容敬请参考ImageSegments数据结构的描述。",
+          "example": "无",
+          "member": "ImageSegments",
+          "name": "ImageSegments",
+          "output_required": true,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回视频中音频审核的结果，详细返回内容敬请参考AudioSegments数据结构的描述。",
+          "example": "无",
+          "member": "AudioSegments",
+          "name": "AudioSegments",
+          "output_required": true,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "当任务状态为Error时，返回对应错误的类型，取值：\n**DECODE_ERROR**: 解码失败。（输入资源中可能包含无法解码的视频）\n**URL_ERROR**：下载地址验证失败。\n**TIMEOUT_ERROR**：处理超时。\n**CALLBACK_ERRORR**：回调错误。\n**MODERATION_ERROR**：审核失败。\n**URL_NOT_SUPPORTED**：源文件太大或没有图片音频帧\n任务状态非Error时默认返回为空。",
+          "example": "URL_ERROR",
+          "member": "string",
+          "name": "ErrorType",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "当任务状态为Error时，该字段用于返回对应错误的详细描述，任务状态非Error时默认返回为空。",
+          "example": "InvalidArgument",
+          "member": "string",
+          "name": "ErrorDescription",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回检测结果所对应的标签。如果未命中恶意，返回Normal，如果命中恶意，则返回Labels中优先级最高的标签",
+          "example": "Normal",
+          "member": "string",
+          "name": "Label",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回音频文件识别出的对应文本内容，最大支持**前1000个字符**。",
+          "example": "金牌讲师认证",
+          "member": "string",
+          "name": "AudioText",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回音频文件识别出的对应文本内容。",
+          "example": "无",
+          "member": "RcbAsr",
+          "name": "Asrs",
+          "output_required": true,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回检测结果明细数据相关的cos url\t",
+          "example": "无",
+          "member": "SegmentCosUrlList",
+          "name": "SegmentCosUrlList",
+          "output_required": true,
+          "type": "object",
+          "value_allowed_null": false
+        },
+        {
+          "document": "唯一请求 ID，由服务端生成，每次请求都会返回（若请求因其他原因未能抵达服务端，则该次请求不会获得 RequestId）。定位问题时需要提供该次请求的 RequestId。",
+          "member": "string",
+          "name": "RequestId",
+          "type": "string"
+        }
+      ],
+      "type": "object"
+    },
+    "DescribeTasksRequest": {
+      "document": "DescribeTasks请求参数结构体",
+      "members": [
+        {
+          "disabled": false,
+          "document": "该参数表示任务列表每页展示的任务条数，**默认值为10，最大值为100**（每页展示10条任务）。",
+          "example": "10",
+          "member": "int64",
+          "name": "Limit",
+          "required": false,
+          "type": "int"
+        },
+        {
+          "disabled": false,
+          "document": "该参数表示任务筛选器的输入参数，可根据业务类型、审核文件类型、处理建议及任务状态筛选想要查看的审核任务，具体参数内容请参见TaskFilter数据结构的详细描述。",
+          "example": "无",
+          "member": "TaskFilter",
+          "name": "Filter",
+          "required": false,
+          "type": "object"
+        },
+        {
+          "disabled": false,
+          "document": "该参数表示翻页时使用的Token信息，由系统自动生成，并在翻页时向下一个生成的页面传递此参数，以方便快速翻页功能的实现。当到最后一页时，该字段为空。",
+          "example": "aEjUgqOnIv0S1ZxQ.aEJUb42r3tX61Y-a",
+          "member": "string",
+          "name": "PageToken",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "该参数表示任务列表的开始时间，格式为ISO8601标准的时间戳。**默认值为最近3天**，若传入该参数，则在这一时间到EndTime之间的任务将会被筛选出来。<br>备注：该参数与Filter共同起到任务筛选作用，二者作用无先后顺序。",
+          "example": "2025-06-05T00:00:00+08:00",
+          "member": "datetime_iso",
+          "name": "StartTime",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "该参数表示任务列表的结束时间，格式为ISO8601标准的时间戳。**默认值为空**，若传入该参数，则在这StartTime到这一时间之间的任务将会被筛选出来。<br>备注：该参数与Filter共同起到任务筛选作用，二者作用无先后顺序。",
+          "example": "2025-06-06T23:59:59+08:00",
+          "member": "datetime_iso",
+          "name": "EndTime",
+          "required": false,
+          "type": "string"
+        }
+      ],
+      "type": "object"
+    },
+    "DescribeTasksResponse": {
+      "document": "DescribeTasks返回参数结构体",
+      "members": [
+        {
+          "disabled": false,
+          "document": "该字段用于返回当前查询的任务总量，格式为int字符串。",
+          "example": "1200",
+          "member": "string",
+          "name": "Total",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回当前页的任务详细数据，具体输出内容请参见TaskData数据结构的详细描述。",
+          "example": "无",
+          "member": "TaskData",
+          "name": "Data",
+          "output_required": true,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回翻页时使用的Token信息，由系统自动生成，并在翻页时向下一个生成的页面传递此参数，以方便快速翻页功能的实现。当到最后一页时，该字段为空。",
+          "example": "aEjUgqOnIv0S1ZxQ.aEJUb42r3tX61Y-a",
+          "member": "string",
+          "name": "PageToken",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "document": "唯一请求 ID，由服务端生成，每次请求都会返回（若请求因其他原因未能抵达服务端，则该次请求不会获得 RequestId）。定位问题时需要提供该次请求的 RequestId。",
+          "member": "string",
+          "name": "RequestId",
+          "type": "string"
+        }
+      ],
+      "type": "object"
+    },
+    "ImageResult": {
+      "document": "Result结果详情",
+      "members": [
+        {
+          "disabled": false,
+          "document": "违规标志\n0 未命中\n1 命中",
+          "example": "1",
+          "member": "int64",
+          "name": "HitFlag",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "命中的标签\nPorn 色情\nSexy 性感\nPolity 政治\nIllegal 违法\nAbuse 谩骂\nTerror 暴恐\nAd 广告",
+          "example": "Sexy",
+          "member": "string",
+          "name": "Label",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "审核建议，可选值：\nPass 通过，\nReview 建议人审，\nBlock 确认违规",
+          "example": "Block",
+          "member": "string",
+          "name": "Suggestion",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "得分",
+          "example": "97",
+          "member": "int64",
+          "name": "Score",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "画面截帧图片结果集",
+          "example": "无",
+          "member": "ImageResultResult",
+          "name": "Results",
+          "output_required": true,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回审核结果的访问链接（URL）。<br>备注：链接默认有效期为12小时。如果您需要更长时效的链接，请使用[COS预签名](https://cloud.tencent.com/document/product/1265/104001)功能更新签名时效。",
+          "example": "http://tianyu-content-moderation-xxxx.cos.ap-guangzhou.myqcloud.com/segment-/vod/w-video-aEYxv6I1xsadDsq/screenshot_15_1749430725.jpg",
+          "member": "string",
+          "name": "Url",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "附加字段",
+          "example": "\"null\"",
+          "member": "string",
+          "name": "Extra",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "二级标签",
+          "example": "MenNudity",
+          "member": "string",
+          "name": "SubLabel",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "场景结果",
+          "example": "无",
+          "member": "RecognitionResult",
+          "name": "RecognitionResults",
+          "output_required": false,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "审核命中类型",
+          "example": "text_rule",
+          "member": "string",
+          "name": "HitType",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "ImageResultResult": {
+      "document": "图片输出结果的子结果",
+      "members": [
+        {
+          "disabled": false,
+          "document": "场景\nPorn 色情\nSexy 性感\nPolity 政治\nIllegal 违法\nAbuse 谩骂\nTerror 暴恐\nAd 广告",
+          "example": "Sexy",
+          "member": "string",
+          "name": "Scene",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "是否命中\n0 未命中\n1 命中",
+          "example": "1",
+          "member": "int64",
+          "name": "HitFlag",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "审核建议，可选值：\nPass 通过，\nReview 建议人审，\nBlock 确认违规",
+          "example": "Block",
+          "member": "string",
+          "name": "Suggestion",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "标签",
+          "example": "Sexy",
+          "member": "string",
+          "name": "Label",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "子标签",
+          "example": "MenNudity",
+          "member": "string",
+          "name": "SubLabel",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "分数",
+          "example": "97",
+          "member": "int64",
+          "name": "Score",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "人物名称列表，如未识别，则为null",
+          "example": "[\"无\"]",
+          "member": "string",
+          "name": "Names",
+          "output_required": true,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "图片OCR文本",
+          "example": "\"金牌讲师\"",
+          "member": "string",
+          "name": "Text",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "其他详情",
+          "example": "无",
+          "member": "ImageResultsResultDetail",
+          "name": "Details",
+          "output_required": true,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "审核命中类型",
+          "example": "text_rule",
+          "member": "string",
+          "name": "HitType",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "ImageResultsResultDetail": {
+      "document": "具体场景下的图片识别结果",
+      "members": [
+        {
+          "disabled": false,
+          "document": "任务名称",
+          "example": "\"无\"",
+          "member": "string",
+          "name": "Name",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "OCR识别文本",
+          "example": "金牌讲师",
+          "member": "string",
+          "name": "Text",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "位置信息",
+          "example": "无",
+          "member": "ImageResultsResultDetailLocation",
+          "name": "Location",
+          "output_required": true,
+          "type": "object",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "标签",
+          "example": "Ad",
+          "member": "string",
+          "name": "Label",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "库ID",
+          "example": "test_1",
+          "member": "string",
+          "name": "LibId",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "库名称",
+          "example": "测试词库",
+          "member": "string",
+          "name": "LibName",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "命中的关键词",
+          "example": "[\"添加微信\",\"加好友\"]",
+          "member": "string",
+          "name": "Keywords",
+          "output_required": true,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "建议",
+          "example": "Review",
+          "member": "string",
+          "name": "Suggestion",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "得分",
+          "example": "90",
+          "member": "int64",
+          "name": "Score",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "子标签码",
+          "example": "20105",
+          "member": "string",
+          "name": "SubLabelCode",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "子标签",
+          "example": "Add",
+          "member": "string",
+          "name": "SubLabel",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "Ocr文本命中信息",
+          "example": "无",
+          "member": "OcrHitInfo",
+          "name": "OcrHitInfos",
+          "output_required": false,
+          "type": "list",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "ImageResultsResultDetailLocation": {
+      "document": "图片详情位置信息",
+      "members": [
+        {
+          "disabled": false,
+          "document": "x坐标",
+          "example": "100",
+          "member": "float",
+          "name": "X",
+          "output_required": true,
+          "type": "float",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "y坐标",
+          "example": "100",
+          "member": "float",
+          "name": "Y",
+          "output_required": true,
+          "type": "float",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "宽度",
+          "example": "256",
+          "member": "int64",
+          "name": "Width",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "高度",
+          "example": "256",
+          "member": "int64",
+          "name": "Height",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "旋转角度",
+          "example": "0",
+          "member": "float",
+          "name": "Rotate",
+          "output_required": true,
+          "type": "float",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "ImageSegments": {
+      "document": "图片段信息",
+      "members": [
+        {
+          "disabled": false,
+          "document": "截帧时间。\n点播文件：该值为相对于视频偏移时间，单位为秒，例如：0，5，10\n直播流：该值为时间戳，例如：1594650717",
+          "example": "0",
+          "member": "string",
+          "name": "OffsetTime",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "画面截帧结果详情",
+          "example": "无",
+          "member": "ImageResult",
+          "name": "Result",
+          "output_required": true,
+          "type": "object",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "时间",
+          "example": "2025-06-09T00:58:41Z",
+          "member": "string",
+          "name": "CreatedAt",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "截帧毫秒时间",
+          "example": "0",
+          "member": "string",
+          "name": "OffsetusTime",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "InputInfo": {
+      "document": "输入信息详情",
+      "members": [
+        {
+          "disabled": false,
+          "document": "传入的类型可选：URL，COS",
+          "example": "URL",
+          "member": "string",
+          "name": "Type",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "Url地址",
+          "example": "http://tianyu-content-moderation-xxxx.cos.ap-guangzhou.myqcloud.com/segment-/vod/w-video-aEYxv6I1xsadDsq/screenshot_15_1749430725.jpg",
+          "member": "string",
+          "name": "Url",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "桶信息。当输入当时COS时，该字段不为空\n注意：此字段可能返回 null，表示取不到有效值。",
+          "example": "null",
+          "member": "string",
+          "name": "BucketInfo",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": true
+        }
+      ],
+      "usage": "out"
+    },
+    "LabelResult": {
+      "document": "歌曲识别结果",
+      "members": [
+        {
+          "disabled": false,
+          "document": "场景",
+          "example": "无",
+          "member": "string",
+          "name": "Scene",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "建议",
+          "example": "无",
+          "member": "int64",
+          "name": "Suggestion",
+          "output_required": false,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "标签",
+          "example": "无",
+          "member": "string",
+          "name": "Label",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "名字",
+          "example": "无",
+          "member": "string",
+          "name": "Name",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "分数",
+          "example": "无",
+          "member": "int64",
+          "name": "Score",
+          "output_required": false,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "开始时间",
+          "example": "无",
+          "member": "float",
+          "name": "StartTime",
+          "output_required": false,
+          "type": "float",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "结束时间",
+          "example": "无",
+          "member": "float",
+          "name": "EndTime",
+          "output_required": false,
+          "type": "float",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "MediaInfo": {
+      "document": "媒体类型",
+      "members": [
+        {
+          "disabled": false,
+          "document": "编码格式",
+          "example": "null",
+          "member": "string",
+          "name": "Codecs",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "流检测时分片时长\n注意：此字段可能返回 0，表示取不到有效值。",
+          "example": "15",
+          "member": "int64",
+          "name": "Duration",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "宽，单位为像素",
+          "example": "0",
+          "member": "int64",
+          "name": "Width",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "高，单位为像素",
+          "example": "0",
+          "member": "int64",
+          "name": "Height",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "封面",
+          "example": "http://tianyu-content-moderation-xxxx.cos.ap-guangzhou.myqcloud.com/segment-/vod/w-video-aEYxv6I1xsadDsq/screenshot_15_1749430725.jpg",
+          "member": "string",
+          "name": "Thumbnail",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "OcrHitInfo": {
+      "document": "Ocr命中信息",
+      "members": [
+        {
+          "disabled": false,
+          "document": "关键词",
+          "example": "Keyword",
+          "member": "string",
+          "name": "Type",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "关键词内容",
+          "example": "关键词A",
+          "member": "string",
+          "name": "Keyword",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "自定义库名",
+          "example": "自定库A",
+          "member": "string",
+          "name": "LibName",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "位置信息",
+          "example": "无",
+          "member": "TextPosition",
+          "name": "Positions",
+          "output_required": false,
+          "type": "list",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "RcbAsr": {
+      "document": "审核切片asr文本信息",
+      "members": [
+        {
+          "disabled": false,
+          "document": "该字段用于返回音频文件识别出的对应文本内容，最大支持**前1000个字符**。",
+          "example": "the text",
+          "member": "string",
+          "name": "Text",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "该字段用于返回被查询任务创建的时间，格式采用 ISO 8601标准。",
+          "example": "2020-07-13T11:47:01.925Z",
+          "member": "string",
+          "name": "CreatedAt",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "RecognitionResult": {
+      "document": "识别类标签结果信息",
+      "members": [
+        {
+          "disabled": false,
+          "document": "可能的取值有：Teenager 、Gender",
+          "example": "Gender",
+          "member": "string",
+          "name": "Label",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "识别标签列表",
+          "example": "无",
+          "member": "Tag",
+          "name": "Tags",
+          "output_required": true,
+          "type": "list",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "SegmentCosUrlList": {
+      "document": "明细数据相关的cos url",
+      "members": [
+        {
+          "disabled": false,
+          "document": "全量图片片段的cos url",
+          "example": "http://tianyu-content-moderation-xxxx.cos.ap-guangzhou.myqcloud.com/segment-/vod/w-video-aEYxv6I1xsadDsq/imageall.json",
+          "member": "string",
+          "name": "ImageAllUrl",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "全量音频片段的cos url",
+          "example": "http://tianyu-content-moderation-xxxx.cos.ap-guangzhou.myqcloud.com/segment-/vod/w-video-aEYxv6I1xsadDsq/audioall.json",
+          "member": "string",
+          "name": "AudioAllUrl",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "违规图片片段的cos url",
+          "example": "http://tianyu-content-moderation-xxxx.cos.ap-guangzhou.myqcloud.com/segment-/vod/w-video-aEYxv6I1xsadDsq/imageblock.json",
+          "member": "string",
+          "name": "ImageBlockUrl",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "违规音频片段的cos url",
+          "example": "http://tianyu-content-moderation-xxxx.cos.ap-guangzhou.myqcloud.com/segment-/vod/w-video-aEYxv6I1xsadDsq/audioblock.json",
+          "member": "string",
+          "name": "AudioBlockUrl",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "全量音频识别文本的cos url",
+          "example": "http://tianyu-content-moderation-xxxx.cos.ap-guangzhou.myqcloud.com/segment-/vod/w-video-aEYxv6I1xsadDsq/asr.json",
+          "member": "string",
+          "name": "AsrUrl",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "SpeakerResult": {
+      "document": "说话人结果",
+      "members": [
+        {
+          "disabled": false,
+          "document": "标签",
+          "example": "cmn",
+          "member": "string",
+          "name": "Label",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "分数",
+          "example": "11",
+          "member": "int64",
+          "name": "Score",
+          "output_required": false,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "开始时间",
+          "example": "0",
+          "member": "float",
+          "name": "StartTime",
+          "output_required": false,
+          "type": "float",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "结束时间",
+          "example": "15",
+          "member": "float",
+          "name": "EndTime",
+          "output_required": false,
+          "type": "float",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "StorageInfo": {
+      "document": "数据存储信息",
+      "members": [
+        {
+          "disabled": false,
+          "document": "类型 可选：\nURL 资源链接类型\nCOS 腾讯云对象存储类型",
+          "example": "URL",
+          "member": "string",
+          "name": "Type",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "资源链接",
+          "example": "https://cmstest-123.cos.ap-guangzhou.myqcloud.com/audio.mp4",
+          "member": "string",
+          "name": "Url",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "腾讯云存储桶信息",
+          "example": "无",
+          "member": "BucketInfo",
+          "name": "BucketInfo",
+          "required": false,
+          "type": "object"
+        }
+      ],
+      "usage": "in"
+    },
+    "Tag": {
+      "document": "音频切片识别标签",
+      "members": [
+        {
+          "disabled": false,
+          "document": "根据Label字段确定具体名称：\n当Label 为Teenager 时 Name可能取值有：Teenager \n当Label 为Gender 时 Name可能取值有：Male 、Female",
+          "example": "Gender",
+          "member": "string",
+          "name": "Name",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "置信分：0～100，数值越大表示置信度越高",
+          "example": "99",
+          "member": "int64",
+          "name": "Score",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "识别开始偏移时间，单位：毫秒",
+          "example": "0",
+          "member": "float",
+          "name": "StartTime",
+          "output_required": true,
+          "type": "float",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "识别结束偏移时间，单位：毫秒",
+          "example": "15000",
+          "member": "float",
+          "name": "EndTime",
+          "output_required": true,
+          "type": "float",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "TaskData": {
+      "document": "任务数据",
+      "members": [
+        {
+          "disabled": false,
+          "document": "任务ID",
+          "example": "1",
+          "member": "string",
+          "name": "TaskId",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "输入的数据ID",
+          "example": "1",
+          "member": "string",
+          "name": "DataId",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "业务类型",
+          "example": "1",
+          "member": "string",
+          "name": "BizType",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "任务名称",
+          "example": "1",
+          "member": "string",
+          "name": "Name",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "状态，可选：PENDING，RUNNING，ERROR，FINISH，CANCELLED",
+          "example": "1",
+          "member": "string",
+          "name": "Status",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "任务类型",
+          "example": "1",
+          "member": "string",
+          "name": "Type",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "处理建议",
+          "example": "1",
+          "member": "string",
+          "name": "Suggestion",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "标签",
+          "example": "1",
+          "member": "TaskLabel",
+          "name": "Labels",
+          "output_required": true,
+          "type": "list",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "媒体信息",
+          "example": "1",
+          "member": "MediaInfo",
+          "name": "MediaInfo",
+          "output_required": true,
+          "type": "object",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "输入信息",
+          "example": "1",
+          "member": "InputInfo",
+          "name": "InputInfo",
+          "output_required": true,
+          "type": "object",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "创建时间",
+          "example": "1",
+          "member": "string",
+          "name": "CreatedAt",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "更新时间",
+          "example": "1",
+          "member": "string",
+          "name": "UpdatedAt",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "TaskFilter": {
+      "document": "Cos TaskFilter",
+      "members": [
+        {
+          "disabled": false,
+          "document": "任务业务类型",
+          "example": "default",
+          "member": "string",
+          "name": "BizType",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "任务类型，可选：VIDEO，AUDIO， LIVE_VIDEO, LIVE_AUDIO",
+          "example": "VIDEO",
+          "member": "string",
+          "name": "Type",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "建议，可选：Pass, Review,Block",
+          "example": "Pass",
+          "member": "string",
+          "name": "Suggestion",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "状态，可选：PENDING，RUNNING，ERROR，FINISH，CANCELLED",
+          "example": "FINISH",
+          "member": "string",
+          "name": "TaskStatus",
+          "required": false,
+          "type": "string"
+        }
+      ],
+      "usage": "in"
+    },
+    "TaskInput": {
+      "document": "音视频任务结构",
+      "members": [
+        {
+          "disabled": false,
+          "document": "数据ID",
+          "example": "080cbccd-4d19-4792-b2cb-28dc52d108e4",
+          "member": "string",
+          "name": "DataId",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "任务名",
+          "example": "cmsop",
+          "member": "string",
+          "name": "Name",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "任务输入",
+          "example": "无",
+          "member": "StorageInfo",
+          "name": "Input",
+          "required": false,
+          "type": "object"
+        }
+      ],
+      "usage": "in"
+    },
+    "TaskLabel": {
+      "document": "任务输出标签",
+      "members": [
+        {
+          "disabled": false,
+          "document": "该字段用于返回检测结果所对应的恶意标签。\n返回值：Porn：色情，Abuse：谩骂，Ad：广告；以及其他令人反感、不安全或不适宜的内容类型。",
+          "example": "Ad",
+          "member": "string",
+          "name": "Label",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "审核建议，可选值：\nPass 通过，\nReview 建议人审，\nBlock 确认违规",
+          "example": "Review",
+          "member": "string",
+          "name": "Suggestion",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "得分，分数是 0 ～ 100",
+          "example": "89",
+          "member": "int64",
+          "name": "Score",
+          "output_required": true,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "命中的二级标签",
+          "example": "phone",
+          "member": "string",
+          "name": "SubLabel",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "TaskResult": {
+      "document": "创建任务时的返回结果",
+      "members": [
+        {
+          "disabled": false,
+          "document": "请求时传入的DataId",
+          "example": "080cbccd-4d19-4792-b2cb-28dc52d108e4",
+          "member": "string",
+          "name": "DataId",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "TaskId，任务ID",
+          "example": "w-video-aqwfdNiA4vq3Zysfa1",
+          "member": "string",
+          "name": "TaskId",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "错误码。如果code为OK，则表示创建成功，其他则参考公共错误码",
+          "example": "200",
+          "member": "string",
+          "name": "Code",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "如果错误，该字段表示错误详情",
+          "example": "success",
+          "member": "string",
+          "name": "Message",
+          "output_required": true,
+          "type": "string",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "TextPosition": {
+      "document": "文本关键词命中的位置信息",
+      "members": [
+        {
+          "disabled": false,
+          "document": "命中关键词在文本中的起始位置",
+          "example": "7",
+          "member": "int64",
+          "name": "Start",
+          "output_required": false,
+          "type": "int",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "命中关键词在文本中的结束位置",
+          "example": "14",
+          "member": "int64",
+          "name": "End",
+          "output_required": false,
+          "type": "int",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "TravelResult": {
+      "document": "出行结果",
+      "members": [
+        {
+          "disabled": false,
+          "document": "一级标签",
+          "example": "无",
+          "member": "string",
+          "name": "Label",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "二级标签",
+          "example": "无",
+          "member": "string",
+          "name": "SubLabel",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "风险等级",
+          "example": "无",
+          "member": "string",
+          "name": "RiskLevel",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "出行音频角色",
+          "example": "无",
+          "member": "string",
+          "name": "AudioRole",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "出行语音文本",
+          "example": "无",
+          "member": "string",
+          "name": "AudioText",
+          "output_required": false,
+          "type": "string",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "开始时间",
+          "example": "无",
+          "member": "float",
+          "name": "StartTime",
+          "output_required": false,
+          "type": "float",
+          "value_allowed_null": false
+        },
+        {
+          "disabled": false,
+          "document": "结束时间",
+          "example": "无",
+          "member": "float",
+          "name": "EndTime",
+          "output_required": false,
+          "type": "float",
+          "value_allowed_null": false
+        }
+      ],
+      "usage": "out"
+    },
+    "User": {
+      "document": "用户信息",
+      "members": [
+        {
+          "disabled": false,
+          "document": "业务用户ID 如填写，会根据账号历史恶意情况，判定消息有害结果，特别是有利于可疑恶意情况下的辅助判断。账号可以填写微信uin、QQ号、微信openid、QQopenid、字符串等。该字段和账号类别确定唯一账号。",
+          "example": "user1",
+          "member": "string",
+          "name": "UserId",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "该字段表示业务用户ID对应的账号类型，取值：1-微信uin，2-QQ号，3-微信群uin，4-qq群号，5-微信openid，6-QQopenid，7-其它string。\n该字段与账号ID参数（UserId）配合使用可确定唯一账号。",
+          "example": "172300",
+          "member": "string",
+          "name": "AccountType",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "用户昵称",
+          "example": "name",
+          "member": "string",
+          "name": "Nickname",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "性别 默认0 未知 1 男性 2 女性",
+          "example": "1",
+          "member": "uint64",
+          "name": "Gender",
+          "required": false,
+          "type": "int"
+        },
+        {
+          "disabled": false,
+          "document": "年龄 默认0 未知",
+          "example": "19",
+          "member": "uint64",
+          "name": "Age",
+          "required": false,
+          "type": "int"
+        },
+        {
+          "disabled": false,
+          "document": "用户等级，默认0 未知 1 低 2 中 3 高",
+          "example": "1",
+          "member": "uint64",
+          "name": "Level",
+          "required": false,
+          "type": "int"
+        },
+        {
+          "disabled": false,
+          "document": "手机号",
+          "example": "176****2131",
+          "member": "string",
+          "name": "Phone",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "用户简介，长度不超过5000字",
+          "example": "Desc01",
+          "member": "string",
+          "name": "Desc",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "用户头像图片链接",
+          "example": "https://cmstest-123.cos.ap-guangzhou.myqcloud.com/image.jpg",
+          "member": "string",
+          "name": "HeadUrl",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "群聊场景房间ID",
+          "example": "RoomId_1",
+          "member": "string",
+          "name": "RoomId",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "群聊场景群ID",
+          "example": "GroupId_1",
+          "member": "string",
+          "name": "GroupId",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "群聊场景群用户数",
+          "example": "10",
+          "member": "int64",
+          "name": "GroupSize",
+          "required": false,
+          "type": "int"
+        },
+        {
+          "disabled": false,
+          "document": "消息接收者ID",
+          "example": "userid_1",
+          "member": "string",
+          "name": "ReceiverId",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "disabled": false,
+          "document": "消息生成时间，毫秒",
+          "example": "2025-05-15 15:40:06",
+          "member": "string",
+          "name": "SendTime",
+          "required": false,
+          "type": "string"
+        }
+      ],
+      "usage": "in"
+    }
+  },
+  "version": "1.0"
+}
