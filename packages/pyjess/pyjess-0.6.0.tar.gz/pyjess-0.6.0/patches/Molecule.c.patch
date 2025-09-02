@@ -1,0 +1,74 @@
+diff --git a/src/Molecule.c b/src/Molecule.c
+index d6c327e..7509bcc 100644
+--- a/src/Molecule.c
++++ b/src/Molecule.c
+@@ -25,21 +25,6 @@ struct _Node
+ 	Atom *atom;
+ };
+ 
+-// ==================================================================
+-// type Molecule
+-// ==================================================================
+-// count				Number of atoms in the molecule
+-// id					The molecule PDB code (if found)
+-// atom[k]				Pointer to kth atom in the molecule
+-// ==================================================================
+-
+-struct _Molecule
+-{
+-	int count;
+-	char id[5];
+-	Atom *atom[0];
+-};
+-
+ // ==================================================================
+ // Methods of type Molecule;
+ // ==================================================================
+@@ -83,7 +68,7 @@ Molecule *Molecule_create(FILE *file, int ignore_endmdl, float conservation_cuto
+ 			// We got one! Create a new node in
+ 			// the list...
+ 
+-			pA = (Atom*)calloc(1,sizeof(Atom));
++			pA = (Atom*)malloc(sizeof(Atom));
+ 			memcpy(pA,&A,sizeof(Atom));
+ 
+ 			// If there is a user-defined conservation score cutoff in 
+@@ -95,7 +80,7 @@ Molecule *Molecule_create(FILE *file, int ignore_endmdl, float conservation_cuto
+ 				continue;
+ 			}
+ 
+-			N = (Node*)calloc(1,sizeof(Node));
++			N = (Node*)malloc(sizeof(Node));
+ 			N->next=head;
+ 			N->atom=pA;
+ 			head=N;
+@@ -112,7 +97,8 @@ Molecule *Molecule_create(FILE *file, int ignore_endmdl, float conservation_cuto
+ 
+ 	// Create the molecule...
+ 
+-	M = (Molecule*)calloc(1,sizeof(Molecule)+count*sizeof(Atom*));
++	M = (Molecule*)malloc(sizeof(Molecule)+count*sizeof(Atom*));
++	M->index = NULL;
+ 	M->count=count;
+ 	strcpy(M->id,pdb);
+ 
+@@ -127,6 +113,10 @@ Molecule *Molecule_create(FILE *file, int ignore_endmdl, float conservation_cuto
+ 		head=N;
+ 	}
+ 
++	// Create an index to access atoms by residue name
++
++	M->index = ResIndex_create(M->atom, M->count);
++
+ 	// Check memory leaks??
+ 
+ 	return M;
+@@ -138,6 +128,8 @@ void Molecule_free(Molecule *M)
+ 
+ 	if(M)
+ 	{
++		if(M->index) ResIndex_free(M->index);
++
+ 		for(k=0; k<M->count; k++)
+ 		{
+ 			if(M->atom[k]) free(M->atom[k]);
