@@ -1,0 +1,1 @@
+from .operation.fusion import interp_image
