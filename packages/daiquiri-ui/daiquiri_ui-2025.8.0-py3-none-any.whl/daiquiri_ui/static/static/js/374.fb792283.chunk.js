@@ -1,0 +1,2 @@
+"use strict";(self.webpackChunkdaiquiri_ui=self.webpackChunkdaiquiri_ui||[]).push([[374],{62374:(i,e,a)=>{a.r(e),a.d(e,{default:()=>u});var l=a(52799),d=a(45443),t=a(69521);function u(i){const{providers:e,yamlNode:a,datacollectionid:u,fileName:c,...o}=i;return l.Wu(a,"datacollectionid",u),l.Xl(a,"fileName",c),l.ol(a,o),(0,t.jsx)(d.Z,{datacollectionid:u,fileName:c})}}}]);
+//# sourceMappingURL=374.fb792283.chunk.js.map
