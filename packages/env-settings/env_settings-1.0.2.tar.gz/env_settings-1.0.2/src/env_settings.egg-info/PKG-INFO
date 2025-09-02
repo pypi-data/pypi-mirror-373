@@ -1,0 +1,238 @@
+Metadata-Version: 2.4
+Name: env-settings
+Version: 1.0.2
+Summary: Universal module for using Python program settings based on environment variables
+Home-page: https://github.com/andy-kovalev/env-settings
+Download-URL: https://github.com/andy-kovalev/env-settings.git
+Author: Andy Kovalev
+Author-email: kovalev.andy@yandex.ru
+License: MIT License
+Keywords: environment,variables,settings,env-settings
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: python-dotenv
+Dynamic: download-url
+Dynamic: license-file
+
+# Модуль env-settings
+Universal module for using Python program settings based on environment variables
+
+env-settings - это Python-модуль для управления настройками приложения через переменные окружения.
+Он предоставляет удобный интерфейс для загрузки, валидации и генерации шаблонов конфигурационных файлов.
+
+# Основные возможности
+* Гибкая загрузка настроек из переменных окружения
+* Конфигурирование поведения модуля:
+* Стратегии обработки ошибок (exit, raise, logging, print, ignore)
+* Кастомные сообщения об ошибках
+* Возможность логгировать значения загруженных настроек, а в случае необходимости, использовать обфускацию
+* Строгий режим валидации
+* Автоматическая генерация .env файлов на основе анализа кода
+* Типизированные настройки с поддержкой значений по умолчанию
+
+# Установка
+Cтандартная установка пакета с помощью менеджера `pip`
+из [индекса пакетов Python (PyPI)](https://pypi.org/project/env-settings/)
+```shell
+pip install env-settings
+```
+
+# Использование
+## Конфигурирование модуля
+Для уточнения поведения модуля, перед первым использованием возможно сконфигурировать модуль, вызвав
+процедуру [`env_settings.config.configure()`](src/env_settings/config.py)
+
+Для сброса поведения модуля в дефолтное состояние необходимо вызвать процедуру
+[`env_settings.config.reset()`](src/env_settings/config.py)
+
+```python
+from env_settings import config
+
+# Конфигурирование
+config.configure(
+    error_handling="raise",
+    messages={"err_required": "Параметр {} должен быть задан!"},
+    do_value_logging=True
+)
+
+# Сброс к значениям по умолчанию
+config.reset()
+```
+## Возможные натройки для конфигурирования модуля
+### **`error_handling`**
+Модуль поддерживает 5 стратегий обработки ошибок.
+Для этого необходимо в `error_handling` указать значение
+Enum [`env_settings.config.ErrorHandling`](src/env_settings/config.py) или строковое значение:
+* `exit` - завершить программу
+* `raise` - вызвать исключение
+* `logging` - записать сообщение в logger
+* `print` - вывести сообщение об ошибке в консоль
+* `ignore` - игнорировать ошибку и продолжить выполнение
+
+### **`do_value_logging`**
+Модуль позволяет логгировать значения загруженных настроек
+Для этого необходимо в `do_value_logging` указать `True`
+
+В случае необходимости, для использования обфускации при логгировании, необходимо, в процедуры получения значений
+([`env_settings.utils.get_*_param`](src/env_settings/utils.py)), передать параметр `do_obfuscate_log_text=True`
+
+В случае необходимости, передачи собственного текста для значения параметра при логгировании, необходимо, в процедуры
+получения значений
+([`env_settings.utils.get_*_param`](src/env_settings/utils.py)), передать параметр `log_text="self_value"`
+
+### **`logger`**
+Модуль позволяет указать наименование логгера, который будет использован для логгирования
+Для этого необходимо в `logger` указать наименование логгера (используется стандартная библиотека `logging`)
+
+### **`messages`**
+При выводе сообщений используется форматирование строк с помощью `format()`.
+В строке можно использовать аргументы для форматирования, указав `{}` или `{0}, {1}, {2}`
+Передаются три позиционных строковых значения:
+* 0 - наименование параметра, который считывается
+* 1 - значение параметра, который считывается (в случае отсутствия значения, передаётся пустая строка)
+* 2 - текст системной ошибки (в случае отсутствия, передаётся пустая строка)
+
+Можно изменить сообщения об ошибке, возникающие при получении параметров.
+Для этого необходимо заполнить словарь `messages`, используются следующие ключи:
+* `err_required` - текст ошибки, если не указан обязательный параметр (% передаётся параметр param_name)
+* `err_integer` - текст ошибки, если не удалось преобразование параметра к целому числу
+* `err_float` - текст ошибки, если не удалось преобразование параметра к дробному числу
+* `err_file` - текст ошибки, если на диске не существует обязательный файл
+* `err_directory` - текст ошибки, при неудачной попытке создания директории при обязательном её существовании
+
+Можно изменить сообщение для логгирования значений.
+Для этого необходимо заполнить словарь `messages`, используется следующий ключ:
+* `log_value` - текст для логгирования значений параметров
+
+## Определение настроек приложения
+Для создания файла(ов) настроек приложения используются python файлы (например `settings.py`)
+В них необходимо импортировать модуль `env_settings` и использовать его процедуры для ускорения работы с настройками
+
+Имена переменных настройки могут быть любыми (приветствуется стиль `CONSTANT_CASE`)
+Для корректой работы [генератора .env файлов](#genfile), имена environment variables необходимо указывать такими же,
+как и переменной настройки в `.py` файле
+Приветствуются комментарии строками выше переменных настройки, улучшают понимание настройки и они же используются
+при [генерации .env файлов](#genfile)
+```python
+# filename: settings.py
+from env_settings import get_str_env_param, get_values, get_bool_env_param, get_int_env_param, param_iterator
+
+# URL подключения к базе данных
+DATABASE_URL = get_str_env_param('DATABASE_URL', required=True)
+
+# Ключ доступа
+# может быть указан:
+#  - путь до файла (полный или относительный), файл будет прочитана первая строка
+#  - строковое значение до первого пробела
+API_KEY = get_values(get_str_env_param('API_KEY', required=True, do_obfuscate_log_text=True), separator=' ')[0]
+
+# Режим отладки
+# если задан параметр, 1 (T,Y,True,Yes), то будет включен режим отладки
+DEBUG = get_bool_env_param('DEBUG')
+
+# Тайм-аут отведённый на запрос
+TIMEOUT = get_int_env_param('TIMEOUT', default=2)
+
+# Идентефикаторы объектов, список значений
+# может быть указан:
+#  - путь до файла (полный или относительный), одно значение в отдельной строке
+#  - строковое значение, значения в наборе должны быть разделены символом ","
+OBJECT_IDS = get_values(get_str_env_param('OBJECT_IDS'))
+
+
+def param_object_ids_iterator():
+    """
+    Генератор для перебора значений параметра OBJECT_IDS
+    :return: Итератор значений
+    """
+    yield from param_iterator(OBJECT_IDS)
+```
+Возможные функции получения параметров реализованы в [`env_settings.utils`](src/env_settings/utils.py)
+
+## Использование настроек приложения
+```python
+# filename: main.py
+import settings
+print(f"Подключение к {settings.DATABASE_URL}")
+if settings.DEBUG:
+    print(f"Тайм-аут подключения {settings.TIMEOUT}")
+```
+## Генерация .env файла
+<a name="genfile"></a>
+Для облегчения создания шаблона `.env` файла, возможно использовать функцию генерации файла настроек для пользователя
+по исходным кодам файлов настроек `.py`
+[`env_settings.generator.generate_env_file()`](src/env_settings/generator.py)
+
+* Обходит директории проектов
+* Читает файлы настроек `.py`
+* Записывает наименование параметра настроек и его комментарий в общий файл `.env`
+```python
+# filename: manage.py
+from env_settings import generate_env_file
+
+generate_env_file(
+    new_env_filename=".env.template",
+    settings_filename="settings.py",
+    modules_path="src",
+    sub_modules_path="modules",
+    include_sub_modules=("auth", "payment"),
+    exclude_params=("SECRET_KEY",)
+)
+```
+Результат:
+```dotenv
+# filename: .env.template
+# URL подключения к базе данных
+DATABASE_URL=
+
+# Ключ доступа
+# может быть указан:
+#  - путь до файла (полный или относительный), файл будет прочитан
+#  - строковое значение
+API_KEY=
+
+# Режим отладки
+# если задан параметр, 1 (T,Y,True,Yes), то будет включен режим отладки
+DEBUG=
+
+# Тайм-аут отведённый на запрос
+TIMEOUT=
+
+# Идентефикаторы объектов, список значений
+# может быть указан:
+#  - путь до файла (полный или относительный), одно значение в отдельной строке
+#  - строковое значение, значения в наборе должны быть разделены символом ","
+OBJECT_IDS=
+```
+
+# Зависимости
+Модуль требует стандартной библиотеки Python 3.9+
+Для работы [требуются библиотеки](requirements.txt):
+```txt
+python-dotenv
+```
+
+MIT License
+
+Copyright (c) 2025 Andy Kovalev
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
