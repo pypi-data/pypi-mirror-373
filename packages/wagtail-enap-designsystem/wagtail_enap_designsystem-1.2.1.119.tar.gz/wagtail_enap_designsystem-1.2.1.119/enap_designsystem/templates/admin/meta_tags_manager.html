@@ -1,0 +1,360 @@
+{% extends "wagtailadmin/base.html" %}
+{% load wagtailadmin_tags %}
+
+{% block titletag %}Gerenciar Meta Tags{% endblock %}
+
+{% block content %}
+<header class="nice-padding hasform">
+    <div class="row">
+        <div class="left">
+            <div class="col">
+                <h1 class="icon icon-cog">🏷️ Gerenciar Meta Tags</h1>
+                <p>Adicione ou atualize meta tags (SEO title e description) em suas páginas automaticamente.</p>
+            </div>
+        </div>
+    </div>
+</header>
+
+<div class="nice-padding">
+    <!-- Estatísticas -->
+    <div class="row">
+        <div class="col3">
+            <div class="card">
+                <h3>📊 Estatísticas</h3>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <strong>{{ total_pages }}</strong>
+                        <span>Total de Páginas</span>
+                    </div>
+                    <div class="stat-item">
+                        <strong>{{ pages_without_seo }}</strong>
+                        <span>Sem SEO Title</span>
+                    </div>
+                    <div class="stat-item">
+                        <strong>{{ pages_without_description }}</strong>
+                        <span>Sem Meta Description</span>
+                    </div>
+                    <div class="stat-item">
+                        <strong>{{ pages_with_meta }}</strong>
+                        <span>Com Meta Tags Completas</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col9">
+            <div class="card">
+                <h3>⚙️ Configurar Aplicação</h3>
+                
+                <form method="post" id="meta-form">
+                    {% csrf_token %}
+                    
+                    <div class="form-row">
+                        <label>
+                            <input type="checkbox" name="force_update" id="force_update"> 
+                            <strong>Forçar atualização</strong>
+                            <small>Atualizar mesmo páginas que já possuem meta tags</small>
+                        </label>
+                    </div>
+                    
+                    <div class="form-row">
+                        <label for="page_type">Filtrar por tipo de página (opcional):</label>
+                        <select name="page_type" id="page_type">
+                            <option value="">Todas as páginas</option>
+                            <option value="HomePage">Home Page</option>
+                            <option value="BlogPage">Blog Posts</option>
+                            <option value="EventPage">Eventos</option>
+                            <option value="CoursePage">Cursos</option>
+                            <option value="Page">Páginas Gerais</option>
+                        </select>
+                    </div>
+                    
+                    <div class="button-row">
+                        <button type="submit" name="action" value="preview" class="button button-secondary">
+                            🔍 Visualizar Mudanças
+                        </button>
+                        <button type="submit" name="action" value="apply_all" class="button button-primary" 
+                                onclick="return confirm('Tem certeza que deseja aplicar as meta tags? Esta ação não pode ser desfeita.')">
+                            ✅ Aplicar Meta Tags
+                        </button>
+                    </div>
+                </form>🔍 Visualizar Mudanças
+                        </button>
+                        <button type="submit" name="action" value="apply" class="button button-primary" 
+                                onclick="return confirm('Tem certeza que deseja aplicar as meta tags? Esta ação não pode ser desfeita.')">
+                            ✅ Aplicar Meta Tags
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    {% if showing_preview %}
+    <!-- Preview das Mudanças -->
+    <div class="card" style="margin-top: 20px;">
+        <h3>🔍 Preview das Mudanças ({{ total_to_update }} páginas serão atualizadas)</h3>
+        
+        {% if preview_data %}
+        <div class="preview-controls">
+            <form method="post" style="display: inline;">
+                {% csrf_token %}
+                <input type="hidden" name="force_update" value="{{ force_update|yesno:'on,off' }}">
+                <input type="hidden" name="page_type" value="{{ page_type_filter }}">
+                
+                <button type="submit" name="action" value="apply_all" class="button button-primary" 
+                        onclick="return confirm('Aplicar meta tags em {{ total_to_update }} páginas?')">
+                    ✅ Confirmar e Aplicar Todas ({{ total_to_update }} páginas)
+                </button>
+            </form>
+            
+            <button onclick="selectAllPages()" class="button">Selecionar Todas</button>
+            <button onclick="applySelected()" class="button button-secondary">Aplicar Apenas Selecionadas</button>
+        </div>
+        
+        <div class="preview-list">
+            <form method="post" id="selected-form">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="apply_selected">
+                
+                {% for item in preview_data %}
+                <div class="preview-item">
+                    <div class="preview-header">
+                        <label>
+                            <input type="checkbox" name="selected_pages" value="{{ item.id }}">
+                            <strong>{{ item.title }}</strong>
+                        </label>
+                        <small>{{ item.page_type }} • ID: {{ item.id }}</small>
+                    </div>
+                    
+                    <div class="meta-comparison">
+                        <div class="meta-field">
+                            <strong>SEO Title:</strong>
+                            <div class="before-after">
+                                <div class="before">
+                                    <small>Atual:</small>
+                                    <span class="current">{{ item.current_seo }}</span>
+                                </div>
+                                <div class="after">
+                                    <small>Novo:</small>
+                                    <span class="new">{{ item.new_seo }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="meta-field">
+                            <strong>Meta Description:</strong>
+                            <div class="before-after">
+                                <div class="before">
+                                    <small>Atual:</small>
+                                    <span class="current">{{ item.current_description }}</span>
+                                </div>
+                                <div class="after">
+                                    <small>Novo:</small>
+                                    <span class="new">{{ item.new_description }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </form>
+        </div>
+        {% else %}
+        <p class="help">✅ Não há páginas para atualizar com os filtros selecionados.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    <!-- Log de Atividades Recentes -->
+    <div class="card" style="margin-top: 20px;">
+        <h3>📝 Dicas e Informações</h3>
+        <div class="help-content">
+            <h4>🎯 Como funciona:</h4>
+            <ul>
+                <li><strong>SEO Title:</strong> Gerado como "Título da Página | ENAP" (máx 60 caracteres)</li>
+                <li><strong>Meta Description:</strong> Extraída do conteúdo da página ou gerada automaticamente (máx 160 caracteres)</li>
+                <li><strong>Campos analisados:</strong> introduction, resumo, body, content, texto</li>
+            </ul>
+            
+            <h4>⚠️ Cuidados:</h4>
+            <ul>
+                <li>Sempre faça <strong>preview</strong> antes de aplicar</li>
+                <li>Use "Forçar atualização" apenas se necessário</li>
+                <li>As alterações são <strong>permanentes</strong> - não há desfazer</li>
+                <li>Para páginas específicas, use a opção "Aplicar Selecionadas"</li>
+            </ul>
+            
+            <h4>🔍 Filtros disponíveis:</h4>
+            <ul>
+                <li><strong>Todas as páginas:</strong> Processa todo o site</li>
+                <li><strong>Por tipo:</strong> HomePage, BlogPage, EventPage, etc.</li>
+                <li><strong>Forçar atualização:</strong> Substitui meta tags existentes</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<script>
+function selectAllPages() {
+    const checkboxes = document.querySelectorAll('input[name="selected_pages"]');
+    checkboxes.forEach(checkbox => checkbox.checked = true);
+}
+
+function applySelected() {
+    const selected = document.querySelectorAll('input[name="selected_pages"]:checked');
+    if (selected.length === 0) {
+        alert('Por favor, selecione pelo menos uma página.');
+        return;
+    }
+    
+    if (confirm(`Aplicar meta tags em ${selected.length} página(s) selecionada(s)?`)) {
+        document.getElementById('selected-form').submit();
+    }
+}
+
+// Auto-refresh de estatísticas (opcional)
+setInterval(function() {
+    // Implementar se necessário
+}, 30000);
+</script>
+
+<style>
+.card {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.stat-item {
+    text-align: center;
+    padding: 10px;
+    background: #f8f8f8;
+    border-radius: 4px;
+}
+
+.stat-item strong {
+    display: block;
+    font-size: 24px;
+    color: #2e5c6e;
+}
+
+.stat-item span {
+    font-size: 12px;
+    color: #666;
+}
+
+.form-row {
+    margin-bottom: 15px;
+}
+
+.form-row label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.form-row small {
+    display: block;
+    color: #666;
+    font-weight: normal;
+}
+
+.button-row {
+    margin-top: 20px;
+}
+
+.button-row .button {
+    margin-right: 10px;
+}
+
+.preview-controls {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f0f7ff;
+    border-radius: 4px;
+}
+
+.preview-item {
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 10px;
+    background: white;
+}
+
+.preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.meta-field {
+    margin-bottom: 15px;
+}
+
+.before-after {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-top: 5px;
+}
+
+.before, .after {
+    padding: 10px;
+    border-radius: 4px;
+}
+
+.before {
+    background: #fff3cd;
+}
+
+.after {
+    background: #d1f2eb;
+}
+
+.current, .new {
+    display: block;
+    margin-top: 5px;
+    font-family: monospace;
+    font-size: 13px;
+}
+
+.help-content h4 {
+    color: #2e5c6e;
+    margin-top: 20px;
+    margin-bottom: 10px;
+}
+
+.help-content ul {
+    margin-left: 20px;
+    margin-bottom: 15px;
+}
+
+.help-content li {
+    margin-bottom: 5px;
+}
+
+@media (max-width: 768px) {
+    .before-after {
+        grid-template-columns: 1fr;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
