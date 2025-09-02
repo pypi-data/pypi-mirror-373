@@ -1,0 +1,373 @@
+Metadata-Version: 2.4
+Name: ohtell
+Version: 0.1.0
+Summary: A simple, decorator-based OpenTelemetry wrapper for tracing Python functions
+Author-email: Slava <slava.ganzin@gmail.com>
+License: MIT
+Project-URL: Homepage, https://github.com/slavaganzin/ohtell
+Project-URL: Repository, https://github.com/slavaganzin/ohtell.git
+Project-URL: Documentation, https://github.com/slavaganzin/ohtell#readme
+Project-URL: Bug Tracker, https://github.com/slavaganzin/ohtell/issues
+Keywords: opentelemetry,tracing,observability,monitoring,decorator
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: System :: Monitoring
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: opentelemetry-api>=1.20.0
+Requires-Dist: opentelemetry-sdk>=1.20.0
+Requires-Dist: opentelemetry-exporter-otlp>=1.20.0
+Requires-Dist: opentelemetry-instrumentation-logging>=0.41b0
+Provides-Extra: config
+Requires-Dist: omegaconf>=2.3.0; extra == "config"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "dev"
+Requires-Dist: black>=22.0.0; extra == "dev"
+Requires-Dist: isort>=5.0.0; extra == "dev"
+Requires-Dist: flake8>=5.0.0; extra == "dev"
+Requires-Dist: mypy>=1.0.0; extra == "dev"
+Requires-Dist: omegaconf>=2.3.0; extra == "dev"
+Provides-Extra: test
+Requires-Dist: pytest>=7.0.0; extra == "test"
+Requires-Dist: pytest-cov>=4.0.0; extra == "test"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "test"
+Dynamic: license-file
+
+# OpenTelemetry Function Wrapper for SigNoz
+
+A simple, self-contained decorator for tracing Python functions with OpenTelemetry and sending data to SigNoz.
+
+## Features
+
+- 🎯 **Simple decorator-based API** - Just add `@task` to your functions
+- 🔄 **Automatic span hierarchy** - Nested function calls create proper parent-child relationships
+- 📝 **Print interception** - Captures print statements as span events AND logs
+- 📊 **Input/output tracking** - Automatically logs function arguments and return values
+- ⚡ **Async export** - Fire-and-forget telemetry that doesn't block your code
+- 🏷️ **Dynamic naming** - Template-based span names like Prefect
+- 📋 **Integrated logging** - Sends logs to SigNoz alongside traces
+- 📊 **Automatic metrics** - Collects performance metrics for all decorated functions
+
+## Installation
+
+```bash
+cd otel_wrapper
+pip install -e .
+```
+
+Or just install the requirements:
+
+```bash
+pip install -r requirements.txt
+```
+
+## Configuration
+
+Set these environment variables:
+
+```bash
+# Required
+export SIGNOZ_INGESTION_KEY="your-ingestion-key"  # Default: provided test key
+export SIGNOZ_REGION="us"  # or "eu", "in"
+
+# Optional
+export OTEL_SERVICE_NAME="my-service"  # Default: "otel-wrapper-app"
+```
+
+## Usage
+
+### Basic Example
+
+```python
+from otel_wrapper import task
+
+@task(name="Process Data", description="Main data processing function")
+def process_data(items):
+    print(f"Processing {len(items)} items")
+    
+    results = []
+    for item in items:
+        result = transform_item(item)
+        results.append(result)
+    
+    print(f"Processed {len(results)} items successfully")
+    return results
+
+@task(name="Transform Item")
+def transform_item(item):
+    print(f"Transforming: {item}")
+    # Your transformation logic here
+    return item.upper()
+
+# Run it
+data = ["hello", "world", "opentelemetry"]
+results = process_data(data)
+```
+
+### Entrypoint Spans
+
+Use the `@entrypoint` decorator to explicitly mark entry points (API handlers, CLI commands, etc.):
+
+```python
+from otel_wrapper import task, entrypoint
+
+@entrypoint(name="API Handler", description="HTTP endpoint")
+def handle_request(request_id: str):
+    # This span will be marked as SERVER kind (entrypoint)
+    validate_request(request_id)
+    return process_request(request_id)
+
+@task(name="Validate")
+def validate_request(request_id: str):
+    # This will be a child span marked as INTERNAL
+    print(f"Validating {request_id}")
+
+@task(name="Process")  
+def process_request(request_id: str):
+    # Another child span marked as INTERNAL
+    print(f"Processing {request_id}")
+```
+
+The span hierarchy helps you understand:
+- **Entry points** - Where requests enter your system (SERVER spans)
+- **Root spans** - Top-level operations without a parent
+- **Child spans** - Operations called within other operations (INTERNAL spans)
+
+### Dynamic Span Names
+
+```python
+import datetime
+from otel_wrapper import task
+
+@task(
+    name="Scheduled Task",
+    task_run_name="task-{name}-on-{date:%A}"
+)
+def scheduled_task(name: str, date: datetime.datetime):
+    print(f"Running {name} on {date.strftime('%A')}")
+    # Creates span named like: "task-backup-on-Monday"
+
+scheduled_task("backup", datetime.datetime.now())
+```
+
+### Nested Functions Example
+
+```python
+from otel_wrapper import task
+
+@task(name="Level 1")
+def one():
+    print("In function one")
+    return two()
+
+@task(name="Level 2") 
+def two():
+    print("In function two")
+    return three()
+
+@task(name="Level 3")
+def three():
+    print("In function three")
+    return "Done!"
+
+# Creates nested spans: Level 1 > Level 2 > Level 3
+result = one()
+```
+
+### Error Handling
+
+```python
+@task(name="Risky Operation")
+def risky_operation():
+    print("Starting risky operation...")
+    
+    if something_goes_wrong():
+        raise ValueError("Operation failed!")
+    
+    return "Success"
+
+# Exceptions are automatically recorded in the span
+try:
+    risky_operation()
+except ValueError:
+    print("Handled the error")
+```
+
+## What Gets Traced
+
+Each decorated function automatically captures:
+
+- **Span name** - From the `name` parameter or function name
+- **Span kind** - SERVER for entrypoints/roots, INTERNAL for child spans
+- **Start/end time** - Duration of function execution
+- **Input arguments** - Both positional and keyword arguments (safely serialized)
+- **Return value** - The function's output (safely serialized)
+- **Print statements** - As timestamped events within the span AND as log records
+- **Exceptions** - Full traceback if the function fails
+- **Status** - OK or ERROR based on execution success
+- **Logs** - All print statements and logger calls are sent as logs to SigNoz
+- **Hierarchy info** - Whether the span is root, entrypoint, or child
+- **Metrics** - Automatic performance metrics (calls, errors, duration, data sizes)
+
+## Logging Integration
+
+The wrapper automatically sets up OpenTelemetry logging. Print statements are captured and sent as logs:
+
+```python
+from otel_wrapper import task, setup_logging
+import logging
+
+# Set up a logger for your app
+app_logger = setup_logging("my_app")
+
+@task(name="My Task")
+def my_function():
+    print("This goes to stdout AND SigNoz logs")
+    app_logger.info("This is a structured log", extra={"key": "value"})
+    return "done"
+```
+
+All logs are automatically correlated with the active span, making it easy to see logs in context with traces.
+
+## Automatic Metrics
+
+The wrapper automatically collects comprehensive metrics for all decorated functions:
+
+### Counters
+- `task_calls_total` - Total number of function calls (labeled by task name, function, status)
+- `task_errors_total` - Total number of errors (labeled by error type)
+- `task_prints_total` - Total print statements captured
+
+### Histograms
+- `task_duration_seconds` - Function execution time distribution
+- `task_input_size` - Size of input arguments (bytes)
+- `task_output_size` - Size of return values (bytes)
+
+### Gauges
+- `active_tasks` - Number of currently executing functions
+
+All metrics include labels for:
+- `task.name` - The span name
+- `function.name` - The actual function name  
+- `function.module` - The module containing the function
+- `task.is_root` - Whether this is a root span
+- `task.is_entrypoint` - Whether marked as an entrypoint
+- `task.status` - "success" or "error"
+
+These metrics enable you to create powerful dashboards showing request rates, error rates, response time percentiles, and resource utilization.
+
+## Performance & Export Control
+
+The wrapper is optimized for minimal overhead:
+
+### **Fast Export Intervals**
+- **Traces**: Export every 1 second (configurable via `OTEL_SPAN_EXPORT_INTERVAL_MS`)
+- **Logs**: Export every 1 second (configurable via `OTEL_LOG_EXPORT_INTERVAL_MS`)  
+- **Metrics**: Export every 2 seconds (configurable via `OTEL_METRIC_EXPORT_INTERVAL_MS`)
+
+### **Export Control**
+
+**Option 1: Async Trigger (Recommended)**
+```python
+from otel_wrapper import task, trigger_export
+
+@task(name="Quick Test")
+def test_function():
+    print("Testing...")
+    return "done"
+
+result = test_function()
+
+# Trigger export without waiting (returns immediately)
+trigger_export()  # Takes ~0ms, export happens in background
+print("Script continues immediately!")
+```
+
+**Option 2: Synchronous Flush**
+```python  
+from otel_wrapper import force_flush
+
+# Wait for all data to be sent (blocks until complete)
+force_flush()  # Takes ~100-500ms, blocks until done
+```
+
+### **Automatic Cleanup**
+The wrapper automatically cleans up on process exit:
+
+```python
+# No manual cleanup needed!
+@task(name="My Function")
+def my_function():
+    print("Working...")
+    return "done"
+
+my_function()
+# When script ends, automatic cleanup happens silently
+# Set OTEL_WRAPPER_VERBOSE_CLEANUP=true to see cleanup messages
+```
+
+For manual control:
+```python
+from otel_wrapper import shutdown
+
+# Manual shutdown (stops background threads)
+shutdown()
+```
+
+### **Runtime Overhead**
+- **Function call overhead**: ~10-50 microseconds
+- **Background export**: Runs in separate threads, doesn't block your code
+- **Memory usage**: Bounded queues prevent memory leaks
+- **Cleanup**: Automatic on exit, manual via `shutdown()`
+
+## How It Works
+
+1. **Decorator wraps your function** - The `@task` decorator intercepts calls
+2. **Span is created** - A new span starts when the function is called
+3. **Context propagates** - Nested calls automatically become child spans
+4. **Data is captured** - Inputs, outputs, prints, and errors are recorded
+5. **Async export** - Spans are batched and sent to SigNoz without blocking
+
+## Testing
+
+Run the tests:
+
+```bash
+python -m pytest tests/
+# or
+python -m unittest discover tests/
+```
+
+Run the example:
+
+```bash
+python example.py
+```
+
+## Limitations
+
+- Large objects in arguments/returns are truncated to prevent huge spans
+- Print capture includes timestamps but not other file descriptors
+- Async functions are not yet supported (coming soon)
+
+## Advanced Configuration
+
+The `BatchSpanProcessor` is configured with:
+- **Max queue size**: 2048 spans
+- **Batch size**: 512 spans  
+- **Export interval**: 5 seconds
+- **Timeout**: 30 seconds
+
+These ensure reliable async export without blocking your application.
