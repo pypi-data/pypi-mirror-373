@@ -1,0 +1,149 @@
+name: Build Log Viewer
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - "*"
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/inspect_ai/_view/www
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Run tsc
+        run: yarn tsc
+
+  prettier:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/inspect_ai/_view/www
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Check prettier
+        run: yarn prettier:check
+
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/inspect_ai/_view/www
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Run eslint
+        run: yarn eslint
+
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/inspect_ai/_view/www
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Run tests
+        run: yarn test
+
+  check-schema-and-types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt', '**/pyproject.toml') }}-${{ matrix.python-version }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      - name: Install pip dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install .[dev]
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+      - name: Install Node.js dependencies
+        working-directory: src/inspect_ai/_view/www
+        run: yarn install --frozen-lockfile
+
+      - name: Update schema and types
+        run: python src/inspect_ai/_view/schema.py
+
+      - name: Ensure schema and types changes are checked in
+        run: |
+          if [[ $(git status --porcelain) != "" ]]
+          then
+            echo "Log format JSON Schema and TypeScript types are out of date. Please run python src/inspect_ai/_view/schema.py and check in the changes."
+            git status
+            git diff
+            exit 1
+          fi
+
+  # TODO: This is failing even with a freshly generated build.js file
+  # Need to debug or better understand the cause
+  # build:
+  #   runs-on: ubuntu-latest
+  #   defaults:
+  #     run:
+  #       working-directory: src/inspect_ai/_view/www
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Set up Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: "22.x"
+  #     - name: Install dependencies
+  #       run: yarn install
+
+  #     - name: Build log viewer
+  #       run: yarn build
+
+  #     - name: Ensure dist changes are checked in
+  #       run: |
+  #         if [[ $(git status --porcelain) != "" ]]
+  #         then
+  #           echo "Log viewer dist files have not been updated, please run yarn build and check in the changes."
+  #           git status
+  #           git diff dist/assets/index.js
+  #           exit 1
+  #         fi
