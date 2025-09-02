@@ -1,0 +1,239 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  name: iris-knn
+  labels:
+    axl-workflow: 'true'
+    axl-version: 0.1.0
+spec:
+  entrypoint: main-dag
+  serviceAccountName: workflow-runner
+  templates:
+  - name: main-dag
+    dag:
+      tasks:
+      - name: evaluate
+        template: evaluate
+        dependencies:
+        - train
+        arguments:
+          artifacts:
+          - name: train
+            from: '{{tasks.train.outputs.artifacts.train}}'
+      - name: train
+        template: train
+        dependencies:
+        - split
+        arguments:
+          artifacts:
+          - name: split
+            from: '{{tasks.split.outputs.artifacts.split}}'
+      - name: split
+        template: split
+        dependencies:
+        - load-data
+        arguments:
+          artifacts:
+          - name: load-data
+            from: '{{tasks.load-data.outputs.artifacts.load-data}}'
+      - name: load-data
+        template: load-data
+  - name: evaluate
+    container:
+      image: axl-runner:dev3
+      imagePullPolicy: IfNotPresent
+      workingDir: /app
+      command:
+      - python
+      - -m
+      - axl.runtime
+      args:
+      - --step
+      - evaluate
+      - --workflow-name
+      - iris-knn
+      - --io-handler
+      - pickle
+      - --workflow-module
+      - iris_example
+      - --workflow-class
+      - IrisKNN
+      - --io-manifest
+      - '{"step_name": "evaluate", "io_handler": "pickle", "file_extension": ".pkl",
+        "inputs": [{"name": "train", "source_step": "train", "file_path": "/tmp/inputs/train.pkl",
+        "io_handler": "pickle"}], "outputs": [{"name": "evaluate", "file_path": "/tmp/outputs/evaluate.pkl",
+        "io_handler": "pickle"}]}'
+      - --packages
+      - scikit-learn
+      resources:
+        requests:
+          memory: 64Mi
+          cpu: 100m
+        limits:
+          memory: 128Mi
+          cpu: 200m
+      env:
+      - name: AXL_WORKFLOW_NAME
+        value: iris-knn
+      - name: AXL_STEP_NAME
+        value: evaluate
+      - name: AXL_IO_HANDLER
+        value: pickle
+      - name: PYTHONPATH
+        value: /app:/app/examples
+    inputs:
+      artifacts:
+      - name: train
+        path: /tmp/inputs/train.pkl
+    outputs:
+      artifacts:
+      - name: evaluate
+        path: /tmp/outputs/evaluate.pkl
+  - name: train
+    container:
+      image: axl-runner:dev3
+      imagePullPolicy: IfNotPresent
+      workingDir: /app
+      command:
+      - python
+      - -m
+      - axl.runtime
+      args:
+      - --step
+      - train
+      - --workflow-name
+      - iris-knn
+      - --io-handler
+      - pickle
+      - --workflow-module
+      - iris_example
+      - --workflow-class
+      - IrisKNN
+      - --io-manifest
+      - '{"step_name": "train", "io_handler": "pickle", "file_extension": ".pkl",
+        "inputs": [{"name": "split", "source_step": "split", "file_path": "/tmp/inputs/split.pkl",
+        "io_handler": "pickle"}], "outputs": [{"name": "train", "file_path": "/tmp/outputs/train.pkl",
+        "io_handler": "pickle"}]}'
+      - --packages
+      - scikit-learn
+      resources:
+        requests:
+          memory: 64Mi
+          cpu: 100m
+        limits:
+          memory: 128Mi
+          cpu: 200m
+      env:
+      - name: AXL_WORKFLOW_NAME
+        value: iris-knn
+      - name: AXL_STEP_NAME
+        value: train
+      - name: AXL_IO_HANDLER
+        value: pickle
+      - name: PYTHONPATH
+        value: /app:/app/examples
+    inputs:
+      artifacts:
+      - name: split
+        path: /tmp/inputs/split.pkl
+    outputs:
+      artifacts:
+      - name: train
+        path: /tmp/outputs/train.pkl
+  - name: split
+    container:
+      image: axl-runner:dev3
+      imagePullPolicy: IfNotPresent
+      workingDir: /app
+      command:
+      - python
+      - -m
+      - axl.runtime
+      args:
+      - --step
+      - split
+      - --workflow-name
+      - iris-knn
+      - --io-handler
+      - pickle
+      - --workflow-module
+      - iris_example
+      - --workflow-class
+      - IrisKNN
+      - --io-manifest
+      - '{"step_name": "split", "io_handler": "pickle", "file_extension": ".pkl",
+        "inputs": [{"name": "load-data", "source_step": "load-data", "file_path":
+        "/tmp/inputs/load_data.pkl", "io_handler": "pickle"}], "outputs": [{"name":
+        "split", "file_path": "/tmp/outputs/split.pkl", "io_handler": "pickle"}]}'
+      - --packages
+      - scikit-learn
+      resources:
+        requests:
+          memory: 64Mi
+          cpu: 100m
+        limits:
+          memory: 128Mi
+          cpu: 200m
+      env:
+      - name: AXL_WORKFLOW_NAME
+        value: iris-knn
+      - name: AXL_STEP_NAME
+        value: split
+      - name: AXL_IO_HANDLER
+        value: pickle
+      - name: PYTHONPATH
+        value: /app:/app/examples
+    inputs:
+      artifacts:
+      - name: load-data
+        path: /tmp/inputs/load_data.pkl
+    outputs:
+      artifacts:
+      - name: split
+        path: /tmp/outputs/split.pkl
+  - name: load-data
+    container:
+      image: axl-runner:dev3
+      imagePullPolicy: IfNotPresent
+      workingDir: /app
+      command:
+      - python
+      - -m
+      - axl.runtime
+      args:
+      - --step
+      - load-data
+      - --workflow-name
+      - iris-knn
+      - --io-handler
+      - pickle
+      - --workflow-module
+      - iris_example
+      - --workflow-class
+      - IrisKNN
+      - --io-manifest
+      - '{"step_name": "load-data", "io_handler": "pickle", "file_extension": ".pkl",
+        "inputs": [], "outputs": [{"name": "load-data", "file_path": "/tmp/outputs/load_data.pkl",
+        "io_handler": "pickle"}]}'
+      - --packages
+      - scikit-learn
+      resources:
+        requests:
+          memory: 64Mi
+          cpu: 100m
+        limits:
+          memory: 128Mi
+          cpu: 200m
+      env:
+      - name: AXL_WORKFLOW_NAME
+        value: iris-knn
+      - name: AXL_STEP_NAME
+        value: load-data
+      - name: AXL_IO_HANDLER
+        value: pickle
+      - name: PYTHONPATH
+        value: /app:/app/examples
+    outputs:
+      artifacts:
+      - name: load-data
+        path: /tmp/outputs/load_data.pkl
