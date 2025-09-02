@@ -1,0 +1,1 @@
+tellraw @a [{"text":"Steve has a good score!"}]
