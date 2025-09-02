@@ -1,0 +1,1 @@
+A Python card shoe library for creating card shoes with multiple decks for blackjack and casino usage.
