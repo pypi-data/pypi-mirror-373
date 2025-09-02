@@ -1,0 +1,807 @@
+# FIDI Common Libraries
+
+<div align="center">
+
+**Bibliotecas compartilhadas para automação e integração nos projetos FIDI**
+
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/exolyze/FIDI-common-libraries)
+[![Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen)](https://github.com/exolyze/FIDI-common-libraries)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.3.17-blue)](docs/releases/v1.3.17.md)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://python.org)
+
+[📖 Documentação](docs/) • [🐛 Reportar Bug](https://github.com/exolyze/FIDI-common-libraries/issues) • [💡 Solicitar Feature](https://github.com/exolyze/FIDI-common-libraries/issues/new)
+
+</div>
+
+---
+
+## 📋 Índice
+
+- [Sobre o Projeto](#-sobre-o-projeto)
+- [Funcionalidades](#-funcionalidades)
+- [Tecnologias](#-tecnologias)
+- [Pré-requisitos](#-pré-requisitos)
+- [Instalação](#-instalação)
+- [Uso](#-uso)
+- [Configuração](#-configuração)
+- [Testes](#-testes)
+- [Contribuição](#-contribuição)
+- [Roadmap](#-roadmap)
+- [Licença](#-licença)
+- [Contato](#-contato)
+- [Agradecimentos](#-agradecimentos)
+
+---
+
+## 🎯 Sobre o Projeto
+
+### Visão Geral
+
+O FIDI Common Libraries é um conjunto abrangente de bibliotecas Python reutilizáveis desenvolvidas para padronizar e acelerar o desenvolvimento de soluções de automação, integração com AWS e processamento de dados nos projetos da FIDI. O projeto segue rigorosamente as melhores práticas de desenvolvimento Python, incluindo Poetry para gerenciamento de dependências, Pywinauto para automação de UI e arquitetura modular para máxima reutilização.
+
+### Objetivos
+
+- **Objetivo Principal**: Fornecer bibliotecas padronizadas e reutilizáveis para automação e integração
+- **Objetivos Específicos**:
+  - Padronizar operações de banco de dados multi-SGBD
+  - Simplificar integrações com serviços AWS
+  - Automatizar interfaces gráficas do sistema TOTVS RM
+  - Centralizar gerenciamento de configurações e parâmetros
+
+### Benefícios
+
+- ✅ **Reutilização**: Componentes padronizados reduzem duplicação de código
+- ✅ **Qualidade**: Cobertura de testes superior a 85% garante confiabilidade
+- ✅ **Produtividade**: Acelera desenvolvimento com componentes prontos
+- ✅ **Manutenibilidade**: Arquitetura modular facilita manutenção e evolução
+
+---
+
+## ⚡ Funcionalidades
+
+### Principais
+
+- 🗄️ **Módulo Data**: Operações robustas de banco de dados multi-SGBD (Oracle, PostgreSQL, SQL Server)
+- ☁️ **Módulo AWS**: Clientes padronizados para SQS, SNS, Lambda, S3 com configuração centralizada
+- 🖥️ **Módulo UI**: Automação completa de interfaces gráficas TOTVS RM com Pywinauto
+- ⚙️ **Módulo Config**: Gerenciamento inteligente de parâmetros com cache e conversão automática
+
+### Funcionalidades Avançadas
+
+<details>
+<summary>Clique para expandir</summary>
+
+- **Logging Estruturado**: Sistema de logs multi-SGBD com metadados enriquecidos
+- **Constantes Padronizadas**: Sistema de status com conversão automática entre tipos
+- **Inspetor de UI**: Ferramenta avançada para análise e mapeamento de elementos de interface
+- **Navegação Adaptativa**: Sistema inteligente de navegação em interfaces com retry automático
+- **Execução de Procedures**: Classes especializadas para execução robusta de procedures de banco
+
+</details>
+
+---
+
+## 🛠️ Tecnologias
+
+### Stack Principal
+
+| Categoria | Tecnologia | Versão | Descrição |
+|-----------|------------|--------|-----------|
+| **Linguagem** | Python | 3.9+ | Linguagem principal do projeto |
+| **Gerenciador** | Poetry | 1.4+ | Gerenciamento de dependências e empacotamento |
+| **UI Automation** | Pywinauto | 0.6+ | Automação de interfaces gráficas Windows |
+| **AWS SDK** | Boto3 | 1.26+ | Integração com serviços AWS |
+| **Database** | Multiple | - | Oracle (oracledb), PostgreSQL (psycopg2), SQL Server (pyodbc) |
+
+### Dependências Principais
+
+```toml
+[tool.poetry.dependencies]
+python = "^3.9"
+pywinauto = "^0.6.8"
+boto3 = "^1.26.0"
+oracledb = "^1.4.0"
+psycopg2-binary = "^2.9.0"
+pyodbc = "^4.0.39"
+pyyaml = "^6.0"
+requests = "^2.28.0"
+```
+
+### Arquitetura
+
+```mermaid
+graph TB
+    A[Aplicação Cliente] --> B[FIDI Common Libraries]
+    B --> C[Módulo Data]
+    B --> D[Módulo AWS]
+    B --> E[Módulo UI]
+    B --> F[Módulo Config]
+    C --> G[Oracle/PostgreSQL/SQL Server]
+    D --> H[SQS/SNS/Lambda/S3]
+    E --> I[TOTVS RM]
+    F --> J[Banco de Parâmetros]
+```
+
+---
+
+## 📋 Pré-requisitos
+
+### Requisitos do Sistema
+
+- **Sistema Operacional**: Windows 10/11 (para automação UI)
+- **Memória RAM**: 4 GB mínimo, 8 GB recomendado
+- **Espaço em Disco**: 2 GB disponível
+- **Rede**: Conexão com internet para dependências e AWS
+
+### Software Necessário
+
+- **Python**: 3.9 ou superior - [Download](https://python.org/downloads/)
+- **Poetry**: 1.4 ou superior - [Instalação](https://python-poetry.org/docs/#installation)
+- **Git**: Para clonagem do repositório - [Download](https://git-scm.com/)
+
+### Verificação de Pré-requisitos
+
+```bash
+# Verificar versões instaladas
+python --version
+poetry --version
+git --version
+```
+
+---
+
+## 🚀 Instalação
+
+### Instalação Rápida
+
+```bash
+# Clone o repositório
+git clone https://github.com/exolyze/FIDI-common-libraries.git
+cd FIDI-common-libraries
+
+# Instale as dependências
+poetry install
+
+# Ative o ambiente virtual
+poetry shell
+```
+
+### Instalação como Dependência
+
+```bash
+# Instalar via Poetry (recomendado)
+poetry add git+https://github.com/exolyze/FIDI-common-libraries.git
+
+# Ou via pip
+pip install git+https://github.com/exolyze/FIDI-common-libraries.git
+```
+
+### Instalação Detalhada
+
+<details>
+<summary>Clique para ver instruções detalhadas</summary>
+
+#### 1. Clone o Repositório
+
+```bash
+git clone https://github.com/exolyze/FIDI-common-libraries.git
+cd FIDI-common-libraries
+```
+
+#### 2. Configure o Ambiente
+
+```bash
+# Instale o Poetry se não tiver
+curl -sSL https://install.python-poetry.org | python3 -
+
+# Configure o Poetry para criar venv no projeto
+poetry config virtualenvs.in-project true
+```
+
+#### 3. Instale as Dependências
+
+```bash
+# Instale dependências de produção e desenvolvimento
+poetry install
+
+# Apenas dependências de produção
+poetry install --no-dev
+```
+
+#### 4. Configure Variáveis de Ambiente
+
+```bash
+# Copie o arquivo de exemplo
+cp .env.example .env
+
+# Edite as configurações
+nano .env
+```
+
+#### 5. Configure Hooks de Desenvolvimento
+
+```bash
+# Instale pre-commit hooks
+poetry run pre-commit install
+
+# Execute verificações
+poetry run pre-commit run --all-files
+```
+
+</details>
+
+### Verificação da Instalação
+
+```bash
+# Teste a importação
+poetry run python -c "import fidi_common_libraries; print('Instalação OK!')"
+
+# Execute os testes
+poetry run pytest
+```
+
+---
+
+## 💻 Uso
+
+### Início Rápido
+
+1. **Instale a biblioteca**: Siga as instruções de [instalação](#-instalação)
+2. **Configure variáveis**: Defina as variáveis de ambiente necessárias
+3. **Importe módulos**: Use os módulos conforme sua necessidade
+4. **Explore exemplos**: Veja os casos de uso abaixo
+
+### Guia do Usuário
+
+### Módulo Data - Operações de Banco
+
+```python
+from fidi_common_libraries.data.db_data import (
+    DatabaseConfig, DatabaseQuery, ProcessosRpaInserter, ProcessosRpaUpdater,
+    ProcedureExecutor, ProcedureHelpers
+)
+from datetime import datetime
+
+# Configuração do banco
+db_config = DatabaseConfig.from_env('RPA_')  # Usa variáveis RPA_DB_SERVER, etc.
+
+# Inserir registro
+inserter = ProcessosRpaInserter(db_config)
+registro_id = inserter.insert(
+    ambiente="PRD",
+    produto="FIDI-ferias",
+    versao="1.0.0",
+    chapa="123456",
+    statusexecucao="NOVO"
+)
+
+# Consulta segura
+query = DatabaseQuery(db_config)
+results = query.execute_query(
+    "SELECT * FROM processosrpa WHERE statusexecucao = :status",
+    {"status": "NOVO"}
+)
+
+# Execução de procedures
+executor = ProcedureExecutor(db_config)
+
+# Procedure sem retorno
+success = executor.execute_procedure_no_result("sp_update_status", ["ATIVO", 123])
+
+# Procedure que retorna valor único
+next_id = executor.execute_procedure_single_value("sp_get_next_id", ["processosrpa"])
+
+# Procedure que retorna boolean
+is_valid = executor.execute_procedure_boolean_result("sp_validate_record", [123])
+
+# Procedure que retorna múltiplas linhas
+reports = executor.execute_procedure_multiple_rows("sp_get_daily_reports", ["2024-01-01"])
+
+# Helpers para procedures comuns
+helpers = ProcedureHelpers(db_config)
+cleanup_count = helpers.cleanup_old_data("temp_table", 30)
+system_status = helpers.get_system_status()
+```
+
+### Módulo Config - Gerenciamento de Parâmetros
+
+```python
+from fidi_common_libraries.config.parametros import Parametros
+
+# Inicializar o gerenciador de parâmetros
+params = Parametros(ambiente="HML", produto="FIDI-ferias")
+
+# Obter um parâmetro
+url_api = params.get_parametro("URL_API", default="https://api.exemplo.com")
+
+# Obter parâmetros por grupo
+config_email = params.get_parametros_por_grupo("Email")
+
+# Obter parâmetros por categorias específicas
+config_ti = params.get_parametros_por_grupo("TI")  # Configurações técnicas
+config_negocio = params.get_parametros_por_grupo("Negocio")  # Configurações de negócio
+config_produto = params.get_parametros_por_grupo("Produto")  # Configurações do produto
+
+# Atualizar um parâmetro
+params.atualizar_parametro("TIMEOUT_API", 30)
+```
+
+### Módulo Utils - Logging e Status
+
+```python
+from fidi_common_libraries.utils.logger import registrar_log_banco
+from fidi_common_libraries.constants.status import HubStatus, DBStatus, LogStatus, convert_status
+import pyodbc
+
+# Conexão com banco
+conn = pyodbc.connect(connection_string)
+
+# Registrar log (detecta automaticamente o tipo de banco)
+registrar_log_banco(
+    conn=conn,
+    ambiente="PRD",
+    produto="FIDI-ferias",
+    versao="1.0.0",
+    nivel="INFO",
+    modulo="main",
+    processo="processamento",
+    acao="inicio",
+    lote="LOTE001",
+    mensagem="Processo iniciado",
+    usuario="sistema",
+    status_execucao=LogStatus.SUCESSO,
+    hostname="server01",
+    ip_origem="192.168.1.100"
+)
+
+# Usar constantes de status
+status_db = DBStatus.NOVO
+status_log = convert_status(status_db, 'db', 'log')
+```
+
+### Módulo AWS - Clientes Padronizados
+
+```python
+from fidi_common_libraries.aws.common_aws import AWSClientFactory, AWSConfig, create_message_with_metadata
+
+# Configuração AWS
+config = AWSConfig.from_env()  # Usa variáveis AWS_REGION, AWS_ACCESS_KEY_ID, etc.
+factory = AWSClientFactory(config)
+
+# Cliente SQS
+sqs = factory.get_sqs_client()
+message_id = sqs.send_message(
+    queue_url="https://sqs.sa-east-1.amazonaws.com/123456789/my-queue",
+    message={"data": "test"},
+    message_attributes={"Type": {"StringValue": "ProcessData", "DataType": "String"}}
+)
+```
+
+### Módulo UI - Automação de Interfaces Gráficas
+
+```python
+from fidi_common_libraries.ui import RMApplication, ElementFinder, UIInteractions, UIWaits, LocatorService
+
+# Conectar ou iniciar aplicação RM
+app = RMApplication()
+app.connect_or_start()  # Conecta se existir ou inicia nova instância
+
+# Aguardar aplicação ficar pronta
+app.wait_for_application_ready(timeout=60)
+
+# Obter janela principal ou TOTVS
+main_window = app.get_main_window()
+totvs_window = app.get_totvs_window()
+
+# Navegação automática no sistema RM
+from fidi_common_libraries.ui import RMNavigator, LocatorMode
+navigator = RMNavigator(app.app, main_window)
+success, button_text = navigator.navigate_to_element(
+    {"title": "Encargos", "control_type": "TabItem"},
+    {"title": "Contabilização", "control_type": "Pane"},
+    {"title": "Geração dos Encargos", "control_type": "Button"}
+)
+
+# Login automatizado no sistema RM
+from fidi_common_libraries.ui import RMStartLogin, LocatorService
+locator_service = LocatorService("locators.yaml")
+login_manager = RMStartLogin(locator_service)
+success, rm_app = login_manager.start_and_login("HML", "FIDI-ferias")
+
+# Seleção de ambiente no login
+from fidi_common_libraries.ui import RMLoginEnvSelector
+env_selector = RMLoginEnvSelector(login_window, locator_service)
+success, alias = env_selector.select_environment("HML", "FIDI-ferias")
+
+# Conexão dupla (win32 + uia) para análise
+from fidi_common_libraries.ui import RMDualConnect
+connector = RMDualConnect(output_dir="locators_output")
+success, info = connector.connect_dual()
+
+# Monitoramento de progresso de processos RM
+from fidi_common_libraries.ui import RMProgressMonitor
+monitor = RMProgressMonitor(parent_element, "timer_auto_id")
+result = monitor.monitor_until_stable(max_timeout=300)
+
+# Navegação adaptativa com retry automático
+from fidi_common_libraries.ui import RMAdaptNavigator
+navigator = RMAdaptNavigator(parent_element)
+element = navigator.navigate_to_element(title="Salvar", control_type="Button")
+
+# Fechamento de janelas e aplicação RM
+from fidi_common_libraries.ui import RMClose
+closer = RMClose(main_window)
+
+# Fechar janela atual
+success = closer.close_window()
+
+# Fechar aplicação completa
+success = closer.close_application()
+
+# Navegação e seleção da Planilha Net
+from fidi_common_libraries.ui import RMPlanilhaNet
+
+# Opção 1: Processo completo automático (recomendado)
+planilha_net = RMPlanilhaNet(main_window, app, "PLAN001")  # Executa automaticamente
+
+# Opção 2: Execução manual passo a passo
+planilha_net = RMPlanilhaNet(main_window)
+success = planilha_net.navigate_filters(app, timeout=60)
+success = planilha_net.select_planilha("PLAN001")
+
+# Opção 3: Processo completo via método
+planilha_net = RMPlanilhaNet(main_window)
+success = planilha_net.execute_full_process(app, "PLAN001")
+
+# Usar serviço de locators para elementos
+locator_service = LocatorService("locators.yaml", mode=LocatorMode.PYWINAUTO)
+login_criteria = locator_service.get_non_null_attributes("login_button")
+
+# Encontrar elemento com critérios robustos
+finder = ElementFinder()
+button = finder.find_element(
+    parent=main_window,
+    primary_criteria=login_criteria,
+    fallback_criteria=[{"auto_id": "btnSave"}]
+)
+
+# Interagir com elementos de forma segura
+interactions = UIInteractions()
+interactions.safe_click(button)
+
+# Aguardar elementos ou condições
+waits = UIWaits()
+waits.wait_for_element_ready(button, timeout=10)
+
+# Inspeção de elementos UI (ferramenta de desenvolvimento)
+from fidi_common_libraries.ui.utils.inspector import UIElementInspectorAdvanced
+inspector = UIElementInspectorAdvanced()
+inspector.connect_to_application(window_title="TOTVS")
+inspector.start_assisted_navigation()  # Navegação assistida com overlay visual
+
+# Fechar aplicação quando terminar
+app.close_application()  # Fecha apenas se foi iniciada por nós
+
+# Configuração AWS
+config = AWSConfig.from_env()  # Usa variáveis AWS_REGION, AWS_ACCESS_KEY_ID, etc.
+factory = AWSClientFactory(config)
+
+# Cliente SQS
+sqs = factory.get_sqs_client()
+message_id = sqs.send_message(
+    queue_url="https://sqs.sa-east-1.amazonaws.com/123456789/my-queue",
+    message={"data": "test"},
+    message_attributes={"Type": {"StringValue": "ProcessData", "DataType": "String"}}
+)
+
+# Cliente SNS
+sns = factory.get_sns_client()
+sns.publish_message(
+    topic_arn="arn:aws:sns:sa-east-1:123456789:my-topic",
+    message=create_message_with_metadata({"event": "process_completed"}),
+    subject="Processo Finalizado"
+)
+
+# Cliente Lambda
+lambda_client = factory.get_lambda_client()
+result = lambda_client.invoke_function(
+    function_name="my-function",
+    payload={"action": "process", "data": "test"}
+)
+
+# Cliente S3
+s3 = factory.get_s3_client()
+s3.upload_file("/path/to/file.txt", "my-bucket", "uploads/file.txt")
+```
+
+---
+
+## ⚙️ Configuração
+
+### Variáveis de Ambiente
+
+```bash
+# Configurações de banco de dados
+RPA_DB_SERVER=servidor-banco
+RPA_DB_DATABASE=nome-banco
+RPA_DB_USERNAME=usuario
+RPA_DB_PASSWORD=senha
+RPA_DB_DRIVER=ODBC Driver 17 for SQL Server
+
+# Configurações AWS
+AWS_REGION=sa-east-1
+AWS_ACCESS_KEY_ID=sua-access-key
+AWS_SECRET_ACCESS_KEY=sua-secret-key
+
+# Configurações de aplicação
+APP_ENVIRONMENT=PRD
+APP_PRODUTO=FIDI-comum
+APP_VERSAO=1.3.13
+
+# Configurações de UI
+UI_TIMEOUT_DEFAULT=30
+UI_SCREENSHOT_ON_ERROR=true
+UI_LOG_LEVEL=INFO
+```
+
+### Arquivo de Configuração
+
+```yaml
+# config/ui_config.yaml
+ui:
+  timeouts:
+    default: 30
+    long: 60
+    short: 10
+  
+  screenshots:
+    enabled: true
+    path: "screenshots/"
+    format: "png"
+  
+  locators:
+    mode: "pywinauto"
+    file: "locators.yaml"
+```
+
+---
+
+## 🧪 Testes
+
+### Executar Testes
+
+```bash
+# Todos os testes
+poetry run pytest
+
+# Testes unitários
+poetry run pytest tests/unit/
+
+# Testes de integração
+poetry run pytest tests/integration/
+
+# Testes e2e
+poetry run pytest tests/e2e/
+
+# Cobertura de testes
+poetry run pytest --cov=src --cov-report=html
+```
+
+### Estrutura de Testes
+
+```
+tests/
+├── unit/           # Testes unitários
+│   ├── test_data/
+│   ├── test_aws/
+│   ├── test_ui/
+│   └── test_config/
+├── integration/    # Testes de integração
+│   ├── test_database/
+│   ├── test_aws_services/
+│   └── test_ui_automation/
+├── e2e/           # Testes end-to-end
+│   └── test_full_workflows/
+├── fixtures/      # Dados de teste
+└── conftest.py    # Configurações pytest
+```
+
+### Métricas de Qualidade
+
+- **Cobertura de Testes**: ![Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen)
+- **Qualidade do Código**: ![Quality](https://img.shields.io/badge/quality-A-green)
+- **Vulnerabilidades**: ![Security](https://img.shields.io/badge/vulnerabilities-0-green)
+
+---
+
+## 🤝 Contribuição
+
+Contribuições são sempre bem-vindas! Veja como você pode ajudar:
+
+### Como Contribuir
+
+1. **Fork** o projeto
+2. **Crie** uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
+3. **Commit** suas mudanças (`git commit -m 'Add some AmazingFeature'`)
+4. **Push** para a branch (`git push origin feature/AmazingFeature`)
+5. **Abra** um Pull Request
+
+### Diretrizes
+
+- Siga as diretrizes estabelecidas em `.amazonq/rules/`
+- Mantenha a cobertura de testes acima de 85%
+- Execute os pre-commit hooks antes de fazer commit
+- Atualize a documentação conforme necessário
+- Use mensagens de commit descritivas
+
+### Tipos de Contribuição
+
+- 🐛 **Bug Reports**: Reporte bugs usando [GitHub Issues](https://github.com/exolyze/FIDI-common-libraries/issues)
+- 💡 **Feature Requests**: Sugira novas funcionalidades
+- 📖 **Documentação**: Melhore a documentação
+- 🧪 **Testes**: Adicione ou melhore testes
+- 🎨 **Refatoração**: Melhore a qualidade do código
+
+### Qualidade de Código
+
+```bash
+# Formatação automática
+poetry run black src/ tests/
+
+# Linting
+poetry run flake8 src/ tests/
+
+# Verificação de tipos
+poetry run mypy src/
+
+# Análise de segurança
+poetry run bandit -r src/
+```
+
+---
+
+## 🗺️ Roadmap
+
+### Versão Atual: 1.3.17
+
+- ✅ Módulo Data com suporte multi-SGBD
+- ✅ Módulo AWS com clientes padronizados
+- ✅ Módulo UI com automação TOTVS RM completa
+- ✅ Sistema de configuração e parâmetros
+- ✅ Documentação padronizada com templates
+- ✅ RM Single Connect para conexões robustas
+
+### Próximas Versões
+
+#### v1.4.0 - Q2 2024
+- 🔄 Suporte a MongoDB no módulo Data
+- 🔄 Integração com Azure Services
+- 📋 Módulo de relatórios automatizados
+- 📋 Dashboard de monitoramento
+
+#### v1.5.0 - Q3 2024
+- 📋 Suporte a automação web (Selenium)
+- 📋 Integração com APIs REST genéricas
+- 💡 Sistema de cache distribuído
+- 💡 Métricas e observabilidade
+
+### Backlog
+
+- 💡 Suporte a containers Docker
+- 💡 Integração com Kubernetes
+- 🔬 Machine Learning para automação inteligente
+- 🔬 Análise preditiva de falhas
+
+Veja o [Product Backlog](docs/PRODUCT_BACKLOG.md) para mais detalhes.
+
+---
+
+## 📊 Status do Projeto
+
+### Métricas
+
+| Métrica | Valor |
+|---------|-------|
+| **Linhas de Código** | ~15.000 |
+| **Módulos** | 5 principais |
+| **Classes** | 25+ |
+| **Cobertura de Testes** | 85%+ |
+| **Versão Atual** | 1.3.17 |
+
+### Atividade Recente
+
+- 📅 **Último Release**: 01/09/2025 - v1.3.17
+- 🔄 **Último Commit**: 08/08/2025
+- 🐛 **Issues Resolvidas**: 8 esta semana
+- 🚀 **Features Adicionadas**: 3 este mês
+
+---
+
+## 📄 Licença
+
+Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICENSE) para detalhes.
+
+### Resumo da Licença
+
+- ✅ **Uso Comercial**: Permitido
+- ✅ **Modificação**: Permitida
+- ✅ **Distribuição**: Permitida
+- ✅ **Uso Privado**: Permitido
+- ❌ **Responsabilidade**: Não assumida
+- ❌ **Garantia**: Não fornecida
+
+---
+
+## 📞 Contato
+
+### Equipe de Desenvolvimento
+
+- **Tech Lead & Maintainer**: Vander Loto - [vander.loto@datametria.io]
+- **Development Team**: DATAMETRIA Engineering - [dev@datametria.io]
+- **Product Owner**: DATAMETRIA - [produto@datametria.io]
+
+### Canais de Suporte
+
+- 📧 **Email**: [vander.loto@datametria.io]
+- 🐛 **Issues**: [GitHub Issues](https://github.com/exolyze/FIDI-common-libraries/issues)
+- 📖 **Documentação**: [docs/](docs/)
+
+### Links do Projeto
+
+- 🏠 **Homepage**: [https://datametria.io]
+- 📖 **Documentação**: [docs/](docs/)
+- 🐛 **Issues**: [GitHub Issues](https://github.com/exolyze/FIDI-common-libraries/issues)
+- 🚀 **Releases**: [GitHub Releases](https://github.com/exolyze/FIDI-common-libraries/releases)
+
+---
+
+## 🙏 Agradecimentos
+
+### Contribuidores
+
+Obrigado a todas as pessoas que contribuíram para este projeto:
+
+- DATAMETRIA Engineering
+- DATAMETRIA Engineering
+- Usuários que reportaram bugs e sugeriram melhorias
+
+### Inspirações e Referências
+
+- **Pywinauto**: Biblioteca fundamental para automação de UI Windows
+- **Poetry**: Gerenciador moderno de dependências Python
+- **AWS SDK**: Integração robusta com serviços AWS
+- **TOTVS RM**: Sistema ERP que motivou o desenvolvimento do módulo UI
+
+### Tecnologias e Bibliotecas
+
+Agradecemos às comunidades open source das tecnologias utilizadas:
+
+- [Python](https://python.org) - Linguagem de programação
+- [Poetry](https://python-poetry.org) - Gerenciamento de dependências
+- [Pywinauto](https://pywinauto.readthedocs.io) - Automação de UI
+- [Boto3](https://boto3.amazonaws.com) - AWS SDK para Python
+- [Pytest](https://pytest.org) - Framework de testes
+
+---
+
+<div align="center">
+
+**Feito com ❤️ pela equipe DATAMETRIA**
+
+⭐ **Se este projeto te ajudou, considere dar uma estrela!** ⭐
+
+### 📚 Documentação Completa
+
+| Categoria | Documentos |
+|-----------|------------|
+| **Guias Principais** | [INSTALL.md](INSTALL.md) • [CHANGELOG.md](CHANGELOG.md) • [STATUS_ATUAL.md](STATUS_ATUAL.md) |
+| **Release Notes** | [Índice de Releases](docs/releases/README.md) • [Última Release](docs/releases/v1.3.14.md) |
+| **Deployment** | [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) |
+| **Módulos** | [DATA_MODULE_GUIDE.md](docs/DATA_MODULE_GUIDE.md) • [UI_MODULE_GUIDE.md](docs/UI_MODULE_GUIDE.md) • [RM_AUTOMATION_GUIDE.md](docs/RM_AUTOMATION_GUIDE.md) |
+| **Funcionalidades** | [RM_NAVIGATOR_GUIDE.md](docs/RM_NAVIGATOR_GUIDE.md) • [UI_INSPECTOR_GUIDE.md](docs/UI_INSPECTOR_GUIDE.md) • [LOCATOR_SERVICE_GUIDE.md](docs/LOCATOR_SERVICE_GUIDE.md) |
+| **Referências** | [RM_ADAPT_NAVIGATOR_CLASS_REFERENCE.md](docs/RM_ADAPT_NAVIGATOR_CLASS_REFERENCE.md) |
+| **ADRs** | [ADR-0001-use-pywinauto-for-ui-automation.md](docs/ADR-0001-use-pywinauto-for-ui-automation.md) |
+| **Gestão** | [PRODUCT_BACKLOG.md](docs/PRODUCT_BACKLOG.md) |
+
+</div>
