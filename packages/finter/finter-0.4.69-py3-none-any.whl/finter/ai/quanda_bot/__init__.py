@@ -1,0 +1,1 @@
+from finter.ai.quanda_bot.generate import execute_quanda_bot
