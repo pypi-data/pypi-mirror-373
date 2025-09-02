@@ -1,0 +1,247 @@
+{% extends "richie/fullwidth.html" %}
+{% load cms_tags extra_tags i18n thumbnail %}
+
+{% block head_title %}
+    {% page_attribute "page_title" as program_title %}
+    {% blocktrans with program_title=program_title %}{{ program_title }} - Program{% endblocktrans %}
+{% endblock head_title %}
+
+{% block meta_html_default %}
+    {% if not current_page|is_empty_placeholder:"program_excerpt" %}
+        <meta name="description" content="{% filter slice:":160" %}{% show_placeholder 'program_excerpt' current_page %}{% endfilter %}" />
+    {% endif %}
+{% endblock meta_html_default %}
+
+{% block meta_rdfa_context %}
+    <meta property="og:type" content="website" />
+
+    {% get_placeholder_plugins "program_cover" as og_image_plugins %}
+    {% if og_image_plugins.0 %}
+        {% thumbnail og_image_plugins.0.picture 1200x630 replace_alpha='#FFFFFF' crop upscale subject_location=og_image_plugins.0.picture.subject_location as thumb %}
+        <meta property="og:image" content="{{ MEDIA_URL_PREFIX }}{{ thumb.url }}" />
+        <meta property="og:image:width" content="{{ thumb.width }}" />
+        <meta property="og:image:height" content="{{ thumb.height }}" />  
+    {% endif %}
+    {% if not current_page|is_empty_placeholder:"program_excerpt" %}
+        <meta property="og:description" content="{% filter slice:":200" %}{% show_placeholder 'program_excerpt' current_page %}{% endfilter %}" />
+    {% endif %}
+{% endblock meta_rdfa_context %}
+
+{% block body_rdfa %} vocab="https://schema.org/" typeof="EducationalOccupationalProgram"{% endblock body_rdfa %}
+
+{% block subheader_content %}
+<div class="subheader__container">
+    <div class="subheader__intro">
+    <div class="program-detail__main">
+    {% block categories %}
+        {% if current_page.publisher_is_draft or not current_page|is_empty_placeholder:"program_categories" %}
+            <div class="category-badge-list subheader__badges">
+                <div class="category-badge-list__container">
+                    {% with category_variant="badge" is_keywords_property=True %}
+                        {% placeholder "program_categories" or %}
+                            <span class="category-badge-list__empty">
+                                {% trans "No associated categories" %}
+                            </span>
+                        {% endplaceholder %}
+                    {% endwith %}
+                </div>
+            </div>
+        {% endif %}
+    {% endblock categories %}
+    <h1 class="subheader__title">{% render_model current_page "title" %}</h1>
+    <div class="program-detail__content">
+        {% placeholder "program_excerpt" or %}
+            <div>{% trans "No excerpt content" %}</div>
+        {% endplaceholder %}
+
+    </div>
+    {% with program=current_page.program %}
+    {% if program.duration or program.effort %}
+        <div class="characteristics">
+            <ul class="characteristics__container">
+                {% if program.duration or current_page.publisher_is_draft %}
+                    <li class="characteristics__item">
+                        <svg role="img" class="characteristics__icon" aria-hidden="true">
+                            <use href="#icon-duration" />
+                        </svg>
+                        <span class="characteristics__term">{% trans "Duration:" %} {{ program.get_duration_display|default:"NA" }}</span>
+                    </li>
+                    {% endif %}
+                    {% if program.effort or current_page.publisher_is_draft %}
+                    <li class="characteristics__item">
+                        <svg role="img" class="characteristics__icon" aria-hidden="true">
+                            <use href="#icon-clock" />
+                        </svg>
+                        <span class="characteristics__term" property="timeRequired" content="{{ program.pt_effort }}">
+                            {% trans "Effort:" %} {{ program.get_effort_display|default:"NA" }}
+                        </span>
+                    </li>
+                    {% course_programs_count current_page as program_count %}
+                    {% if program_count > 0 %}
+                    <li class="characteristics__item">
+                        <svg role="img" class="characteristics__icon" aria-hidden="true">
+                            <use href="#icon-courses" />
+                        </svg>
+                        {% trans "Curriculum:" %} 
+                        {% blocktrans count counter=program_count %} {{ counter }} course {% plural %} {{ counter }} courses {% endblocktrans %}
+                    </li>
+                    {% endif %}
+                    {% if program.price %}
+                    <li class="characteristics__item">
+                        <svg role="img" class="characteristics__icon" aria-hidden="true">
+                            <use href="#icon-money" />
+                        </svg>
+                        {% trans "Price:" %} {{ program.price_with_currency }}
+                    </li>
+                    {% endif %}
+                {% endif %}
+            </ul>
+        </div>
+    {% endif %}
+    {% endwith %}
+        {% if current_page.publisher_is_draft or not current_page|is_empty_placeholder:"program_teaser" or not current_page|is_empty_placeholder:"program_cover" %}
+        <div class="subheader__teaser">
+            {% placeholder "program_teaser" or %}
+                {% get_placeholder_plugins "program_cover" as plugins or %}
+                    {% if current_page.publisher_is_draft %}
+                        <p class="empty">{% trans 'Add a teaser video or add a cover image below and it will be used as teaser image as well.' %}</p>
+                    {% endif %}
+                {% endget_placeholder_plugins %}
+            {% blockplugin plugins.0 %}
+                <img
+                    src="{% thumbnail instance.picture 500x500 replace_alpha='#FFFFFF' subject_location=instance.picture.subject_location %}"
+                    srcset="
+                        {% thumbnail instance.picture 500x500 replace_alpha='#FFFFFF' subject_location=instance.picture.subject_location %} 500w
+                        {% if instance.picture.width >= 1000 %},{% thumbnail instance.picture 1000x1000 replace_alpha='#FFFFFF' subject_location=instance.picture.subject_location %} 1000w{% endif %}
+                        {% if instance.picture.width >= 2000 %},{% thumbnail instance.picture 2000x2000 replace_alpha='#FFFFFF' subject_location=instance.picture.subject_location %} 2000w{% endif %}
+                    "
+                    sizes="500px"
+                    alt="{% trans 'program cover image' %}"
+                />
+            {% endblockplugin %}
+            {% endplaceholder %}
+        </div>
+        {% endif %}
+    </div>
+
+    {% if current_page.publisher_is_draft or not current_page|is_empty_placeholder:"program_organizations" %}
+    <div class="program-detail__aside">
+        {% placeholder "program_organizations" or %}
+            {% if current_page.publisher_is_draft %}
+                <p class="empty">{% trans "No organizations for this program" %}</p>
+            {% endif %}
+        {% endplaceholder %}
+    </div>
+    {% endif %}
+
+    </div>
+</div>
+{% endblock subheader_content %}
+
+{% block content %}{% spaceless %}
+<div class="program-detail">
+    
+    {% block cover %}
+        {% placeholder_as_plugins "program_cover" as cover_plugins %}
+        <meta property="image" content="{% thumbnail cover_plugins.0.picture 300x170 replace_alpha='#FFFFFF' crop upscale subject_location=cover_plugins.0.picture.subject_location %}" />
+        {% if current_page.publisher_is_draft %}
+        <div class="program-detail__block course-detail__cover">
+            <div class="program-detail__row">
+                <h2 class="program-detail__title">{% trans 'Glimpse cover' %}</h2>
+                    {% if not cover_plugins %}
+                        <p class="course-detail__empty">{% trans 'Add an image for program cover on its glimpse.' %}</p>
+                    {% endif %}
+                    {% blockplugin cover_plugins.0 %}
+                    <img
+                        src="{% thumbnail instance.picture 300x170 replace_alpha='#FFFFFF' crop upscale subject_location=instance.picture.subject_location %}"
+                        srcset="
+                        {% thumbnail instance.picture 300x170 replace_alpha='#FFFFFF' crop upscale subject_location=instance.picture.subject_location %} 300w
+                        {% if instance.picture.width >= 600 %},{% thumbnail instance.picture 600x340 replace_alpha='#FFFFFF' crop upscale subject_location=instance.picture.subject_location %} 600w{% endif %}
+                        {% if instance.picture.width >= 900 %},{% thumbnail instance.picture 900x510 replace_alpha='#FFFFFF' crop upscale subject_location=instance.picture.subject_location %} 900w{% endif %}
+                        "
+                        sizes="300px"
+                        alt="{% if instance.picture.default_alt_text %}{{ instance.picture.default_alt_text }}{% else %}{% trans 'course cover image' %}{% endif %}"
+                    />
+                    {% endblockplugin %}
+                </div>
+            </div>
+        {% endif %}
+    {% endblock cover %}
+
+    <div class="program-detail__block">
+        <div class="program-detail__body program-detail__row">
+            {% placeholder "program_body" or %}
+                <p class="program-detail__empty">
+                    {% trans "No body content" %}
+                </p>
+            {% endplaceholder %}
+        </div>
+    </div>
+
+    {% if current_page.publisher_is_draft or not current_page|is_empty_placeholder:"program_objectives" %}
+    <div class="program-detail__block">
+        <div class="program-detail__objectives program-detail__row">
+            <h2 class="program-detail__title" property="name">{% blocktrans context "program_objectives__title" %}What you will learn{% endblocktrans %}</h2>
+            {% placeholder "program_objectives" or %}
+                <p class="program-detail__empty">
+                    {% trans "No program objectives" %}
+                </p>
+            {% endplaceholder %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if current_page.publisher_is_draft or not current_page|is_empty_placeholder:"program_courses" or current_page.program.get_courses|length > 0 %}
+        <div class="program-detail__courses program-detail__block">
+            <div class="program-detail__row">
+                <section class="course-glimpse-list">
+                    <div class="course-glimpse-list__header">
+                        <h2 class="program-detail__title">{% trans "Related courses" %}</h2>
+                    </div>
+                    <div class="course-glimpse-list__content">
+                        {% if request.toolbar.edit_mode_active %}
+                            {% placeholder "program_courses" %}
+                        {% else %}
+                            {% for course in current_page.program.get_courses %}
+                                {% include "courses/cms/fragment_course_glimpse.html" with course=course header_level=3 %}
+                            {% endfor %}
+                        {% endif %}
+                    </div>
+                </section>
+            </div>
+        </div>
+    {% endif %}
+
+        {% block team %}
+            {% if current_page.publisher_is_draft or not current_page|is_empty_placeholder:"program_team" %}
+            <div class="course-detail__team course-detail__block course-detail__block--lightest">
+                <section class="section course-detail__row course-detail__team">
+                    <h2 class="course-detail__title">
+                        {% blocktrans context "course_detail__title" %}Program instructors{% endblocktrans %}
+                    </h2>
+                    {% with header_level=3 %}
+                        <div class="section__items section__items--team">
+                            {% placeholder "program_team" page or %}
+                                <p>{% trans 'Who are the instructors for this program?' %}</p>
+                            {% endplaceholder %}
+                        </div>
+                    {% endwith %}
+                </section>
+            </div>
+            {% endif %}
+        {% endblock team %}
+
+
+    {% block information %}
+        {% if current_page.publisher_is_draft or not current_page|is_empty_placeholder:"program_information" %}
+        <div class="program-detail__block">
+            <div class="program-detail__row program-detail__information">
+                {% placeholder "program_information" page or %}
+                    <p class="program-detail__empty">{% trans 'No complementary information for this program' %}</p>
+                {% endplaceholder %}
+            </div>
+        </div>
+        {% endif %}
+    {% endblock information %}
+</div>
+{% endspaceless %}{% endblock content %}

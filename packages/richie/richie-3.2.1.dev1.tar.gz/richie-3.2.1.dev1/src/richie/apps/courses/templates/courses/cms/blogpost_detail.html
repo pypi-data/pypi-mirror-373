@@ -1,0 +1,178 @@
+{% extends "richie/fullwidth.html" %}
+{% load static category_tags cms_tags extra_tags i18n thumbnail %}
+
+{% block meta_html_default %}
+    {% if not current_page|is_empty_placeholder:"excerpt" %}
+        <meta name="description" content="{% filter slice:":160" %}{% show_placeholder 'excerpt' current_page %}{% endfilter %}" />
+    {% endif %}
+{% endblock meta_html_default %}
+
+{% block meta_rdfa_context %}
+    <meta property="og:type" content="article" />
+    <meta property="og:article:published_time" content="{{ current_page.publication_date|date:"c" }}">
+    <meta property="og:article:modified_time" content="{{ current_page.changed_date|date:"c" }}">
+
+    {% get_placeholder_plugins "cover" as plugins %}
+    {% if plugins.0 %}
+        {% thumbnail plugins.0.picture 845x500 replace_alpha='#FFFFFF' crop upscale subject_location=plugins.0.picture.subject_location as thumb %}
+        <meta property="og:image" content="{{ MEDIA_URL_PREFIX }}{{ thumb.url }}" />
+        <meta property="og:image:width" content="{{ thumb.width }}" />
+        <meta property="og:image:height" content="{{ thumb.height }}" />
+    {% endif %}
+    {% if not current_page|is_empty_placeholder:"excerpt" %}
+        <meta property="og:description" content="{% filter slice:":200" %}{% show_placeholder 'excerpt' current_page %}{% endfilter %}" />
+    {% endif %}
+{% endblock meta_rdfa_context %}
+
+{% block body_rdfa %} vocab="https://schema.org/" typeof="Article"{% endblock body_rdfa %}
+
+{% block content %}
+    {% spaceless %}
+    {% block content_header %}{%  endblock %}
+    <div class="blogpost-detail">
+
+        <div class="blogpost-detail__row">
+            {% block title %}
+                <h1 class="blogpost-detail__title">{% render_model current_page "title" %}</h1>
+            {% endblock title %}
+
+            {% block subhead %}
+                <div class="blogpost-detail__subhead">
+                    {% block categories %}
+                        {% with category_variant="tag" %}
+                            {% if current_page.publisher_is_draft or not current_page|is_empty_placeholder:"categories" %}
+                            <div class="blogpost-detail__theme">
+                                <p class="offscreen">{% trans "Categories" %}</p>
+                                {% placeholder "categories" current_page or %}
+                                    <span class="blogpost-detail__empty">{% trans 'No categories yet.' %}</span>
+                                {% endplaceholder %}
+                            </div>
+                            {% endif %}
+                        {% endwith %}
+                    {% endblock categories %}
+
+                    {% block publication_date %}
+                        <p class="blogpost-detail__pubdate">
+                            {% if current_page.publication_date %}
+                                {{ current_page.publication_date|date:"SHORT_DATE_FORMAT" }}
+                            {% else %}
+                                {% trans 'Not published yet' %}
+                            {% endif %}
+                        </p>
+                    {% endblock publication_date %}
+
+                    {% block authors %}
+                        {% with person_variant="tag" %}
+                            {% if current_page.publisher_is_draft or not current_page|is_empty_placeholder:"author" %}
+                            <div class="blogpost-detail__authors">
+                                {% placeholder "author" or %}
+                                    <span class="blogpost-detail__empty">{% trans 'No author yet' %}</span>
+                                {% endplaceholder %}
+                            </div>
+                            {% endif %}
+                        {% endwith %}
+                    {% endblock authors %}
+                </div>
+            {% endblock subhead %}
+
+            {% block social_networks %}
+                {% include "social-networks/blogpost-badges.html" with page_title=request.current_page.get_title page_url=request.current_page.get_absolute_url %}
+            {% endblock social_networks %}
+
+            <div class="blogpost-detail__grid">
+                {% block grid_main %}
+                    <div class="blogpost-detail__grid-main">
+
+                        {% block cover %}
+                            <div class="blogpost-detail__cover">
+                                {% placeholder_as_plugins "cover" as plugins or %}
+                                    <p class="blogpost-detail__empty">{% trans "Cover" %}</p>
+                                {% endplaceholder_as_plugins %}
+                                {% blockplugin plugins.0 %}
+                                    <img
+                                        src="{% thumbnail instance.picture 776x3104 replace_alpha='#FFFFFF' subject_location=instance.picture.subject_location %}"
+                                        srcset="
+                                            {% thumbnail instance.picture 540x2160 replace_alpha='#FFFFFF' subject_location=instance.picture.subject_location %} 540w
+                                            ,{% thumbnail instance.picture 653x2612 replace_alpha='#FFFFFF' subject_location=instance.picture.subject_location %} 652w
+                                            ,{% thumbnail instance.picture 720x2880 replace_alpha='#FFFFFF' subject_location=instance.picture.subject_location %} 720w
+                                            ,{% thumbnail instance.picture 776x3104 replace_alpha='#FFFFFF' subject_location=instance.picture.subject_location %} 775w
+                                            {% if instance.picture.width >= 1080 %},{% thumbnail instance.picture 1080x4320 replace_alpha='#FFFFFF' subject_location=instance.picture.subject_location %} 1080w{% endif %} {# 2x540 #}
+                                            {% if instance.picture.width >= 1306 %},{% thumbnail instance.picture 1306x5224 replace_alpha='#FFFFFF' subject_location=instance.picture.subject_location %} 1305w{% endif %} {# 2x653 #}
+                                            {% if instance.picture.width >= 1440 %},{% thumbnail instance.picture 1440x5760 replace_alpha='#FFFFFF' subject_location=instance.picture.subject_location %} 1440w{% endif %} {# 2x720 #}
+                                            {% if instance.picture.width >= 1552 %},{% thumbnail instance.picture 1552x6208 replace_alpha='#FFFFFF' subject_location=instance.picture.subject_location %} 1550w{% endif %} {# 2x776 #}
+                                            {% if instance.picture.width >= 1620 %},{% thumbnail instance.picture 1620x6480 replace_alpha='#FFFFFF' subject_location=instance.picture.subject_location %} 1620w{% endif %} {# 3x540 #}
+                                            {% if instance.picture.width >= 1959 %},{% thumbnail instance.picture 1959x7836 replace_alpha='#FFFFFF' subject_location=instance.picture.subject_location %} 1958w{% endif %} {# 3x653 #}
+                                            {% if instance.picture.width >= 2160 %},{% thumbnail instance.picture 2160x8640 replace_alpha='#FFFFFF' subject_location=instance.picture.subject_location %} 2160w{% endif %} {# 3x720 #}
+                                            {% if instance.picture.width >= 2328 %},{% thumbnail instance.picture 2328x9312 replace_alpha='#FFFFFF' subject_location=instance.picture.subject_location %} 2325w{% endif %} {# 3x776 #}
+                                        "
+                                        sizes="(min-width: 1200px) 775px, (min-width: 992px) 652px, (min-width: 768px) 720px, (min-width: 576px) 540px, 100vw"
+                                        {% comment %} the cover image is decorative {% endcomment %}
+                                        alt=""
+                                    />
+                                {% endblockplugin %}
+                            </div>
+                        {% endblock cover %}
+
+                        {% block excerpt %}
+                            <div class="blogpost-detail__excerpt">
+                                {% placeholder "excerpt" or %}
+                                    <p class="blogpost-detail__empty">
+                                        {% trans "No excerpt content" %}
+                                    </p>
+                                {% endplaceholder %}
+                            </div>
+                        {% endblock excerpt %}
+
+                        {% block body %}
+                            <div class="blogpost-detail__body">
+                                {% placeholder "body" or %}
+                                    <p class="blogpost-detail__empty">
+                                        {% trans "No body content" %}
+                                    </p>
+                                {% endplaceholder %}
+                            </div>
+                        {% endblock body %}
+                    </div>
+                {% endblock grid_main %}
+
+                {% block grid_aside %}
+                    <div class="blogpost-detail__grid-aside">
+                        {% block headline %}
+                            <div class="blogpost-detail__headline">
+                                {% static_placeholder "static_blogpost_headline" %}
+                                {% placeholder "headline" %}
+                            </div>
+                        {% endblock headline %}
+
+                        {% block related_blogposts %}
+                            <div class="blogpost-glimpse-list">
+                                <h2 class="blogpost-glimpse-list__title"><span>{% trans 'Related posts' %}</span></h2>
+                                {% for related_blogpost in current_page.blogpost.get_related_blogposts|slice:":3" %}
+                                    {% include "courses/cms/fragment_blogpost_glimpse.html" with blogpost=related_blogpost blogpost_variant="mini" %}
+                                {% endfor %}
+                            </div>
+                        {% endblock related_blogposts %}
+
+                        {% block related_categories %}
+                          <div class="blogpost-glimpse-list">
+                            <h2 class="blogpost-glimpse-list__title"><span>{% trans 'Other categories of articles' %}</span></h2>
+                            {% get_related_category_pages request.current_page.parent_page.get_child_pages as categories %}
+                            {% if categories %}
+                              <div class="p-0 category-tag-list category-tag-list--primary">
+                                <div class="category-tag-list__container">
+                                  {% for category in categories %}
+                                    {% include "courses/cms/fragment_category_glimpse.html" with category_variant="tag" %}
+                                  {% endfor %}
+                                </div>
+                              </div>
+                            {% endif %}
+                          </div>
+                        {% endblock related_categories %}
+                    </div>
+                {% endblock grid_aside %}
+            </div>
+        </div>
+
+    </div>
+    {% endspaceless %}
+{% endblock content %}
