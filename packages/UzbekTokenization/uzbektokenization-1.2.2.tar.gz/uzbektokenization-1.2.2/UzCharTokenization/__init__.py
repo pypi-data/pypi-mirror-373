@@ -1,0 +1,1 @@
+from .UzCharTokenizer import tokenize

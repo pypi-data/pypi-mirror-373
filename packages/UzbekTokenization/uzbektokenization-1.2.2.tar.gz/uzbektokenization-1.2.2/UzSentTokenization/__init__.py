@@ -1,0 +1,1 @@
+from .UzSentTokenizer import tokenize
