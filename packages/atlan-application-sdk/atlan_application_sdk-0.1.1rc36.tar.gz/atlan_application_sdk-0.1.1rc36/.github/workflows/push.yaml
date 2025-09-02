@@ -1,0 +1,81 @@
+name: On-Push Checks
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+
+permissions:
+  id-token: write
+  contents: write
+  issues: write
+  pull-requests: write
+  security-events: write
+  actions: write
+
+jobs:
+  # Testing
+  unit:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: "./.github/actions/unit-tests"
+        with:
+          github-token: ${{ secrets.ORG_PAT_GITHUB }}
+          fail-under: "50"
+
+  e2e-examples:
+    name: E2E (Examples)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: "./.github/actions/e2e-examples"
+        with:
+          operating-system: ubuntu-latest
+          github-token: ${{ secrets.ORG_PAT_GITHUB }}
+          postgres-host: ${{ secrets.POSTGRES_HOST }}
+          postgres-password: ${{ secrets.POSTGRES_PASSWORD }}
+          snowflake-account-id: ${{ secrets.SNOWFLAKE_ACCOUNT_ID }}
+          snowflake-user: ${{ secrets.SNOWFLAKE_USER }}
+          snowflake-password: ${{ secrets.SNOWFLAKE_PASSWORD }}
+
+  e2e-apps:
+    name: E2E (Apps)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        repo_name: ["atlan-postgres-app"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: "./.github/actions/e2e-apps"
+        with:
+          github-token: ${{ secrets.ORG_PAT_GITHUB }}
+          repo-name: ${{ matrix.repo_name }}
+          target-branch: ${{ github.ref_name }}
+
+  # Documentation
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: "./.github/actions/setup-deps"
+      - name: Install graphviz
+        run: |
+          sudo apt install graphviz
+      - name: Generate Sphinx Docs and UML Diagrams
+        run: |
+          uv run poe generate-apidocs
+
+      - name: Setup AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ap-south-1
+          # Only usable in atlanhq repositories
+          role-to-assume: arn:aws:iam::733936409301:role/kryptonite-store_FullAccess
+
+      - name: Upload Docs to Kryptonite Bucket
+        run: |
+          aws s3 sync ./docs/site s3://kryptonite-store/application-sdk/${{ github.head_ref }} --delete

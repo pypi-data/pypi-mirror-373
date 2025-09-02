@@ -1,0 +1,178 @@
+[project]
+name = "atlan-application-sdk"
+version = "0.1.1rc36"
+description = "Atlan Application SDK is a Python library for developing applications on the Atlan Platform"
+license = "Apache-2.0"
+authors = [
+    {name = "Atlan App Team", email = "connect@atlan.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Development Status :: 4 - Beta",
+]
+keywords = ["atlan", "sdk", "platform", "app", "development"]
+dependencies = [
+    "aiohttp>=3.10.0",
+    "opentelemetry-exporter-otlp>=1.27.0",
+    "psutil>=7.0.0",
+    "fastapi[standard]>=0.115.0",
+    "pyatlan>=8.0.2",
+    "pydantic>=2.10.6",
+    "loguru>=0.7.3",
+    "uvloop>=0.21.0; sys_platform != 'win32'",
+    "python-dotenv>=1.1.0",
+    "duckdb>=1.1.3",
+    "duckdb-engine>=0.17.0",
+]
+
+[project.urls]
+Repository = "https://github.com/atlanhq/application-sdk"
+Documentation = "https://github.com/atlanhq/application-sdk/README.md"
+"Changelog" = "https://github.com/atlanhq/application-sdk/blob/main/CHANGELOG.md"
+
+# Optional dependencies for specific functionality - Install using: uv sync --extra workflows
+[project.optional-dependencies]
+workflows = [
+    "dapr>=1.14.0",
+    "temporalio>=1.7.1",
+    "orjson>=3.10.18",
+]
+pandas = [
+    "pandas>=2.2.3"
+]
+daft = [
+    "daft>=0.4.12",
+]
+iceberg = [
+    "pyiceberg>=0.8.1",
+]
+sqlalchemy = [
+    "sqlalchemy[asyncio]>=2.0.36",
+]
+iam_auth = [
+    "boto3>=1.38.6",
+]
+tests = [
+    "pytest-order>=1.3.0",
+    "pandera[io]>=0.23.1",
+    "pandas>=2.2.3",
+]
+scale_data_generator = [
+    "pyyaml>=6.0.2",
+    "pandas>=2.2.3",
+    "pyarrow>=20.0.0",
+    "faker>=37.1.0",
+    "numpy>=1.23.5,<3.0.0",
+]
+
+distributed_lock = [
+    "redis[hiredis]>=5.2.0",
+]
+
+# Development dependencies - Install using: uv sync --group dev
+[dependency-groups]
+dev = [
+    "pre-commit>=4.2.0",
+    "isort>=5.13.2",
+    "boto3-stubs>=1.38.6",
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.6.4",
+    "pydoctor>=24.11.2",
+    "mike>=2.1.3",
+    "poethepoet>=0.34.0",
+]
+test = [
+    "mock>=5.1.0",
+    "pytest>=8.3.3",
+    "coverage>=7.6.1",
+    "pytest-asyncio>=0.26.0",
+    "hypothesis>=6.114.0",
+]
+examples = [
+    "snowflake-sqlalchemy>=1.7.0",
+    "psycopg[binary]>=3.2.7",
+]
+
+[tool.poe.tasks]
+download-components.shell = "ls -l components/*.yaml"
+# Dapr and Temporal service tasks
+start-dapr = "dapr run --enable-api-logging --log-level debug --app-id app --app-port 8000 --dapr-http-port 3500 --dapr-grpc-port 50001 --dapr-http-max-request-size 1024 --resources-path components"
+
+# if you need to test dapr with environment values for an app
+#start-dapr.shell = "set -a && source .env && set +a && dapr run --enable-api-logging --log-level debug --app-id app --app-port 8000 --dapr-http-port 3500 --dapr-grpc-port 50001 --dapr-http-max-request-size 1024 --resources-path components"
+
+start-temporal = "temporal server start-dev --db-filename ./temporal.db"
+start-deps.shell = "poe start-dapr & poe start-temporal &"
+stop-deps.shell = "lsof -ti:3000,3500,7233,50001 | xargs kill -9 2>/dev/null || true"
+
+# API docs
+generate-apidocs.shell = "cd docs && mkdocs build && pydoctor --html-output=site/api ../application_sdk --docformat=google"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["application_sdk"]
+
+[tool.hatch.version]
+path = "application_sdk/__init__.py"
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "standard"
+exclude = [
+    "application_sdk/test_utils/**",
+    ".github/**",
+    "tests"
+]
+reportUnknownMemberType = "warning"
+reportAttributeAccessIssue = "warning"
+reportPossiblyUnboundVariable = "information"
+reportFunctionMemberAccess = "warning"
+reportArgumentType = "warning"
+reportGeneralTypeIssues = "warning"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+omit = [
+    "tests/**",
+    "application_sdk/test_utils/**",
+]
+source = ["application_sdk"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+    "raise ImportError",
+]
+fail_under = 50
+show_missing = true
+precision = 2
+
+[tool.uv]
+default-groups = ["dev", "test"]
+
+# Uncomment the following section in case you want to publish to testpypi
+# [[tool.uv.index]]
+# name = "testpypi"
+# url = "https://test.pypi.org/simple/"
+# publish-url = "https://test.pypi.org/legacy/"
+# explicit = true
