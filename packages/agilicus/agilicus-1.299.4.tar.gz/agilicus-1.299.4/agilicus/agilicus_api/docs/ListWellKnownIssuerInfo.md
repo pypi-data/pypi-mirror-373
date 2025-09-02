@@ -1,0 +1,14 @@
+# ListWellKnownIssuerInfo
+
+List of well known issuer information
+
+## Properties
+Name | Type | Description | Notes
+------------ | ------------- | ------------- | -------------
+**limit** | **int** | Limit of issuers in the response | 
+**well_known_info** | [**[WellKnownIssuerInfo]**](WellKnownIssuerInfo.md) | List of well known issuer info | [optional] 
+**any string name** | **bool, date, datetime, dict, float, int, list, str, none_type** | any string name can be used but the value must be the correct type | [optional]
+
+[[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
+
+
