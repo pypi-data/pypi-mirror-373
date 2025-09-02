@@ -1,0 +1,82 @@
+# Note: HolAdo tests are currently failing with Python 3.13.0
+
+### Build
+
+#FROM python:3.10.15-alpine3.20 AS build
+#FROM python:3.11.10-alpine3.20 AS build
+FROM python:3.12.7-alpine3.20 AS build
+#FROM python:3.13.0-alpine3.20 AS build
+
+# Install to build python requirements
+RUN apk update \
+    && apk --no-cache --update add build-base \
+    && apk --update add alpine-sdk \
+    && apk add libffi-dev \
+    && apk add postgresql-dev gcc python3-dev musl-dev \
+    && apk add protobuf-dev
+
+# Install to recompile proto
+RUN apk update \
+    && apk add gcompat
+
+# Create user
+RUN adduser -D appuser
+
+# Create /code folder
+RUN mkdir /code
+RUN chown -R appuser:appuser /code
+
+# Switch to user appuser
+USER appuser
+ENV PATH=/home/appuser/.local:/home/appuser/.local/bin:$PATH
+
+# Create python venv
+RUN python -m venv /code/env
+RUN source /code/env/bin/activate
+
+# Copy HolAdo sources
+WORKDIR /code/holado/python
+COPY --chown=appuser . .
+
+# Install python requirements
+RUN pip install -r requirements_docker.txt
+
+# Recompile proto
+RUN python tests/behave/test_holado/resources/scripts/update_resources_proto_generated.py -nu
+
+
+
+### Runtime
+
+#FROM python:3.10.15-alpine3.20 AS runtime
+#FROM python:3.11.10-alpine3.20 AS runtime
+FROM python:3.12.7-alpine3.20 AS runtime
+#FROM python:3.13.0-alpine3.20 AS runtime
+
+# Install for python requirements
+RUN apk update \
+    && apk --no-cache add libstdc++ \
+    && apk --no-cache add postgresql-dev gcc python3-dev musl-dev
+
+# Add tools
+RUN apk --no-cache add bash \
+    && apk --no-cache add nano \
+    && apk --no-cache add curl
+
+# Create user as in build
+RUN adduser -D appuser
+COPY --from=build /home/appuser/.local /home/appuser/.local
+
+# Copy /code from build
+COPY --from=build /code /code
+
+# Switch to user appuser
+USER appuser
+ENV PATH=/home/appuser/.local:/home/appuser/.local/bin:$PATH
+
+# Set working directory to easily launch HolAdo tests
+WORKDIR /code/holado/python
+RUN source /code/env/bin/activate
+
+
+

@@ -1,0 +1,69 @@
+### Build
+
+FROM python:3.12.9-alpine3.21 AS build
+
+# Install to build python requirements
+RUN apk update \
+    && apk --no-cache --update add build-base \
+    && apk --update add alpine-sdk \
+    && apk add libffi-dev \
+    && apk add postgresql-dev gcc python3-dev musl-dev \
+    && apk add protobuf-dev
+
+# Add tools
+RUN apk --no-cache add bash \
+    && apk --no-cache add nano \
+    && apk --no-cache add curl
+
+# Create user
+RUN addgroup appuser \
+    && adduser -G appuser -s /bin/bash -D appuser
+
+# Create /code folder
+RUN mkdir /code \
+    && chown -R appuser:appuser /code
+
+# Switch to user appuser
+USER appuser
+
+# Copy HolAdo sources
+COPY --chown=appuser . /code/holado/python
+WORKDIR /code/holado/python
+
+# Create python venv and install requirements
+RUN python -m venv /code/env \
+    && source /code/env/bin/activate \
+    && pip install -r requirements.txt
+
+
+
+### Runtime
+
+FROM python:3.12.9-alpine3.21 AS runtime
+
+# Install for python requirements
+RUN apk update \
+    && apk --no-cache add libstdc++ \
+    && apk --no-cache add postgresql-dev gcc python3-dev musl-dev
+
+# Add tools
+RUN apk --no-cache add bash \
+    && apk --no-cache add nano \
+    && apk --no-cache add curl
+
+# Create and switch to user appuser as in build
+RUN addgroup appuser \
+    && adduser -G appuser -s /bin/bash -D appuser
+USER appuser
+
+# Copy /code from build
+COPY --chown=appuser --from=build /code /code
+
+# Set working directory in HolAdo
+WORKDIR /code/holado/python
+
+# Set environement variable HOLADO_PATH, so that installed holado sources are used instead of holado package
+ENV HOLADO_PATH=/code/holado/python
+
+# Activate permanently python venv
+ENV PATH=/code/env/bin:$PATH

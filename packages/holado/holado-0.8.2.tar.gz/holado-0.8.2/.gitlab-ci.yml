@@ -1,0 +1,161 @@
+stages:
+  - publish-holado-dockerhub
+  - publish-holado-gitlab
+  - publish-docker-controller-dockerhub
+  - publish-docker-viewer-dockerhub
+#  - publish-holado-pypi
+
+variables:
+  DOCKER_IMAGE_TAG: "26.1"
+  PYTHON_IMAGE_TAG: "3.12"
+
+
+publish-holado-dockerhub-latest:
+  stage: publish-holado-dockerhub
+
+  image:
+    name: docker:${DOCKER_IMAGE_TAG}
+    
+  variables:
+    IMAGE_TAG: index.docker.io/holado/python:latest
+
+  script:
+    - docker build -t ${IMAGE_TAG} .
+    - echo "$DOCKERHUB_TOKEN" | docker login docker.io -u holado --password-stdin
+    - docker push ${IMAGE_TAG}
+  
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH == "main"
+
+publish-holado-dockerhub-tag:
+  stage: publish-holado-dockerhub
+
+  image:
+    name: docker:${DOCKER_IMAGE_TAG}
+    
+  variables:
+    IMAGE_TAG: index.docker.io/holado/python:$CI_COMMIT_TAG
+
+  script:
+    - docker build -t ${IMAGE_TAG} .
+    - echo "$DOCKERHUB_TOKEN" | docker login docker.io -u holado --password-stdin
+    - docker push ${IMAGE_TAG}
+  
+  rules:
+    - if: $CI_COMMIT_TAG
+
+
+publish-docker-controller-dockerhub-latest:
+  stage: publish-docker-controller-dockerhub
+
+  image:
+    name: docker:${DOCKER_IMAGE_TAG}
+    
+  variables:
+    IMAGE_TAG: index.docker.io/holado/docker_controller:latest
+
+  script:
+    - docker build ./src/holado_docker/tools/docker_controller/server/ -t ${IMAGE_TAG}
+    - echo "$DOCKERHUB_TOKEN" | docker login docker.io -u holado --password-stdin
+    - docker push ${IMAGE_TAG}
+  
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH == "main"
+  when: manual
+
+publish-docker-controller-dockerhub-tag:
+  stage: publish-docker-controller-dockerhub
+
+  image:
+    name: docker:${DOCKER_IMAGE_TAG}
+    
+  variables:
+    IMAGE_TAG: index.docker.io/holado/docker_controller:$CI_COMMIT_TAG
+
+  script:
+    - docker build ./src/holado_docker/tools/docker_controller/server/ -t ${IMAGE_TAG}
+    - echo "$DOCKERHUB_TOKEN" | docker login docker.io -u holado --password-stdin
+    - docker push ${IMAGE_TAG}
+  
+  rules:
+    - if: $CI_COMMIT_TAG
+  when: manual
+
+
+publish-docker-viewer-dockerhub-latest:
+  stage: publish-docker-viewer-dockerhub
+
+  image:
+    name: docker:${DOCKER_IMAGE_TAG}
+    
+  variables:
+    IMAGE_TAG: index.docker.io/holado/docker_viewer:latest
+
+  script:
+    - docker build ./src/holado_docker/tools/docker_viewer/server/ -t ${IMAGE_TAG}
+    - echo "$DOCKERHUB_TOKEN" | docker login docker.io -u holado --password-stdin
+    - docker push ${IMAGE_TAG}
+  
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH == "main"
+  when: manual
+
+publish-docker-viewer-dockerhub-tag:
+  stage: publish-docker-viewer-dockerhub
+
+  image:
+    name: docker:${DOCKER_IMAGE_TAG}
+    
+  variables:
+    IMAGE_TAG: index.docker.io/holado/docker_viewer:$CI_COMMIT_TAG
+
+  script:
+    - docker build ./src/holado_docker/tools/docker_viewer/server/ -t ${IMAGE_TAG}
+    - echo "$DOCKERHUB_TOKEN" | docker login docker.io -u holado --password-stdin
+    - docker push ${IMAGE_TAG}
+  
+  rules:
+    - if: $CI_COMMIT_TAG
+  when: manual
+
+
+publish-holado-gitlab:
+  stage: publish-holado-gitlab
+
+  image:
+    name: docker:${DOCKER_IMAGE_TAG}
+
+  variables:
+    IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+  script:
+    - docker build -t ${IMAGE_TAG} .
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker push ${IMAGE_TAG}
+    
+
+# publish-holado-pypi:
+#   stage: publish-holado-pypi
+# 
+#   image:
+#     name: python:${PYTHON_IMAGE_TAG}
+# 
+#   script:
+#     - apt-get update -q -y
+#     - apt-get install -y python-pip
+#     - shopt -s expand_aliases
+#     - alias python=python3
+# #     - echo "$CI_COMMIT_TAG" > ./packaging/VERSION
+#     - ./packaging/generate_distribution_archive.sh
+#     - TWINE_PASSWORD=${PYPI_TOKEN} TWINE_USERNAME=__token__ ./packaging/publish_distribution_archive.sh
+#     
+#  rules:
+#    - if: $CI_COMMIT_TAG =~ /\d+\.\d+\.\d+.*/
+
+
+  
