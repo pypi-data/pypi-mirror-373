@@ -1,0 +1,44 @@
+---
+name: Rebuild
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-24.04
+    name: Rebuild
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        branch:
+          - int-{{cookiecutter.geomapfish_main_version_dash}}
+          - prod-{{cookiecutter.geomapfish_main_version_dash}}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{'{{'}} matrix.branch }}
+
+      # Requires CI_GPG_PRIVATE_KEY and GOPASS_CI_GITHUB_TOKEN secrets.
+      - uses: camptocamp/initialise-gopass-summon-action@v2
+        with:
+          ci-gpg-private-key: ${{'{{'}} secrets.CI_GPG_PRIVATE_KEY }}
+          github-gopass-ci-token: ${{'{{'}} secrets.GOPASS_CI_GITHUB_TOKEN }}
+          patterns: docker
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python3 -m pip install --requirement=ci/requirements.txt
+      - name: Environment information
+        run: c2cciutils-env
+
+      - name: Build
+        run: ./build
+
+      - name: Publish
+        run: c2cciutils-publish --branch=${{'{{'}} matrix.branch }} --type=rebuild
