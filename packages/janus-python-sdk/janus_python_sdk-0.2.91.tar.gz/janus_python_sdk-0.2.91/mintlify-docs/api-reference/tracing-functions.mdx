@@ -1,0 +1,206 @@
+---
+title: "Manual Tracing Functions"
+description: "Trace external tools, APIs, and long-running operations with manual span control"
+---
+
+## Manual Tracing Functions
+
+Manual tracing functions provide fine-grained control over tracing for external tools, APIs, and operations that span multiple function calls. These functions work alongside the `@track` decorator to give you complete visibility into your application's behavior.
+
+## Functions
+
+### `start_tool_event()`
+
+Start a tool event span and return a handle for later completion.
+
+```python
+from janus_sdk import start_tool_event
+
+handle = start_tool_event(
+    tool_name: str,
+    tool_input: Any = None
+) -> Optional[ToolEventSpanHandle]
+```
+
+#### Parameters
+- **`tool_name`** (str): Name of the tool being traced
+- **`tool_input`** (Any, optional): Input data passed to the tool
+
+#### Returns
+- **`ToolEventSpanHandle`**: Handle containing the span and start time, or `None` if tracing is disabled
+
+#### Usage
+
+```python
+# Basic usage
+handle = start_tool_event("database_query", "SELECT * FROM users")
+try:
+    result = query_database()
+    finish_tool_event(handle, result)
+except Exception as e:
+    finish_tool_event(handle, error=e)
+```
+
+### `finish_tool_event()`
+
+Complete a tool event span started with `start_tool_event()`.
+
+```python
+from janus_sdk import finish_tool_event
+
+finish_tool_event(
+    handle: ToolEventSpanHandle,
+    tool_output: Any = None,
+    error: Optional[Union[str, Exception]] = None
+) -> None
+```
+
+#### Parameters
+- **`handle`** (ToolEventSpanHandle): Handle returned from `start_tool_event()`
+- **`tool_output`** (Any, optional): Output data returned by the tool
+- **`error`** (Union[str, Exception], optional): Error that occurred during tool execution
+
+#### Usage
+
+```python
+# Successful completion
+handle = start_tool_event("data_processing", "input_data")
+result = process_data()
+finish_tool_event(handle, result)
+
+# Error completion
+handle = start_tool_event("api_call", "request")
+try:
+    result = call_api()
+    finish_tool_event(handle, result)
+except Exception as e:
+    finish_tool_event(handle, error=e)
+```
+
+### `record_tool_event()`
+
+Record a tool event in a single function call for simple operations.
+
+```python
+from janus_sdk import record_tool_event
+
+record_tool_event(
+    tool_name: str,
+    tool_input: Any = None,
+    tool_output: Any = None,
+    duration_ms: Optional[float] = None,
+    error: Optional[Union[str, Exception]] = None
+) -> None
+```
+
+#### Parameters
+- **`tool_name`** (str): Name of the tool being traced
+- **`tool_input`** (Any, optional): Input data passed to the tool
+- **`tool_output`** (Any, optional): Output data returned by the tool
+- **`duration_ms`** (float, optional): Custom duration in milliseconds
+- **`error`** (Union[str, Exception], optional): Error that occurred
+
+#### Usage
+
+```python
+# Simple tool event
+record_tool_event("calculator", "2 + 2", 4)
+
+# With custom duration
+start_time = time.perf_counter()
+result = process_data()
+duration = (time.perf_counter() - start_time) * 1000
+record_tool_event("data_processing", "input_data", result, duration_ms=duration)
+```
+
+## Performance Considerations
+
+### Overhead
+- **`record_tool_event()`**: Minimal overhead, creates and immediately ends span
+- **`start_tool_event()`**: Very low overhead, just creates span
+- **`finish_tool_event()`**: Minimal overhead, just ends span
+
+### Optimization Tips
+```python
+# For high-frequency operations, consider batching:
+if should_trace():
+    record_tool_event("high_freq_op", "input", "output")
+
+# For performance-critical code, check if tracing is enabled:
+handle = start_tool_event("critical_op", "input")
+if handle is not None:
+    # Only do tracing work if enabled
+    finish_tool_event(handle, result)
+```
+
+## Best Practices
+
+<Tip>
+- Use `start_tool_event`/`finish_tool_event` for long-running operations
+- Use `record_tool_event` for simple, single-call operations
+- Always handle the case where tracing might be disabled
+- Pass error information to tracing functions for better debugging
+</Tip>
+
+<Warning>
+These functions are designed to work with the `@track` decorator. Use them when you need manual control over tracing spans.
+</Warning>
+
+## Examples
+
+### Database Operations
+```python
+@track
+def get_user_data(user_id: str) -> dict:
+    handle = start_tool_event("database_query", f"user_id: {user_id}")
+    
+    try:
+        with database.cursor() as cursor:
+            cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+            result = cursor.fetchone()
+            finish_tool_event(handle, result)
+            return result
+    except Exception as e:
+        finish_tool_event(handle, error=e)
+        raise
+```
+
+### External API Calls
+```python
+@track
+async def fetch_external_data(url: str) -> dict:
+    handle = start_tool_event("external_api", f"url: {url}")
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            data = response.json()
+            finish_tool_event(handle, data)
+            return data
+    except Exception as e:
+        finish_tool_event(handle, error=e)
+        raise
+```
+
+### Simple Operations
+```python
+@track
+def calculate_total(items: list) -> float:
+    # Simple operation - use record_tool_event
+    total = sum(item['price'] for item in items)
+    record_tool_event("calculation", f"items: {len(items)}", total)
+    return total
+```
+
+## Related Functions
+
+<CardGroup cols={2}>
+<Card title="@track Decorator" icon="code" href="/api-reference/track-decorator">
+  Automatically trace function calls
+</Card>
+
+<Card title="ToolEventSpanHandle" icon="database" href="/api-reference/tool-event-handle">
+  Handle class for manual tracing operations
+</Card>
+</CardGroup>

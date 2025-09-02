@@ -1,0 +1,144 @@
+---
+title: "@track Decorator"
+description: "Automatically trace function calls with conversation context and performance metrics"
+---
+
+## @track Decorator
+
+Automatically trace function calls with OpenTelemetry spans, capturing conversation context, execution time, inputs/outputs, and linking to parent traces.
+
+### Basic Usage
+
+```python
+from janus_sdk import track
+
+@track
+def analyze_data(data: dict) -> dict:
+    """This function call will be automatically traced"""
+    return {"result": "analysis_complete"}
+
+@track
+async def fetch_external_data(url: str) -> str:
+    """Async functions are also supported"""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+        return response.text
+```
+
+### What Gets Traced
+
+- **Function information**: Name, parameters, return values, execution time
+- **Context information**: Conversation ID, simulation ID, parent trace linking
+- **Performance metrics**: Duration, success/failure status, errors
+
+### Error Handling
+
+The decorator gracefully handles errors and tracing failures:
+
+```python
+@track
+def risky_function(data: dict) -> dict:
+    if not data:
+        raise ValueError("Data cannot be empty")
+    return process_data(data)
+
+# If tracing fails, the function still works normally
+# If the function raises an exception, it's captured in the span
+```
+
+### Graceful Degradation
+
+If OpenTelemetry is not available or tracing is not initialized:
+
+```python
+@track
+def my_function():
+    return "Hello World"
+
+# Function works normally even if:
+# - OpenTelemetry is not installed
+# - Tracing is not initialized
+# - Network issues prevent span export
+```
+
+### Advanced Usage
+
+#### With Conversation Context
+When used within a Janus simulation, context is automatically propagated:
+
+```python
+@track
+def analyze_user_input(user_input: str) -> dict:
+    # This function automatically gets conversation context
+    # from the parent simulation span
+    return {"analysis": "complete"}
+```
+
+#### Nested Function Calls
+Functions decorated with `@track` can call other tracked functions:
+
+```python
+@track
+def outer_function(data: list) -> dict:
+    result = inner_function(data)  # This call is also traced
+    return {"outer_result": result}
+
+@track
+def inner_function(data: list) -> dict:
+    return {"inner_result": len(data)}
+```
+
+### Best Practices
+
+<Tip>
+- Use `@track` for internal functions that you control
+- Apply to functions that perform meaningful work (avoid trivial getters/setters)
+- Let the decorator handle all the tracing complexity
+- Don't worry about tracing failures - your code will work regardless
+</Tip>
+
+<Warning>
+The decorator modifies function signatures slightly. If you need the exact original function, use `func.__wrapped__` to access the undecorated version.
+</Warning>
+
+### Examples
+
+#### Data Processing Function
+```python
+@track
+def process_user_data(user_id: str, data: dict) -> dict:
+    """Process user data with automatic tracing"""
+    if not user_id or not data:
+        raise ValueError("Invalid input")
+    
+    result = transform_data(data)
+    
+    return {
+        "user_id": user_id,
+        "processed_data": result,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+```
+
+#### External API Wrapper
+```python
+@track
+async def fetch_user_profile(user_id: str) -> dict:
+    """Fetch user profile with automatic tracing"""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"/api/users/{user_id}")
+        response.raise_for_status()
+        return response.json()
+```
+
+### Related Functions
+
+<CardGroup cols={2}>
+<Card title="Manual Tracing" icon="code" href="/api-reference/tracing-functions">
+  Use manual tracing for external tools and APIs
+</Card>
+
+<Card title="ToolEventSpanHandle" icon="database" href="/api-reference/tool-event-handle">
+  Handle class for manual tracing operations
+</Card>
+</CardGroup>
