@@ -1,0 +1,116 @@
+version: "3.7"
+
+services:
+
+  rest:
+{%- if environment.name == 'dev' and component.reponame %}
+    image: "{{component.registry_path}}:{{component.version}}"
+    build:
+      context: "{{component.checkout_path}}"
+      dockerfile: "{{component.Dockerfile}}"
+      # Docker build arguments
+      args:
+        # Docker container variables
+        - "CONTAINER_PORT=5000"
+        # Keystore path variables
+        - "STORE_PATH=keystore"
+{%- endif %}
+{%- if not component.use_traefik %}
+    ports:
+      - "{{component.service_port}}:80"
+{%- endif %}
+{%- if environment.name != 'dev' or not component.reponame %}
+    image: "{{component.registry_url}}:{{component.registry_port}}/{{component.registry_path}}:{{component.version}}"
+{%- endif %}
+    container_name: "{{component.container_name}}"
+{%- if component.use_traefik %}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers[{{component.container_name}}].entrypoints=web"
+      - "traefik.http.routers[{{component.container_name}}].rule=Host(`{{component.traefik.public_name}}`) && PathPrefix(`{{component.path}}`, `/swaggerui`)"
+{%- if component.strip_prefix %}
+      - "traefik.http.middlewares.{{component.service_name}}-stripprefix.stripprefix.prefixes={{component.path}}"
+      - "traefik.http.routers[{{component.container_name}}].middlewares={{component.service_name}}-stripprefix"
+{%- endif %}
+{%- endif %}
+    volumes:
+      - "./log:/usr/src/risclog/log"
+{%- if component.keystore_dir %}
+      - "{{component.keystore_dir.path}}:/usr/src/.keystore"
+{%- endif %}
+{%- if component.use_traefik %}
+    networks:
+      - "{{component.traefik.network}}"
+{%- endif %}
+    # Environment variables
+    environment:
+      - "CONTAINER_URL=0.0.0.0"
+      - "CONTAINER_PORT=5000"
+      - "GUNICORN_WORKERS=multiprocessing"
+      - "MAX_REQUESTS=1000"
+      - "PACKAGE_NAME={{component.reponame}}"
+      - "SERVER_NAME=https://{{component.public_name}}{{component.path}}"
+      # Elastic APM
+      - "APM_ENABLED=false"
+      - "APM_SERVICE_NAME="
+      - "APM_SECRET_TOKEN="
+      - "APM_SERVER_URL="
+      - "APM_ENVIRONMENT={{component.environment.name}}"
+{%- if component.database_name %}
+      # Database
+      - "DB_USER={{component.db.user.name}}"
+      - "DB_PASSWORD={{component.db.user.password}}"
+      - "DB_HOST={{component.db.db_server.address.connect.host}}"
+      - "DB_PORT={{component.db.db_server.address.connect.port}}"
+      - "DB_NAME={{component.db.db_name}}"
+      - "SQL_ENGINE=postgresql://{{component.db.user.name}}:{{component.db.user.password}}@{{component.db.db_server.address.connect.host}}:{{component.db.db_server.address.connect.port}}/{{component.db.db_name}}"
+{%- endif %}
+{%- if component.use_s3 %}
+      # S3
+      - "S3_BUCKET_NAME={{component.s3.bucket_name}}"
+      - "S3_TOKEN={{component.s3.token}}"
+      - "S3_SECRET={{component.s3.secret}}"
+      - "S3_ENDPOINT={{component.s3.endpoint}}"
+{%- endif %}
+      # Keystore
+      - "STORE_NAME=keystore"
+      - "STORE_FILE=keystore"
+      - "STORE_PATH=.keystore"
+      - "STORE_KEY="
+{%- if component.use_iam %}
+      # IAM
+      - "IAM_CLIENT_ID={{component.iamclient.client_id}}"
+      - "IAM_CLIENT_SECRET={{component.iamclient.client_secret}}"
+      - "IAM_SERVER_URL={{component.iam.url}}"
+      - "IAM_VERIFY_SSL={{component.iam.verify_ssl}}"
+      - "OIDC_OPENID_REALM={{component.iam.realm_name}}"
+      - "IAM_TECH_USERNAME={{component.iamclient.technical_user_username}}"
+      - "IAM_TECH_PASSWORD={{component.iamclient.technical_user_password}}"
+{%- endif %}
+      # Flask
+      - "APP_SETTINGS=risclog.service.rest.settings.config.ProductionConfig"
+      - "FLASK_ENV={{environment.name}}"
+      - "ALLOWED_ORIGINS={{component.allowed_origins}}"
+      - "ALLOWED_REFERRER={{component.allowed_referrer}}"
+      - "API_OAS3_ENABLED=false"
+      - "API_OAS3_CONVERTER_URL=http://localhost"
+      - "API_OAS3_CONVERTER_PORT=8080"
+      - "SERVICE_BASE_RESOURCE={{component.path}}"
+      - "SERVICE_VERSION=v{{component.version}}"
+      - "SERVER_URL=0.0.0.0"
+      - "SERVER_PORT=5000"
+      - "SERVER_PROTOCOL=http://"
+      - "SERVER_BASE_URL=0.0.0.0:5000"
+      - "SERVER_BASE_URI=http://0.0.0.0:5000"
+      - "FLASK_APP=risclog/service/rest/app.py"
+{%- if component.docker_env %}
+  {%- for item in component.docker_env %}
+      - "{{item.key}}={{item.value}}"
+  {%- endfor %}
+{%- endif %}
+
+{%- if component.use_traefik %}
+networks:
+  {{component.traefik.network}}:
+    external: true
+{%- endif %}
