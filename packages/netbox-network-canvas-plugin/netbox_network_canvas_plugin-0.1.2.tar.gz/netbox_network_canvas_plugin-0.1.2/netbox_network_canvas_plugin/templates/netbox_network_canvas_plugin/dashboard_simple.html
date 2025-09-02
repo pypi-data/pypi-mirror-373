@@ -1,0 +1,284 @@
+{% extends 'base/base.html' %}
+{% load static %}
+
+{% block title %}Network Canvas Dashboard{% endblock %}
+
+{% block header_extra %}
+    <link rel="stylesheet" href="{% static 'netbox_network_canvas_plugin/topology.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1>Network Canvas Dashboard</h1>
+                <p class="text-muted">Interactive network topology visualization</p>
+            </div>
+            <div>
+                <a href="{% url 'plugins:netbox_network_canvas_plugin:networktopologycanvas_list' %}" class="btn btn-outline-primary">
+                    <i class="mdi mdi-view-list"></i> View All Canvases
+                </a>
+                <a href="{% url 'plugins:netbox_network_canvas_plugin:networktopologycanvas_add' %}" class="btn btn-success">
+                    <i class="mdi mdi-plus"></i> Create Canvas
+                </a>
+            </div>
+        </div>
+
+        <!-- Network Statistics -->
+        <div class="row mb-4">
+            <div class="col-sm-6 col-lg-3">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-grow-1">
+                                <h5 class="card-title">{{ device_count }}</h5>
+                                <p class="card-text text-muted">Devices</p>
+                            </div>
+                            <div class="text-primary">
+                                <i class="mdi mdi-server-network mdi-24px"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-grow-1">
+                                <h5 class="card-title">{{ cable_count }}</h5>
+                                <p class="card-text text-muted">Cables</p>
+                            </div>
+                            <div class="text-success">
+                                <i class="mdi mdi-lan-connect mdi-24px"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-grow-1">
+                                <h5 class="card-title">{{ vlan_count }}</h5>
+                                <p class="card-text text-muted">VLANs</p>
+                            </div>
+                            <div class="text-info">
+                                <i class="mdi mdi-lan mdi-24px"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-grow-1">
+                                <h5 class="card-title">{{ canvas_count }}</h5>
+                                <p class="card-text text-muted">Canvas Objects</p>
+                            </div>
+                            <div class="text-warning">
+                                <i class="mdi mdi-chart-network mdi-24px"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Topology Visualization -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Network Topology</h5>
+                <div class="btn-group" role="group">
+                    <input type="checkbox" class="btn-check" id="toggle-labels" checked>
+                    <label class="btn btn-outline-secondary btn-sm" for="toggle-labels">
+                        <i class="mdi mdi-tag-text"></i> Labels
+                    </label>
+                    <select id="layout-selector" class="form-select form-select-sm" style="width: auto;">
+                        <option value="force">Force Layout</option>
+                        <option value="hierarchical">Hierarchical</option>
+                        <option value="circular">Circular</option>
+                        <option value="grid">Grid</option>
+                    </select>
+                    <button id="refreshLayout" class="btn btn-sm btn-success">
+                        <i class="mdi mdi-refresh"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="card-body" style="padding: 0;">
+                <div id="topology-container" style="width: 100%; height: 600px; position: relative;">
+                    <svg id="network-svg" width="100%" height="600">
+                        <!-- D3.js content will be rendered here -->
+                    </svg>
+                    
+                    <div id="loading" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading network topology...</p>
+                        <p class="mt-2 text-muted"><small>Device Count: {{ device_count }}</small></p>
+                    </div>
+                    
+                    <div id="error-message" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
+                        <div class="alert alert-warning">
+                            <i class="mdi mdi-alert-circle"></i>
+                            <h5>Unable to Load Network Topology</h5>
+                            <p id="error-details">Please check the console for more details.</p>
+                            <button class="btn btn-primary" onclick="location.reload()">
+                                <i class="mdi mdi-refresh"></i> Reload
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascript %}
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+console.log('✅ Network Canvas Dashboard JavaScript Loading...');
+console.log('📊 Device count from context: {{ device_count }}');
+console.log('📊 Cable count from context: {{ cable_count }}');
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('✅ DOM Content Loaded');
+    
+    // Update loading message to show we're processing
+    const loadingDiv = document.getElementById('loading');
+    if (loadingDiv) {
+        loadingDiv.innerHTML = '<div class="spinner-border text-primary" role="status"></div><p class="mt-2">Processing data...</p>';
+    }
+    
+    try {
+        // Get topology data from Django template
+        const rawData = '{{ topology_data_json|escapejs }}';
+        console.log('📊 Raw topology data length:', rawData ? rawData.length : 0);
+        console.log('📊 First 200 chars of data:', rawData ? rawData.substring(0, 200) : 'NO DATA');
+        
+        if (!rawData || rawData.length < 10) {
+            throw new Error('No topology data available from NetBox. Please ensure you have devices configured.');
+        }
+        
+        const topologyData = JSON.parse(rawData);
+        console.log('📈 Parsed topology data:', topologyData);
+        
+        if (!topologyData.devices || topologyData.devices.length === 0) {
+            throw new Error('No devices found in NetBox. Please add some devices first.');
+        }
+        
+        // Update loading message to show device count
+        if (loadingDiv) {
+            loadingDiv.innerHTML = `<div class="spinner-border text-primary" role="status"></div><p class="mt-2">Rendering ${topologyData.devices.length} devices...</p>`;
+        }
+        
+        // Wait a bit longer for elements to be ready
+        setTimeout(() => {
+            console.log('🕐 Timeout fired, checking DOM state...');
+            const containerCheck = document.getElementById('topology-container');
+            console.log('🔍 Container exists now:', containerCheck ? 'YES' : 'NO');
+            
+            if (containerCheck) {
+                initializeVisualization(topologyData);
+            } else {
+                console.error('❌ Container still not found after timeout');
+                showError('UI elements not found. Please try refreshing the page.');
+            }
+        }, 1000);
+        
+    } catch (error) {
+        console.error('❌ Error initializing dashboard:', error);
+        showError(error.message);
+    }
+});
+
+function initializeVisualization(data) {
+    console.log('🎯 Initializing visualization with', data.devices.length, 'devices');
+    
+    // Check if elements exist
+    const container = document.getElementById('topology-container');
+    const loadingDiv = document.getElementById('loading');
+    const svg = d3.select('#network-svg');
+    
+    console.log('🔍 Element check:');
+    console.log('  - container:', container ? 'found' : 'NOT FOUND');
+    console.log('  - loading div:', loadingDiv ? 'found' : 'NOT FOUND');
+    console.log('  - svg:', svg.empty() ? 'NOT FOUND' : 'found');
+    
+    if (!container) {
+        console.error('❌ topology-container element not found!');
+        const errorDiv = document.getElementById('error-message');
+        if (errorDiv) {
+            errorDiv.style.display = 'block';
+            document.getElementById('error-details').textContent = 'UI elements not found. Page may not have loaded correctly.';
+        }
+        return;
+    }
+    
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    
+    console.log('📏 Container dimensions:', width, 'x', height);
+    
+    // Hide loading indicator
+    if (loadingDiv) {
+        loadingDiv.style.display = 'none';
+    }
+    
+    if (!data.devices || data.devices.length === 0) {
+        // Show a message for no devices
+        const g = svg.append('g');
+        g.append('text')
+            .attr('x', width / 2)
+            .attr('y', height / 2)
+            .attr('text-anchor', 'middle')
+            .attr('font-size', '18px')
+            .attr('fill', '#666')
+            .text('No devices found in NetBox. Please add some devices to see the topology.');
+        return;
+    }
+    
+    // Simple device rendering for now
+    const g = svg.append('g');
+    
+    // Create simple layout
+    const devices = data.devices;
+    devices.forEach((device, i) => {
+        const x = (width / Math.max(devices.length, 1)) * i + 50;
+        const y = height / 2;
+        
+        // Draw device as circle
+        g.append('circle')
+            .attr('cx', x)
+            .attr('cy', y)
+            .attr('r', 20)
+            .attr('fill', '#007bff')
+            .attr('stroke', '#fff')
+            .attr('stroke-width', 2);
+        
+        // Add device label
+        g.append('text')
+            .attr('x', x)
+            .attr('y', y + 35)
+            .attr('text-anchor', 'middle')
+            .attr('font-size', '12px')
+            .text(device.name);
+    });
+    
+    console.log('✅ Visualization rendered successfully');
+}
+
+function showError(message) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error-message').style.display = 'block';
+    document.getElementById('error-details').textContent = message;
+}
+</script>
+{% endblock %}

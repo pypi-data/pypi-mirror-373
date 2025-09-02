@@ -1,0 +1,760 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Network Canvas Dashboard{% endblock %}
+
+{% block header_extra %}
+    <link rel="stylesheet" href="{% static 'netbox_network_canvas_plugin/topology.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1>Network Canvas Dashboard</h1>
+                <p class="text-muted">Interactive Layer 2 and Layer 3 network topology visualization</p>
+            </div>
+            <div>
+                <a href="{% url 'plugins:netbox_network_canvas_plugin:networktopologycanvas_list' %}" class="btn btn-outline-primary">
+                    <i class="mdi mdi-view-list"></i> View All Canvases
+                </a>
+                <a href="{% url 'plugins:netbox_network_canvas_plugin:networktopologycanvas_add' %}" class="btn btn-success">
+                    <i class="mdi mdi-plus"></i> Create Canvas
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Network Statistics -->
+<div class="topology-stats">
+    <div class="row">
+        <div class="col-md-3">
+            <div class="stat-item">
+                <span class="stat-number">{{ device_count }}</span>
+                <span class="stat-label">Devices</span>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-item">
+                <span class="stat-number">{{ canvas_count }}</span>
+                <span class="stat-label">Canvas Views</span>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-item">
+                <span class="stat-number">{{ vlan_count }}</span>
+                <span class="stat-label">VLANs</span>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-item">
+                <span class="stat-number">{{ prefix_count }}</span>
+                <span class="stat-label">Prefixes</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Network Topology Visualization -->
+<div class="row">
+    <div class="col-12">
+        <div class="topology-visualization">
+            <!-- Main Controls -->
+            <div class="topology-controls">
+                <div class="control-group">
+                    <button id="zoomIn" class="btn btn-sm btn-outline-light">
+                        <i class="mdi mdi-magnify-plus"></i>
+                    </button>
+                    <button id="zoomOut" class="btn btn-sm btn-outline-light">
+                        <i class="mdi mdi-magnify-minus"></i>
+                    </button>
+                    <button id="zoomReset" class="btn btn-sm btn-outline-light">
+                        <i class="mdi mdi-fit-to-screen"></i>
+                    </button>
+                    <button id="toggleLabels" class="btn btn-sm btn-outline-light">
+                        <i class="mdi mdi-label"></i> Labels
+                    </button>
+                </div>
+                
+                <div class="control-group">
+                    <select id="layoutSelect" class="form-control form-control-sm">
+                        <option value="force">Force Layout</option>
+                        <option value="hierarchical">Hierarchical</option>
+                        <option value="circular">Circular</option>
+                        <option value="grid">Grid</option>
+                    </select>
+                    <button id="refreshLayout" class="btn btn-sm btn-success">
+                        <i class="mdi mdi-refresh"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="topology-container" id="topology-container">
+                <svg id="network-svg" width="100%" height="700">
+                    <!-- D3.js content will be rendered here -->
+                </svg>
+                
+                <div class="topology-error-message" id="error-message" style="display: none;">
+                    <div class="error-content">
+                        <i class="mdi mdi-alert-circle error-icon"></i>
+                        <h3>Unable to Load Network Topology</h3>
+                        <p id="error-details">Please check the console for more details.</p>
+                        <div class="error-actions">
+                            <button class="btn btn-primary" onclick="location.reload()">
+                                <i class="mdi mdi-refresh"></i> Retry
+                            </button>
+                            <a href="{% url 'plugins:netbox_network_canvas_plugin:networktopologycanvas_add' %}" class="btn btn-success">
+                                <i class="mdi mdi-plus"></i> Create Canvas
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="loading-spinner" id="loading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading...</span>
+                    </div>
+                    <p>Loading network topology...</p>
+                </div>
+                
+                <div class="topology-tooltip" id="tooltip" style="display: none;">
+                    <div class="tooltip-content">
+                        <!-- Tooltip content will be dynamically populated -->
+                    </div>
+                </div>
+                
+                <div class="topology-context-menu" id="context-menu" style="display: none;">
+                    <div class="context-item" data-action="view">
+                        <i class="mdi mdi-eye"></i> View Device
+                    </div>
+                    <div class="context-item" data-action="edit">
+                        <i class="mdi mdi-pencil"></i> Edit Device
+                    </div>
+                    <div class="context-item" data-action="interfaces">
+                        <i class="mdi mdi-lan"></i> View Interfaces
+                    </div>
+                </div>
+
+                <div class="topology-site-container" id="site-container">
+                    <!-- Site groups will be rendered here by D3.js -->
+                    <!-- Right Side Legend -->
+                    <div class="topology-legend-right">
+                        <h6 class="legend-title">Device Types</h6>
+                        <div class="legend-items-vertical">
+                            <div class="legend-item-right">
+                                <div class="legend-icon device-switch">🔀</div>
+                                <span>Switch</span>
+                            </div>
+                            <div class="legend-item-right">
+                                <div class="legend-icon device-router">🌐</div>
+                                <span>Router</span>
+                            </div>
+                            <div class="legend-item-right">
+                                <div class="legend-icon device-server">🖥️</div>
+                                <span>Server</span>
+                            </div>
+                            <div class="legend-item-right">
+                                <div class="legend-icon device-firewall">🛡️</div>
+                                <span>Firewall</span>
+                            </div>
+                            <div class="legend-item-right">
+                                <div class="legend-icon device-wireless">📶</div>
+                                <span>Wireless</span>
+                            </div>
+                            <div class="legend-item-right">
+                                <div class="legend-icon device-vpn">🔒</div>
+                                <span>VPN Gateway</span>
+                            </div>
+                            <div class="legend-item-right">
+                                <div class="legend-icon device-unknown">❓</div>
+                                <span>Unknown</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascript %}
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Initializing Enhanced Network Topology Visualization...');
+    
+    const svg = d3.select('#network-svg');
+    const container = document.getElementById('topology-container');
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    
+    let showLabels = true;
+    let currentTransform = d3.zoomIdentity;
+    
+    svg.attr('viewBox', `0 0 ${width} ${height}`);
+    
+    // Add zoom behavior
+    const zoom = d3.zoom()
+        .scaleExtent([0.1, 4])
+        .on('zoom', (event) => {
+            currentTransform = event.transform;
+            g.attr('transform', event.transform);
+        });
+    
+    svg.call(zoom);
+    
+    const g = svg.append('g');
+    
+    try {
+        // Get data from Django template - enhanced error handling
+        const rawData = '{{ topology_data_json|escapejs }}';
+        console.log('Raw data received:', rawData ? 'Data loaded' : 'No data');
+        
+        if (!rawData || rawData.length < 10) {
+            throw new Error('No topology data available from NetBox');
+        }
+        
+        const topologyData = JSON.parse(rawData);
+        console.log('Topology data parsed successfully:', topologyData);
+        
+        if (!topologyData.devices || topologyData.devices.length === 0) {
+            throw new Error('No devices found in NetBox. Please add some devices first.');
+        }
+        
+        console.log(`Loaded ${topologyData.devices.length} devices and ${topologyData.connections?.length || 0} connections`);
+        
+        createVisualization(topologyData);
+        
+    } catch (error) {
+        console.error('Error loading topology:', error);
+        showError(error.message);
+    }
+    
+    function createVisualization(data) {
+        // Group devices by site for better positioning
+        const siteGroups = {};
+        data.devices.forEach(device => {
+            const siteName = device.site.name;
+            if (!siteGroups[siteName]) {
+                siteGroups[siteName] = [];
+            }
+            siteGroups[siteName].push(device);
+        });
+        
+        // Calculate site positions in a more organized grid layout
+        const sites = Object.keys(siteGroups);
+        const sitePositions = {};
+        const sitesPerRow = Math.min(4, Math.ceil(Math.sqrt(sites.length))); // Max 4 sites per row
+        const siteSpacingX = Math.max(300, (width - 100) / sitesPerRow); // Horizontal spacing
+        const siteSpacingY = 250; // Fixed vertical spacing
+        const startX = siteSpacingX / 2; // Start from half spacing
+        const startY = 100; // Start from top with margin
+        
+        sites.forEach((siteName, index) => {
+            const row = Math.floor(index / sitesPerRow);
+            const col = index % sitesPerRow;
+            sitePositions[siteName] = {
+                x: startX + col * siteSpacingX,
+                y: startY + row * siteSpacingY
+            };
+        });
+        
+        // Convert devices to D3 nodes with site-based positioning
+        const nodes = data.devices.map((device, deviceIndex) => {
+            const siteName = device.site.name;
+            const sitePosition = sitePositions[siteName];
+            const siteDevices = siteGroups[siteName];
+            const indexInSite = siteDevices.findIndex(d => d.id === device.id);
+            
+            // Position devices in a circle within their site area
+            const devicesInSite = siteDevices.length;
+            const angle = (2 * Math.PI * indexInSite) / devicesInSite;
+            const siteRadius = Math.min(150, 30 + devicesInSite * 8);
+            
+            // Detect device type
+            const detectedType = getDeviceTypeFromDevice(device);
+            
+            // Debug logging for wireless devices
+            if (device.name && (device.name.includes('AP') || device.name.includes('WLC') || device.role === 'Access Point' || device.role === 'Wireless Controller')) {
+                console.log(`WIRELESS DEBUG: ${device.name} - Role: ${device.role} - Type: ${device.device_type?.model} - Detected as: ${detectedType}`);
+            }
+            
+            return {
+                id: device.id,
+                name: device.name,
+                type: detectedType,
+                site: device.site.name,
+                role: device.role,
+                status: device.status,
+                deviceType: device.device_type.model,
+                manufacturer: device.device_type.manufacturer,
+                interfaceCount: device.interface_count || 0,
+                x: sitePosition.x + Math.cos(angle) * siteRadius,
+                y: sitePosition.y + Math.sin(angle) * siteRadius,
+                fx: null, // Allow dragging
+                fy: null
+            };
+        });
+        
+        // Create links from connections data - only show REAL connections
+        let links = [];
+        if (data.connections && data.connections.length > 0) {
+            // Use real connection data only
+            links = data.connections
+                .filter(conn => conn.a_device && conn.b_device)
+                .map(conn => {
+                    const source = nodes.find(n => n.id === conn.a_device);
+                    const target = nodes.find(n => n.id === conn.b_device);
+                    if (source && target) {
+                        return {
+                            source: source,
+                            target: target,
+                            type: conn.type,
+                            status: conn.status,
+                            length: conn.length
+                        };
+                    }
+                    return null;
+                }).filter(link => link !== null);
+        }
+        
+        console.log(`Created visualization with ${nodes.length} nodes and ${links.length} real connections`);
+        
+        // If no connections, show a message
+        if (links.length === 0) {
+            console.log('No physical connections found - devices will be displayed without connections');
+        }
+        
+        console.log(`Created visualization with ${nodes.length} nodes and ${links.length} links`);
+        
+        // Add site labels
+        const siteLabels = g.append('g').attr('class', 'site-labels');
+        Object.entries(sitePositions).forEach(([siteName, position]) => {
+            siteLabels.append('text')
+                .attr('x', position.x)
+                .attr('y', position.y - 180)
+                .attr('text-anchor', 'middle')
+                .style('font-size', '16px')
+                .style('font-weight', 'bold')
+                .style('fill', '#ffffff')
+                .style('opacity', 0.8)
+                .style('text-shadow', '2px 2px 4px rgba(0,0,0,0.5)')
+                .text(siteName);
+        });
+        
+        // Create force simulation with better site organization
+        const simulation = d3.forceSimulation(nodes)
+            .force('link', d3.forceLink(links).id(d => d.id).distance(80).strength(0.3))
+            .force('charge', d3.forceManyBody().strength(-200).distanceMax(300))
+            .force('center', d3.forceCenter(width / 2, height / 2))
+            .force('collision', d3.forceCollide().radius(35))
+            .force('x', d3.forceX(d => sitePositions[d.site]?.x || width / 2).strength(0.5))
+            .force('y', d3.forceY(d => sitePositions[d.site]?.y || height / 2).strength(0.5));
+        
+        // Draw connections
+        const linkGroup = g.append('g').attr('class', 'links');
+        const linkElements = linkGroup
+            .selectAll('line')
+            .data(links)
+            .enter()
+            .append('line')
+            .attr('class', 'connection-line')
+            .attr('stroke', '#495057')
+            .attr('stroke-width', d => getConnectionWidth(d))
+            .style('opacity', 0.7);
+        
+        // Draw enhanced nodes with professional styling
+        const nodeGroup = g.append('g').attr('class', 'nodes');
+        const nodeElements = nodeGroup
+            .selectAll('g')
+            .data(nodes)
+            .enter()
+            .append('g')
+            .attr('class', 'device-node')
+            .style('cursor', 'pointer');
+
+        // Add gradients for each device type
+        const defs = svg.append('defs');
+        const deviceTypes = ['switch', 'router', 'server', 'firewall', 'wireless', 'vpn', 'unknown'];
+        deviceTypes.forEach(type => {
+            const gradient = defs.append('radialGradient')
+                .attr('id', `gradient-${type}`)
+                .attr('cx', '30%')
+                .attr('cy', '30%');
+            
+            gradient.append('stop')
+                .attr('offset', '0%')
+                .attr('stop-color', getNodeColor(type, 'light'));
+            gradient.append('stop')
+                .attr('offset', '100%')
+                .attr('stop-color', getNodeColor(type, 'dark'));
+        });
+
+        // Outer glow ring
+        nodeElements.append('circle')
+            .attr('class', 'device-glow')
+            .attr('r', d => getNodeRadius(d) + 4)
+            .style('fill', 'none')
+            .style('stroke', d => getNodeColor(d.type, 'glow'))
+            .style('stroke-width', 2)
+            .style('opacity', 0.4)
+            .style('filter', 'blur(2px)');
+
+        // Main device circle with gradient
+        nodeElements.append('circle')
+            .attr('r', d => getNodeRadius(d))
+            .attr('class', d => `device-circle device-${d.type}`)
+            .style('fill', d => `url(#gradient-${d.type})`)
+            .style('stroke', '#ffffff')
+            .style('stroke-width', 3)
+            .style('filter', 'drop-shadow(0 4px 8px rgba(0,0,0,0.25))');
+
+        // Inner highlight for 3D effect
+        nodeElements.append('circle')
+            .attr('class', 'device-highlight')
+            .attr('r', d => Math.max(getNodeRadius(d) - 8, 4))
+            .attr('cx', -2)
+            .attr('cy', -2)
+            .style('fill', 'rgba(255,255,255,0.4)')
+            .style('pointer-events', 'none');
+        
+        // Add device icons using emoji (we'll add SVG support later)
+        nodeElements.append('text')
+            .attr('class', 'device-icon')
+            .attr('text-anchor', 'middle')
+            .attr('dy', '0.35em')
+            .attr('font-size', '16px')
+            .attr('fill', 'white')
+            .attr('font-weight', 'bold')
+            .style('text-shadow', '1px 1px 2px rgba(0,0,0,0.5)')
+            .text(d => getDeviceIcon(d.type));
+        
+        // Add labels
+        const labelGroup = g.append('g').attr('class', 'labels');
+        const labelElements = labelGroup
+            .selectAll('g')
+            .data(nodes)
+            .enter()
+            .append('g');
+        
+        // Device name label
+        labelElements.append('text')
+            .attr('class', 'device-label device-name')
+            .attr('text-anchor', 'middle')
+            .attr('dy', '2.8em')
+            .style('font-size', '12px')
+            .style('font-weight', 'bold')
+            .style('fill', '#ffffff')
+            .style('text-shadow', '1px 1px 3px rgba(0,0,0,0.8)')
+            .style('pointer-events', 'none')
+            .text(d => d.name);
+        
+        // Role label
+        labelElements.append('text')
+            .attr('class', 'device-label device-role')
+            .attr('text-anchor', 'middle')
+            .attr('dy', '4.2em')
+            .style('font-size', '10px')
+            .style('fill', '#adb5bd')
+            .style('text-shadow', '1px 1px 2px rgba(0,0,0,0.7)')
+            .style('pointer-events', 'none')
+            .text(d => d.role);
+        
+        // Add event handlers
+        nodeElements
+            .on('mouseover', function(event, d) {
+                showTooltip(event, d);
+                d3.select(this).select('.device-glow').style('opacity', 0.8);
+            })
+            .on('mouseout', function(event, d) {
+                hideTooltip();
+                d3.select(this).select('.device-glow').style('opacity', 0.4);
+            })
+            .on('click', function(event, d) {
+                event.preventDefault();
+                window.open(`/dcim/devices/${d.id}/`, '_blank');
+            })
+            .on('contextmenu', function(event, d) {
+                event.preventDefault();
+                showContextMenu(event, d);
+            })
+            .call(d3.drag()
+                .on('start', dragstarted)
+                .on('drag', dragged)
+                .on('end', dragended));
+        
+        // Control button handlers
+        document.getElementById('zoomIn').addEventListener('click', () => {
+            svg.transition().duration(300).call(
+                zoom.scaleBy, 1.5
+            );
+        });
+        
+        document.getElementById('zoomOut').addEventListener('click', () => {
+            svg.transition().duration(300).call(
+                zoom.scaleBy, 1 / 1.5
+            );
+        });
+        
+        document.getElementById('zoomReset').addEventListener('click', () => {
+            svg.transition().duration(500).call(
+                zoom.transform,
+                d3.zoomIdentity
+            );
+        });
+        
+        document.getElementById('toggleLabels').addEventListener('click', () => {
+            showLabels = !showLabels;
+            labelElements.style('display', showLabels ? 'block' : 'none');
+            document.getElementById('toggleLabels').innerHTML = 
+                `<i class="mdi mdi-label"></i> Labels ${showLabels ? 'On' : 'Off'}`;
+        });
+        
+        // Simulation update
+        simulation.on('tick', () => {
+            linkElements
+                .attr('x1', d => d.source.x)
+                .attr('y1', d => d.source.y)
+                .attr('x2', d => d.target.x)
+                .attr('y2', d => d.target.y);
+            
+            nodeElements
+                .attr('transform', d => `translate(${d.x}, ${d.y})`);
+                
+            labelElements
+                .attr('transform', d => `translate(${d.x}, ${d.y})`);
+        });
+        
+        // Hide loading spinner
+        document.getElementById('loading').style.display = 'none';
+        
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+        
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+        
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+    }
+    
+    function showError(message) {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('error-message').style.display = 'flex';
+        document.getElementById('error-details').textContent = message;
+    }
+    
+    function showTooltip(event, device) {
+        const tooltip = document.getElementById('tooltip');
+        const tooltipContent = tooltip.querySelector('.tooltip-content');
+        
+        tooltipContent.innerHTML = `
+            <div class="tooltip-device">
+                <h6>${getDeviceIcon(device.type)} ${device.name}</h6>
+                <div class="tooltip-details">
+                    <div><strong>Site:</strong> ${device.site}</div>
+                    <div><strong>Role:</strong> ${device.role}</div>
+                    <div><strong>Type:</strong> ${device.deviceType}</div>
+                    <div><strong>Manufacturer:</strong> ${device.manufacturer}</div>
+                    <div><strong>Interfaces:</strong> ${device.interfaceCount}</div>
+                    <div><strong>Status:</strong> <span class="status status-${device.status}">${device.status}</span></div>
+                </div>
+            </div>
+        `;
+        
+        tooltip.style.left = (event.pageX + 15) + 'px';
+        tooltip.style.top = (event.pageY - 10) + 'px';
+        tooltip.style.display = 'block';
+    }
+    
+    function hideTooltip() {
+        document.getElementById('tooltip').style.display = 'none';
+    }
+    
+    function showContextMenu(event, device) {
+        const contextMenu = document.getElementById('context-menu');
+        contextMenu.style.left = event.pageX + 'px';
+        contextMenu.style.top = event.pageY + 'px';
+        contextMenu.style.display = 'block';
+        
+        contextMenu.querySelectorAll('.context-item').forEach(item => {
+            item.onclick = () => {
+                const action = item.getAttribute('data-action');
+                switch(action) {
+                    case 'view':
+                        window.open(`/dcim/devices/${device.id}/`, '_blank');
+                        break;
+                    case 'edit':
+                        window.open(`/dcim/devices/${device.id}/edit/`, '_blank');
+                        break;
+                    case 'interfaces':
+                        window.open(`/dcim/devices/${device.id}/interfaces/`, '_blank');
+                        break;
+                }
+                contextMenu.style.display = 'none';
+            };
+        });
+    }
+    
+    function getConnectionWidth(connection) {
+        return connection.type === 'fiber' ? 3 : 2;
+    }
+    
+    // Helper functions
+    function getDeviceTypeFromDevice(device) {
+        const deviceName = (device.name || '').toLowerCase();
+        const modelLower = (device.device_type?.model || '').toLowerCase();
+        const roleLower = (device.role || '').toLowerCase();
+        
+        // Debug logging for all devices to see what's happening
+        if (deviceName.includes('ap') || roleLower.includes('access') || roleLower.includes('wireless') || modelLower.includes('ap') || modelLower.includes('wireless')) {
+            console.log(`DEVICE DETECTION DEBUG: ${device.name}`, {
+                name: deviceName,
+                model: modelLower, 
+                role: roleLower,
+                rawRole: device.role,
+                rawModel: device.device_type?.model
+            });
+        }
+        
+        // First check device role (most reliable) - FIXED: Better pattern matching
+        if (roleLower.includes('access point') || 
+            roleLower.includes('wireless controller') || 
+            roleLower.includes('wireless') ||
+            roleLower === 'access point' ||
+            roleLower === 'wireless controller') {
+            console.log(`✅ DETECTED AS WIRELESS: ${device.name} (role: "${device.role}" -> "${roleLower}")`);
+            return 'wireless';
+        }
+        
+        if (roleLower.includes('switch') || roleLower.includes('access switch') || roleLower.includes('distribution') || roleLower.includes('core')) return 'switch';
+        if (roleLower.includes('router') || roleLower.includes('gateway') || roleLower.includes('edge')) return 'router';
+        if (roleLower.includes('server') || roleLower.includes('host') || roleLower.includes('compute') || roleLower.includes('hypervisor')) return 'server';
+        if (roleLower.includes('firewall') || roleLower.includes('security') || roleLower.includes('utm') || roleLower.includes('load balancer')) return 'firewall';
+        if (roleLower.includes('vpn') || roleLower.includes('tunnel')) return 'vpn';
+        
+        // Then try device name patterns  
+        if (deviceName.includes('ap-') || deviceName.includes('-ap-') || deviceName.includes('-wlc-')) {
+            console.log(`DETECTED AS WIRELESS BY NAME: ${device.name}`);
+            return 'wireless';
+        }
+        
+        // Then try device model - IMPROVED: Better wireless model detection
+        if (modelLower.includes('switch') || modelLower.includes('catalyst') || modelLower.includes('nexus') || modelLower.includes('sw-') || modelLower.includes('aruba') || modelLower.includes('ex4650')) return 'switch';
+        if (modelLower.includes('router') || modelLower.includes('isr') || modelLower.includes('mx') || modelLower.includes('asr') || modelLower.includes('rt-')) return 'router';
+        if (modelLower.includes('server') || modelLower.includes('poweredge') || modelLower.includes('proliant') || modelLower.includes('srv-') || modelLower.includes('hypervisor') || modelLower.includes('supermicro')) return 'server';
+        if (modelLower.includes('firewall') || modelLower.includes('pa-') || modelLower.includes('asa') || modelLower.includes('fw-') || modelLower.includes('srx')) return 'firewall';
+        
+        // Wireless model detection - IMPROVED
+        if (modelLower.includes('unifi') || 
+            modelLower.includes('catalyst 913') || 
+            modelLower.includes('wlc') || 
+            modelLower.includes('9800') ||
+            modelLower.includes('ap ') ||
+            modelLower.includes(' ap') ||
+            modelLower === 'ap') {
+            console.log(`DETECTED AS WIRELESS BY MODEL: ${device.name} (model: ${modelLower})`);
+            return 'wireless';
+        }
+        
+        if (modelLower.includes('fortigate') || modelLower.includes('vpn') || modelLower.includes('gateway')) return 'vpn';
+        if (modelLower.includes('big-ip') || modelLower.includes('f5') || modelLower.includes('load balancer')) return 'firewall';
+        
+        // If nothing matched, log it for debugging
+        console.log(`UNDETECTED DEVICE: ${device.name}`, {
+            name: deviceName,
+            model: modelLower,
+            role: roleLower
+        });
+        
+        return 'unknown';
+    }
+    
+    // Simple emoji-based icon function - easily customizable!
+    function getDeviceIcon(type) {
+        const icons = {
+            'switch': '🔀',
+            'router': '🌐', 
+            'server': '🖥️',
+            'firewall': '🛡️',
+            'wireless': '📶',   // This should show for Access Point devices
+            'vpn': '🔒',
+            'unknown': '❓'
+        };
+        return icons[type] || icons.unknown;
+    }
+    
+    function getNodeRadius(device) {
+        const baseRadius = 20;
+        const interfaceBonus = Math.min(device.interfaceCount * 2, 10);
+        return baseRadius + interfaceBonus;
+    }
+    
+    function getNodeColor(type, variant = 'base') {
+        const colors = {
+            'switch': {
+                'light': '#4a90e2',
+                'dark': '#2c5aa0',
+                'glow': '#6bb6ff',
+                'base': '#0066cc'
+            },
+            'router': {
+                'light': '#e74c3c',
+                'dark': '#c0392b',
+                'glow': '#ff6b6b',
+                'base': '#cc3300'
+            },
+            'server': {
+                'light': '#2ecc71',
+                'dark': '#27ae60',
+                'glow': '#58d68d',
+                'base': '#339933'
+            },
+            'firewall': {
+                'light': '#f39c12',
+                'dark': '#d68910',
+                'glow': '#f4d03f',
+                'base': '#ff9900'
+            },
+            'wireless': {
+                'light': '#9b59b6',
+                'dark': '#7d3c98',
+                'glow': '#bb8fce',
+                'base': '#9933cc'
+            },
+            'vpn': {
+                'light': '#1abc9c',
+                'dark': '#148f77',
+                'glow': '#52c9b4',
+                'base': '#00cc99'
+            },
+            'unknown': {
+                'light': '#95a5a6',
+                'dark': '#7f8c8d',
+                'glow': '#aeb6bf',
+                'base': '#999999'
+            }
+        };
+        return colors[type] ? colors[type][variant] : colors.unknown[variant];
+    }
+    
+    // Hide context menu on click elsewhere
+    document.addEventListener('click', function(event) {
+        if (!event.target.closest('#context-menu')) {
+            document.getElementById('context-menu').style.display = 'none';
+        }
+    });
+});
+</script>
+{% endblock %}
