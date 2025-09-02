@@ -1,0 +1,63 @@
+@startuml
+actor "Copilot Chat (client)" as copilot
+box "MCP Server" #LightBlue
+  participant "Controller" as controller
+  participant "PromptHandler" as promptHandler
+  participant "Tool Handler" as toolHandler
+  participant "MemoryAnalyzer" as memoryAnalyzer
+end box
+participant "Storage" as storage #yellow
+
+autonumber
+copilot -> controller : get_prompt (check_leaks, arguments)
+controller -> promptHandler : handle_prompt("check_leaks", arguments)
+promptHandler -> toolHandler : _handle_memory_analysis({dir_path})
+toolHandler -> memoryAnalyzer : analyze_codebase(dir_path)
+memoryAnalyzer -> storage : list_source_files(dir_path)
+storage --> memoryAnalyzer : return list of C++ files
+alt C++ files found
+  loop for each C++ file
+    ' Step 10: For each C++ file, read its content
+    memoryAnalyzer -> storage : read file content
+    storage --> memoryAnalyzer : return file content
+    ' Step 11: Parse each file to extract memory operations (allocations/deallocations)
+    memoryAnalyzer -> memoryAnalyzer : parse_file(file_path)
+  end
+  ' Step 12: Build a memory flow map to track allocation/deallocation flows across files
+  note over memoryAnalyzer
+     Build a memory flow map to track allocation/deallocation flows across files
+  end note
+  memoryAnalyzer -> memoryAnalyzer : build memory flow map
+ 
+  ' Step 13: Create dynamic groups of files related by memory flows
+  note over memoryAnalyzer
+     Create dynamic groups of files that are related by memory flows for further analysis.
+     These files may operate on the same pointer variable, or have linked allocation/deallocation flows (e.g., one file allocates, another file deallocates).
+  end note
+  memoryAnalyzer -> memoryAnalyzer : create dynamic groups
+
+  ' Step 14: Detect memory leaks based on the memory flow map and groups
+  note over memoryAnalyzer
+     Detect memory leaks using the memory flow map and dynamic groups
+  end note
+  memoryAnalyzer -> memoryAnalyzer : detect memory leaks
+
+  ' Step 15: Prepare AI context for complex cases
+  note over memoryAnalyzer
+     Prepare context and code snippets for AI-assisted analysis of complex memory leak cases
+  end note
+  memoryAnalyzer -> memoryAnalyzer : prepare AI context (complex cases)
+
+  ' Step 16: Generate summary and actionable recommendations
+  note over memoryAnalyzer
+     Generate a summary and actionable recommendations based on the analysis results
+  end note
+  memoryAnalyzer -> memoryAnalyzer : generate summary & recommendations
+  memoryAnalyzer --> toolHandler : return metadata (leaks, summary, groups, recommendations)
+else No C++ files
+  memoryAnalyzer --> toolHandler : return no files found
+end
+toolHandler --> promptHandler : return findings
+promptHandler --> controller : return prompt (with findings)
+controller --> copilot : return prompt (with findings)
+@enduml

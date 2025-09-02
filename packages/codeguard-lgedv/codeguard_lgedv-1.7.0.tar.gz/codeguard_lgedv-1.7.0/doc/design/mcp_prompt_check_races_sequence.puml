@@ -1,0 +1,55 @@
+@startuml
+' Step 10: For each C++ file, read its content
+' Step 11: Parse each file to extract shared resources and thread usage
+' Step 12: Build a resource access map to track shared resource usage across files
+' Step 13: Detect potential race conditions based on resource access and thread usage
+' Step 14: Generate summary and actionable recommendations
+actor "Copilot Chat (client)" as copilot
+box "MCP Server" #LightBlue
+  participant "Controller" as controller
+  participant "PromptHandler" as promptHandler
+  participant "Tool Handler" as toolHandler
+  participant "RaceAnalyzer" as raceAnalyzer
+end box
+participant "Storage" as storage #yellow
+
+autonumber
+copilot -> controller : get_prompt (check_races, arguments)
+controller -> promptHandler : handle_prompt("check_races", arguments)
+promptHandler -> toolHandler : _handle_detect_races({dir_path})
+toolHandler -> raceAnalyzer : analyze_codebase(dir_path)
+raceAnalyzer -> storage : list_source_files(dir_path)
+storage --> raceAnalyzer : return list of C++ files
+alt C++ files found
+  loop for each C++ file
+    ' Step 10: For each C++ file, read its content
+    raceAnalyzer -> storage : read file content
+    storage --> raceAnalyzer : return file content
+    ' Step 11: Parse each file to extract shared resources and thread usage
+    raceAnalyzer -> raceAnalyzer : parse_file(file_path)
+  end
+  ' Step 12: Build a resource access map to track shared resource usage across files
+  note over raceAnalyzer
+     Build a resource access map to track shared resource usage across files
+  end note
+  raceAnalyzer -> raceAnalyzer : build resource access map
+
+  ' Step 13: Detect potential race conditions based on resource access and thread usage
+  note over raceAnalyzer
+     Detect potential race conditions using the resource access map and thread usage information
+  end note
+  raceAnalyzer -> raceAnalyzer : detect race conditions
+
+  ' Step 14: Generate summary and actionable recommendations
+  note over raceAnalyzer
+     Generate a summary and actionable recommendations based on the analysis results
+  end note
+  raceAnalyzer -> raceAnalyzer : generate summary & recommendations
+  raceAnalyzer --> toolHandler : return metadata (potential races, summary, recommendations)
+else No C++ files
+  raceAnalyzer --> toolHandler : return no files found
+end
+toolHandler --> promptHandler : return findings
+promptHandler --> controller : return prompt (with findings)
+controller --> copilot : return prompt (with findings)
+@enduml
