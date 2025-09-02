@@ -1,0 +1,2 @@
+### INTENTION and CONTEXT
+My intention is to implement in the `{name_of_the_file.js}` the behavior described in the `{name_of_the_scenario}` scenario in the feature file `{name_of_the_feature_file.feature}` 
