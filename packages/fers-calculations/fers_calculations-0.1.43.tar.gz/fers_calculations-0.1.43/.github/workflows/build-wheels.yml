@@ -1,0 +1,170 @@
+name: Release Rust Python Package
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "types/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish-to-pypi-linux:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    name: Build and Publish Linux Wheel to PyPI
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.12"
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install maturin
+
+      - name: Bump Cargo.toml to dev‑date version
+        run: |
+          BASE_VERSION=$(grep '^version' Cargo.toml | head -n1 | cut -d '"' -f2)
+          NEW_VERSION="${BASE_VERSION}"
+          sed -i "s/^version = \".*\"/version = \"${NEW_VERSION}\"/" Cargo.toml
+
+      - name: Build and Publish to PyPI
+        env:
+          MATURIN_PASSWORD: ${{ secrets.PYPI }}
+        run: |
+          maturin publish \
+            --skip-existing \
+            --bindings pyo3 --features python \
+            --username __token__ --password $MATURIN_PASSWORD
+
+  publish-to-pypi-windows:
+    name: Build and Publish Windows Wheel to PyPI
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.12"
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install maturin
+
+      - name: Build and Publish to PyPI
+        shell: pwsh
+        env:
+          MATURIN_PASSWORD: ${{ secrets.PYPI }}
+        run: |
+          maturin publish --skip-existing --bindings pyo3 --features python --username __token__ --password $env:MATURIN_PASSWORD
+
+  update-types:
+    name: Generate and Commit OpenAPI Types
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: pip install maturin datamodel-code-generator
+
+      - name: Generate OpenAPI JSON
+        run: |
+          cargo run -- --openapi
+          mkdir -p "$GITHUB_WORKSPACE/types"
+          mv openapi.json "$GITHUB_WORKSPACE/types/openapi.json"
+
+      - name: Generate Pydantic Models
+        run: |
+          cd "$GITHUB_WORKSPACE/types"
+          datamodel-codegen \
+            --input openapi.json \
+            --input-file-type openapi \
+            --output pydantic_models.py \
+            --output-model-type pydantic_v2.BaseModel
+
+      - name: Commit and Push Generated Files
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add types/openapi.json types/pydantic_models.py
+          git commit -m "Update OpenAPI JSON and Pydantic models in /types folder"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-and-push-wasm:
+    name: Build WASM and Push to FERS_fiber
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out fers_calculations
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "20"
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+
+      - name: Build WASM
+        run: |
+          wasm-pack build \
+            --release \
+            --target web \
+            --out-dir ./wasm_output \
+            --features wasm
+
+      - name: Clone FERS_fiber repo
+        run: |
+          git clone https://x-access-token:${{ secrets.FIBER_REPO_PAT }}@github.com/Jeroen124/FERS_fiber.git
+
+      - name: Ensure pkg folder exists in FERS_fiber
+        run: mkdir -p FERS_fiber/src/pkg
+
+      - name: Add build timestamp to pkg folder
+        run: |
+          echo "Build date: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" > FERS_fiber/src/pkg/build-info.txt
+
+      - name: Move WASM build to FERS_fiber
+        run: mv wasm_output/* FERS_fiber/src/pkg/
+
+      - name: Commit and push WASM output to FERS_fiber
+        run: |
+          cd FERS_fiber
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/pkg
+          git commit -m "Update WASM build from fers_calculations"
+          git push
