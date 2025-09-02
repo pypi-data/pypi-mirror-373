@@ -1,0 +1,59 @@
+- job:
+    name: python-cinderclient-functional-base
+    abstract: true
+    parent: devstack-tox-functional
+    timeout: 4500
+    required-projects:
+      - openstack/cinder
+      - openstack/python-cinderclient
+    vars:
+      openrc_enable_export: true
+      devstack_localrc:
+        VOLUME_BACKING_FILE_SIZE: 16G
+        CINDER_QUOTA_VOLUMES: 25
+        CINDER_QUOTA_BACKUPS: 25
+        CINDER_QUOTA_SNAPSHOTS: 25
+    irrelevant-files:
+      - ^.*\.rst$
+      - ^doc/.*$
+      - ^releasenotes/.*$
+      - ^cinderclient/tests/unit/.*$
+
+- job:
+    name: python-cinderclient-functional-py310
+    parent: python-cinderclient-functional-base
+    # Python 3.10 is the default on Ubuntu 22.04 (Jammy)
+    nodeset: openstack-single-node-jammy
+    vars:
+      python_version: 3.10
+      tox_envlist: functional-py310
+
+- job:
+    name: python-cinderclient-functional-py312
+    parent: python-cinderclient-functional-base
+    # Python 3.12 is the default on Ubuntu 24.04 (Noble)
+    nodeset: openstack-single-node-noble
+    vars:
+      python_version: 3.12
+      tox_envlist: functional-py312
+
+- project:
+    vars:
+      ensure_tox_version: '<4'
+    templates:
+      - check-requirements
+      - lib-forward-testing-python3
+      - openstack-cover-jobs
+      - openstack-python3-jobs
+      - publish-openstack-docs-pti
+      - release-notes-jobs-python3
+    check:
+      jobs:
+        - python-cinderclient-functional-py310
+        - python-cinderclient-functional-py312
+        - openstack-tox-pylint:
+            voting: false
+    gate:
+      jobs:
+        - python-cinderclient-functional-py310
+        - python-cinderclient-functional-py312
