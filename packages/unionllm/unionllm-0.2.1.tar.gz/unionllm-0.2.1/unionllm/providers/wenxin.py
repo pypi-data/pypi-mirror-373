@@ -1,0 +1,218 @@
+import time
+import requests
+import json, os
+import logging
+import hashlib
+from .base_provider import BaseProvider
+from unionllm.utils import ModelResponse, Message, Choices, Usage, Delta, StreamingChoices
+
+class WenXinOpenAIError(Exception):
+    def __init__(
+        self,
+        status_code,
+        message,
+    ):
+        self.status_code = status_code
+        self.message = message
+        super().__init__(self.message)
+
+class WenXinAIProvider(BaseProvider):
+    def __init__(self, **model_kwargs):
+        # Get ERNIE_CLIENT_ID and ERNIE_CLIENT_ID from environment variables
+        _env_client_id = os.environ.get("ERNIE_CLIENT_ID")
+        _env_client_secret = os.environ.get("ERNIE_CLIENT_SECRET")
+        _env_apikey = os.environ.get("ERNIE_API_KEY")
+        self.client_id = model_kwargs.get("client_id") if model_kwargs.get("client_id") else _env_client_id
+        self.client_secret = model_kwargs.get("client_secret") if model_kwargs.get("client_secret") else _env_client_secret
+        self.api_key = model_kwargs.get("api_key") if model_kwargs.get("api_key") else _env_apikey
+        if (not self.client_id or not self.client_secret) and not self.api_key:
+            raise WenXinOpenAIError(
+                status_code=422, message=f"Missing necessary credentials"
+            )
+        if not self.api_key:
+            self.access_token = self.get_access_token()
+
+    def get_access_token(self):
+        url = "https://aip.baidubce.com/oauth/2.0/token"
+        params = {
+            "grant_type": "client_credentials",
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+        }
+        response = requests.post(url, params=params)
+        return str(response.json().get("access_token"))
+
+    def pre_processing(self, **kwargs):
+        supported_params = [
+            "model", "messages", "max_tokens", "temperature", "logprobs", "stream", "stop",
+            "presence_penalty", "frequency_penalty", "best_of", "logit_bias", "tools", "tool_choice"
+        ]
+        for key in list(kwargs.keys()):
+            if key not in supported_params:
+                kwargs.pop(key)
+        return kwargs
+
+    def to_formatted_prompt(self, messages):
+        if messages and messages[0].get('role') == 'system':
+            system = messages.pop(0).get('content')
+        else:
+            system = None
+        return messages, system
+
+    def post_stream_processing_wrapper(self, model, messages, **new_kwargs):
+        payload = json.dumps({"model": model, "messages": messages, **new_kwargs})
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        index = 0
+        for line in requests.post(self.endpoint_url, headers=headers, data=payload, stream=True).iter_lines():
+            if line:
+                try:
+                    # Remove the "data: " prefix before decoding the JSON
+                    line_without_prefix = line.decode('utf-8').removeprefix('data: ')
+                    new_line = json.loads(line_without_prefix)
+                    chunk_choices = []
+                    chunk_delta = Delta()
+                    if new_line.get("result"):
+                        chunk_delta.role = "assistant"
+                        chunk_delta.content=new_line.get("result", "")
+                        chunk_choices.append(StreamingChoices(index=index, delta=chunk_delta))
+                    if 'usage' in new_line:
+                        chunk_usage = Usage()
+                        if "input_tokens" in chunk_usage:
+                            chunk_usage.prompt_tokens = chunk_usage.get("prompt_tokens", 0),
+                        if "output_tokens" in chunk_usage:
+                            chunk_usage.completion_tokens = chunk_usage.get("completion_tokens", 0),
+                        if "total_tokens" in chunk_usage:
+                            chunk_usage.total_tokens = chunk_usage.get("total_tokens", 0)
+                    else:
+                        chunk_usage = None
+
+                    chunk_response = ModelResponse(
+                        id="hello",
+                        choices=chunk_choices,
+                        created=int(time.time()),
+                        model=model,
+                        usage=chunk_usage if chunk_usage else None,
+                        stream=True
+                    )
+                    index += 1
+                    yield chunk_response
+
+                except json.JSONDecodeError:
+                    # Log the error or handle it as needed
+                    continue
+
+
+    def create_model_response_wrapper(self, result, model):
+        response_dict = result.json()
+        choices = []
+        
+        # 兼容result模式
+        
+        if 'result' in response_dict:
+            message = Message(
+                content=response_dict["result"],
+                role="assistant"
+            )
+            choices.append(
+                Choices(
+                    message=message,
+                    index=0,
+                    finish_reason="stop"
+                )
+            )
+        elif 'choices' in response_dict:
+            for choice in response_dict["choices"]:
+                message = Message(
+                    content=choice["message"]["content"],
+                    role=choice["message"]["role"]
+                )
+                
+                # Add tool_calls support
+                if 'tool_calls' in choice["message"] and choice["message"]['tool_calls']:
+                    tool_calls = []
+                    for tool_call in choice["message"]['tool_calls']:
+                        tool_calls.append(
+                            {
+                                "id": tool_call['id'] if 'id' in tool_call and tool_call['id'] else None,
+                                "index": tool_call['index'] if 'index' in tool_call else 0,
+                                "type": "function",
+                                "function": {
+                                    "name": tool_call['function']['name'] if 'function' in tool_call and 'name' in tool_call['function'] else None,
+                                    "arguments": tool_call['function']['arguments'] if 'function' in tool_call and 'arguments' in tool_call['function'] else None
+                                }
+                            }
+                        )
+                    message.tool_calls = tool_calls
+                
+                choices.append(
+                    Choices(
+                        message=message,
+                        index=choice["index"],
+                        finish_reason=choice["finish_reason"],
+                    )
+                )
+        usage = Usage(
+            total_tokens=response_dict["usage"]["total_tokens"],
+        )
+        response = ModelResponse(
+            id=response_dict["id"],
+            choices=choices,
+            created=response_dict["created"],
+            model=model,
+            usage=usage,
+        )
+        return response
+
+    def completion(self, model: str, messages: list, **kwargs):
+        try:
+            if model is None or messages is None:
+                raise WenXinOpenAIError(
+                    status_code=422, message=f"Missing model or messages"
+                )
+                
+            message_check_result = self.check_prompt("wenxin", model, messages)            
+            if message_check_result['pass_check']:
+                messages = message_check_result['messages']
+            else:
+                raise WenXinOpenAIError(
+                    status_code=422, message=message_check_result['reason']
+                )                
+            new_kwargs = self.pre_processing(**kwargs)
+            stream = kwargs.get("stream", False)
+
+            messages, system = self.to_formatted_prompt(messages)
+            if system:
+                new_kwargs["system"] = system
+
+            # 模型与url中model_path的对应关系
+            if model == "ERNIE-4.0":
+                self.model_path = "completions_pro"
+            elif model == "ERNIE-3.5-8K":
+                self.model_path = "completions"
+            elif model == "ERNIE-Bot-8K":
+                self.model_path = "ernie_bot_8k"
+            else:
+                self.model_path = model
+
+            if self.api_key:
+                self.endpoint_url = f"https://qianfan.baidubce.com/v2/chat/completions"
+            else:
+                self.endpoint_url = f"https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/{self.model_path}?access_token={self.access_token}"
+
+            if stream:
+                return self.post_stream_processing_wrapper(model, messages, **new_kwargs)
+            else:
+                payload = json.dumps({"model": model, "messages": messages, **new_kwargs})
+                headers = {"Content-Type": "application/json"}
+                if self.api_key:
+                    headers["Authorization"] = f"Bearer {self.api_key}"
+                result = requests.post(self.endpoint_url, headers=headers, data=payload)
+                return self.create_model_response_wrapper(result, model=model)
+        except Exception as e:
+            if hasattr(e, "status_code"):
+                raise WenXinOpenAIError(status_code=e.status_code, message=str(e))
+            else:
+                raise WenXinOpenAIError(status_code=500, message=str(e))
+            
