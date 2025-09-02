@@ -1,0 +1,102 @@
+#!/usr/bin/env python
+import logging
+import os
+
+from pytmpdir.dir_setting import DirSetting
+from setproctitle import setproctitle
+
+from peek_plugin_base.PeekVortexUtil import peekServerName
+from peek_logic_service import importPackages
+from peek_logic_service.storage import setupDbConn
+from peek_logic_service.storage.DeclarativeBase import metadata
+from txhttputil.site.FileUploadRequest import FileUploadRequest
+from peek_platform.util.LogUtil import setupPeekLogger
+from vortex.DeferUtil import vortexLogFailure
+
+from peek_logic_service.run_peek_logic_service import setupStorageInit
+
+setupPeekLogger(peekServerName)
+
+from twisted.internet import reactor
+
+logger = logging.getLogger(__name__)
+
+
+def setupPlatform():
+    from peek_platform import PeekPlatformConfig
+
+    PeekPlatformConfig.componentName = peekServerName
+    setproctitle(PeekPlatformConfig.componentName + " build_only")
+
+    # Tell the platform classes about our instance of the PeekLoaderBase
+    from peek_logic_service.plugin.ServerPluginLoader import ServerPluginLoader
+
+    PeekPlatformConfig.pluginLoader = ServerPluginLoader()
+
+    # The config depends on the componentName, order is important
+    from peek_logic_service.PeekServerConfig import PeekServerConfig
+
+    PeekPlatformConfig.config = PeekServerConfig()
+
+    # Set default logging level
+    logging.root.setLevel(PeekPlatformConfig.config.loggingLevel)
+
+    # PsUtil
+    if not PeekPlatformConfig.config.loggingLogSystemMetrics:
+        logging.getLogger("peek_plugin_base.util.PeekPsUtil").setLevel(999)
+
+    # Set paths for the Directory object
+    DirSetting.defaultDirChmod = PeekPlatformConfig.config.DEFAULT_DIR_CHMOD
+    DirSetting.tmpDirPath = PeekPlatformConfig.config.tmpPath
+    FileUploadRequest.tmpFilePath = PeekPlatformConfig.config.tmpPath
+
+
+def main():
+    setupPlatform()
+    from peek_platform import PeekPlatformConfig
+    import peek_logic_service
+
+    # Configure sqlalchemy
+    setupDbConn(
+        metadata=metadata,
+        dbEngineArgs=PeekPlatformConfig.config.dbEngineArgs,
+        dbConnectString=PeekPlatformConfig.config.dbConnectString,
+        alembicDir=os.path.join(
+            os.path.dirname(peek_logic_service.__file__), "alembic"
+        ),
+    )
+
+    # Force model migration
+    from peek_logic_service.storage import dbConn
+
+    dbConn.migrate()
+
+    # Import remaining components
+    importPackages()
+
+    setupStorageInit()
+
+    reactor.addSystemEventTrigger(
+        "before",
+        "shutdown",
+        PeekPlatformConfig.pluginLoader.unloadOptionalPlugins,
+    )
+    reactor.addSystemEventTrigger(
+        "before", "shutdown", PeekPlatformConfig.pluginLoader.unloadCorePlugins
+    )
+
+    def start():
+        # Load all plugins
+        d = PeekPlatformConfig.pluginLoader.loadCorePlugins()
+        d.addCallback(
+            lambda _: PeekPlatformConfig.pluginLoader.loadOptionalPlugins()
+        )
+        d.addCallback(lambda _: reactor.callLater(0, lambda: reactor.stop()))
+        d.addErrback(vortexLogFailure, logger, consumeError=True)
+
+    reactor.callLater(0, start)
+    reactor.run()
+
+
+if __name__ == "__main__":
+    main()
