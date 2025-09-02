@@ -1,0 +1,200 @@
+image: python:3.12
+
+variables:
+  PIP_NO_CACHE_DIR: "off"
+
+stages:
+  - check
+  - run-tests
+  - extended-tests
+  - build-docs
+  - build-pypi
+
+.dev-setup:
+  before_script:
+    - apt-get -qq update
+    #- apt-get -qq install -y libgl1-mesa-glx
+    - apt install -y cgns-convert
+    - python --version ; pip --version
+    - pip install --upgrade pip
+    - pip install -r requirements/dev.txt
+
+# templates for windows jobs
+# we used the shared runners on GitLab.com
+# https://docs.gitlab.com/ee/ci/runners/saas/windows_saas_runner.html
+# they are currently in beta state and expected as "Generally Available" sometime in 2025
+# it there are annoying/breaking changes, we can just set all windwos jobs with 'allow_failure: true'
+# preinstalled software: https://gitlab.com/gitlab-org/ci-cd/shared-runners/images/gcp/windows-containers/blob/main/cookbooks/preinstalled-software/README.md
+.windows-setup:
+  tags:
+    - saas-windows-medium-amd64
+  before_script:
+    # Install Python 3.12 with Chocolatey
+    - choco install python --version 3.12.0 -y --allow-downgrade
+    # Set PATH for python 3.12
+    - $env:Path = 'C:\Python312;C:\Python312\Scripts;' + $env:Path
+    # Check Python version
+    - python --version
+    - python -m pip install --upgrade pip
+    - pip --version
+    # Optional: Install Visual C++ Redistributables if needed by VTK
+    # - choco install vcredist-all -y
+    # Install dependencies
+    - pip install -r requirements/dev.txt
+
+check-dependencies:
+  stage: check
+  script:
+    - python .gitlab/ci/check_dependencies.py
+  rules:
+    - when: always
+
+check-module-structure:
+  stage: check
+  script:
+    - python .gitlab/ci/check_imports.py
+  rules:
+    - when: always
+
+# build and deploy documentation on gitlab pages : 
+# runs only on 'main' branch if docs were changed
+pages:
+  stage: build-docs
+  extends:
+    - .dev-setup
+  needs:
+    - check-dependencies
+  script:
+    - python -m pip install .[all]
+    - sphinx-apidoc -f -e -d 2 --separate -l -M -o docs/source/generated pyCFS/
+    - python docs/rst_process.py
+    - sphinx-build -M html docs/source/ docs/build/
+    - cp -r docs/source/embedded docs/build/html
+    - mv docs/build/html public/
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - docs/source/**/*
+        - pyCFS/**/*
+
+lint-type-tests:
+  stage: run-tests
+  extends:
+    - .dev-setup
+  script:
+    - flake8 pyCFS
+    - mypy pyCFS
+  allow_failure: true
+  rules:
+      - when: always
+
+tests:
+  stage: run-tests
+  extends:
+    - .dev-setup
+  script: 
+    - python -m pip install .
+    - pytest --cov=pycfs --cov-report=xml
+  coverage: '/^TOTAL\s+\d+\s+\d+\s+(\d+)%/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+  rules:
+    - when: always
+
+
+
+# runs additional tests on the 'main' branch testing various python versions:
+# these tests are run on the main branch and can be run manually on other branches
+.extended-test-template: &extended-test-template
+  extends:
+    - .dev-setup
+  stage: extended-tests
+  needs:
+    - check-dependencies
+  image: python:${PYTHON_VERSION}
+  script:
+    - pip install nox
+    - nox -f .gitlab/ci/noxfile.py -s tests
+  coverage: '/^TOTAL\s+\d+\s+\d+\s+(\d+)%/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_MERGE_REQUEST_IID && $CI_MERGE_REQUEST_DRAFT == "false"
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
+
+
+linux:python3.10:
+  <<: *extended-test-template
+  variables:
+    PYTHON_VERSION: "3.10"
+
+linux:python3.11:
+  <<: *extended-test-template
+  variables:
+      PYTHON_VERSION: "3.11"
+
+linux:python3.12:
+  <<: *extended-test-template
+  variables:
+      PYTHON_VERSION: "3.12"
+
+windows:python3.12:
+  stage: extended-tests
+  needs:
+    - check-dependencies
+  extends: .windows-setup
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_MERGE_REQUEST_IID && $CI_MERGE_REQUEST_DRAFT == "false"
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
+  coverage: '/^TOTAL\s+\d+\s+\d+\s+(\d+)%/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+  script:
+    - pip install ".[all]"
+    - pytest --cov=pycfs --cov-report=xml
+
+# builds the distributables and publishes a new version on pypi :
+# is triggered via tag / need to add check if tests passed
+build-and-publish:
+  stage: build-pypi
+  extends:
+    - .dev-setup
+  needs:
+    - lint-type-tests
+    - tests
+    - linux:python3.10
+    - linux:python3.11
+    - linux:python3.12
+    - windows:python3.12
+  script:
+    - python -m build
+    - TWINE_USERNAME=${TWINE_USERNAME} TWINE_PASSWORD=${TWINE_PASSWORD} python -m twine upload --verbose --skip-existing dist/*
+  rules:
+    - if: $CI_COMMIT_TAG
+  release:
+    name: "$CI_COMMIT_TAG"  # Use tag name as release name
+    tag_name: "$CI_COMMIT_TAG"
+    description: |
+      Release for version $CI_COMMIT_TAG
+    assets:
+      links:
+        - name: "View on PyPI"
+          url: "https://pypi.org/project/pyCFS/"
