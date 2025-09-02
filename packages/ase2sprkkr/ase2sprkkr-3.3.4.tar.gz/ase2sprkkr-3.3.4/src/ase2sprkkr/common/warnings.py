@@ -1,0 +1,26 @@
+"""
+This module implement simple class that encapsulates the
+warning about non-critical errors (or just suspicious data)
+in configuration/data files.
+"""
+
+import warnings
+
+
+class DataValidityWarning(UserWarning):
+    """
+    This Warning should be issued, if there are some invalid data
+    or format problems, that should not yield a "hard error" which
+    would prevent parsing the data.
+    """
+
+    @classmethod
+    def warn(cls, out):
+        """ Yield the warning """
+        warnings.warn(cls(out),stacklevel=2)
+
+
+class DataValidityError(DataValidityWarning):
+    """ Errors of this class will be considered to be 'Errors'.
+    The current action will be interrupted. """
+    pass
