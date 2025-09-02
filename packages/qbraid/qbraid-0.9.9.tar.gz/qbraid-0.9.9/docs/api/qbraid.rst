@@ -1,0 +1,4 @@
+qbraid
+=======
+
+.. automodule:: qbraid
