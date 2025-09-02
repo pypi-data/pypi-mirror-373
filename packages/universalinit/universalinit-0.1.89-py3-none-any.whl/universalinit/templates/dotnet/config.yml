@@ -1,0 +1,54 @@
+configure_environment:
+  command: "dotnet restore"
+  working_directory: "{KAVIA_PROJECT_DIRECTORY}"
+
+build_cmd:
+  command: "dotnet build"
+  working_directory: "{KAVIA_PROJECT_DIRECTORY}"
+
+install_dependencies:
+  command: "dotnet restore"
+  working_directory: "{KAVIA_PROJECT_DIRECTORY}"
+
+env:
+  environment_initialized: true
+  dotnet_version: "8.0"
+
+openapi_generation:
+  command: "dotnet run --urls http://0.0.0.0:5999 & \
+            sleep 5 && \
+            curl -s http://localhost:5999/swagger/v1/swagger.json > openapi.json && \
+            kill $(lsof -ti:5999) 2>/dev/null"
+  working_directory: "{KAVIA_PROJECT_DIRECTORY}"
+
+init_files: []
+
+init_minimal: "{KAVIA_TEMPLATE_PROJECT_NAME} application initialized"
+
+run_tool:
+  command: "dotnet run --urls \"http://<host>:<port>\""
+  working_directory: "{KAVIA_PROJECT_DIRECTORY}"
+
+test_tool:
+  command: "dotnet test"
+  working_directory: "{KAVIA_PROJECT_DIRECTORY}"
+
+init_style: ""
+
+entry_point_url: "http://localhost:3001/docs"
+
+linter:
+  script_content: |
+    #!/bin/bash
+    cd {KAVIA_PROJECT_DIRECTORY}
+    dotnet build --no-restore -v quiet -nologo -consoleloggerparameters:NoSummary /p:TreatWarningsAsErrors=false
+    LINT_EXIT_CODE=$?
+    if [ $LINT_EXIT_CODE -ne 0 ]; then
+      exit 1
+    fi
+
+post_processing:
+  script: |
+    #!/bin/bash
+    cd {KAVIA_PROJECT_DIRECTORY}
+    dotnet restore
