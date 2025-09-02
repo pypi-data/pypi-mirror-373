@@ -1,0 +1,364 @@
+# stdlib
+import logging
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Tuple
+from typing import TYPE_CHECKING
+from typing import Union
+
+# pypi
+import sqlalchemy
+from sqlalchemy.orm import class_mapper as sa_class_mapper
+from sqlalchemy.orm import Mapped
+from sqlalchemy.orm.session import object_session
+import sqlalchemy.sql
+from typing_extensions import Self
+
+if TYPE_CHECKING:
+    from pyramid.request import Request
+    from sqlalchemy.orm.session import Session
+
+# ==============================================================================
+
+
+log = logging.getLogger(__name__)
+
+# this is used a bit
+func_lower = sqlalchemy.sql.func.lower
+
+
+class CoreObject(object):
+    """Core Database Object class/Mixin"""
+
+    __table_pkey__: Optional[str] = None
+
+
+class UtilityObject(CoreObject):
+    """
+    ``UtilityObject`` is a class that provides some common query methods.
+    This is intended to simplify app development and debugging by bootstrapping
+    some common queries which can be used within `pdb` or simple scrips. The
+    functionality provided by this class is best re-written within your app/model
+    as there is a bit of overhead in inspecting the object to build the queries
+    off of the requisite columns.
+    """
+
+    if TYPE_CHECKING and False:
+        id: Mapped[int]
+
+    @classmethod
+    def get__by__id(
+        cls,
+        dbSession: "Session",
+        id: Union[str, int],
+        id_column: str = "id",
+    ) -> Optional[Self]:
+        """
+        Classmethod.
+
+        Gets an item by an id column named 'id'.  id column can be overriden.
+
+        :param dbSession: The SQLAlchemy ``Session`` to query.
+        :param id: The "id" of the object to query. Likely a String or Integer.
+        :param id_column: The column hosting the identifier. Default: "id".
+        """
+        if (
+            not hasattr(cls, id_column)
+            and hasattr(cls, "__table_pkey__")
+            and cls.__table_pkey__ is not None
+        ):
+            id_column = cls.__table_pkey__
+        if isinstance(id, (list, tuple)):
+            raise ValueError(
+                "Submitting a list/tuple to `get__by__id` is deprecated. "
+                "Please use `get__by__ids` instead."
+            )
+
+        id_dict = {id_column: id}
+        return dbSession.query(cls).filter_by(**id_dict).first()
+
+    @classmethod
+    def get__by__ids(
+        cls,
+        dbSession: "Session",
+        ids: Union[
+            List[Union[int, str]],
+            Tuple[int, ...],
+            Tuple[str, ...],
+        ],
+        id_column: str = "id",
+    ) -> Optional[List[Self]]:
+        """
+        Classmethod.
+
+        Gets items by an id column named 'id'.  id column can be overriden.
+
+        :param dbSession: The SQLAlchemy ``Session`` to query.
+        :param ids: The "id" of the object to query. Likely a String or Integer.
+        :param id_column: The column hosting the identifier. Default: "id".
+        """
+        if (
+            not hasattr(cls, id_column)
+            and hasattr(cls, "__table_pkey__")
+            and cls.__table_pkey__ is not None
+        ):
+            id_column = cls.__table_pkey__
+        id_col = getattr(cls, id_column)
+        return dbSession.query(cls).filter(id_col.in_(ids)).all()
+
+    @classmethod
+    def get__by__column__lower(
+        cls,
+        dbSession: "Session",
+        column_name: str,
+        search: str,
+        allow_many: bool = False,
+        offset: int = 0,
+        limit: Optional[int] = None,
+    ) -> Union[None, Self, List[Self]]:
+        """
+        Classmethod.
+
+        Gets items from the database based on a lowercase version of the column.
+        useful for situations where you have a function index on a table
+        (such as indexing on the lower version of an email addresses)
+
+        :param dbSession: The SQLAlchemy ``Session`` to query.
+        :param column_name:
+        :param search:
+        :param allow_many: default ``False```
+        :param offset: default ``0``
+        :param limit: default ``None``
+        """
+        items = (
+            dbSession.query(cls)
+            .filter(func_lower(getattr(cls, column_name)) == search.lower())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        if items:
+            if not allow_many:
+                if len(items) > 1:
+                    raise ValueError(
+                        "get__by__column__lower should return 1 and only 1 item"
+                    )
+                elif len(items) == 1:
+                    return items[0]
+            else:
+                return items
+        return None
+
+    @classmethod
+    def get__by__column__similar(
+        cls,
+        dbSession: "Session",
+        column_name: str,
+        seed: str,
+        prefix_only: bool = True,
+        offset: int = 0,
+        limit: Optional[int] = None,
+    ) -> List[Self]:
+        """
+        Classmethod.
+
+        Searches for a name column entry with the submitted seed prefix.
+
+        :param dbSession: The SQLAlchemy ``Session`` to query.
+        :param column_name:
+        :param seed:
+        :param prefix_only: default ``True```
+        :param offset: default ``0``
+        :param limit: default ``None``
+        """
+        query = dbSession.query(cls)
+        if prefix_only:
+            query = query.filter(
+                func_lower(getattr(cls, column_name)).startswith(seed.lower())
+            )
+        else:
+            query = query.filter(
+                func_lower(getattr(cls, column_name)).contains(seed.lower())
+            )
+        results = (
+            query.order_by(getattr(cls, column_name).asc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        return results
+
+    @classmethod
+    def get__by__column__exact_then_ilike(
+        cls,
+        dbSession: "Session",
+        column_name: str,
+        seed: str,
+    ) -> Optional[Self]:
+        """
+        Classmethod.
+
+        Searches for an exact match, then case-insensitive version of the
+        identified column if no match is found.
+
+        :param dbSession: The SQLAlchemy ``Session`` to query.
+        :param column_name:
+        :param seed:
+        """
+        item = dbSession.query(cls).filter(getattr(cls, column_name) == seed).first()
+        if not item:
+            item = (
+                dbSession.query(cls)
+                .filter(getattr(cls, column_name).ilike(seed))
+                .first()
+            )
+        return item
+
+    @classmethod
+    def get__range(
+        cls,
+        dbSession: "Session",
+        offset: int = 0,
+        limit: Optional[int] = None,
+        sort_direction: str = "asc",
+        order_col: Optional[str] = None,
+        order_case_sensitive: bool = True,
+        filters: Optional[Any] = None,  # `Any` is really a SqlAlchemy Clause
+        debug_query: bool = False,
+    ) -> List[Self]:
+        """
+        Classmethod.
+
+        :param dbSession: The SQLAlchemy ``Session`` to query.
+        :param offset: default ``0``
+        :param limit: default ``None``
+        :param sort_direction: default asc"
+        :param order_col: default ``None``
+        :param order_case_sensitive: default ``True``
+        :param filters: default ``None``
+        :param debug_query: default ``False``
+        """
+
+        if not order_col:
+            order_col = "id"
+        query = dbSession.query(cls)
+        if filters:
+            for _filter in filters:
+                query = query.filter(_filter)
+        for col_name in order_col.split(","):
+            # declared columns do not have cls.__class__.c
+            # reflected columns did in earlier sqlalchemy
+            col = getattr(cls, col_name)
+            if sort_direction == "asc":
+                if order_case_sensitive:
+                    query = query.order_by(col.asc())
+                else:
+                    query = query.order_by(func_lower(col).asc())
+            elif sort_direction == "desc":
+                if order_case_sensitive:
+                    query = query.order_by(col.desc())
+                else:
+                    query = query.order_by(func_lower(col).desc())
+            else:
+                raise ValueError("invalid sort direction")
+        query = query.offset(offset).limit(limit)
+        results = query.all()
+        if __debug__:
+            if debug_query:
+                log.debug("get__range")
+                log.debug(query)
+                log.debug(results)
+        return results
+
+    def columns_as_dict(self) -> Dict:
+        """
+        Beware!
+        This function will trigger a load of attributes if they have not been
+        loaded yet.
+
+        To return only the loaded columns, use ``loaded_columns_as_dict``.
+        """
+        return dict(
+            (col.name, getattr(self, col.name))
+            for col in sa_class_mapper(self.__class__).persist_selectable.c
+        )
+
+    def loaded_columns_as_dict(self) -> Dict:
+        """
+        This function will only return the loaded columns as a dict.
+
+        To return ALL columns, potentially triggering the loading of attributes,
+        use ``columns_as_dict``.
+
+        See Also: ``loaded_columns_as_list``
+        """
+        _dict = self.__dict__
+        return {
+            col.name: _dict[col.name]
+            for col in sa_class_mapper(self.__class__).persist_selectable.c
+            if col.name in _dict
+        }
+
+    def loaded_columns_as_list(
+        self,
+        with_values: bool = False,
+    ) -> List:
+        """
+        This function will only return the loaded columns as a list.
+
+        By default this returns a list of the keys(columns) only.
+
+        Passing in the argument `with_values=True` will return a list of key(column)/value tuples, which could be blessed into a dict.
+
+        :param with_values: boolean. default ``False``.
+
+        See Also: ``loaded_columns_as_dict``
+        """
+        _dict = self.__dict__
+        if with_values:
+            return [
+                (col.name, _dict[col.name])
+                for col in sa_class_mapper(self.__class__).persist_selectable.c
+                if col.name in _dict
+            ]
+        return [
+            col.name
+            for col in sa_class_mapper(self.__class__).persist_selectable.c
+            if col.name in _dict
+        ]
+
+    @property
+    def _sqlalchemy_session(self) -> Optional["Session"]:
+        """
+        Return the current SQLAlchemy Session for this object.
+
+        This should not be memoized, as an object can be merged across sessions.
+        """
+        session = object_session(self)
+        return session
+
+    @property
+    def _pyramid_request(self) -> Optional["Request"]:
+        """
+        SQLAssist stashes the active Pyramid ``request`` in the SQLAlchemy
+        Session's "info" dict as ``_session.info['request']``.
+
+        This should not be memoized, as an object can be merged across sessions.
+        """
+        session = object_session(self)
+        if session:
+            request = session.info["request"]
+            return request
+        return None
+
+
+# ==============================================================================
+
+
+__all__ = (
+    "CoreObject",
+    "func_lower",
+    "UtilityObject",
+)
