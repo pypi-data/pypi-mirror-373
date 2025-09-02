@@ -1,0 +1,149 @@
+from datetime import timedelta
+
+import pytz
+from psycopg.types.range import DateRange, TimestamptzRange
+from rest_framework import serializers
+from timezone_field.choices import standard, with_gmt_offset
+from timezone_field.rest_framework import TimeZoneSerializerField
+
+from .mixins import RangeMixin, WBCoreSerializerFieldMixin
+from .number import NumberFieldMixin
+from .types import WBCoreType
+
+
+class DateTimeField(WBCoreSerializerFieldMixin, serializers.DateTimeField):
+    field_type = WBCoreType.DATETIME.value
+
+
+class DateField(WBCoreSerializerFieldMixin, serializers.DateField):
+    field_type = WBCoreType.DATE.value
+
+
+class TimeField(WBCoreSerializerFieldMixin, serializers.TimeField):
+    field_type = WBCoreType.TIME.value
+
+
+class ShortcutMixin(WBCoreSerializerFieldMixin):
+    def __init__(self, shortcuts: list | None = None, *args, **kwargs):
+        self.shortcuts = shortcuts
+        super().__init__(*args, **kwargs)
+
+    def get_representation(self, request, field_name) -> tuple[str, dict]:
+        key, representation = super().get_representation(request, field_name)
+        if self.shortcuts is not None:
+            representation["shortcuts"] = self.shortcuts
+        return key, representation
+
+
+class DateRangeField(RangeMixin, ShortcutMixin, serializers.DateField):
+    field_type = WBCoreType.DATERANGE.value
+    internal_field = DateRange
+
+    def __init__(
+        self,
+        *args,
+        outward_bounds_transform="[)",
+        inward_bounds_transform="[)",
+        **kwargs,
+    ):
+        self.outward_bounds_transform = outward_bounds_transform  # Allow to specify another bound representation than the default and used for db (]. If specified, will switch the range around to and from the serializer
+        self.inward_bounds_transform = inward_bounds_transform
+        if self.outward_bounds_transform not in ["[]", "[)", "()", "(]"]:
+            raise ValueError(f"Outward bound transform {self.outward_bounds_transform} is not a valid choice")
+        if self.inward_bounds_transform not in ["[]", "[)", "()", "(]"]:
+            raise ValueError(f"Inward bound transform {self.inward_bounds_transform} is not a valid choice")
+
+        super().__init__(*args, **kwargs)
+
+    def _transform_range(self, lower, upper, inward=False):
+        """
+        Private utility function that shift the range by one operator
+        Args:
+            lower: Lower bound
+            upper: Upper bound
+            inverse: If True, the transform is back to its original bound transform
+
+        Returns:
+            The shifted bound
+        """
+        bound_transform = self.inward_bounds_transform if inward else self.outward_bounds_transform
+        if lower and bound_transform[0] == "(":
+            lower = lower + timedelta(days=1) if inward else lower - timedelta(days=1)
+        if upper and bound_transform[1] == "]":
+            upper = upper + timedelta(days=1) if inward else upper - timedelta(days=1)
+        return lower, upper
+
+
+class DateTimeRangeField(RangeMixin, ShortcutMixin, serializers.DateTimeField):
+    field_type = WBCoreType.DATETIMERANGE.value
+    internal_field = TimestamptzRange
+
+    def __init__(self, *args, lower_time_choices=None, upper_time_choices=None, **kwargs):
+        self.lower_time_choices = lower_time_choices
+        if (
+            self.lower_time_choices
+            and not isinstance(self.lower_time_choices, list)
+            and not callable(self.lower_time_choices)
+        ):
+            raise ValueError("lower_time_choices can only be a static list or a callable.")
+        self.upper_time_choices = upper_time_choices
+        if (
+            self.upper_time_choices
+            and not isinstance(self.upper_time_choices, list)
+            and not callable(self.upper_time_choices)
+        ):
+            raise ValueError("upper_time_choices can only be a static list or a callable.")
+        super().__init__(*args, **kwargs)
+
+    def get_representation(self, request, field_name) -> tuple[str, dict]:
+        key, representation = super().get_representation(request, field_name)
+        if self.lower_time_choices is not None:
+            if callable(self.lower_time_choices):
+                representation["lower_time_choices"] = self.lower_time_choices(self, request)
+            else:
+                representation["lower_time_choices"] = self.lower_time_choices
+
+        if self.upper_time_choices is not None:
+            if callable(self.upper_time_choices):
+                representation["upper_time_choices"] = self.upper_time_choices(self, request)
+            else:
+                representation["upper_time_choices"] = self.upper_time_choices
+        if timezone := getattr(self, "timezone", None):
+            representation["timezone"] = str(timezone)
+        return key, representation
+
+
+class DurationField(NumberFieldMixin, WBCoreSerializerFieldMixin, serializers.DurationField):
+    field_type = WBCoreType.DURATION.value
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.precision = 0
+
+
+class TimeZoneField(WBCoreSerializerFieldMixin, TimeZoneSerializerField):
+    field_type = WBCoreType.SELECT.value
+
+    def __init__(self, choices=None, choices_display=None, *args, **kwargs):
+        if choices:
+            values, displays = zip(*choices)
+        else:
+            values = pytz.common_timezones
+            displays = None
+
+        if choices_display == "WITH_GMT_OFFSET":
+            choices = with_gmt_offset(values, use_pytz=self.use_pytz)
+        elif choices_display == "STANDARD":
+            choices = standard(values)
+        elif choices_display is None:
+            choices = zip(values, displays) if displays else standard(values)
+        else:
+            raise ValueError(f"Unrecognized value for kwarg 'choices_display' of '{choices_display}'")
+
+        self.choices = choices
+        super().__init__(*args, **kwargs)
+
+    def get_representation(self, request, field_name) -> tuple[str, dict]:
+        key, representation = super().get_representation(request, field_name)
+        representation["choices"] = [{"value": k, "label": v} for k, v in self.choices]
+        return key, representation
