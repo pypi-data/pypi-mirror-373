@@ -1,0 +1,2 @@
+SLACK = 'slack'
+TEAMS = 'teams'

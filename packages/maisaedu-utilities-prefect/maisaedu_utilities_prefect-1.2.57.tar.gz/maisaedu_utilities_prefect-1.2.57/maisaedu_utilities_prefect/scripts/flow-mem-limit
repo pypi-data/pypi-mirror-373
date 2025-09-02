@@ -1,0 +1,77 @@
+#! /usr/bin/env python3
+
+import os
+import re
+
+from typing import Optional
+
+
+FIND_MEM_LIMIT = re.compile(
+    '(?:"mem_limit"|'
+    "'mem_limit'"
+    '|"""mem_limit"""|'
+    "'''mem_limit'''"
+    ')\s*:\s*(""".*?"""|".*?"|'
+    "'.*?'|"
+    "'''.*?'''"
+    ")",
+    re.MULTILINE | re.DOTALL,
+)
+
+
+def iter_flows():
+    for folder, _subfolders, files in os.walk("."):
+        for filename in files:
+            if filename == "flow.py":
+                full_name = f"{folder}/{filename}"
+                with open(full_name) as flow_file:
+                    flow_contents = flow_file.read()
+
+                yield full_name, flow_contents
+
+
+def iter_mem_limits():
+    for flow, contents in iter_flows():
+        found = FIND_MEM_LIMIT.search(contents)
+
+        if found:
+            mem_limit_quoted = found.group(1)
+            # !!! DANGER !!!
+            mem_limit = eval(mem_limit_quoted)
+            yield flow, mem_limit
+
+
+def iter_not_found():
+    for flow, contents in iter_flows():
+        if not FIND_MEM_LIMIT.search(contents):
+            yield flow
+
+
+def mem_in_kb(mem_limit: str) -> Optional[int]:
+    number, unit = mem_limit[:-1], mem_limit[-1]
+    number = int(number)
+
+    if unit == "b":
+        return number // 1_000
+    elif unit == "k":
+        return number
+    elif unit == "m":
+        return number * 1_000
+    elif unit == "g":
+        return number * 1e6
+    else:
+        return None
+
+
+if __name__ == "__main__":
+    print("Missing `mem_limit`:\n")
+
+    for flow in iter_not_found():
+        print(flow)
+
+    print("\n\nMemory limits (desc.):\n")
+    sorted_mem_limits = sorted(
+        iter_mem_limits(), key=lambda x: mem_in_kb(x[1]), reverse=True
+    )
+    for flow, mem_limit in sorted_mem_limits:
+        print(f"{mem_limit:>5}: {flow}")
