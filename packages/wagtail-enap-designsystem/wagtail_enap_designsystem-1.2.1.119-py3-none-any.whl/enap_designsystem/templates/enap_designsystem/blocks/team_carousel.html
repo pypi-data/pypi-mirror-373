@@ -1,0 +1,301 @@
+{% load wagtailimages_tags %}
+{% load static %}
+{% load wagtailcore_tags %}
+
+{% block content %}
+<section class="team-section">
+    <div class="team-container">
+        <div class="team-header">
+            <h2 class="team-title">{{ value.title }}</h2>
+            <h3 class="team-subtitle">{{ value.description }}</h3>
+        </div>
+
+        <div class="team-carousel-wrapper">
+            <div class="team-carousel-container">
+                <div class="team-carousel-track" id="team-carousel">
+                    {% for member in value.members %}
+                    <div class="team-card-wrapper">
+                        <div class="team-card">
+                            {% if member.image %}
+                                {% image member.image fill-300x400 format-webp as member_img %}
+                                <img src="{{ member_img.url }}" alt="{{ member.name }}">
+                            {% else %}
+                                <img src="https://via.placeholder.com/300x400" alt="{{ member.name }}">
+                            {% endif %}
+                            <div class="team-card-overlay">
+                                <div class="team-card-content">
+                                    <div class="team-member-name">{{ member.name }}</div>
+                                    <div class="team-member-role">{{ member.role|richtext }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="team-card-wrapper">
+                        <p>Nenhum membro disponível.</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <button class="team-nav-button team-nav-prev">
+                <img style="width: 40px; height: 40px;" src="{% static 'enap_designsystem/icons/iconleft.svg' %}" alt="Passar pro lado esquerdo">
+            </button>
+            <button class="team-nav-button team-nav-next">
+                <img style="width: 40px; height: 40px;" src="{% static 'enap_designsystem/icons/iconrig.svg' %}" alt="Passar pro lado direito">
+            </button>
+        </div>
+
+        {% if value.view_all_url %}
+        <div class="team-view-all">
+            <a class="team-view-all-btn" href="{{ value.view_all_url }}">{{ value.view_all_text }}</a>
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const carousel = document.getElementById('team-carousel');
+        const prevButton = document.querySelector('.team-nav-prev');
+        const nextButton = document.querySelector('.team-nav-next');
+        const items = carousel.querySelectorAll('.team-card-wrapper');
+        
+        if (items.length === 0) return;
+        
+        // Força a exibição do botão próximo desde o início (apenas desktop)
+        if (!isMobile()) {
+            nextButton.style.setProperty('opacity', '1', 'important');
+            nextButton.style.setProperty('display', 'flex', 'important');
+            nextButton.style.setProperty('pointer-events', 'auto', 'important');
+        }
+        
+        let currentIndex = 0;
+        let startX, moveX, initialPosition;
+        let isDragging = false;
+        let snapTimeout; // Para o timeout do snap do trackpad
+        
+        // Verifica se é dispositivo mobile
+        function isMobile() {
+            return window.innerWidth <= 768;
+        }
+        
+        // Número de itens visíveis depende da largura da tela
+        function getVisibleItems() {
+            const containerWidth = carousel.parentElement.offsetWidth;
+            const itemWidth = items[0].offsetWidth;
+            const itemsGap = 25;
+            return Math.floor(containerWidth / (itemWidth + itemsGap));
+        }
+        
+        // Obtém a largura de um item e o espaçamento
+        function getItemWidth() {
+            return items[0].offsetWidth;
+        }
+        
+        function getItemGap() {
+            return 25; // Gap fixo entre os itens
+        }
+        
+        // Define quantos itens rolar de cada vez (3 no desktop, 1 no mobile)
+        function getScrollAmount() {
+            return isMobile() ? 1 : 3;
+        }
+        
+        // Calcula o índice máximo com base nos itens visíveis
+        function getMaxIndex() {
+            return Math.max(0, items.length - getVisibleItems());
+        }
+        
+        // Mostra os slides baseado no índice atual
+        function showSlide(index) {
+            currentIndex = Math.max(0, Math.min(index, getMaxIndex()));
+            const itemWidth = getItemWidth();
+            const itemGap = getItemGap();
+            const offset = currentIndex * (itemWidth + itemGap);
+            
+            carousel.style.transform = `translateX(-${offset}px)`;
+            updateNavigationButtons();
+        }
+        
+        // Atualiza a visibilidade dos botões de navegação
+        function updateNavigationButtons() {
+            // No mobile, esconde ambos os botões
+            if (isMobile()) {
+                prevButton.style.setProperty('display', 'none', 'important');
+                nextButton.style.setProperty('display', 'none', 'important');
+                return;
+            }
+            
+            // No primeiro slide, ocultar o botão anterior
+            if (currentIndex === 0) {
+                prevButton.style.setProperty('opacity', '0');
+                prevButton.style.setProperty('pointer-events', 'none');
+            } else {
+                prevButton.style.setProperty('opacity', '1');
+                prevButton.style.setProperty('pointer-events', 'auto');
+                prevButton.style.setProperty('display', 'flex');
+            }
+            
+            // No último slide, ocultar o botão próximo
+            if (currentIndex >= getMaxIndex()) {
+                nextButton.style.setProperty('opacity', '0');
+                nextButton.style.setProperty('pointer-events', 'none');
+            } else {
+                nextButton.style.setProperty('opacity', '1', 'important');
+                nextButton.style.setProperty('display', 'flex', 'important');
+                nextButton.style.setProperty('pointer-events', 'auto', 'important');
+            }
+        }
+        
+        // Eventos dos botões - movendo a quantidade definida por getScrollAmount()
+        prevButton.addEventListener('click', function() {
+            showSlide(currentIndex - getScrollAmount());
+        });
+        
+        nextButton.addEventListener('click', function() {
+            showSlide(currentIndex + getScrollAmount());
+        });
+        
+        // Eventos de arrastar
+        carousel.addEventListener('mousedown', handleStart);
+        carousel.addEventListener('touchstart', handleStart, { passive: true });
+        
+        carousel.addEventListener('mousemove', handleMove);
+        carousel.addEventListener('touchmove', handleMove, { passive: true });
+        
+        carousel.addEventListener('mouseup', handleEnd);
+        carousel.addEventListener('touchend', handleEnd);
+        carousel.addEventListener('mouseleave', handleEnd);
+        
+        function handleStart(e) {
+            isDragging = true;
+            startX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
+            initialPosition = currentIndex * (getItemWidth() + getItemGap());
+            carousel.style.transition = 'none';
+        }
+        
+        function handleMove(e) {
+            if (!isDragging) return;
+            
+            moveX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
+            const diff = moveX - startX;
+            
+            carousel.style.transform = `translateX(${diff - initialPosition}px)`;
+        }
+        
+        function handleEnd() {
+            if (!isDragging) return;
+            isDragging = false;
+            
+            carousel.style.transition = 'transform 0.3s ease-in-out';
+            
+            const diff = moveX - startX;
+            const threshold = getItemWidth() / 3;
+            
+            // No mobile rola 1, no desktop pode rolar mais
+            const scrollAmount = getScrollAmount();
+            
+            if (diff > threshold) {
+                // Deslizar para a direita (voltar)
+                const steps = Math.min(scrollAmount, currentIndex);
+                showSlide(currentIndex - steps);
+            } else if (diff < -threshold) {
+                // Deslizar para a esquerda (avançar)
+                const steps = Math.min(scrollAmount, getMaxIndex() - currentIndex);
+                showSlide(currentIndex + steps);
+            } else {
+                // Movimento pequeno, permanece na posição atual
+                showSlide(currentIndex);
+            }
+        }
+        
+        // FUNCIONALIDADE DE SCROLL COM TRACKPAD (APENAS HORIZONTAL)
+        carousel.addEventListener('wheel', function(e) {
+            // Verifica se há movimento horizontal (trackpad)
+            const hasHorizontalScroll = Math.abs(e.deltaX) > 0;
+            
+            // No mobile, não intercepta o scroll para permitir scroll da página
+            if (isMobile()) return;
+            
+            // Apenas intercepta se há movimento horizontal
+            if (hasHorizontalScroll) {
+                e.preventDefault();
+                
+                // Usa apenas deltaX (movimento horizontal)
+                const deltaValue = e.deltaX;
+                
+                // Obter posição atual do transform
+                const currentTransform = carousel.style.transform;
+                const match = currentTransform.match(/translateX\((-?\d*\.?\d*)px\)/);
+                let currentOffset = match ? parseFloat(match[1]) : 0;
+                
+                // Movimento proporcional
+                const scrollMultiplier = 1.5;
+                const newOffset = currentOffset - (deltaValue * scrollMultiplier);
+                
+                // Calcula os limites baseado nas funções existentes
+                const maxOffset = 0;
+                const itemWidth = getItemWidth();
+                const itemGap = getItemGap();
+                const minOffset = -(getMaxIndex() * (itemWidth + itemGap));
+                
+                // Resistência nas bordas
+                let finalOffset = newOffset;
+                if (newOffset > maxOffset) {
+                    finalOffset = maxOffset + ((newOffset - maxOffset) * 0.3);
+                } else if (newOffset < minOffset) {
+                    finalOffset = minOffset + ((newOffset - minOffset) * 0.3);
+                }
+                
+                // Aplicar posição
+                carousel.style.transition = 'none';
+                carousel.style.transform = `translateX(${finalOffset}px)`;
+                
+                // Atualizar currentIndex baseado na posição
+                const newIndex = Math.round(Math.abs(finalOffset) / (itemWidth + itemGap));
+                currentIndex = Math.max(0, Math.min(newIndex, getMaxIndex()));
+                updateNavigationButtons();
+                
+                // Snap quando parar de rolar
+                clearTimeout(snapTimeout);
+                snapTimeout = setTimeout(() => {
+                    carousel.style.transition = 'transform 0.5s ease-in-out';
+                    showSlide(currentIndex);
+                }, 150);
+            }
+        }, { passive: false });
+        
+        // Ajuste quando a tela é redimensionada
+        let resizeTimeout;
+        window.addEventListener('resize', function() {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(function() {
+                // Verifica se o índice atual ainda é válido com o novo tamanho
+                if (currentIndex > getMaxIndex()) {
+                    currentIndex = getMaxIndex();
+                }
+                showSlide(currentIndex);
+            }, 200);
+        });
+        
+        // Inicializar o carrossel
+        showSlide(0);
+        
+        // Adiciona uma verificação adicional após um pequeno atraso
+        setTimeout(function() {
+            if (items.length > getVisibleItems() && !isMobile()) {
+                nextButton.style.setProperty('opacity', '1', 'important');
+                nextButton.style.setProperty('display', 'flex', 'important');
+                nextButton.style.setProperty('pointer-events', 'auto', 'important');
+            }
+            
+            // Garante que os botões estejam escondidos no mobile
+            if (isMobile()) {
+                prevButton.style.setProperty('display', 'none', 'important');
+                nextButton.style.setProperty('display', 'none', 'important');
+            }
+        }, 500);
+    });
+</script>
+{% endblock %}

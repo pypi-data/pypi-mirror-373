@@ -1,0 +1,683 @@
+{% load wagtailimages_tags %}
+
+<section class="contato-secao" style="background-color: {{ value.cor_fundo }};">
+    <div class="contato-container">
+        <div class="contato-grid">
+            <!-- Lado Esquerdo: Imagem -->
+            <div class="contato-imagem">
+                <div class="form-cabecalho">
+                    {% if value.titulo_principal %}
+                        <h2 class="form-titulo" style="color: {{ value.cor_titulo_principal }};">
+                            {{ value.titulo_principal }}
+                        </h2>
+                    {% endif %}
+
+                    {% if value.subtitulo %}
+                        <h3 class="form-subtitulo" style="color: {{ value.cor_subtitulo }};">
+                            {{ value.subtitulo }}
+                        </h3>
+                    {% endif %}
+                </div>
+                
+                {% if value.imagem %}
+                    {% image value.imagem width-600 as contact_img %}
+                    <img src="{{ contact_img.url }}" 
+                         alt="{{ value.alt_imagem }}"
+                         class="imagem-contato">
+                {% endif %}
+                
+                <!-- Botões Adicionais -->
+                {% if value.botoes_adicionais %}
+                    <div class="material-apoio-botoes">
+                        {% for botao_block in value.botoes_adicionais %}
+                            {% if botao_block.block_type == 'botao' %}
+                                <a href="{{ botao_block.value.link }}" 
+                                   class="material-apoio-botao" 
+                                   target="_blank"
+                                   style="background-color: {{ botao_block.value.cor_fundo }}; color: {{ botao_block.value.cor_texto }};"
+                                   onmouseover="this.style.backgroundColor='{{ botao_block.value.cor_hover }}'"
+                                   onmouseout="this.style.backgroundColor='{{ botao_block.value.cor_fundo }}'">
+                                    {{ botao_block.value.texto }}
+                                </a>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+            
+            <!-- Lado Direito: Formulário Dinâmico -->
+            <div class="contato-formulario">
+                
+                <!-- Título do Formulário (se diferente do principal) -->
+                {% if value.formulario.titulo and value.formulario.titulo != value.titulo_principal %}
+                    <h3 class="titulo-formulario">{{ value.formulario.titulo }}</h3>
+                {% endif %}
+                
+                <!-- Descrição do Formulário -->
+                {% if value.formulario.descricao %}
+                    <div class="descricao-formulario">
+                        <p>{{ value.formulario.descricao }}</p>
+                    </div>
+                {% endif %}
+                
+                <!-- Formulário Dinâmico - VERSÃO CORRIGIDA -->
+                <form class="form-contato" 
+                      id="{{ form_id }}"
+                      data-email-notificacao="{{ value.formulario.email_notificacao }}"
+                      data-mensagem-sucesso="{{ value.formulario.mensagem_sucesso }}"
+                      data-form-type="dinamico">
+                    
+                    {% csrf_token %}
+                    
+                    <!-- Input hidden para identificar o formulário -->
+                    <input type="hidden" name="form_type" value="contato_dinamico">
+                    <input type="hidden" name="form_id" value="{{ form_id }}">
+                    <input type="hidden" name="page_id" value="{{ page.id }}">
+                    <input type="hidden" name="email_notificacao" value="{{ value.formulario.email_notificacao }}">
+                    <input type="hidden" name="mensagem_sucesso" value="{{ value.formulario.mensagem_sucesso }}">
+                    
+                    <!-- Campos Dinâmicos -->
+                    {% for campo in value.formulario.campos %}
+                        <div class="campo-grupo">
+                            
+                            <!-- Label primeiro (exceto para checkbox e radio) -->
+                            {% if campo.block_type != 'checkbox' and campo.block_type != 'radio' %}
+                                <label for="{{ campo.value.nome }}_{{ forloop.counter }}" class="form-label">
+                                    {{ campo.value.label }}
+                                    {% if campo.value.obrigatorio %}<span class="required">*</span>{% endif %}
+                                </label>
+                            {% endif %}
+                            
+                            <!-- Renderizar campo baseado no tipo -->
+                            {% if campo.block_type == 'texto' or campo.block_type == 'text' %}
+                                <input type="text" 
+                                       id="{{ campo.value.nome }}_{{ forloop.counter }}"
+                                       name="{{ campo.value.nome }}" 
+                                       placeholder="{{ campo.value.placeholder|default:campo.value.label }}"
+                                       class="form-input"
+                                       {% if campo.value.obrigatorio %}required aria-required="true"{% endif %}>
+                                       
+                            {% elif campo.block_type == 'email' %}
+                                <input type="email" 
+                                       id="{{ campo.value.nome }}_{{ forloop.counter }}"
+                                       name="{{ campo.value.nome }}" 
+                                       placeholder="{{ campo.value.placeholder|default:campo.value.label }}"
+                                       class="form-input"
+                                       {% if campo.value.obrigatorio %}required aria-required="true"{% endif %}>
+                                       
+                            {% elif campo.block_type == 'telefone' or campo.block_type == 'phone' %}
+                                <input type="tel" 
+                                       id="{{ campo.value.nome }}_{{ forloop.counter }}"
+                                       name="{{ campo.value.nome }}" 
+                                       placeholder="{{ campo.value.placeholder|default:campo.value.label }}"
+                                       class="form-input"
+                                       {% if campo.value.obrigatorio %}required aria-required="true"{% endif %}>
+                                       
+                            {% elif campo.block_type == 'numero' or campo.block_type == 'number' %}
+                                <input type="number" 
+                                       id="{{ campo.value.nome }}_{{ forloop.counter }}"
+                                       name="{{ campo.value.nome }}" 
+                                       placeholder="{{ campo.value.placeholder|default:campo.value.label }}"
+                                       class="form-input"
+                                       {% if campo.value.min %}min="{{ campo.value.min }}"{% endif %}
+                                       {% if campo.value.max %}max="{{ campo.value.max }}"{% endif %}
+                                       {% if campo.value.obrigatorio %}required aria-required="true"{% endif %}>
+                                       
+                            {% elif campo.block_type == 'textarea' %}
+                                <textarea id="{{ campo.value.nome }}_{{ forloop.counter }}"
+                                          name="{{ campo.value.nome }}" 
+                                          placeholder="{{ campo.value.placeholder|default:campo.value.label }}"
+                                          class="form-textarea"
+                                          rows="{{ campo.value.linhas|default:5 }}"
+                                          {% if campo.value.obrigatorio %}required aria-required="true"{% endif %}></textarea>
+                                          
+                            {% elif campo.block_type == 'select' %}
+                                <select id="{{ campo.value.nome }}_{{ forloop.counter }}"
+                                        name="{{ campo.value.nome }}" 
+                                        class="form-select"
+                                        {% if campo.value.obrigatorio %}required aria-required="true"{% endif %}>
+                                    <option value="">{{ campo.value.placeholder|default:"Selecione uma opção" }}</option>
+                                    {% for opcao in campo.value.opcoes %}
+                                        <option value="{{ opcao.value }}">{{ opcao.label }}</option>
+                                    {% endfor %}
+                                </select>
+                                
+                            {% elif campo.block_type == 'checkbox' %}
+                                <div class="checkbox-group">
+                                    <input type="checkbox" 
+                                           id="{{ campo.value.nome }}_{{ forloop.counter }}"
+                                           name="{{ campo.value.nome }}" 
+                                           value="true"
+                                           class="form-checkbox"
+                                           {% if campo.value.obrigatorio %}required aria-required="true"{% endif %}>
+                                    <label for="{{ campo.value.nome }}_{{ forloop.counter }}" class="checkbox-label">
+                                        {{ campo.value.label }}
+                                        {% if campo.value.obrigatorio %}<span class="required">*</span>{% endif %}
+                                    </label>
+                                </div>
+                                
+                            {% elif campo.block_type == 'radio' %}
+                                <fieldset class="radio-group">
+                                    <legend class="radio-legend">
+                                        {{ campo.value.label }}
+                                        {% if campo.value.obrigatorio %}<span class="required">*</span>{% endif %}
+                                    </legend>
+                                    {% for opcao in campo.value.opcoes %}
+                                        <div class="radio-item">
+                                            <input type="radio" 
+                                                   id="{{ campo.value.nome }}_{{ forloop.counter }}_{{ forloop.counter0 }}"
+                                                   name="{{ campo.value.nome }}" 
+                                                   value="{{ opcao.value }}"
+                                                   class="form-radio"
+                                                   {% if campo.value.obrigatorio %}required aria-required="true"{% endif %}>
+                                            <label for="{{ campo.value.nome }}_{{ forloop.counter }}_{{ forloop.counter0 }}" class="radio-label">
+                                                {{ opcao.label }}
+                                            </label>
+                                        </div>
+                                    {% endfor %}
+                                </fieldset>
+                                
+                            {% elif campo.block_type == 'data' or campo.block_type == 'date' %}
+                                <input type="date" 
+                                       id="{{ campo.value.nome }}_{{ forloop.counter }}"
+                                       name="{{ campo.value.nome }}" 
+                                       class="form-input"
+                                       {% if campo.value.obrigatorio %}required aria-required="true"{% endif %}>
+                                       
+                            {% elif campo.block_type == 'arquivo' or campo.block_type == 'file' %}
+                                <input type="file" 
+                                       id="{{ campo.value.nome }}_{{ forloop.counter }}"
+                                       name="{{ campo.value.nome }}" 
+                                       class="form-file"
+                                       {% if campo.value.tipos_aceitos %}accept="{{ campo.value.tipos_aceitos }}"{% endif %}
+                                       {% if campo.value.obrigatorio %}required aria-required="true"{% endif %}>
+                            
+                            {% else %}
+                                <!-- Campo genérico -->
+                                <input type="text" 
+                                       id="{{ campo.value.nome }}_{{ forloop.counter }}"
+                                       name="{{ campo.value.nome }}" 
+                                       placeholder="{{ campo.value.label }}"
+                                       class="form-input">
+                            {% endif %}
+                            
+                            <!-- Texto de ajuda -->
+                            {% if campo.value.ajuda %}
+                                <small class="form-help">{{ campo.value.ajuda }}</small>
+                            {% endif %}
+                        </div>
+                    {% empty %}
+                        <!-- Debug: se não há campos -->
+                        <div class="debug-info">
+                            <p style="color: red; font-weight: bold;">⚠️ Nenhum campo encontrado no formulário.</p>
+                            <p>Verifique a configuração dos campos no admin.</p>
+                        </div>
+                    {% endfor %}
+                    
+                    <!-- Botão de Envio -->
+                    <button type="submit" 
+                            class="form-botao" 
+                            style="background-color: {{ value.formulario.cor_botao }}; color: {{ value.formulario.cor_texto_botao }};"
+                            onmouseover="this.style.backgroundColor='{{ value.formulario.cor_hover_botao }}'"
+                            onmouseout="this.style.backgroundColor='{{ value.formulario.cor_botao }}'">
+                        {{ value.formulario.texto_botao }}
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+
+<style>
+/* Seus estilos existentes - mantidos iguais */
+.contato-secao {
+    padding: 4rem 0;
+}
+
+.contato-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 2rem;
+}
+
+.contato-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    align-items: start;
+}
+
+.form-cabecalho {
+    margin-bottom: 2rem;
+}
+
+.form-titulo {
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin-bottom: 1rem;
+}
+
+.form-subtitulo {
+    font-size: 1.2rem;
+    margin-bottom: 2rem;
+}
+
+.imagem-contato {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 10px;
+}
+
+.contato-formulario {
+    background-color: rgba(255, 255, 255, 0.95);
+    padding: 2rem;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.titulo-formulario {
+    font-size: 1.8rem;
+    color: #333;
+    margin-bottom: 1rem;
+}
+
+.descricao-formulario {
+    margin-bottom: 2rem;
+    color: #666;
+}
+
+.campo-grupo {
+    margin-bottom: 1.5rem;
+}
+
+.form-input,
+.form-textarea,
+.form-select {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #e1e5e9;
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: border-color 0.3s ease;
+    background-color: #fff;
+}
+
+.form-input:focus,
+.form-textarea:focus,
+.form-select:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #333;
+    font-size: 0.9rem;
+}
+
+.required {
+    color: #dc3545;
+    margin-left: 2px;
+}
+
+.form-help {
+    display: block;
+    margin-top: 0.25rem;
+    color: #6c757d;
+    font-size: 0.875rem;
+}
+
+/* Checkbox e Radio styles */
+.checkbox-group,
+.radio-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.radio-group {
+    border: none;
+    padding: 0;
+}
+
+.radio-legend {
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    color: #333;
+}
+
+.form-checkbox,
+.form-radio {
+    width: auto;
+    margin-right: 0.5rem;
+}
+
+.checkbox-label,
+.radio-label {
+    margin: 0;
+    cursor: pointer;
+}
+
+/* File input */
+.form-file {
+    width: 100%;
+    padding: 8px;
+    border: 2px dashed #e1e5e9;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+}
+
+/* Botão */
+.form-botao {
+    width: 100%;
+    padding: 15px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.form-botao:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.form-botao:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Estilos para validação */
+.campo-erro {
+    border: 2px solid #f44336 !important;
+    background-color: #ffebee !important;
+    animation: shake 0.5s ease-in-out;
+}
+
+.campo-vazio {
+    border: 2px solid #ff9800 !important;
+    background-color: #fff3e0 !important;
+    animation: pulse 1s infinite;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.form-enviando {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+/* Botão desabilitado */
+button:disabled, .form-botao:disabled {
+    opacity: 0.6 !important;
+    cursor: not-allowed !important;
+    transform: none !important;
+}
+
+/* Mensagens de feedback */
+.form-sucesso {
+    background-color: #d4edda;
+    color: #155724;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-top: 1rem;
+    border: 1px solid #c3e6cb;
+}
+
+.form-erro {
+    background-color: #f8d7da;
+    color: #721c24;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-top: 1rem;
+    border: 1px solid #f5c6cb;
+}
+
+/* Botões adicionais */
+.material-apoio-botoes {
+    margin-top: 2rem;
+}
+
+.material-apoio-botao {
+    display: inline-block;
+    padding: 10px 20px;
+    margin: 0.5rem 0.5rem 0.5rem 0;
+    text-decoration: none;
+    border-radius: 5px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+/* Debug info */
+.debug-info {
+    background-color: #fff3cd;
+    border: 1px solid #ffeaa7;
+    padding: 1rem;
+    border-radius: 5px;
+    margin: 1rem 0;
+}
+
+/* Responsivo */
+@media (max-width: 768px) {
+    .contato-grid {
+        grid-template-columns: 1fr;
+        gap: 2rem;
+    }
+    
+    .form-titulo {
+        font-size: 2rem;
+        text-align: left;
+    }
+    
+    .contato-formulario {
+        padding: 1.5rem;
+    }
+
+    .titulo-formulario {
+        text-align: left;
+    }
+}
+</style>
+
+<!-- JavaScript de Interceptação Ultra Agressiva -->
+<script>
+(function() {
+    'use strict';
+    
+    console.log('🔥🔥🔥 INTERCEPTAÇÃO ULTRA EXTREMA INICIADA!');
+    
+    // INTERCEPTAR IMEDIATAMENTE QUALQUER SUBMIT
+    document.addEventListener('submit', function(event) {
+        console.log('🛑 SUBMIT GLOBAL INTERCEPTADO!', event.target);
+        
+        if (event.target.tagName === 'FORM') {
+            const form = event.target;
+            
+            // Verificar se é formulário dinâmico
+            const isDynamicForm = form.classList.contains('form-contato') || 
+                                form.hasAttribute('data-form-type') ||
+                                form.querySelector('[name*="field_"]') || 
+                                form.querySelector('[name*="text_field"]') ||
+                                form.querySelector('[name*="email_field"]') ||
+                                form.querySelector('[name*="nome_completo"]');
+            
+            if (isDynamicForm) {
+                console.log('🎯 FORMULÁRIO DINÂMICO DETECTADO - INTERCEPTANDO!');
+                event.preventDefault();
+                event.stopPropagation();
+                event.stopImmediatePropagation();
+                
+                processarFormularioDinamico(form);
+                return false;
+            }
+        }
+    }, true);
+    
+    // INTERCEPTAR CLIQUES EM BOTÕES
+    document.addEventListener('click', function(event) {
+        const target = event.target;
+        
+        if (target.type === 'submit' || target.classList.contains('form-botao') || 
+            (target.tagName === 'BUTTON' && target.form)) {
+            
+            const form = target.form || target.closest('form');
+            if (form && (form.classList.contains('form-contato') || form.hasAttribute('data-form-type'))) {
+                console.log('🖱️ CLIQUE EM BOTÃO DE FORMULÁRIO DINÂMICO INTERCEPTADO!');
+                event.preventDefault();
+                event.stopPropagation();
+                event.stopImmediatePropagation();
+                
+                processarFormularioDinamico(form);
+                return false;
+            }
+        }
+    }, true);
+    
+    function processarFormularioDinamico(form) {
+        console.log('🚀 === PROCESSANDO FORMULÁRIO DINÂMICO ===');
+        
+        const botao = form.querySelector('.form-botao, button[type="submit"], button');
+        const textoOriginal = botao ? botao.textContent : '';
+        
+        // Validação
+        const campos = form.querySelectorAll('input:not([type="hidden"]), textarea, select');
+        let camposPreenchidos = 0;
+        let camposObrigatorios = 0;
+        let camposObrigatoriosPreenchidos = 0;
+        
+        campos.forEach(campo => {
+            const valor = campo.value ? campo.value.trim() : '';
+            const obrigatorio = campo.hasAttribute('required') || campo.hasAttribute('aria-required');
+            
+            if (valor) {
+                camposPreenchidos++;
+            }
+            
+            if (obrigatorio) {
+                camposObrigatorios++;
+                if (valor) {
+                    camposObrigatoriosPreenchidos++;
+                }
+            }
+            
+            console.log(`   📝 ${campo.name || campo.id || 'sem-nome'}: "${valor}" (obrig: ${obrigatorio})`);
+        });
+        
+        console.log(`📊 Estatísticas: ${camposPreenchidos} preenchidos, ${camposObrigatoriosPreenchidos}/${camposObrigatorios} obrigatórios`);
+        
+        // Validação de campos obrigatórios
+        if (camposObrigatorios > 0 && camposObrigatoriosPreenchidos < camposObrigatorios) {
+            console.log('❌ FORMULÁRIO INVÁLIDO - Campos obrigatórios não preenchidos');
+            alert('❌ Por favor, preencha todos os campos obrigatórios!');
+            
+            campos.forEach(campo => {
+                if (campo.hasAttribute('required') && !campo.value.trim()) {
+                    campo.style.border = '2px solid red';
+                    campo.style.backgroundColor = '#ffebee';
+                }
+            });
+            return false;
+        }
+        
+        if (camposPreenchidos === 0) {
+            console.log('❌ FORMULÁRIO VAZIO');
+            alert('❌ Por favor, preencha pelo menos um campo!');
+            
+            campos.forEach(campo => {
+                campo.style.border = '2px solid orange';
+                campo.style.backgroundColor = '#fff3e0';
+            });
+            return false;
+        }
+        
+        console.log('✅ FORMULÁRIO VÁLIDO - Enviando...');
+        
+        // Estado de carregamento
+        if (botao) {
+            botao.disabled = true;
+            botao.innerHTML = '⏳ Enviando...';
+            botao.style.opacity = '0.6';
+        }
+        
+        form.style.opacity = '0.7';
+        form.style.pointerEvents = 'none';
+        
+        // Preparar dados
+        const formData = new FormData(form);
+        
+        console.log('📤 Dados que serão enviados:');
+        for (let [key, value] of formData.entries()) {
+            console.log(`   ${key}: ${value}`);
+        }
+        
+        // Envio
+        const urlEnvio = '/formulario-dinamico/submit/';  // ✅ URL CORRIGIDA
+        console.log('🎯 Enviando para:', urlEnvio);
+        
+        fetch(urlEnvio, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => {
+            console.log('📡 Resposta recebida:', response.status, response.statusText);
+            return response.json();
+        })
+        .then(data => {
+            console.log('📊 Dados da resposta:', data);
+            
+            if (data.success) {
+                console.log('✅ SUCESSO TOTAL!');
+                alert('✅ Formulário enviado com sucesso!');
+                form.reset();
+                
+                campos.forEach(campo => {
+                    campo.style.border = '';
+                    campo.style.backgroundColor = '';
+                });
+            } else {
+                console.log('❌ Erro na resposta:', data.error || data.message);
+                alert('❌ Erro: ' + (data.error || data.message || 'Erro desconhecido'));
+            }
+        })
+        .catch(error => {
+            console.error('💥 ERRO DE REDE:', error);
+            alert('❌ Erro de conexão: ' + error.message);
+        })
+        .finally(() => {
+            if (botao) {
+                botao.disabled = false;
+                botao.innerHTML = textoOriginal;
+                botao.style.opacity = '';
+            }
+            
+            form.style.opacity = '';
+            form.style.pointerEvents = '';
+            
+            console.log('🔄 Estado restaurado');
+        });
+    }
+    
+    console.log('🎯 INTERCEPTAÇÃO EXTREMA ATIVADA!');
+    
+})();
+</script>
