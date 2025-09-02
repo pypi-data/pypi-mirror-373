@@ -1,0 +1,2 @@
+from .publication_title_config import PublicationTitleConfig
+from .reviewer_article_title_config import ReviewerArticleTitleConfig
