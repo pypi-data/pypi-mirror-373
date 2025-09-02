@@ -1,0 +1,459 @@
+Metadata-Version: 2.4
+Name: handit_ai
+Version: 0.0.24
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Rust
+Classifier: Operating System :: MacOS
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Development Status :: 3 - Alpha
+Author: Handit
+License: Apache-2.0
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown; charset=UTF-8; variant=GFM
+Project-URL: Homepage, https://example.com
+
+# Python Package - Handit AI
+
+🐍 **Python API and packaging for Handit tracing system**
+
+This directory contains the Python interface to the Rust-powered Handit tracing engine. It provides both high-level APIs for easy integration and low-level bindings for advanced usage, packaged as `handit-ai` on PyPI.
+
+## 📦 Package Structure
+
+```
+python/
+├── pyproject.toml           # 📋 Package configuration & build settings
+├── dist/                    # 📦 Built wheels and source distributions
+├── handit_ai/              # 🎯 High-level Python API
+│   ├── __init__.py         # Main public API
+│   └── fastapi.py          # FastAPI middleware integration
+└── handit_core/            # ⚙️ Low-level Rust bindings
+    ├── __init__.py         # Core tracing functionality
+    ├── http_instrumentation.py    # HTTP client patching
+    ├── openai_instrumentation.py  # OpenAI API tracing
+    └── handit_core_native.so      # Compiled Rust extension
+```
+
+## 🎯 High-Level API (`handit_ai`)
+
+### Purpose
+Provides a clean, developer-friendly interface for integrating Handit into Python applications.
+
+### Key Features
+- **Zero-config operation** with sensible defaults
+- **Decorator-based tracing** for functions
+- **Context manager sessions** for request boundaries
+- **FastAPI middleware** for automatic web app tracing
+- **Automatic instrumentation** enabling on import
+
+### Usage Examples
+
+#### Basic Function Tracing
+```python
+import handit
+
+@handit.tracing(agent="payment-processor")
+def process_payment(amount: float, token: str) -> dict:
+    # Business logic here
+    return {"status": "success", "charge_id": "ch_123"}
+
+# Alternative using context manager
+with handit.session(tag="checkout-flow"):
+    result = process_payment(100.0, "tok_abc123")
+```
+
+#### Configuration
+```python
+import handit
+
+# Configure endpoints and API keys
+handit.configure(
+    HANDIT_ENDPOINT="https://your-endpoint.com/events",
+    HANDIT_API_KEY="your-api-key",
+    HANDIT_SAMPLE_RATE="0.1",  # Sample 10% of traces
+    HANDIT_MAX_STR="500"       # Limit string capture length
+)
+```
+
+#### FastAPI Integration
+```python
+from fastapi import FastAPI
+from handit_ai import HanditMiddleware
+
+app = FastAPI()
+app.add_middleware(HanditMiddleware, agent="api-server")
+
+@app.get("/users/{user_id}")
+async def get_user(user_id: str):
+    # Automatically traced with request context
+    return {"user_id": user_id, "name": "John Doe"}
+```
+
+## ⚙️ Low-Level Bindings (`handit_core`)
+
+### Purpose
+Provides direct access to the Rust engine with full control over tracing behavior.
+
+### Key Components
+
+#### Core Session Management
+```python
+from handit_core import session, start_session, on_call, on_return
+
+# Manual session control
+session_id = start_session(tag="custom-session", attrs={"env": "prod"})
+
+# Manual event recording
+on_call(session_id, "my_function", "__main__", "/app/main.py", 42, time_ns)
+on_return(session_id, "my_function", end_time_ns, duration_ns)
+```
+
+#### Configuration Access
+```python
+import handit_core
+
+# Low-level configuration
+handit_core.configure(
+    HANDIT_INCLUDE="myapp\..*",  # Only trace functions in 'myapp' module
+    HANDIT_EXCLUDE="^(requests|urllib3)::",  # Exclude HTTP libraries
+    HANDIT_CAPTURE_ONLY_CWD=True,  # Only trace current working directory
+    HANDIT_REDACT="(?i)(password|token|secret)"  # PII redaction pattern
+)
+```
+
+## 🌐 HTTP Instrumentation
+
+### Automatic Patching
+The system automatically instruments popular HTTP clients:
+
+#### Supported Libraries
+- **`requests`** - Synchronous HTTP client
+- **`httpx`** - Modern async/sync HTTP client  
+- **`aiohttp`** - Async HTTP client/server framework
+
+#### What's Captured
+```python
+import requests  # Automatically patched on handit import
+
+# This call is automatically traced:
+response = requests.post(
+    "https://api.stripe.com/v1/charges",
+    headers={"Authorization": "Bearer sk_..."},  # Automatically redacted
+    json={"amount": 10000, "currency": "usd"}
+)
+
+# Generates events:
+# 1. http_request - method, URL, headers, body, timestamp
+# 2. http_response - status, headers, body, duration, errors
+```
+
+#### Custom Instrumentation
+```python
+from handit_core.http_instrumentation import patch_requests
+
+# Manual patching control
+patch_requests(capture_request_body=True, capture_response_body=False)
+```
+
+## 🤖 OpenAI Integration
+
+### Automatic API Tracing
+```python
+import openai  # Automatically patched
+import handit
+
+client = openai.OpenAI(api_key="sk-...")
+
+with handit.session(tag="ai-assistant"):
+    # Automatically traces both function calls AND HTTP requests
+    completion = client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": "Hello!"}],
+        temperature=0.7
+    )
+```
+
+### Captured Data
+- **Function calls**: `client.chat.completions.create()` with full parameters
+- **HTTP requests**: Raw OpenAI API calls with request/response bodies
+- **Return values**: Complete ChatCompletion objects
+- **Timing**: Precise duration of LLM calls
+- **Error handling**: Failed requests and API errors
+
+## 🏗️ Build System
+
+### PyO3 + Maturin
+The package uses modern Rust-Python integration:
+
+```toml
+# pyproject.toml
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+bindings = "pyo3"
+manifest-path = "../handit-runtime/crates/py/Cargo.toml"
+module-name = "handit_core.handit_core_native"
+python-packages = ["handit_ai", "handit_core"]
+```
+
+### Building from Source
+```bash
+# Install build dependencies
+pip install maturin
+
+# Development build (with Python bindings)
+maturin develop --features python
+
+# Release build for distribution
+maturin build --release --features python --sdist
+
+# Create wheels for multiple platforms
+maturin build --release --features python --target x86_64-unknown-linux-gnu
+```
+
+### Local Development
+```bash
+# Install in development mode
+cd python/
+pip install -e .
+
+# Run with local changes
+python examples/basic_demo.py
+```
+
+## 📊 Event Processing
+
+### Event Flow
+1. **Python code execution** triggers native profiler callbacks
+2. **Rust engine** captures events with minimal overhead  
+3. **Background thread** processes and buffers events
+4. **Export system** flushes to files or HTTP endpoints
+
+### Event Types Generated
+
+#### Function Calls
+```json
+{
+  "type": "call",
+  "session_id": "sess_abc123",
+  "func": "process_payment",
+  "module": "myapp.payments",
+  "file": "/app/payments.py",
+  "line": 45,
+  "t0_ns": 1703123456789000000,
+  "args_preview": {
+    "amount": "100.0",
+    "token": "<redacted>"
+  }
+}
+```
+
+#### HTTP Requests
+```json
+{
+  "type": "http_request", 
+  "session_id": "sess_abc123",
+  "method": "POST",
+  "url": "https://api.stripe.com/v1/charges",
+  "t0_ns": 1703123456789000000,
+  "headers": {"authorization": "<redacted>"},
+  "bytes_out": 1024,
+  "request_body": "{\"amount\": 10000}"
+}
+```
+
+#### Return Values
+```json
+{
+  "type": "return",
+  "session_id": "sess_abc123", 
+  "func": "process_payment",
+  "t1_ns": 1703123456890000000,
+  "dt_ns": 101000000,
+  "locals_preview": {
+    "return": "{\"id\": \"ch_123\", \"status\": \"succeeded\"}"
+  }
+}
+```
+
+## 🔧 Configuration Options
+
+### Environment Variables
+```bash
+# Core behavior
+HANDIT_INCLUDE=".*"                    # Function inclusion pattern
+HANDIT_EXCLUDE="^(requests|urllib3)::" # Function exclusion pattern
+HANDIT_SAMPLE_RATE="1.0"               # Sampling rate (0.0-1.0)
+
+# Data capture limits
+HANDIT_MAX_STR="1000"                  # Max string length
+HANDIT_MAX_LOCALS="50"                 # Max local variables to capture
+
+# Export configuration  
+HANDIT_OUTPUT_FILE="./handit_events.jsonl"  # Local file output
+HANDIT_ENDPOINT="https://api.handit.ai/events"  # HTTP endpoint
+HANDIT_API_KEY="your-api-key"          # API authentication
+
+# Security
+HANDIT_REDACT="(?i)(api_key|token|password|secret)"  # PII redaction
+HANDIT_CAPTURE_ONLY_CWD="false"       # Restrict to current directory
+```
+
+### Programmatic Configuration
+```python
+import handit
+
+handit.configure(
+    # Export settings
+    HANDIT_ENDPOINT="https://your-endpoint.com/events",
+    HANDIT_API_KEY="your-key",
+    
+    # Performance tuning
+    HANDIT_SAMPLE_RATE=0.1,  # 10% sampling
+    HANDIT_MAX_STR=500,      # Shorter string previews
+    
+    # Security
+    HANDIT_REDACT=r"(?i)(password|token|key|secret|auth)",
+    
+    # Filtering
+    HANDIT_INCLUDE="myapp\..*",  # Only trace your app
+    HANDIT_EXCLUDE="^(requests|urllib3|json)::"  # Skip common libraries
+)
+```
+
+## 🚀 Performance Considerations
+
+### Overhead Profile
+- **Function calls**: ~0.5-1μs per call
+- **HTTP requests**: ~5-10μs additional overhead
+- **Memory usage**: ~1-2MB baseline + configurable buffers
+- **CPU impact**: <1% for typical applications
+
+### Optimization Tips
+```python
+# Reduce data capture for high-volume functions
+handit.configure(
+    HANDIT_MAX_STR=100,      # Shorter previews
+    HANDIT_MAX_LOCALS=10,    # Fewer variables
+    HANDIT_SAMPLE_RATE=0.01, # 1% sampling for hot paths
+)
+
+# Exclude noisy libraries
+handit.configure(
+    HANDIT_EXCLUDE=r"^(requests|urllib3|json|logging|threading)::"
+)
+
+# Restrict to application code only
+handit.configure(
+    HANDIT_INCLUDE="myapp\..*",
+    HANDIT_CAPTURE_ONLY_CWD=True
+)
+```
+
+## 🧪 Testing
+
+### Unit Tests
+```bash
+# Test Python components
+cd python/
+python -m pytest tests/
+
+# Test specific modules
+python -m pytest tests/test_instrumentation.py -v
+```
+
+### Integration Tests  
+```bash
+# Test with real HTTP calls
+python examples/nested_http_demo.py
+
+# Test OpenAI integration (requires API key)
+OPENAI_API_KEY=sk-... python examples/openai_test.py
+
+# Test FastAPI middleware
+python examples/fastapi_demo.py
+```
+
+### Performance Testing
+```bash
+# Benchmark overhead
+python benchmarks/function_call_overhead.py
+
+# Memory usage profiling
+python -m memory_profiler examples/memory_benchmark.py
+```
+
+## 📚 Examples Usage
+
+### Web Framework Integration
+```python
+# FastAPI
+from fastapi import FastAPI
+from handit_ai import HanditMiddleware
+
+app = FastAPI()
+app.add_middleware(HanditMiddleware, agent="api")
+
+# Flask (manual)
+from flask import Flask
+import handit
+
+app = Flask(__name__)
+
+@app.route('/api/users')
+@handit.tracing(agent="user-api")
+def get_users():
+    return {"users": []}
+```
+
+### Background Task Tracing
+```python
+import handit
+from celery import Celery
+
+app = Celery('tasks')
+
+@app.task
+@handit.tracing(agent="background-worker")
+def process_upload(file_id: str):
+    # Task processing automatically traced
+    return {"status": "processed", "file_id": file_id}
+```
+
+### Database Query Tracing
+```python
+import handit
+import psycopg2
+
+@handit.tracing(agent="database")
+def get_user_orders(user_id: str):
+    with psycopg2.connect(DATABASE_URL) as conn:
+        # SQL queries can be traced by decorating helper functions
+        return fetch_orders(conn, user_id)
+
+@handit.tracing(agent="sql-query") 
+def fetch_orders(conn, user_id):
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM orders WHERE user_id = %s", (user_id,))
+    return cursor.fetchall()
+```
+
+## 🔮 Future Enhancements
+
+### Planned Features
+- **Database instrumentation** for SQLAlchemy, Django ORM
+- **Message queue tracing** for Celery, RQ, Kafka
+- **Template engine instrumentation** for Jinja2, Django templates  
+- **Custom metrics collection** beyond function calls
+
+### API Improvements
+- **Async context managers** for better async/await support
+- **Type hints** for better IDE integration
+- **Plugin system** for custom instrumentation
+- **Real-time streaming** for live monitoring dashboards
+
+---
+
+**The Python package provides the friendly developer interface while leveraging Rust's performance for the heavy lifting.**
