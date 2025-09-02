@@ -1,0 +1,72 @@
+# huff: Huff Model Market Area Analysis
+
+This Python library is designed for performing market area analyses with the Huff Model (Huff 1962, 1964) and/or the Multiplicative Competitive Interaction (MCI) Model (Nakanishi and Cooper 1974, 1982). Users may load point shapefiles (or CSV, XLSX) of customer origins and supply locations and conduct a market area analysis step by step. The library supports parameter estimation based on empirical customer data using the MCI model and Maximum Likelihood. See Huff and McCallum (2008) or Wieland (2017) for a description of the models and their practical application. The package also includes GIS functions for market area analysis (buffer, distance matrix, overlay statistics) and clients for OpenRouteService(1) for network analysis (e.g., transport cost matrix) and OpenStreetMap(2) for simple maps. 
+
+
+## Author
+
+Thomas Wieland [ORCID](https://orcid.org/0000-0001-5168-9846) [EMail](mailto:geowieland@googlemail.com) 
+
+See the /tests directory for usage examples of most of the included functions.
+
+
+## Updates v1.5.10
+- Bugfixes:
+  - Specific definition of dependencies to ensure compatibility between statsmodels and scipy
+ 
+
+## Features
+
+- **Huff Model**: 
+  - Defining origins and destinations with weightings
+  - Creating interaction matrix from origins and destinations
+  - Different function types: power, exponential, logistic
+  - Huff model parameter estimation via Maximum Likelihood (ML) by probalities, customer flows, and total market areas
+  - Huff model market simulation
+- **Multiplicative Competitive Interaction Model**: 
+  - Log-centering transformation of interaction matrix
+  - Fitting MCI model with >= 2 independent variables
+  - MCI model market simulation
+- **GIS tools**:
+  - OpenRouteService(1) Client:
+    - Creating transport costs matrix from origins and destinations
+    - Creating isochrones from origins and destinations
+  - OpenStreetMap(2) Client:
+    - Creating simple maps with OSM basemap
+  - Other GIS tools:
+    - Creating buffers from geodata
+    - Spatial join with with statistics
+    - Creating euclidean distance matrix from origins and destinations
+    - Overlay-difference analysis of polygons
+    - Hansen accessibility
+- **Data management tools**: 
+  - Loading own interaction matrix for analysis
+  - Creating origins/destinations objects from point geodata
+
+(1) © openrouteservice.org by HeiGIT | Map data © OpenStreetMap contributors | https://openrouteservice.org/
+
+(2) © OpenStreetMap contributors | available under the Open Database License | https://www.openstreetmap.org/
+
+
+## Literature
+  - De Beule M, Van den Poel D, Van de Weghe N (2014) An extended Huff-model for robustly benchmarking and predicting retail network performance. *Applied Geography* 46(1): 80–89. [10.1016/j.apgeog.2013.09.026](https://doi.org/10.1016/j.apgeog.2013.09.026)
+  - Haines Jr GH, Simon LS, Alexis M (1972) Maximum Likelihood Estimation of Central-City Food Trading Areas. *Journal of Marketing Research* 9(2): 154-159. [10.2307/3149948](https://doi.org/10.2307/3149948)
+  - Huff DL (1962) *Determination of Intra-Urban Retail Trade Areas*. Real Estate Research Program, Graduate Schools of Business Administration, University of California.
+  - Huff DL (1963) A Probabilistic Analysis of Shopping Center Trade Areas. *Land Economics* 39(1): 81-90. [10.2307/3144521](https://doi.org/10.2307/3144521)
+  - Huff DL (1964) Defining and estimating a trading area. *Journal of Marketing* 28(4): 34–38. [10.2307/1249154](https://doi.org/10.2307/1249154)
+  - Huff DL, McCallum BM (2008) Calibrating the Huff Model using ArcGIS Business Analyst. ESRI White Paper, September 2008. https://www.esri.com/library/whitepapers/pdfs/calibrating-huff-model.pdf. 
+  - Nakanishi M, Cooper LG (1974) Parameter estimation for a Multiplicative Competitive Interaction Model: Least squares approach. *Journal of Marketing Research* 11(3): 303–311. [10.2307/3151146](https://doi.org/10.2307/3151146).
+  - Nakanishi M, Cooper LG (1982) Technical Note — Simplified Estimation Procedures for MCI Models. *Marketing Science* 1(3): 314-322. [10.1287/mksc.1.3.314](https://doi.org/10.1287/mksc.1.3.314)
+  - Orpana T, Lampinen J (2003) Building Spatial Choice Models from Aggregate Data. *Journal of Regional Science* 43(2): 319-348. [10.1111/1467-9787.00301](https://doi.org/10.1111/1467-9787.00301)
+  - Wieland T (2015) *Nahversorgung im Kontext raumökonomischer Entwicklungen im Lebensmitteleinzelhandel: Konzeption und Durchführung einer GIS-gestützten Analyse der Strukturen des Lebensmitteleinzelhandels und der Nahversorgung in Freiburg im Breisgau*. Working paper. Göttingen. https://webdoc.sub.gwdg.de/pub/mon/2015/5-wieland.pdf.
+  - Wieland T (2017) Market Area Analysis for Retail and Service Locations with MCI. *R Journal* 9(1): 298-323. [10.32614/RJ-2017-020](https://doi.org/10.32614/RJ-2017-020)
+  - Wieland T (2018) A Hurdle Model Approach of Store Choice and Market Area Analysis in Grocery Retailing. *Papers in Applied Geography* 4(4): 370-389. [10.1080/23754931.2018.1519458](https://doi.org/10.1080/23754931.2018.1519458)
+  - Wieland T (2023) Spatial shopping behavior during the Corona pandemic: insights from a micro-econometric store choice model for consumer electronics and furniture retailing in Germany. *Journal of Geographical Systems* 25(2): 291–326. [10.1007/s10109-023-00408-x](https://doi.org/10.1007/s10109-023-00408-x)
+
+
+## Installation
+
+To install the package, use `pip`:
+
+```bash
+pip install huff
