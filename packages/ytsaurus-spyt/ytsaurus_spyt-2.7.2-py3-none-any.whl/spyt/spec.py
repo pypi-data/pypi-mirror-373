@@ -1,0 +1,622 @@
+import copy
+import logging
+import os
+import shlex
+from dataclasses import dataclass
+from typing import List, NamedTuple
+from pyspark import __version__ as spark_version
+
+from spyt.dependency_utils import require_yt_client
+
+require_yt_client()
+
+from yt.wrapper import YtClient  # noqa: E402
+from yt.wrapper.common import update_inplace, update  # noqa: E402
+from yt.wrapper.http_helpers import get_token, get_user_name  # noqa: E402
+from yt.wrapper.spec_builders import VanillaSpecBuilder  # noqa: E402
+
+from .conf import ytserver_proxy_attributes, get_spark_distributive  # noqa: E402
+from .conf import read_metrics_conf, read_spark_defaults_conf  # noqa: E402
+from .utils import SparkDiscovery, call_get_proxy_address_url, parse_memory  # noqa: E402
+from .enabler import SpytEnablers  # noqa: E402
+from .version import __version__  # noqa: E402
+
+logger = logging.getLogger(__name__)
+
+
+class SparkDefaultArguments(object):
+    SPARK_WORKER_MEMORY_OVERHEAD = "2G"
+    SPARK_WORKER_TMPFS_LIMIT = "8G"
+    SPARK_WORKER_SSD_LIMIT = None
+    SPARK_MASTER_PORT = 27001
+    SPARK_WORKER_PORT = 27001
+    SPARK_MASTER_MEMORY_LIMIT = "4G"
+    SPARK_HISTORY_SERVER_MEMORY_LIMIT = "4G"
+    SPARK_HISTORY_SERVER_MEMORY_OVERHEAD = "2G"
+    SPARK_HISTORY_SERVER_CPU_LIMIT = 1
+    SPARK_WORKER_TIMEOUT = "10m"
+    SPARK_WORKER_LOG_UPDATE_INTERVAL = "10m"
+    SPARK_WORKER_LOG_TABLE_TTL = "7d"
+    SPARK_WORKER_CORES_OVERHEAD = 0
+    SPARK_WORKER_CORES_BYOP_OVERHEAD = 0
+    SPARK_WORKER_GPU_LIMIT = 0
+    LIVY_DRIVER_CORES = 1
+    LIVY_DRIVER_MEMORY = "1024m"
+    LIVY_MAX_SESSIONS = 3
+
+    @staticmethod
+    def get_params():
+        return {
+            "operation_spec": {
+                "annotations": {
+                    "is_spark": True
+                },
+                "max_failed_job_count": 10000,
+                "max_stderr_count": 150,
+                "job_cpu_monitor": {
+                    "enable_cpu_reclaim": False
+                }
+            }
+        }
+
+
+@dataclass
+class CommonComponentConfig():
+    operation_alias: str = None
+    pool: str = None
+    enable_tmpfs: bool = True
+    network_project: str = None
+    tvm_id: str = None
+    tvm_secret: str = None
+    enablers: SpytEnablers = None
+    preemption_mode: str = "normal"
+    cluster_log_level: str = "INFO"
+    rpc_job_proxy: bool = False
+    rpc_job_proxy_thread_pool_size: int = 4
+    enable_ytsaurus_shuffle: bool = False
+    tcp_proxy_range_start: int = 30000
+    tcp_proxy_range_size: int = 100
+    enable_stderr_table: bool = False
+    alias_prefix: str = ""
+    spark_discovery: SparkDiscovery = None
+    group_id: str = None
+    cluster_java_home: str = None
+    container_home: str = None
+    spark_home: str = None
+    spyt_home: str = None
+
+    def __post_init__(self):
+        enable_squashfs = self.enablers and self.enablers.enable_squashfs
+        if not self.container_home:
+            self.container_home = "./tmpfs" if self.enable_tmpfs else "."
+        self.spark_home = "/usr/lib/spark" if enable_squashfs else f"$HOME/{self.container_home}/spark"
+        self.spyt_home = "/usr/lib/spyt" if enable_squashfs else f"$HOME/{self.container_home}/spyt-package"
+
+
+class MasterConfig(NamedTuple):
+    master_memory_limit: str = SparkDefaultArguments.SPARK_MASTER_MEMORY_LIMIT
+    master_port: int = SparkDefaultArguments.SPARK_MASTER_PORT
+
+
+class WorkerResources(NamedTuple):
+    cores: int
+    memory: str
+    num: int
+    cores_overhead: int
+    timeout: str
+    memory_overhead: str
+
+
+class WorkerConfig(NamedTuple):
+    tmpfs_limit: str = SparkDefaultArguments.SPARK_WORKER_TMPFS_LIMIT
+    res: WorkerResources = None
+    worker_port: int = SparkDefaultArguments.SPARK_WORKER_PORT
+    driver_op_discovery_script: str = None
+    extra_metrics_enabled: bool = True
+    autoscaler_enabled: bool = False
+    worker_log_transfer: bool = False
+    worker_log_json_mode: bool = False
+    worker_log_update_interval: str = SparkDefaultArguments.SPARK_WORKER_LOG_UPDATE_INTERVAL
+    worker_log_table_ttl: str = SparkDefaultArguments.SPARK_WORKER_LOG_TABLE_TTL
+    worker_disk_name: str = "default"
+    worker_disk_limit: str = None
+    worker_disk_account: str = None
+    worker_gpu_limit: int = 0
+    cuda_toolkit_version: str = None
+
+
+class HistoryServerConfig(NamedTuple):
+    history_server_memory_limit: str = SparkDefaultArguments.SPARK_HISTORY_SERVER_MEMORY_LIMIT
+    history_server_cpu_limit: int = SparkDefaultArguments.SPARK_HISTORY_SERVER_CPU_LIMIT
+    history_server_memory_overhead: str = SparkDefaultArguments.SPARK_HISTORY_SERVER_MEMORY_OVERHEAD
+    shs_location: str = None
+    advanced_event_log: bool = False
+
+
+class LivyConfig(NamedTuple):
+    livy_driver_cores: int = SparkDefaultArguments.LIVY_DRIVER_CORES
+    livy_driver_memory: str = SparkDefaultArguments.LIVY_DRIVER_MEMORY
+    livy_max_sessions: int = SparkDefaultArguments.LIVY_MAX_SESSIONS
+    spark_master_address: str = None
+    master_group_id: str = None
+    network_project: str = None
+
+
+class CommonSpecParams(NamedTuple):
+    spark_distributive: str
+    java_home: str
+    extra_java_opts: List[str]
+    environment: dict
+    spark_conf: dict
+    task_spec: dict
+    config: CommonComponentConfig
+    entrypoint: str = ''
+
+
+def _put_if_not_none(d, key, value):
+    if value is not None:
+        d[key] = value
+
+
+def spark_conf_to_opts(config: dict):
+    return ["-D{}={}".format(key, value) for key, value in config.items()]
+
+
+def setup_spyt_env(container_home: str, spark_distributive: str, enable_squashfs: bool,
+                   additional_parameters: List[str]):
+    cmd = ["./setup-spyt-env.sh"]
+    if enable_squashfs:
+        cmd += ["--use-squashfs"]
+    else:
+        cmd += ["--spark-home", container_home, "--spark-distributive", spark_distributive]
+    return " ".join(cmd + additional_parameters)
+
+
+def _launcher_command(component: str, common_params: CommonSpecParams, additional_parameters: List[str] = None,
+                      xmx: str = "512m", extra_java_opts: List[str] = None, launcher_opts: str = ""):
+    additional_parameters = additional_parameters or []
+    extra_java_opts = extra_java_opts or []
+    setup_spyt_env_cmd = setup_spyt_env(common_params.config.container_home,
+                                        common_params.spark_distributive,
+                                        common_params.config.enablers.enable_squashfs,
+                                        additional_parameters)
+
+    java_bin = os.path.join(common_params.java_home, 'bin', 'java') if common_params.java_home else 'java'
+    if command := common_params.entrypoint:
+        java_bin = f'{command} {java_bin}'
+    classpath = (f'{common_params.config.spyt_home}/conf/:'
+                 f'{common_params.config.spyt_home}/jars/*:'
+                 f'{common_params.config.spark_home}/jars/*')
+    extra_java_opts_str = " ".join(extra_java_opts)
+    run_launcher = "{} -Xmx{} -cp {} {}".format(java_bin, xmx, classpath, extra_java_opts_str)
+
+    commands = [
+        setup_spyt_env_cmd,
+        "{} tech.ytsaurus.spark.launcher.{}Launcher {}".format(run_launcher, component, launcher_opts)
+    ]
+    return " && ".join(commands)
+
+
+def _create_file_and_layer_paths(config, enable_squashfs: bool, spark_distributive_path):
+    file_paths = [path for path in config["file_paths"] if
+                  not enable_squashfs or
+                  not path.endswith('spyt-package.zip')]
+    layer_paths = []
+
+    if enable_squashfs:
+        layer_paths.append(f"{config['spark_yt_base_path']}/spyt-package.squashfs")
+        layer_paths.append(spark_distributive_path)
+    else:
+        file_paths.append(spark_distributive_path)
+
+    layer_paths += config["squashfs_layer_paths" if enable_squashfs else "layer_paths"]
+    return file_paths, layer_paths
+
+
+def build_livy_spec(builder: VanillaSpecBuilder, common_params: CommonSpecParams, config: LivyConfig):
+    livy_launcher_opts = [
+        f"--driver-cores {config.livy_driver_cores}",
+        f"--driver-memory {config.livy_driver_memory}",
+        f"--max-sessions {config.livy_max_sessions}",
+    ]
+    enable_squashfs = common_params.config.enablers.enable_squashfs
+    if config.spark_master_address is not None:
+        livy_launcher_opts.append(f"--master-address {config.spark_master_address}")
+    if config.network_project is not None:
+        livy_launcher_opts.append(f"--network-project {config.network_project}")
+    if enable_squashfs:
+        livy_launcher_opts.append("--enable-squashfs")
+    extra_java_opts = common_params.extra_java_opts + spark_conf_to_opts(common_params.spark_conf)
+    livy_command = _launcher_command("Livy", common_params, additional_parameters=["--enable-livy"],
+                                     extra_java_opts=extra_java_opts, launcher_opts=" ".join(livy_launcher_opts))
+
+    livy_work_dir = "$HOME/{}/livy".format(common_params.config.container_home)
+    livy_environment = {
+        "LIVY_HOME": "/usr/lib/livy" if enable_squashfs else livy_work_dir,
+        "LIVY_WORK_DIR": livy_work_dir
+    }
+    _put_if_not_none(livy_environment, "SPARK_MASTER_DISCOVERY_GROUP_ID", config.master_group_id)
+    livy_environment = update(common_params.environment, livy_environment)
+
+    livy_layer_paths = []
+    livy_file_paths = copy.copy(common_params.task_spec["file_paths"])
+
+    if enable_squashfs:
+        livy_layer_paths.append("//home/spark/livy/livy.squashfs")
+    else:
+        livy_file_paths.append("//home/spark/livy/livy.tgz")
+
+    livy_layer_paths += common_params.task_spec["layer_paths"]
+
+    livy_task_spec = copy.deepcopy(common_params.task_spec)
+    livy_task_spec["environment"] = livy_environment
+    livy_task_spec["file_paths"] = livy_file_paths
+    livy_task_spec["layer_paths"] = livy_layer_paths
+
+    builder.begin_task("livy") \
+        .job_count(1) \
+        .command(livy_command) \
+        .memory_limit(parse_memory("1G") +
+                      parse_memory(config.livy_driver_memory) * config.livy_max_sessions) \
+        .cpu_limit(1 + config.livy_driver_cores * config.livy_max_sessions) \
+        .spec(livy_task_spec) \
+        .end_task()
+
+
+def build_hs_spec(builder: VanillaSpecBuilder, common_params: CommonSpecParams, config: HistoryServerConfig):
+    spark_conf_hs = common_params.spark_conf.copy()
+    if "spark.workerLog.tablePath" not in spark_conf_hs:
+        worker_log_location = "yt:/{}".format(common_params.config.spark_discovery.worker_log())
+        spark_conf_hs["spark.workerLog.tablePath"] = worker_log_location
+    if config.advanced_event_log:
+        event_log_path = "ytEventLog:/{}".format(config.shs_location or
+                                                 common_params.config.spark_discovery.event_log_table())
+    else:
+        event_log_path = "yt:/{}".format(config.shs_location or common_params.config.spark_discovery.event_log())
+    if "spark.history.fs.numReplayThreads" not in spark_conf_hs:
+        spark_conf_hs["spark.history.fs.numReplayThreads"] = config.history_server_cpu_limit
+
+    history_launcher_opts = "--log-path {} --memory {}".format(event_log_path, config.history_server_memory_limit)
+    extra_java_opts = common_params.extra_java_opts + spark_conf_to_opts(spark_conf_hs)
+    history_command = _launcher_command("HistoryServer", common_params, extra_java_opts=extra_java_opts,
+                                        launcher_opts=history_launcher_opts)
+
+    shs_file_paths = copy.copy(common_params.task_spec["file_paths"])
+
+    builder.begin_task("history") \
+        .job_count(1) \
+        .command(history_command) \
+        .memory_limit(parse_memory(config.history_server_memory_limit) +
+                      parse_memory(config.history_server_memory_overhead)) \
+        .cpu_limit(config.history_server_cpu_limit) \
+        .spec(common_params.task_spec) \
+        .file_paths(shs_file_paths) \
+        .end_task()
+
+
+def build_master_spec(builder: VanillaSpecBuilder, common_params: CommonSpecParams, config: MasterConfig):
+    extra_java_opts = common_params.extra_java_opts + spark_conf_to_opts(common_params.spark_conf)
+    master_command = _launcher_command("Master", common_params, extra_java_opts=extra_java_opts)
+    master_environment = {
+        "SPARK_MASTER_PORT": str(config.master_port),
+    }
+    master_environment = update(common_params.environment, master_environment)
+    master_task_spec = copy.deepcopy(common_params.task_spec)
+    master_task_spec["environment"] = master_environment
+    task = builder.begin_task("master") \
+        .job_count(1) \
+        .command(master_command) \
+        .memory_limit(parse_memory(config.master_memory_limit)) \
+        .cpu_limit(2) \
+        .spec(master_task_spec)
+    if common_params.spark_conf.get("spark.ytsaurus.use_assigned_ports.master") == "true":
+        task.port_count(2)
+    task.end_task()
+
+
+def build_worker_spec(builder: VanillaSpecBuilder, job_type: str, ytserver_proxy_path: str, tvm_enabled: bool,
+                      common_params: CommonSpecParams, config: WorkerConfig):
+    def _script_absolute_path(script):
+        return os.path.join(common_params.config.spyt_home, script)
+
+    spark_conf_worker = common_params.spark_conf.copy()
+
+    if "spark.workerLog.tablePath" not in spark_conf_worker:
+        worker_log_location = "yt:/{}".format(common_params.config.spark_discovery.worker_log())
+        spark_conf_worker["spark.workerLog.tablePath"] = worker_log_location
+    if config.driver_op_discovery_script:
+        driver_op_discovery_script_path = _script_absolute_path(config.driver_op_discovery_script)
+        spark_conf_worker["spark.worker.resource.driverop.amount"] = str(config.res.cores)
+        spark_conf_worker["spark.worker.resource.driverop.discoveryScript"] = driver_op_discovery_script_path
+        spark_conf_worker["spark.driver.resource.driverop.discoveryScript"] = driver_op_discovery_script_path
+    if config.extra_metrics_enabled:
+        spark_conf_worker["spark.ui.prometheus.enabled"] = "true"
+
+    if config.autoscaler_enabled:
+        job_id_script_path = _script_absolute_path("bin/job-id-discovery.sh")
+        spark_conf_worker["spark.worker.resource.jobid.discoveryScript"] = job_id_script_path
+        spark_conf_worker["spark.driver.resource.jobid.discoveryScript"] = job_id_script_path
+        spark_conf_worker["spark.worker.resource.jobid.amount"] = "1"
+
+    if config.worker_gpu_limit > 0:
+        spark_conf_worker["spark.worker.resource.gpu.amount"] = str(config.worker_gpu_limit)
+        spark_conf_worker["spark.worker.resource.gpu.discoveryScript"] = _script_absolute_path("bin/getGpusResources.sh")
+
+    worker_launcher_opts = \
+        "--cores {0} --memory {1} --wait-master-timeout {2} --wlog-service-enabled {3} --wlog-enable-json {4} " \
+        "--wlog-update-interval {5} --wlog-table-ttl {6} {7}".format(
+            config.res.cores, config.res.memory,
+            config.res.timeout, config.worker_log_transfer, config.worker_log_json_mode,
+            config.worker_log_update_interval, config.worker_log_table_ttl,
+            "--enable-squashfs" if common_params.config.enablers.enable_squashfs else ""
+        )
+    extra_java_opts = common_params.extra_java_opts + spark_conf_to_opts(spark_conf_worker)
+    worker_command = _launcher_command("Worker", common_params, xmx="2g", extra_java_opts=extra_java_opts,
+                                       launcher_opts=worker_launcher_opts)
+
+    worker_environment = {
+        "SPARK_YT_BYOP_ENABLED": str(common_params.config.enablers.enable_byop),
+        "SPARK_WORKER_PORT": str(config.worker_port),
+        "SPARK_YT_CLUSTER_CONF_PATH": str(common_params.config.spark_discovery.conf()),
+    }
+    worker_environment = update(common_params.environment, worker_environment)
+    if common_params.config.enablers.enable_byop:
+        ytserver_binary_name = ytserver_proxy_path.split("/")[-1] if ytserver_proxy_path else "ytserver-proxy"
+        byop_worker_environment = {
+            "SPARK_YT_BYOP_BINARY_PATH": "$HOME/{}".format(ytserver_binary_name),
+            "SPARK_YT_BYOP_CONFIG_PATH": "$HOME/ytserver-proxy.template.yson",
+            "SPARK_YT_BYOP_HOST": "localhost",
+            "SPARK_YT_BYOP_TVM_ENABLED": str(tvm_enabled)
+        }
+        worker_environment = update(worker_environment, byop_worker_environment)
+
+    if common_params.config.enablers.enable_byop:
+        worker_cores_overhead = config.res.cores_overhead or SparkDefaultArguments.SPARK_WORKER_CORES_BYOP_OVERHEAD
+    else:
+        worker_cores_overhead = config.res.cores_overhead or SparkDefaultArguments.SPARK_WORKER_CORES_OVERHEAD
+
+    worker_file_paths = copy.copy(common_params.task_spec["file_paths"])
+    if ytserver_proxy_path and common_params.config.enablers.enable_byop:
+        worker_file_paths.append(ytserver_proxy_path)
+
+    worker_task_spec = copy.deepcopy(common_params.task_spec)
+    worker_task_spec["environment"] = worker_environment
+    worker_task_spec["rpc_proxy_worker_thread_pool_size"] = common_params.config.rpc_job_proxy_thread_pool_size
+    worker_task_spec["enable_shuffle_service_in_job_proxy"] = common_params.config.enable_ytsaurus_shuffle
+    worker_ram_memory = parse_memory(config.res.memory)
+    worker_local_dirs = "."
+    if config.worker_disk_limit:
+        worker_task_spec["disk_request"] = {
+            "disk_space": parse_memory(config.worker_disk_limit),
+            "account": config.worker_disk_account,
+            "medium_name": config.worker_disk_name
+        }
+    elif common_params.config.enable_tmpfs:
+        tmpfs_limit = parse_memory(config.tmpfs_limit)
+        worker_ram_memory += tmpfs_limit
+        worker_task_spec['tmpfs_size'] = tmpfs_limit
+        worker_local_dirs = "./tmpfs"
+    worker_environment["SPARK_LOCAL_DIRS"] = worker_local_dirs
+
+    if config.worker_gpu_limit > 0:
+        worker_task_spec["cuda_toolkit_version"] = config.cuda_toolkit_version
+        worker_task_spec["gpu_limit"] = config.worker_gpu_limit
+
+    driver_task_spec = copy.deepcopy(worker_task_spec)
+    driver_environment = driver_task_spec["environment"]
+    if config.driver_op_discovery_script:
+        driver_environment["SPARK_DRIVER_RESOURCE"] = str(config.res.cores)
+
+    spec = driver_task_spec if "drivers" == job_type else worker_task_spec
+    task = builder.begin_task(job_type) \
+        .job_count(config.res.num) \
+        .command(worker_command) \
+        .memory_limit(worker_ram_memory + parse_memory(config.res.memory_overhead)) \
+        .cpu_limit(config.res.cores + worker_cores_overhead) \
+        .spec(spec) \
+        .file_paths(worker_file_paths)
+    if common_params.spark_conf.get("spark.ytsaurus.use_assigned_ports.worker") == "true":
+        task.port_count(2)
+    task.end_task()
+
+
+def build_spark_operation_spec(config: dict, client: YtClient,
+                               job_types: List[str], common_config: CommonComponentConfig,
+                               master_config: MasterConfig = None, worker_config: WorkerConfig = None,
+                               hs_config: HistoryServerConfig = None, livy_config: LivyConfig = None):
+    if job_types == [] or job_types is None:
+        job_types = ['master', 'history', 'worker']
+
+    spark_distributive, spark_distributive_path = get_spark_distributive(client, common_config.enablers.enable_squashfs)
+
+    extra_java_opts = ["-Dlog4j.loglevel={}".format(common_config.cluster_log_level)]
+    if common_config.enablers.enable_preference_ipv6:
+        extra_java_opts.append("-Djava.net.preferIPv6Addresses=true")
+
+    spark_conf_common = config["spark_conf"].copy()
+    update_inplace(spark_conf_common, common_config.enablers.get_conf())
+
+    user = get_user_name(client=client)
+
+    operation_spec = copy.copy(config["operation_spec"])
+    if common_config.spark_discovery is not None and common_config.enable_stderr_table:
+        if "master" in job_types:
+            operation_spec["stderr_table_path"] = str(common_config.spark_discovery.stderr())
+        elif "driver" in job_types:
+            operation_spec["stderr_table_path"] = str(common_config.spark_discovery.stderr() + "_driver")
+        else:
+            operation_spec["stderr_table_path"] = str(common_config.spark_discovery.stderr()) + "_worker"
+    if "title" not in operation_spec:
+        operation_spec["title"] = common_config.operation_alias or (common_config.alias_prefix + "_" + str(user))
+    operation_spec["pool"] = common_config.pool
+    operation_spec['preemption_mode'] = common_config.preemption_mode
+    description = {
+        "cluster_version": config["cluster_version"],
+        "client_version": __version__,
+        "enablers": str(common_config.enablers),
+        "job_types": job_types,
+    }
+    if common_config.spark_discovery is not None:
+        description["discovery_path"] = common_config.spark_discovery.base_discovery_path
+    _put_if_not_none(description, "discovery_group_id", common_config.group_id)
+    operation_spec["description"] = {
+        "Spark over YT": description
+    }
+    ytserver_proxy_path = config.get("ytserver_proxy_path")
+    if ytserver_proxy_path and common_config.enablers.enable_byop:
+        operation_spec["description"]["BYOP"] = ytserver_proxy_attributes(ytserver_proxy_path, client=client)
+
+    environment = copy.deepcopy(config["environment"])
+    java_home = common_config.cluster_java_home or config.get('default_cluster_java_home')
+    if "JAVA_HOME" in environment:
+        del environment["JAVA_HOME"]  # COMPAT(atokarew) JAVA_HOME is preserved in global config for older releases
+    if java_home:
+        environment["JAVA_HOME"] = java_home
+    environment["YT_PROXY"] = call_get_proxy_address_url(required=True, client=client)
+    environment["YT_OPERATION_ALIAS"] = operation_spec["title"]
+    _put_if_not_none(environment, "SPARK_DISCOVERY_GROUP_ID", common_config.group_id)
+    if common_config.spark_discovery is not None:
+        environment["SPARK_BASE_DISCOVERY_PATH"] = str(common_config.spark_discovery.base_discovery_path)
+        environment["SPARK_DISCOVERY_PATH"] = str(common_config.spark_discovery.discovery())  # COMPAT(alex-shishkin)
+    environment["SPARK_HOME"] = common_config.spark_home
+    environment["SPYT_HOME"] = common_config.spyt_home
+    environment["SPARK_CLUSTER_VERSION"] = config["cluster_version"]  # TODO Rename to SPYT_CLUSTER_VERSION
+    environment["SPYT_CLUSTER_VERSION"] = config["cluster_version"]
+    environment["SPARK_YT_METRICS_ENABLED"] = str(common_config.enablers.enable_yt_metrics)
+    environment["SPARK_YT_IPV6_PREFERENCE_ENABLED"] = \
+        str(common_config.enablers.enable_preference_ipv6)  # COMPAT(alex-shishkin)
+    environment["SPARK_YT_TCP_PROXY_ENABLED"] = str(common_config.enablers.enable_tcp_proxy)
+    environment["SPARK_YT_PROFILING_ENABLED"] = str(common_config.enablers.enable_profiling)
+    environment["SPARK_YT_RPC_JOB_PROXY_ENABLED"] = str(common_config.rpc_job_proxy)
+    if common_config.enablers.enable_byop:
+        environment["SPARK_YT_BYOP_PORT"] = "27002"
+    if common_config.enablers.enable_yt_metrics:
+        metrics_conf = read_metrics_conf()
+        spark_defaults_conf = read_spark_defaults_conf()
+
+        spark_push_port = metrics_conf["*.sink.solomon.solomon_port"]
+        metrics_pull_port = spark_defaults_conf["spark.ytsaurus.metrics.pull.port"]
+        agent_pull_port = spark_defaults_conf["spark.ytsaurus.metrics.agent.pull.port"]
+        environment["YT_METRICS_SPARK_PUSH_PORT"] = spark_push_port
+        environment["YT_AGENT_METRICS_PULL_PORT"] = agent_pull_port
+        environment["YT_METRICS_PULL_PORT"] = metrics_pull_port
+        operation_spec["annotations"]["solomon_resolver_tag"] = "spark"
+        operation_spec["annotations"]["solomon_resolver_ports"] = [int(metrics_pull_port), int(agent_pull_port)]
+
+    if common_config.enablers.enable_tcp_proxy:
+        environment["SPARK_YT_TCP_PROXY_RANGE_START"] = str(common_config.tcp_proxy_range_start)
+        environment["SPARK_YT_TCP_PROXY_RANGE_SIZE"] = str(common_config.tcp_proxy_range_size)
+
+    file_paths, layer_paths = _create_file_and_layer_paths(config,
+                                                           common_config.enablers.enable_squashfs,
+                                                           spark_distributive_path)
+
+    common_task_spec = {
+        "restart_completed_jobs": True,
+        "file_paths": file_paths,
+        "layer_paths": layer_paths,
+        "environment": environment,
+        "memory_reserve_factor": 1.0,
+        "enable_rpc_proxy_in_job_proxy": common_config.rpc_job_proxy,
+    }
+    if common_config.enable_tmpfs:
+        common_task_spec["tmpfs_path"] = "tmpfs"
+    if common_config.enablers.enable_mtn:
+        common_task_spec["network_project"] = common_config.network_project
+    if common_config.group_id:
+        common_task_spec['extra_environment'] = ['discovery_server_addresses']
+
+    tvm_enabled = common_config.enablers.enable_mtn and bool(common_config.tvm_id) and bool(common_config.tvm_secret)
+    secure_vault = {"YT_USER": user, "YT_TOKEN": get_token(client=client)}
+    if tvm_enabled:
+        secure_vault["SPARK_TVM_ID"] = common_config.tvm_id
+        secure_vault["SPARK_TVM_SECRET"] = common_config.tvm_secret
+
+    entrypoint = config.get('entrypoint', '')
+    if not isinstance(entrypoint, str):
+        entrypoint = shlex.join(entrypoint)
+    common_params = CommonSpecParams(
+        spark_distributive, java_home, extra_java_opts, environment,
+        spark_conf_common, common_task_spec, common_config, entrypoint,
+    )
+    builder = VanillaSpecBuilder()
+    if "master" in job_types:
+        build_master_spec(builder, common_params, master_config)
+    if "history" in job_types:
+        build_hs_spec(builder, common_params, hs_config)
+    if "worker" in job_types:
+        build_worker_spec(builder, "workers", ytserver_proxy_path, tvm_enabled, common_params, worker_config)
+    if "driver" in job_types:
+        build_worker_spec(builder, "drivers", ytserver_proxy_path, tvm_enabled, common_params, worker_config)
+    if "livy" in job_types:
+        build_livy_spec(builder, common_params, livy_config)
+
+    return builder \
+        .secure_vault(secure_vault) \
+        .spec(operation_spec)
+
+
+def build_spark_connect_server_spec(client: YtClient, config, spark_conf: dict, enablers: SpytEnablers, java_home: str,
+                                    driver_memory: str, num_executors: int, executor_cores: int, executor_memory: str,
+                                    prefer_ipv6: bool, pool: str, grpc_port_start: int):
+    component_config = CommonComponentConfig(enable_tmpfs=False, rpc_job_proxy=True, enablers=enablers)
+
+    spark_distributive, spark_distributive_path = get_spark_distributive(client, enablers.enable_squashfs)
+    setup = setup_spyt_env(component_config.container_home, spark_distributive, enablers.enable_squashfs, [])
+    user = get_user_name(client=client)
+    yt_proxy = call_get_proxy_address_url(required=True, client=client)
+    spark_connect_jar = f"spark-connect_2.12-{spark_version}.jar"
+    network_project = spark_conf.get("spark.ytsaurus.network.project")
+    command = [
+        f"{component_config.spark_home}/bin/spark-submit",
+        f"--master ytsaurus://{yt_proxy}",
+        "--deploy-mode client",
+        "--class org.apache.spark.sql.connect.ytsaurus.SpytConnectServer",
+        f"--num-executors {num_executors}",
+        f"--executor-cores {executor_cores}",
+        f"--executor-memory {executor_memory}",
+        f"--queue {pool or user}",
+        f'--name "Spark connect driver for {user}"',
+        f"--conf spark.driver.extraJavaOptions='-Djava.net.preferIPv6Addresses={prefer_ipv6}'",
+        f"--conf spark.connect.grpc.binding.port={grpc_port_start}",
+        f"--jars {spark_connect_jar}",
+    ] + [f"--conf {key}={spark_conf[key]}" for key in spark_conf] + ["spark-internal"]
+
+    operation_spec = {
+        "title": "Spark connect server"
+    }
+
+    secure_vault = {
+        "YT_TOKEN": get_token(client=client)
+    }
+
+    file_paths, layer_paths = _create_file_and_layer_paths(config, enablers.enable_squashfs, spark_distributive_path)
+
+    file_paths.append(f"//home/spark/distrib/{spark_version.replace('.', '/')}/spark-connect_2.12-{spark_version}.jar")
+
+    environment = copy.deepcopy(config["environment"])
+    environment["JAVA_HOME"] = java_home
+    environment["SPARK_CONF_DIR"] = f"{component_config.spyt_home}/conf".replace("$HOME/", "")
+    environment["SPARK_CONNECT_CLASSPATH"] = f"{spark_connect_jar}"
+
+    task_spec = {
+        "layer_paths": layer_paths,
+        "file_paths": file_paths,
+        "enable_rpc_proxy_in_job_proxy": component_config.rpc_job_proxy,
+        "environment": environment,
+    }
+
+    if network_project:
+        task_spec["network_project"] = network_project
+
+    builder = VanillaSpecBuilder()
+    builder.begin_task("spark_connect_driver") \
+        .command(" ".join([setup, "&&"] + command)) \
+        .job_count(1) \
+        .cpu_limit(1) \
+        .memory_limit(parse_memory(driver_memory)) \
+        .spec(task_spec) \
+        .end_task()
+
+    return builder.secure_vault(secure_vault) \
+        .spec(operation_spec)
