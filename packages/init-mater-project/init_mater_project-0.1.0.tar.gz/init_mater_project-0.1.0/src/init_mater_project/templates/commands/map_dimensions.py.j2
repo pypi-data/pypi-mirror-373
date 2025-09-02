@@ -1,0 +1,574 @@
+import json
+from pathlib import Path
+from typing import List, Dict, Optional, Tuple, Set
+from enum import Enum
+
+import click
+
+from settings import MaterConfig
+
+
+class MappingMode(Enum):
+    """Dimensions mapping operation modes"""
+    INITIAL = "initial"
+    INCREMENTAL = "incremental"
+    FORCE = "force"
+    RESOLVE = "resolve"
+
+
+def map_dimensions(config: MaterConfig, mode: MappingMode) -> None:
+    """
+    # Map input dimensions to reference into a mapping file
+    
+    ## Arguments
+    - `config` (MaterConfig): Configuration object containing paths and simulation parameters
+    - `mode` (MappingMode): Mapping operation mode
+    
+    ## Returns
+    - `None`: Creates or updates mapping file but doesn't return a value
+    """
+    
+    try:
+        has_input_data = False
+        input_path = config.paths.input_path
+        if input_path.is_file() and input_path.suffix.lower() == '.json':
+            has_input_data = True
+        elif input_path.is_dir():
+            json_files = list(input_path.rglob('*.json'))
+            has_input_data = True if len(json_files) > 0 else False
+
+        if not has_input_data:
+            click.echo("⚠️  No input data available for dimension mapping")
+            click.echo(f"    Expected: {config.paths.input_path}")
+            click.echo("💡 Add MATER-formatted JSON files to input directory first")
+            return
+        
+        mapping_file = config.paths.dimensions_mapping_file
+        mapping_exists = mapping_file.exists()
+        
+        if not mapping_exists and mode in [MappingMode.RESOLVE, MappingMode.INCREMENTAL]:
+            click.echo("❌ No mapping file found for this operation")
+            click.echo("💡 Create the initial mapping:")
+            click.secho("   uv run mater-cli dimensions map", fg='bright_blue', bold=True)
+            return
+        
+        if mapping_exists and mode == MappingMode.INITIAL:
+            click.echo(f"⚠️  Mapping file already exists: {mapping_file}")
+            click.echo("💡 Options:")
+            click.echo("   -m incremental : Add new dimensions only")
+            click.echo("   -m force       : Override existing mapping")
+            click.echo("   -m resolve     : Validate and resolve references")
+            return
+        
+        if mode == MappingMode.RESOLVE:
+            resolve_mapping_references(config)
+            
+        elif mode == MappingMode.FORCE:
+            if mapping_exists:
+                click.echo(f"⚠️  This will override existing mapping: {mapping_file}")
+                response = input("Continue? (y/N): ")
+                if response.lower() not in ['y', 'yes']:
+                    click.echo("Operation cancelled")
+                    return
+            create_initial_mapping(config)
+            
+        elif mode == MappingMode.INCREMENTAL:
+            update_mapping_incremental(config)
+            
+        elif mode == MappingMode.INITIAL:
+            create_initial_mapping(config)
+        
+    except FileNotFoundError as e:
+        click.echo(f"⚠️  File not found: {e}")
+    except json.JSONDecodeError as e:
+        click.echo(f"⚠️  Invalid JSON format: {e}")
+    except PermissionError:
+        click.echo("⚠️  Permission denied")
+    except Exception as e:
+        click.echo(f"⚠️  Error creating dimensions mapping: {e}")
+
+
+def create_initial_mapping(config: MaterConfig) -> None:
+    """
+    # Create initial mapping from input data
+    
+    ## Arguments
+    - `config` (MaterConfig): Configuration object
+    
+    ## Returns
+    - `None`: Creates mapping file
+    """
+    source_dimensions = load_dimensions_from_input_data(config.paths.input_path)
+    reference_dimensions = load_reference_dimensions(Path("data/references/dimensions.json"))
+    
+    dimensions_mapping = create_dimensions_mapping(source_dimensions, reference_dimensions)
+    
+    with open(config.paths.dimensions_mapping_file, 'w', encoding='utf-8') as f:
+        json.dump(dimensions_mapping, f, indent=2, ensure_ascii=False)
+    click.echo(f"✅ Generated dimensions mapping: {config.paths.dimensions_mapping_file}")
+
+    mapped_count = 0
+    todo_count = 0
+    for entry in dimensions_mapping:
+        reference_equivalence = entry.get("reference_equivalence", {})
+        parent_hierarchy = entry.get("parent_hierarchy", {})
+        
+        has_ref_todo = "TODO" in reference_equivalence
+        has_parent_todo = "TODO" in parent_hierarchy
+        
+        if has_ref_todo or has_parent_todo:
+            todo_count += 1
+        else:
+            mapped_count += 1
+    
+    click.echo(f"📊 Mapped {len(dimensions_mapping)} unique dimension values from {len(source_dimensions)} source values")
+    
+    if mapped_count > 0:
+        click.echo(f"✅ {mapped_count} dimensions successfully mapped to reference")
+    
+    if todo_count > 0:
+        click.echo(f"⚠️  {todo_count} dimensions need manual completion")
+        click.echo(f"\n💡 Next steps:")
+        click.echo(f"   1. Edit mapping file: {config.paths.dimensions_mapping_file}")
+        click.echo(f"      - Remove TODO keys and fill with real data")
+        click.echo(f"      - Check out existing dimensions values:")
+        click.secho("        uv run mater-cli simulation list-dimensions", fg='bright_blue', bold=True)
+        click.echo(f"   2. Resolve references and validate:")
+        click.secho("      uv run mater-cli dimensions map -m resolve", fg='bright_blue', bold=True)
+    else:
+        click.echo(f"🎯 All dimensions successfully mapped!")
+        click.echo(f"💡 Build your dimensions hierarchy:")
+        click.secho("   uv run mater-cli dimensions build", fg='bright_blue', bold=True)
+
+
+def update_mapping_incremental(config: MaterConfig) -> None:
+    """
+    # Update existing mapping by adding new dimensions while preserving user edits
+    
+    ## Arguments
+    - `config` (MaterConfig): Configuration object
+    
+    ## Returns
+    - `None`: Updates mapping file
+    """
+    existing_mapping = load_mapping_file(config.paths.dimensions_mapping_file)
+    current_dimensions = load_dimensions_from_input_data(config.paths.input_path)
+    reference_dimensions = load_reference_dimensions(Path("data/references/dimensions.json"))
+    
+    existing_combinations = {(entry["name"], entry["value"]) for entry in existing_mapping}
+    new_dimensions = [
+        dim for dim in current_dimensions 
+        if (dim["name"], dim["value"]) not in existing_combinations
+    ]
+    
+    if not new_dimensions:
+        click.echo("ℹ️  No new dimensions found")
+        click.echo(f"   Current mapping: {len(existing_mapping)} dimensions")
+        click.echo(f"   Input data: {len(current_dimensions)} dimensions")
+        return
+    
+    new_mapping_entries = create_dimensions_mapping(new_dimensions, reference_dimensions)
+    updated_mapping = existing_mapping + new_mapping_entries
+    
+    with open(config.paths.dimensions_mapping_file, 'w', encoding='utf-8') as f:
+        json.dump(updated_mapping, f, indent=2, ensure_ascii=False)
+    click.echo(f"✅ Updated dimensions mapping: {file_path}")
+    
+    click.echo(f"📊 Incremental mapping completed:")
+    click.echo(f"   📌 {len(existing_mapping)} existing dimensions preserved")
+    click.echo(f"   🆕 {len(new_mapping_entries)} new dimensions added")
+    
+    if len(new_mapping_entries) > 0:
+        click.echo(f"\n💡 Next steps:")
+        click.echo(f"   1. Edit mapping file: {config.paths.dimensions_mapping_file}")
+        click.echo(f"      - Remove TODO keys and fill with real data")
+        click.echo(f"      - Check out existing dimensions values:")
+        click.secho("        uv run mater-cli simulation list-dimensions", fg='bright_blue', bold=True)
+        click.echo(f"   2. Resolve references and validate:")
+        click.secho("      uv run mater-cli dimensions map -m resolve", fg='bright_blue', bold=True)
+
+
+def resolve_mapping_references(config: MaterConfig) -> None:
+    """
+    # Validate and resolve references in user-edited mapping
+    
+    ## Arguments
+    - `config` (MaterConfig): Configuration object
+    
+    ## Returns
+    - `None`: Updates mapping with resolved references and validation
+    """
+    mapping = load_mapping_file(config.paths.dimensions_mapping_file)
+    reference_dimensions = load_reference_dimensions(Path("data/references/dimensions.json"))
+    reference_index = create_reference_indexes(reference_dimensions)
+    all_input_dimensions = load_dimensions_from_input_data(config.paths.input_path)
+    
+    resolved_mapping = []
+    errors = []
+    auto_resolved = 0
+    
+    for entry in mapping:
+        resolved_entry, entry_errors, was_auto_resolved = resolve_single_mapping_entry(
+            entry, reference_index, all_input_dimensions
+        )
+        resolved_mapping.append(resolved_entry)
+        errors.extend(entry_errors)
+        if was_auto_resolved:
+            auto_resolved += 1
+    
+    success_count = len(mapping) - len(errors)
+    
+    click.echo(f"📊 Resolution completed:")
+    click.echo(f"   ✅ {success_count} entries validated successfully")
+    if auto_resolved > 0:
+        click.echo(f"   🔧 {auto_resolved} parent hierarchies auto-resolved")
+    
+    if errors:
+        click.echo(f"   ❌ {len(errors)} errors found:")
+        for error in errors:
+            click.echo(f"      • {error}")
+    
+    if not errors:
+        with open(config.paths.dimensions_mapping_file, 'w', encoding='utf-8') as f:
+            json.dump(resolved_mapping, f, indent=2, ensure_ascii=False)
+        click.echo(f"✅ Resolved dimensions mapping: {file_path}")
+        click.echo(f"💡 Build your dimensions hierarchy:")
+        click.secho("   uv run mater-cli dimensions build", fg='bright_blue', bold=True)
+    else:
+        click.echo("❌ Fix errors before proceeding to build")
+
+
+def resolve_single_mapping_entry(entry: Dict, reference_index: Dict, 
+                                all_input_dimensions: List[Dict]) -> Tuple[Dict, List[str], bool]:
+    """
+    # Resolve single mapping entry references and validate
+    
+    ## Arguments
+    - `entry` (Dict): Single mapping entry to resolve
+    - `reference_index` (Dict): Reference lookup indexes
+    - `all_input_dimensions` (List[Dict]): All available input dimensions
+    
+    ## Returns
+    - `Tuple[Dict, List[str], bool]`: (resolved_entry, errors, was_auto_resolved)
+    """
+    name = entry["name"]
+    value = entry["value"]
+    reference_equivalence = entry.get("reference_equivalence", {})
+    parent_hierarchy = entry.get("parent_hierarchy", {})
+    errors = []
+    auto_resolved = False
+    
+    resolved_entry = entry.copy()
+    
+    if "TODO" in reference_equivalence or "TODO" in parent_hierarchy:
+        errors.append(f"{name}={value}: Contains TODO keys, manual completion required")
+        return resolved_entry, errors, auto_resolved
+    
+    hierarchy_keys = list(parent_hierarchy.keys())
+    if len(hierarchy_keys) > 1:
+        errors.append(f"{name}={value}: parent_hierarchy must contain only one value, got: {hierarchy_keys}")
+        return resolved_entry, errors, auto_resolved
+    
+    parent_value = next(iter(parent_hierarchy.values())) if parent_hierarchy else None
+    
+    if reference_equivalence:
+        ref_value = list(reference_equivalence.values())[0] if reference_equivalence else None
+        if ref_value:
+            ref_entry = find_dimension_in_reference(name, ref_value, reference_index)
+            if not ref_entry:
+                errors.append(f"{name}={value}: reference_equivalence '{ref_value}' not found in reference")
+            else:
+                if not parent_hierarchy:
+                    ref_parent = get_parent_value(ref_entry)
+                    if ref_parent:
+                        resolved_entry["parent_hierarchy"] = {"default": ref_parent}
+                        auto_resolved = True
+                        parent_value = ref_parent 
+    
+    if parent_value and parent_value != "top-level":
+        parent_exists = (
+            find_dimension_in_reference(name, parent_value, reference_index) is not None
+            or any(dim["name"] == name and dim["value"] == parent_value 
+                for dim in all_input_dimensions)
+        )
+        
+        if not parent_exists:
+            errors.append(f"{name}={value}: parent '{parent_value}' not found in reference or input data")
+
+    return resolved_entry, errors, auto_resolved
+
+
+def create_dimensions_mapping(source_dimensions: List[Dict], reference_dimensions: List[Dict]) -> List[Dict]:
+    """
+    # Create mapping by matching source dimensions with reference data
+    
+    ## Arguments
+    - `source_dimensions` (List[Dict]): Unique dimensions from input data
+    - `reference_dimensions` (List[Dict]): Reference dimensions with hierarchies
+    
+    ## Returns
+    - `List[Dict]`: Mapping with matched and TODO entries
+    """
+    reference_index = create_reference_indexes(reference_dimensions)
+    mapping = []
+    
+    for dimension in source_dimensions:
+        name, value = dimension["name"], dimension["value"]
+        
+        reference_entry = find_dimension_in_reference(name, value, reference_index)
+        
+        if reference_entry:
+            mapping_entry = {
+                "name": reference_entry.get("name", ""),
+                "value": reference_entry.get("value", ""),
+                "reference_equivalence": reference_entry.get("equivalence", {}),
+                "parent_hierarchy": {
+                    "default": get_parent_value(reference_entry) or "top-level"
+                }
+            }
+        else:
+            mapping_entry = {
+                "name": name,
+                "value": value,
+                "reference_equivalence": {
+                    "TODO": "check in 'data/references/dimensions.json' if this value exists under another name in reference"
+                },
+                "parent_hierarchy": {
+                    "hierarchy_name": "parent_value",
+                    "TODO": [
+                        "if you found a reference equivalence, leave parent_hierarchy empty '{}' to use the equivalence parent value",
+                        "or choose a parent value from input data or reference using 'data/references/dimensions.json'"
+                    ]
+                }
+            }
+            
+        mapping.append(mapping_entry)
+    
+    return mapping
+
+
+def load_mapping_file(mapping_file: Path) -> List[Dict]:
+    """
+    # Load existing dimensions mapping from JSON file
+    
+    ## Arguments
+    - `mapping_file` (Path): Path to mapping JSON file
+    
+    ## Returns
+    - `List[Dict]`: Existing dimensions mapping data
+    """
+    if not mapping_file.exists():
+        raise FileNotFoundError(f"Mapping file not found: {mapping_file}")
+    
+    try:
+        with open(mapping_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        if not isinstance(data, list):
+            raise ValueError(f"Mapping file must contain an array, got: {type(data)}")
+        
+        click.echo(f"📁 Loaded existing mapping: {mapping_file} ({len(data)} entries)")
+        return data
+        
+    except json.JSONDecodeError as e:
+        click.echo(f"❌ Invalid JSON in mapping file: {mapping_file}")
+        click.echo(f"   Error: {e.msg} at line {e.lineno}, column {e.colno}")
+        raise json.JSONDecodeError(f"Invalid JSON in mapping file {mapping_file}", e.doc, e.pos)
+
+
+def load_dimensions_from_input_data(input_path: Path) -> List[Dict]:
+    """
+    # Load dimensions from MATER input data files
+    
+    ## Arguments
+    - `input_path` (Path): Path to input data directory or file
+    
+    ## Returns
+    - `List[Dict]`: List of unique dimension value combinations
+    """
+    records = []
+    processed_files = []
+    
+    if input_path.is_file():
+        records = load_records_from_file(input_path)
+        records.extend(records)
+        processed_files.append(input_path.name)
+    elif input_path.is_dir():
+        json_files = list(input_path.rglob('*.json'))
+        
+        if not json_files:
+            click.echo(f"⚠️  No JSON files found in {input_path}")
+            return []
+        
+        for json_file in json_files:
+            try:
+                records = load_records_from_file(json_file)
+                records.extend(records)
+                processed_files.append(str(json_file.relative_to(input_path)))
+            except Exception as e:
+                click.echo(f"⚠️  Skipping {json_file}: {e}")
+                continue
+    else:
+        raise ValueError(f"Input path must be file or directory: {input_path}")
+    
+    unique_dimensions = []
+    seen_combinations = set()
+    for record in records:
+        dimensions_values = record.get('dimensions_values', {})
+        if isinstance(dimensions_values, dict):
+            for name, value in dimensions_values.items():
+                combination = (name, value)
+                if combination not in seen_combinations:
+                    seen_combinations.add(combination)
+                    unique_dimensions.append({
+                        "name": name,
+                        "value": value
+                    })
+    
+    click.echo(f"📁 Processed file(s):")
+    for file_path in processed_files:
+        click.echo(f"   - {file_path}")
+    
+    return unique_dimensions
+
+
+def load_reference_dimensions(reference_path: Path) -> List[Dict]:
+    """
+    # Load reference dimensions from JSON file
+    
+    ## Arguments
+    - `reference_path` (Path): Path to reference dimensions JSON file
+    
+    ## Returns
+    - `List[Dict]`: Reference dimensions data
+    """
+    if not reference_path.exists():
+        click.echo(f"⚠️  Reference file not found: {reference_path}")
+        click.echo("Using empty reference (all dimensions will have TODO entries)")
+        return []
+    
+    try:
+        with open(reference_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        if not isinstance(data, list):
+            raise ValueError(f"Reference file must contain an array, got: {type(data)}")
+        
+        click.echo(f"📚 Loaded reference: {reference_path} ({len(data)} entries)")
+        return data
+        
+    except json.JSONDecodeError as e:
+        raise json.JSONDecodeError(f"Invalid JSON in reference file {reference_path}: {e.msg}", e.doc, e.pos)
+
+
+def check_input_data_availability(input_path: Path) -> bool:
+    """
+    # Check if input data is available in the specified path
+    
+    ## Arguments
+    - `input_path` (Path): Path to check for input data
+    
+    ## Returns
+    - `bool`: True if input data is available, False otherwise
+    """
+    if input_path.is_file() and input_path.suffix.lower() == '.json':
+        return True
+    elif input_path.is_dir():
+        json_files = list(input_path.rglob('*.json'))
+        return len(json_files) > 0
+    
+    return False
+
+
+def create_reference_indexes(reference_dimensions: List[Dict]) -> Dict:
+    """
+    # Create lookup indexes for reference dimensions (direct + equivalence, case-insensitive)
+    
+    ## Arguments
+    - `reference_dimensions` (List[Dict]): Reference dimensions data
+    
+    ## Returns
+    - `Dict`: Dictionary with 'direct' and 'equivalence' indexes
+    """
+    direct_index = {}
+    equivalence_index = {}
+    
+    for entry in reference_dimensions:
+        name = entry.get("name")
+        value = entry.get("value")
+        
+        if not name or not value:
+            continue
+            
+        direct_index[(name, value.lower())] = entry
+        
+        equivalences = entry.get("equivalence", {})
+        for equiv_key, equiv_value in equivalences.items():
+            if isinstance(equiv_value, str):
+                equivalence_index[(name, equiv_value.lower())] = entry
+    
+    return {"direct": direct_index, "equivalence": equivalence_index}
+
+
+def find_dimension_in_reference(name: str, value: str, reference_index: Dict) -> Optional[Dict]:
+    """
+    # Find dimension in reference by exact match or equivalence lookup (case-insensitive)
+    
+    ## Arguments
+    - `name` (str): Dimension name to search
+    - `value` (str): Dimension value to search
+    - `reference_index` (Dict): Pre-built reference indexes
+    
+    ## Returns
+    - `Optional[Dict]`: Reference entry if found, None otherwise
+    """
+    if not reference_index:
+        return None
+        
+    direct_index, equivalence_index = reference_index["direct"], reference_index["equivalence"]
+    value_lower = value.lower()
+    
+    if (name, value_lower) in direct_index:
+        return direct_index[(name, value_lower)]
+    
+    if (name, value_lower) in equivalence_index:
+        return equivalence_index[(name, value_lower)]
+    
+    return None
+
+
+def load_records_from_file(file_path: Path) -> List[Dict]:
+    """
+    # Load input_data records from a single MATER input file
+    
+    ## Arguments
+    - `file_path` (Path): Path to MATER input JSON file
+    
+    ## Returns
+    - `List[Dict]`: List of input_data records
+    """
+    with open(file_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    
+    if not isinstance(data, dict) or "input_data" not in data:
+        raise ValueError(f"File must contain 'input_data' section: {file_path}")
+    
+    input_data = data["input_data"]
+    if not isinstance(input_data, list):
+        raise ValueError(f"'input_data' must be a list: {file_path}")
+    
+    return input_data
+
+
+def get_parent_value(entry: Dict) -> Optional[str]:
+    """
+    # Get parent value from reference entry using 'parents_values' field
+    
+    ## Arguments
+    - `entry` (Dict): Reference entry with parents_values
+    
+    ## Returns
+    - `Optional[str]`: Parent value if found, None otherwise
+    """
+    parents_values = entry.get("parents_values", {})
+    return parents_values.get("default")
