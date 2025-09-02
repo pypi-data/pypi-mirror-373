@@ -1,0 +1,89 @@
+prompt_type: General
+
+instruction:
+  format: str
+  value: '对文本进行规范化处理并生成标准格式的修正结果
+
+
+    将输入文本进行语法成分分析和错误模式匹配，严格按照技术要求执行多维度文本校验。处理流程包含句法树构建→语义角色标注→错误模式匹配三个阶段，最后输出包含字符级修改记录的标准化数据结构。
+
+
+    处理要求：
+
+    1. 断言式错误验证：每个修改需通过词性匹配、词语搭配验证、语义连贯性检测三重校验
+
+    2. 采用UTF-16字符编码体系进行精确位置标定
+
+    3. 对混淆词进行音形码双重对比（基于拼音首字母与笔画结构相似度）'
+
+output_format:
+  format: dict
+  value:
+    $defs:
+      Edits:
+        properties:
+          pos:
+            description: 起始字符位置
+            title: Pos
+            type: integer
+          spelling:
+            description: 形态校验结论
+            title: Spelling
+            type: string
+          src:
+            description: 原字符
+            title: Src
+            type: string
+          tgt:
+            description: 修正字符
+            title: Tgt
+            type: string
+        required:
+        - pos
+        - src
+        - tgt
+        - spelling
+        title: Edits
+        type: object
+    properties:
+      edits:
+        anyOf:
+        - items:
+            $ref: '#/$defs/Edits'
+          type: array
+        - type: 'null'
+        description: 无修改记录保持空数组状态
+        title: Edits
+      source:
+        default: null
+        description: 原始文本内容
+        title: Source
+        type: string
+      target:
+        default: null
+        description: 完整修正文本
+        title: Target
+        type: string
+    required:
+    - edits
+    title: Correction
+    type: object
+
+sample:
+  format: str
+  value: "输入文本：\"今天我门去参观了故宫搏物院\"\n修正输出：\n```json\n{\n    \"source\": \"今天我门去参观了故宫搏物院\"\
+    ,\n    \"edits\": [\n        {\n            \"pos\": 3,\n            \"src\":\
+    \ \"门\",\n            \"spelling\":\"形近混淆（缺亻旁）\",\n            \"tgt\": \"们\"\n\
+    \        },\n        {\n            \"pos\": 11,\n            \"src\": \"搏\",\n\
+    \            \"spelling\":\"部首错误（扌→十）\",\n            \"tgt\": \"博\"\n       \
+    \ },\n    ],\n    \"target\": \"今天我们去了参观故宫博物院\",\n}\n```"
+
+note:
+  format: str
+  value: '1. 上下文字段需去除标点后截取有效内容
+
+    2. 合并连续修改点时应进行位置偏移量补偿计算
+
+    3. 对唐诗宋词等古典文本自动启用文言文处理模式
+
+    4. 修正结果必须与原始输入严格字面一致（包括标点符号的保留）'
