@@ -1,0 +1,1 @@
+A Python module for creating French-suited standard playing card.
