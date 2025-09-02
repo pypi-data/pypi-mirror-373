@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  pull_request:
+    paths:
+      - "**.py"
+      - ".github/workflows/*.yml"
+      - ".pre-commit-config.yaml"
+      - ".relint.yml"
+      - ".yamllint"
+      - "pyproject.toml"
+      - "tox.ini"
+      - "mypy.ini"
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+env:
+  FORCE_COLOR: "1"
+  TOX_TESTENV_PASSENV: FORCE_COLOR
+
+jobs:
+  pre-commit:
+    name: Generic pre-commit checks
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+
+      - uses: astral-sh/setup-uv@v6
+
+      - run: uvx pre-commit run --all-files
+
+  tests:
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+      fail-fast: false
+
+    name: Tests (Python ${{ matrix.python }} on ${{ matrix.os }} ${{ matrix.tox_env }})
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - uses: astral-sh/setup-uv@v6
+
+      - if: ${{ matrix.tox_env }}
+        run: uvx --with="tox" --with="tox-gh-actions" --with="tox-uv" tox -e ${{ matrix.tox_env }}
+
+      - if: ${{ !matrix.tox_env }}
+        run: uvx --with="tox" --with="tox-gh-actions" --with="tox-uv" tox
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5.5.0
+        with:
+          files: coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # On windows redirecting output to a file could lead to an error due to the default IO encoding being CP-1252
+  tests-pipe-with-encoding:
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+      fail-fast: false
+    name: Test piping output to a file with CP1252 encoding on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - run: uv tool install ".[dev]"
+
+      - run: uv tool run schemathesis run /openapi.json --app=cp1252_app:app -c custom_check > out.txt || true
+        working-directory: ./test/apps
+        env:
+          SCHEMATHESIS_HOOKS: hooks
+          PYTHONIOENCODING: cp1252
+
+      - run: |
+          if grep -Fq "UnicodeEncodeError" "out.txt"; then
+            echo "Failed!"
+            exit 1
+          fi
+        working-directory: ./test/apps
+        shell: bash
+
+  spell-check:
+    name: Spell Check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: crate-ci/typos@master
