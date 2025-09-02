@@ -1,0 +1,7 @@
+from enum import Enum
+class BarStyle():
+    SEGMENTED_10 = "SEGMENTED_10"
+    SEGMENTED_12 = "SEGMENTED_12"
+    SEGMENTED_20 = "SEGMENTED_20"
+    SEGMENTED_6 = "SEGMENTED_6"
+    SOLID = "SOLID"
