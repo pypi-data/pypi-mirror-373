@@ -1,0 +1,8 @@
+from viggocore.common import subsystem
+from viggocore.subsystem.application import resource, manager, controller, \
+    router
+
+subsystem = subsystem.Subsystem(resource=resource.Application,
+                                manager=manager.Manager,
+                                controller=controller.Controller,
+                                router=router.Router)
