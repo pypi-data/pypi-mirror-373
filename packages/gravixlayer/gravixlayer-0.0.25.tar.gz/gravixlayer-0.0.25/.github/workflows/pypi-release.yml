@@ -1,0 +1,80 @@
+name: Publish and Release to PyPI
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:  # Allow manual triggering
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+
+      - name: Build package
+        run: python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_TOKEN }}
+
+  create-release:
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract custom release notes
+        id: release_notes
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "Looking for custom release notes for version $VERSION"
+          
+          # Look for custom release notes file
+          RELEASE_NOTES_FILE="release_notes_$VERSION.md"
+          
+          if [ -f "$RELEASE_NOTES_FILE" ]; then
+            echo "Found custom release notes file: $RELEASE_NOTES_FILE"
+            echo "Custom release notes content:"
+            cat "$RELEASE_NOTES_FILE"
+            # Set the content as output for the next step
+            {
+              echo 'RELEASE_NOTES<<EOF'
+              cat "$RELEASE_NOTES_FILE"
+              echo EOF
+            } >> $GITHUB_OUTPUT
+            echo "HAS_CUSTOM_NOTES=true" >> $GITHUB_OUTPUT
+          else
+            echo "No custom release notes found"
+            echo "HAS_CUSTOM_NOTES=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "Release ${{ github.ref_name }}"
+          body: ${{ steps.release_notes.outputs.RELEASE_NOTES }}
+          generate_release_notes: ${{ steps.release_notes.outputs.HAS_CUSTOM_NOTES == 'false' }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
