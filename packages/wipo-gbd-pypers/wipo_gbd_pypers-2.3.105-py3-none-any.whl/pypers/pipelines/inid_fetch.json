@@ -1,0 +1,109 @@
+
+{
+    "name" : "inid_fetch",
+    "label": "Fetch INID collection",
+
+    "dag": {
+        "nodes": {
+            "fetch"    : "fetch.download.FTP",
+            "sort"     : "fetch.sort.SortByMask",
+            "group"    : "fetch.common.GroupByName",
+            "extract"  : "fetch.extract.in_.Designs",
+            "pxml"     : "process.ProcessXML",
+            "pimg"     : "process.ProcessIMG",
+            "organize" : "fetch.common.Organize",
+            "merge"    : "fetch.common.Merge",
+            "clean"    : "fetch.common.Cleanup",
+            "notify"   : "fetch.common.Notify"
+        },
+
+        "edges": [
+            {
+                "from"     : "fetch",
+                "to"       : "sort",
+                "bindings" : { "sort.input_files" : "fetch.output_files" }
+            },
+            {
+                "from"     : "sort",
+                "to"       : "group",
+                "bindings" : { "group.input_files" : "sort.output_files" }
+            },
+            {
+                "from"     : "group",
+                "to"       : "extract",
+                "bindings" : { "extract.input_archive" : "group.output_files" }
+            },
+            {
+                "from"     : "extract",
+                "to"       : "pxml",
+                "bindings" : { "pxml.input_data"  : "extract.output_data",
+                               "pxml.input_dir"   : "extract.dest_dir",
+                               "pxml.archive_name": "extract.archive_name"}
+            },
+            {
+                "from"     : "extract",
+                "to"       : "pimg",
+                "bindings" : { "pimg.input_data"  : "extract.output_data",
+                               "pimg.input_dir"   : "extract.dest_dir",
+                               "pimg.archive_name": "extract.archive_name"}
+            },
+            {
+                "from"     : "extract",
+                "to"       : "organize",
+                "bindings" : { "organize.archive_name" : "extract.archive_name" }
+            },
+            {
+                "from"     : "pxml",
+                "to"       : "organize",
+                "bindings" : { "organize.data_files" : "pxml.output_xml" }
+            },
+            {
+                "from"     : "pimg",
+                "to"       : "organize",
+                "bindings" : { "organize.img_files" : "pimg.output_img" }
+            },
+            {
+                "from"     : "organize",
+                "to"       : "merge",
+                "bindings" : { "merge.appnums_per_archive" : "organize.appnums_per_archive" }
+            },
+            {
+                "from"     : "fetch",
+                "to"       : "clean",
+                "bindings" : { "clean.processed_list" : "fetch.output_files" }
+            },
+            {
+                "from"     : "extract",
+                "to"       : "clean",
+                "bindings" : { "clean.extracted_list" : "extract.output_data",
+                               "clean.archive_names" : "extract.archive_name" }
+            },
+            {
+                "from"     : "merge",
+                "to"       : "clean",
+                "bindings" : { "clean.processing_done" : "merge.merged_dir" }
+            },
+            {
+                "from"     : "clean",
+                "to"       : "notify",
+                "bindings" : { "notify.processed_list" : "clean.processed_list"}
+            }
+        ]
+    },
+    "config": {
+        "steps": {
+            "fetch": {
+                "file_regex": ".*\\d{4}-\\d{2}-\\d{2}-IN-DIFF.*\\.zip"
+            },
+            "sort": {
+                "mask_input"  : ".*(\\d{4})-(\\d{2})-(\\d{2})-.*-INDX-(\\d{4})",
+                "mask_output" : "\\1\\2\\3-\\4"
+            },
+            "pimg": {
+                "rename_file": 0,
+                "high_ext": "jpg",
+                "crop": 0
+            }
+	    }
+    }
+}

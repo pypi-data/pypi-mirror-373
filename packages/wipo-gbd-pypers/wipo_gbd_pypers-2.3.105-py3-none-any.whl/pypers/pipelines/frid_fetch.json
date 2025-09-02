@@ -1,0 +1,133 @@
+{
+    "name" : "frid_fetch",
+    "label": "Fetch FRID collection",
+
+    "dag": {
+        "nodes": {
+            "fetch"   : "fetch.download.FTP",
+            "fimg"    : "fetch.download.FTP",
+            "sort"    : "fetch.sort.SortByMask",
+            "group"   : "fetch.common.GroupByName",
+            "eimg"    : "fetch.extract.fr.Images",
+            "exml"    : "fetch.extract.fr.Designs",
+            "pxml"     : "process.ProcessXML",
+            "pimg"     : "process.ProcessIMG",
+            "organize" : "fetch.common.Organize",
+            "merge"    : "fetch.common.Merge",
+            "clean"    : "fetch.common.Cleanup",
+            "notify"   : "fetch.common.Notify"
+        },
+        "edges": [
+            {
+                "from"     : "fetch",
+                "to"       : "sort",
+                "bindings" : { "sort.input_files" : "fetch.output_files" }
+            },
+            {
+                "from"     : "fimg",
+                "to"       : "eimg",
+                "bindings" : { "eimg.input_archive" : "fimg.output_files" }
+            },
+            {
+                "from"     : "sort",
+                "to"       : "group",
+                "bindings" : { "group.input_files" : "sort.output_files" }
+            },
+            {
+                "from"     : "group",
+                "to"       : "exml",
+                "bindings" : { "exml.input_archive" : "group.output_files" }
+            },
+            {
+                "from"     : "eimg",
+                "to"       : "exml",
+                "bindings" : { "exml.img_dest_dir" : "eimg.dest_dir" }
+            },
+            {
+                "from"     : "exml",
+                "to"       : "pxml",
+                "bindings" : { "pxml.input_data"  : "exml.output_data",
+                               "pxml.input_dir"   : "exml.dest_dir",
+                               "pxml.archive_name": "exml.archive_name"}
+            },
+            {
+                "from"     : "exml",
+                "to"       : "pimg",
+                "bindings" : { "pimg.input_data"  : "exml.output_data",
+                               "pimg.input_dir"   : "exml.dest_dir",
+                               "pimg.archive_name": "exml.archive_name"}
+            },
+            {
+                "from"     : "exml",
+                "to"       : "organize",
+                "bindings" : { "organize.archive_name" : "exml.archive_name" }
+            },
+            {
+                "from"     : "pxml",
+                "to"       : "organize",
+                "bindings" : { "organize.data_files" : "pxml.output_xml" }
+            },
+            {
+                "from"     : "pimg",
+                "to"       : "organize",
+                "bindings" : { "organize.img_files" : "pimg.output_img" }
+            },
+            {
+                "from"     : "organize",
+                "to"       : "merge",
+                "bindings" : { "merge.appnums_per_archive" : "organize.appnums_per_archive" }
+            },
+            {
+                "from"     : "fetch",
+                "to"       : "clean",
+                "bindings" : { "clean.processed_list" : "fetch.output_files" }
+            },
+            {
+                "from"     : "exml",
+                "to"       : "clean",
+                "bindings" : { "clean.extracted_list" : "exml.output_data",
+                               "clean.archive_names"  : "exml.archive_name",
+                               "clean.del_list"       : "exml.del_list" }
+            },
+            {
+                "from"     : "fimg",
+                "to"       : "clean",
+                "bindings" : { "clean.processed_list" : "fimg.output_files" }
+            },
+            {
+                "from"     : "merge",
+                "to"       : "clean",
+                "bindings" : { "clean.processing_done" : "merge.merged_dir" }
+            },
+            {
+                "from"     : "clean",
+                "to"       : "notify",
+                "bindings" : { "notify.processed_list" : "clean.processed_list"}
+            }
+        ]
+    },
+    "config" : {
+	    "steps": {
+            "fetch": {
+                "file_regex": "FR_FR...ST86_(\\d{4})-(\\d{2}).zip"
+            },
+            "fimg": {
+                "file_regex": "dmf_image_\\d{4}.[tar|zip]"
+            },
+            "sort": {
+                "mask_input"  : "FR_FR...ST86_(\\d{4})-(\\d{2})",
+                "mask_output" : "\\1\\2"
+            },
+            "pxml": {
+                "rename_file": 0
+            },
+            "pimg": {
+                "rename_file": 0,
+                "high_ext": "jpg",
+                "compress": 1,
+                "crop": 0
+            }
+        }
+    }
+}
+
