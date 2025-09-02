@@ -1,0 +1,1 @@
+Run the script using bhp_pro follow the on screen instructions for the first time installing, after install  it will take you to the main menu, the script is 40 tools combined
