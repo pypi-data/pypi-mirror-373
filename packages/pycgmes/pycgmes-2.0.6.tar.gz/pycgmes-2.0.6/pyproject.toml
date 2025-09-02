@@ -1,0 +1,151 @@
+# SPDX-FileCopyrightText: 2023 Alliander
+#
+# SPDX-License-Identifier: Apache-2.0
+
+[tool.poetry]
+name = "pycgmes"
+version = "2.0.6"
+description = "Python dataclasses for CGMES 3.0.0"
+authors = ["pycgmes <pycgmes@alliander.com>"]
+readme = "README.md"
+repository = "https://github.com/alliander-opensource/pycgmes"
+license = "Apache 2.0"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Framework :: Pydantic",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+    "License :: OSI Approved :: Apache Software License",
+]
+# This will be added to pycgmes-shacl (see directory shacl).
+exclude = ["./pycgmes/shacl"]
+# Because the standard structure (packagename) is used, it is not needed to give
+# a package configuration entry.
+
+
+[tool.poetry.dependencies]
+python = "^3.11"
+poetry = ">=1.5.0" # key 'priority' in source
+pydantic = ">=2" # Used for dataclasses
+chevron = ">=0.14.0" # Used for writer
+
+[tool.poetry.group.dev.dependencies]
+coverage = { extras = ["toml"], version = "*" } # unit test coverage
+pyright = "*" # replaces mypy
+reuse = "*" # Check licence headers
+ruff = "*" # Linter/fixer. Replaces isort autoflake and pylint
+pytest = "*"
+SCons = "*" # Command runner
+
+[tool.poetry.group.notebook.dependencies]
+matplotlib = "*"
+networkx = "*"
+pandas = "*"
+pyshacl = "*"
+rdflib = "*"
+rdfpandas = "*"
+
+# yes, the double [[]] is required
+[[tool.poetry.source]]
+# Pypi is the default destination on publish.
+name = "pypi"
+priority = "primary" # Means it is the first source tried.
+
+[tool.black]
+line-length = 120
+
+[tool.coverage.run]
+# I would love to only cover Bay (this is the one used by the tests) and still load all the others
+# to check that there is no syntax error. But not sure how to do it cleanly, so not done.
+include = ["pycgmes/*"]
+omit = []
+
+[tool.coverage.report]
+fail_under = 85
+exclude_also = [ # Regexp of lines (or first line of block) which do not count for coverage.
+    # __main__ block is never tested.
+    "if __name__ == .__main__.:",
+]
+
+[tool.pyright]
+include = ["pycgmes"]
+exclude = ["tests"]
+# Simulate mypy - these vars will always have the value defined here during type checks
+defineConstant = { TYPE_CHECKING = true }
+# This is the default, but FYI.
+# Pyright in strict mode need to check everything, ie. all code branches. In Basic mode, it will be happy
+# enough with partially know types.
+# Specially for boto3, which has a massively overloaded boto3.client() method, all stubs are required to
+# have a happy strict mode, and they take about 5mintes to install (there are a lot of them!)
+# Long story short: basic is fine.
+typeCheckingMode = "basic"
+
+
+[tool.ruff]
+line-length = 120
+# Group violations by containing file.
+output-format = "grouped"
+
+[tool.ruff.lint]
+select = [
+    # See https://docs.astral.sh/ruff/rules/
+    "E", # Default, pyflake
+    "F", # Default, pyflake
+    "I", # isort
+    "W", # warning
+    "C90", # McCabe
+    "PL", # Pylint (a subset thereof)
+    "RUF", # RUF rules
+    "UP", # upgrade python rules
+    "B", # catch common bugs
+    "A", # catch builtin shadowing
+    "C4", # unnecessary things in/with comprehensions
+    "DTZ", # datetime good practice
+    "PIE", # unnecessary args/code for some well known code
+    "PT", # pytest linting
+    "SIM", # simplify code
+    "ARG", # unused arguments
+    "PTH", # use pathlib instead of os & co
+    "PD", # pandas things
+    "PERF", # performance things
+    "N", # pep8
+    "BLE", # catch too broad exception
+]
+ignore = [
+    "A003", # when an attributes shadows a builtin. Id in a dataclass is OK, ruff.
+            # revisit when https://github.com/astral-sh/ruff/issues/7806 is done
+    "N999", "N815", # Formatting due to CamelCase coming from CGMES.
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pycgmes", "tests"] # Useful if ruff does not run from the actual root of the project and to import from tests
+
+[tool.ruff.lint.pep8-naming]
+# extend= use the default ignored names and add those
+extend-ignore-names = [
+    "G", # makes sense in the context of graph
+    "mRID", "lineColor", # cim notation
+    "create_*", # some functions are named after CIM nomenclatures, not python
+    "N", # shortcut in stack
+]
+
+[tool.ruff.lint.per-file-ignores]
+"{tests}/*" = [
+    "PLR2004", # magic number are OK in tests
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+
+[tool.pytest.ini_options]
+addopts = ["--import-mode=importlib",] # modern way to import tests
+pythonpath = ["."] # Allows from pycgmes import in the tests, which is easier for the IDE.
+
+
+[build-system]
+# Used for building package from poetry. Present by default, not actually used.
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
