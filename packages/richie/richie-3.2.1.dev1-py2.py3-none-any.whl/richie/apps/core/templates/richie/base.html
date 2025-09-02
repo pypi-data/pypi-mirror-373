@@ -1,0 +1,440 @@
+{% load i18n cms_tags menu_tags rfc_5646_locale static sekizai_tags full_static_tags %}
+<!doctype html>
+<html lang="{{ LANGUAGE_CODE|rfc_5646_locale }}">
+    <head>
+        {% spaceless %}
+        <title>
+            {% block head_title %}{% endblock head_title %}
+            {% block site_title_separator %} - {% endblock site_title_separator %}
+            {% block site_title %}{{ SITE.name }}{% endblock site_title %}
+        </title>
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        {% block meta %}
+            {% block meta_index_rules %}
+                <meta name="robots" content="index,follow,all">
+            {% endblock meta_index_rules %}
+
+            {% block meta_favicons %}
+            <link rel="apple-touch-icon" sizes="120x120" href="{% static 'richie/favicon/apple-touch-icon.png' %}">
+            <link rel="icon" type="image/png" sizes="32x32" href="{% static 'richie/favicon/favicon-32x32.png' %}">
+            <link rel="icon" type="image/png" sizes="16x16" href="{% static 'richie/favicon/favicon-16x16.png' %}">
+            <link rel="manifest" href="{% static 'richie/favicon/site.webmanifest' %}">
+            <link rel="mask-icon" href="{% static 'richie/favicon/safari-pinned-tab.svg' %}" color="#f72c30">
+            <link rel="shortcut icon" href="{% static 'richie/favicon/favicon.ico' %}">
+            <meta name="msapplication-TileColor" content="#eceff1">
+            <meta name="msapplication-config" content="{% static 'richie/favicon/browserconfig.xml' %}">
+            <meta name="theme-color" content="#ffffff">
+            {% endblock meta_favicons %}
+
+            {% block meta_hreflang %}
+                {% language_chooser "richie/hreflang.html" %}
+            {% endblock meta_hreflang %}
+
+            {% block meta_html %}
+                {% page_attribute "meta_description" as meta_description %}
+                {% if meta_description and meta_description != "None" %}
+                    <meta name="description" content="{% block meta-description %}{{ meta_description }}{% endblock %}" />
+                {% else %}
+                    {% block meta_html_default %}{% endblock meta_html_default %}
+                {% endif %}
+            {% endblock meta_html %}
+
+            {% block meta_rdfa %}
+            <meta property="og:locale" content="{{ LANGUAGE_CODE }}" />
+            <meta property="og:site_name" content="{{ SITE.name }}" />
+            <meta property="og:determiner" content="" />
+            <meta property="og:title" content="{{ current_page.get_title|truncatechars:65 }}" />
+            <meta property="og:url" content="{{ SITE.web_url }}{{ current_page.get_absolute_url }}" />
+            {% block meta_rdfa_context %}
+            <meta property="og:type" content="website" />
+            <meta property="og:image" content="{% static_absolute "richie/images/logo.png" %}" />
+            {% endblock meta_rdfa_context %}
+            {% endblock meta_rdfa %}
+
+            {% block meta_public_path %}
+                {% if CDN_DOMAIN %}
+                    <meta name="public-path" value="{{ CDN_DOMAIN }}" />
+                {% endif %}
+            {% endblock meta_public_path%}
+
+        {% endblock meta %}
+        {% if MEDIA_URL_IS_EXTERNAL %}
+            {% if MEDIA_HOSTNAME_PRECONNECT %}
+                <link rel="preconnect" href="{{ MEDIA_URL }}" crossorigin>
+            {% endif %}
+            <link rel="dns-prefetch" href="{{ MEDIA_URL }}">
+        {% endif %}
+        {% endspaceless %}
+
+        {% block head_js %}{% endblock head_js %}
+        {% include "richie/web_analytics.html" with location='head' %}
+
+        {% render_block "css" %}
+
+        {% block css_links %}
+        <link rel="stylesheet" type="text/css" href="{% static 'richie/css/main.css' %}">
+        {% endblock css_links %}
+    </head>
+    <body{% block body_rdfa %}{% endblock body_rdfa %}>
+        {% include "richie/web_analytics_body_begin.html" %}
+        {% include "richie/icons.html" %}
+        {% cms_toolbar %}
+
+        {# Wrap all body content in an ID'd element to easily remove it from view (using aria-hidden) #}
+        {# when a modal is open. This is important for accessibility. #}
+
+        <div id="modal-exclude">
+
+        {# First link on a website should always be a skip to content #}
+        {# Access key directive allows users to use keyboard shortcuts #}
+        <a href="#site-content" class="offscreen-focusable skip-to-content" accesskey="c">{% trans "Skip to main content" %}</a>
+            
+            {# The above_header allows you to place content like notifications or navigation bars on the top of the page #}
+            {% block above_header %}{% endblock above_header %}
+        
+            {% block body_header %}
+
+            {# Wrap header content in a header tag to improve landmarks around the site #}
+
+            <div id="site-header">
+                <div class="topbar {% block topbar_classes %}{% endblock topbar_classes %}" id="main-menu">
+                    <div class="topbar__container">
+                        <header class="topbar__header">
+                            <div class="topbar__brand">
+                                {% block branding_topbar %}
+                                <a href="/" title="{% trans "Go to homepage" %}" rel="home" accesskey="h">
+                                    {% block branding_topbar_logo %}
+                                    <img src="{% static "richie/images/logo.png" %}" class="topbar__logo" alt="{{ SITE.name }}">
+                                    {% endblock branding_topbar_logo %}
+                                </a>
+                                {% endblock branding_topbar %}
+
+                                <button
+                                    class="topbar__hamburger"
+                                    data-target="main-menu"
+                                    aria-label="{% trans "Menu" %}"
+                                    aria-expanded="false"
+                                >&#8801;</button>
+                            </div>
+                            <div class="topbar__menu topbar__menu--aside">
+                                {% block topbar_searchbar %}
+                                <div class="topbar__search richie-react richie-react--root-search-suggest-field"
+                                    data-props='{"courseSearchPageUrl": "{% page_url 'courses' %}"}'></div>
+                                {% endblock topbar_searchbar %}
+                                <ul class="topbar__list topbar__list--controls">
+                                    {% block userlogin %}
+                                        {% if AUTHENTICATION %}
+                                            <li class="topbar__item topbar__item--login richie-react richie-react--user-login" data-props='{"profileUrls": {{ AUTHENTICATION.profile_urls }}}'></li>
+                                        {% endif %}
+                                    {% endblock userlogin %}
+                                    {% block topbar_contact %}
+                                    <li class="topbar__item topbar__item--cta">
+                                        <a href="#">{% trans "Contact us" %}</a>
+                                    </li>
+                                    {% endblock topbar_contact %}
+                                </ul>
+
+                                {% language_chooser "menu/language_menu.html" %}
+                            </div>
+                        </header>
+
+                        <nav class="topbar__menu">
+                            <ul class="topbar__list">
+                                {% show_menu 0 100 100 100 "menu/header_menu.html" %}
+                            </ul>
+                        </nav>
+                    </div>
+                </div>
+            </div>
+            {% endblock body_header %}
+            
+            {# Main landmark helps redirect users with disabilities directly to the content #}
+
+            <main id="site-content" class="body-content">
+                {% block subheader %}
+                <div class="subheader">
+                    {% block breadcrumbs %}
+                    {% include "menu/breadcrumbs.html" %}
+                    {% endblock breadcrumbs %}
+                    {% block subheader_content %}{% endblock subheader_content %}
+                </div>
+                {% endblock subheader %}
+
+                {% block content %}{% endblock content %}
+            </main>
+
+            {% block body_footer %}
+            <footer id="site-footer">
+                <div class="body-footer">
+                    <div class="body-footer__container">
+                        <div class="body-footer__brand">
+                            {% block body_footer_brand %}
+                                <a href="/">
+                                    <img src="{% static "richie/images/logo-alt.png" %}" alt="{{ SITE.name }}">
+                                </a>
+                            {% endblock body_footer_brand %}
+                        </div>
+                        <div class="body-footer__insert">
+                            {% block body_footer_title %}
+                                <p class="body-footer__title">{% trans "Life-changing learning!" %}</p>
+                            {% endblock body_footer_title %}
+                            {% language_chooser "menu/language_menu.html" %}
+                            <div class="body-footer__badges">
+                                {% include "social-networks/footer-badges.html" %}
+                            </div>
+                        </div>
+                        <div class="body-footer__menu">
+                            <p class="body-footer__subtitle">{% trans "Learn more" %}</p>
+                            <div class="body-footer__items">
+                                {% static_placeholder "footer" %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="body-mentions">
+                    <div class="body-mentions__container">
+                        {% block body_mentions %}
+                        <div class="body-mentions__poweredby">
+                            <a href="https://richie.education">
+                                <small>{% trans "Powered by" %}</small>
+                                <strong>Richie</strong>
+                            </a>
+                        </div>
+                        {% endblock body_mentions %}
+                    </div>
+                </div>
+            </footer>
+            {% endblock body_footer %}
+        </div>
+
+        {% render_block "js" %}
+        <script>
+            window.__richie_frontend_context__ = JSON.parse('{{ FRONTEND_CONTEXT|escapejs|safe }}');
+        </script>
+        <script src="{% static 'richie/js/build/index.js' %}"></script>
+        <script>
+            function initializeHamburgerMenu() {
+                // Get all topbar burger elements
+                const topbarBurgers = Array.prototype.slice.call(
+                    document.querySelectorAll(".topbar__hamburger"), 0
+                );
+
+                // Check if there are any navbar burgers
+                if (topbarBurgers.length > 0) {
+                    // Add a click event on each of them
+                    topbarBurgers.forEach(function(el) {
+                        el.addEventListener("click", function() {
+                            // Get the target from the "data-target" attribute
+                            const target = document.getElementById(el.dataset.target);
+                            // Toggle the "is-active" class on both the burger and container
+                            el.classList.toggle("is-active");
+                            el.setAttribute("aria-expanded", el.classList.contains("is-active"));
+                            target.classList.toggle("is-open");
+                        });
+                    });
+                }
+            }
+
+            function initializeAccordions() {
+                // Implement accordion item behaviors
+                const $accordionItems = Array.prototype.slice.call(
+                    document.querySelectorAll('[data-accordion-button]'), 0
+                );
+
+                if ($accordionItems.length > 0) {
+                    $accordionItems.forEach(function(itemObject, itemIndex) {
+                        itemObject.addEventListener('click', function () {
+                            var $closestLi = itemObject.closest('li');
+
+                            $closestLi.hasAttribute('data-accordion-active')
+                                ? $closestLi.removeAttribute('data-accordion-active')
+                                : $closestLi.setAttribute('data-accordion-active', true);
+
+                            itemObject.hasAttribute('data-accordion-open')
+                                ? itemObject.removeAttribute('data-accordion-open')
+                                : itemObject.setAttribute('data-accordion-open', true);
+                        });
+                    });
+                }
+            }
+
+            /**
+             * Initialize listeners for navigation dropdown menu
+             * Add listeners for accessibility features and full-width styling
+             * see header_menu.html for the HTML structure
+             */
+            function initializeDropdownMenu() {
+                const $dropdowns = document.querySelectorAll('.topbar__item.dropdown .topbar__sublist');
+                const $dropdownButtons = document.querySelectorAll('.topbar__item.dropdown button');
+                const $topbar = document.querySelector('.topbar > .topbar__container');
+
+                /**
+                 * Apply full-width class to dropdown menu if it's wider than the topbar
+                 * To compute the width, we need to take into account the position of the menu button
+                 * and the width of the topbar
+                 */
+                function _updateDropdownWidth($dropdown) {
+                    const $menu = $dropdown.querySelector('ul[role="menu"]');
+                    const $menuButton = $dropdown.previousElementSibling;
+                    const topbarWidth = $topbar.getBoundingClientRect().width;
+                    const topbarLeft = $topbar.getBoundingClientRect().left;
+                    const menuButtonWidth = $menuButton.getBoundingClientRect().width;
+                    const menuButtonLeft = $menuButton.getBoundingClientRect().left;
+                    $dropdown.style.display = 'block';
+                    $menu.style.flexWrap = 'nowrap';
+                    const menuWidth = $menu.getBoundingClientRect().width;
+                    $dropdown.style = '';
+                    $menu.style = '';
+                    const menuRelativeOffsetX = menuButtonLeft - topbarLeft;
+                    const rightRemainingSpace = topbarWidth - menuRelativeOffsetX;
+
+                    if (menuWidth > rightRemainingSpace) {
+                        if (menuWidth < (menuRelativeOffsetX + menuButtonWidth)) {
+                            $dropdown.classList.add('topbar__sublist--position-right');
+                            $dropdown.style.setProperty('--button-width', `${menuButtonWidth}px`);
+                            $dropdown.classList.remove('topbar__sublist--full-width');
+                        }
+                        else {
+                            $dropdown.classList.add('topbar__sublist--full-width');
+                            $dropdown.classList.remove('topbar__sublist--position-right');
+                        }
+                    }
+                    else {
+                        $dropdown.classList.remove('topbar__sublist--position-right');
+                        $dropdown.classList.remove('topbar__sublist--full-width');
+                    }
+                }
+
+                function _closeDropdown($button) {
+                    $button.setAttribute('aria-expanded', 'false');
+                    // Remove focus trap and event listeners when closing
+                    const $dropdown = document.getElementById($button.getAttribute('aria-controls'));
+                    const $menuItems = $dropdown.querySelectorAll('a');
+                    $menuItems.forEach(item => {
+                        item.removeEventListener('keydown', _handleMenuItemKeydown);
+                    });
+                }
+
+                function _openDropdown($button, focus = false) {
+                    $button.setAttribute('aria-expanded', 'true');
+                    // Set up focus trap and event listeners when opening
+                    const $dropdown = document.getElementById($button.getAttribute('aria-controls'));
+                    const $menuItems = $dropdown.querySelectorAll('a');
+                    $menuItems.forEach(item => {
+                        item.setAttribute('role', 'menuitem');
+                        item.addEventListener('keydown', _handleMenuItemKeydown);
+                    });
+                    // Focus first menu item
+                    if (focus && $menuItems.length) $menuItems[0].focus();
+                }
+
+                /**
+                 * Allow navigation through dropdown menu items using keyboard
+                 */
+                function _handleMenuItemKeydown(event) {
+                    const $currentItem = event.target;
+                    const $dropdown = $currentItem.closest('.topbar__sublist');
+                    const $menuItems = Array.from($dropdown.querySelectorAll('a'));
+                    const currentIndex = $menuItems.indexOf($currentItem);
+                    const $button = document.querySelector(`[aria-controls="${$dropdown.id}"]`);
+
+                    switch (event.key) {
+                        case 'ArrowDown':
+                            event.preventDefault();
+                            const nextIndex = (currentIndex + 1) % $menuItems.length;
+                            $menuItems[nextIndex].focus();
+                            break;
+                        case 'ArrowUp':
+                            event.preventDefault();
+                            const prevIndex = (currentIndex - 1 + $menuItems.length) % $menuItems.length;
+                            $menuItems[prevIndex].focus();
+                            break;
+                        case 'Escape':
+                            event.preventDefault();
+                            _closeDropdown($button);
+                            $button.focus();
+                            break;
+                    }
+                }
+
+                $dropdowns.forEach(($dropdown, index) => {
+                    const $button = $dropdownButtons[index];
+
+                    // Initial width calculation
+                    _updateDropdownWidth($dropdown);
+
+                    // Handle button clicks
+                    $button.addEventListener('click', () => {
+                        const isExpanded = $button.getAttribute('aria-expanded') === 'true';
+                        if (isExpanded) {
+                            _closeDropdown($button);
+                        } else {
+                            // Close any other open dropdowns
+                            $dropdownButtons.forEach(btn => {
+                                if (btn !== $button && btn.getAttribute('aria-expanded') === 'true') {
+                                    _closeDropdown(btn);
+                                }
+                            });
+                            _openDropdown($button);
+                        }
+                    });
+
+                    // Handle button keyboard interactions
+                    $button.addEventListener('keydown', (event) => {
+                        if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            _openDropdown($button, true);
+                        }
+                    });
+
+                    // Close when clicking outside
+                    document.addEventListener('click', (event) => {
+                        if (!$button.contains(event.target) && !$dropdown.contains(event.target)) {
+                            _closeDropdown($button);
+                        }
+                    });
+
+                    // Close when element within dropdown focus is lost
+                    $dropdown.addEventListener('focusout', (event) => {
+                        const $focusedElement = event.relatedTarget;
+                        if (!$dropdown.contains($focusedElement)) {
+                            _closeDropdown($button);
+                        }
+                    });
+                });
+
+                // Handle window resize
+                let resizeTimeout;
+                const RESIZE_DEBOUNCE_DELAY = 250;
+                window.addEventListener('resize', () => {
+                    clearTimeout(resizeTimeout);
+                    resizeTimeout = setTimeout(() => {
+                        $dropdowns.forEach($dropdown => {
+                            _updateDropdownWidth($dropdown);
+                        });
+                    }, RESIZE_DEBOUNCE_DELAY);
+                });
+            }
+
+            document.addEventListener("DOMContentLoaded", function() {
+                initializeAccordions();
+                initializeHamburgerMenu();
+                initializeDropdownMenu();
+            });
+        </script>
+        {% if request.toolbar and request.toolbar.edit_mode_active %}
+        {# When edit mode is active, we have to refresh js scripts after saving modifications #}
+        {# https://docs.django-cms.org/en/latest/topics/frontend-integration.html #}
+        <script>
+            CMS.$(window).on('cms-content-refresh', function () {
+                __RICHIE__.render();
+                initializeAccordions();
+                initializeHamburgerMenu();
+                initializeDropdownMenu();
+            });
+        </script>
+        {% endif %}
+        {% block body_js %}{% endblock body_js %}
+        {% include "richie/web_analytics.html" with location='footer' %}
+    </body>
+</html>
