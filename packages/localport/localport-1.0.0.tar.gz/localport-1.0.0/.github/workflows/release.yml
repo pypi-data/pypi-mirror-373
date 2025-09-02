@@ -1,0 +1,292 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.tag_info.outputs.tag_name }}
+      is_prerelease: ${{ steps.tag_info.outputs.is_prerelease }}
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Get tag info
+      id: tag_info
+      run: |
+        TAG_NAME=${GITHUB_REF#refs/tags/}
+        echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+        if echo "$TAG_NAME" | grep -E '(alpha|beta|rc)' > /dev/null; then
+          echo "is_prerelease=true" >> $GITHUB_OUTPUT
+        else
+          echo "is_prerelease=false" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Get the previous tag
+        PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+        
+        if [ -z "$PREV_TAG" ]; then
+          # First release, get all commits
+          CHANGELOG=$(git log --pretty=format:"- %s (%h)" --reverse)
+        else
+          # Get commits since previous tag
+          CHANGELOG=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" --reverse)
+        fi
+        
+        # Create release notes
+        cat > release_notes.md << EOF
+        ## What's Changed
+        
+        $CHANGELOG
+        
+        ## Installation
+        
+        ### Using pipx (Recommended)
+        \`\`\`bash
+        pipx install git+https://github.com/dawsonlp/localport.git@${{ steps.tag_info.outputs.tag_name }}
+        \`\`\`
+        
+        ### Using UV
+        \`\`\`bash
+        uv tool install git+https://github.com/dawsonlp/localport.git@${{ steps.tag_info.outputs.tag_name }}
+        \`\`\`
+        
+        ### Development Installation
+        \`\`\`bash
+        git clone https://github.com/dawsonlp/localport.git
+        cd localport
+        git checkout ${{ steps.tag_info.outputs.tag_name }}
+        uv sync --dev
+        source .venv/bin/activate
+        uv pip install -e .
+        \`\`\`
+        
+        ## Verification
+        \`\`\`bash
+        localport --version
+        localport --help
+        \`\`\`
+        EOF
+        
+        echo "changelog_file=release_notes.md" >> $GITHUB_OUTPUT
+    
+    - name: Create Release
+      id: create_release
+      run: |
+        if [ "${{ steps.tag_info.outputs.is_prerelease }}" = "true" ]; then
+          gh release create ${{ steps.tag_info.outputs.tag_name }} \
+            --title "LocalPort ${{ steps.tag_info.outputs.tag_name }}" \
+            --notes-file ${{ steps.changelog.outputs.changelog_file }} \
+            --prerelease
+        else
+          gh release create ${{ steps.tag_info.outputs.tag_name }} \
+            --title "LocalPort ${{ steps.tag_info.outputs.tag_name }}" \
+            --notes-file ${{ steps.changelog.outputs.changelog_file }}
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-and-upload:
+    needs: create-release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset_name: localport-linux-x86_64
+          - os: macos-latest
+            asset_name: localport-macos-x86_64
+          - os: windows-latest
+            asset_name: localport-windows-x86_64
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Install UV
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+    
+    - name: Set up Python
+      run: uv python install 3.13
+    
+    - name: Install dependencies
+      run: uv sync --dev
+    
+    - name: Build package
+      run: uv build
+    
+    - name: Create distribution archive
+      run: |
+        mkdir -p release-assets
+        
+        # Copy built packages
+        cp dist/* release-assets/
+        
+        # Create platform-specific archive
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          cd release-assets
+          7z a ../localport-${{ github.ref_name }}-${{ matrix.asset_name }}.zip *
+        else
+          tar -czf localport-${{ github.ref_name }}-${{ matrix.asset_name }}.tar.gz -C release-assets .
+        fi
+      shell: bash
+    
+    - name: Upload Release Asset (tar.gz)
+      if: matrix.os != 'windows-latest'
+      run: |
+        gh release upload ${{ needs.create-release.outputs.tag_name }} \
+          ./localport-${{ github.ref_name }}-${{ matrix.asset_name }}.tar.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Upload Release Asset (zip)
+      if: matrix.os == 'windows-latest'
+      run: |
+        gh release upload ${{ needs.create-release.outputs.tag_name }} \
+          ./localport-${{ github.ref_name }}-${{ matrix.asset_name }}.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-test-pypi:
+    needs: create-release
+    runs-on: ubuntu-latest
+    if: "contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc')"
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Install UV
+      uses: astral-sh/setup-uv@v3
+    
+    - name: Set up Python
+      run: uv python install 3.13
+    
+    - name: Install dependencies
+      run: uv sync --dev
+    
+    - name: Build package
+      run: uv build
+    
+    - name: Publish to Test PyPI
+      run: uv publish --publish-url https://test.pypi.org/legacy/
+      env:
+        UV_PUBLISH_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }}
+    
+    - name: Update release with Test PyPI info
+      run: |
+        TAG_NAME=${GITHUB_REF#refs/tags/}
+        gh release edit $TAG_NAME --notes-file - << EOF
+        $(gh release view $TAG_NAME --json body -q .body)
+        
+        ## Test PyPI Release
+        This pre-release is available on Test PyPI for testing:
+        \`\`\`bash
+        pipx install --index-url https://test.pypi.org/simple/ --pip-args="--extra-index-url https://pypi.org/simple/" localport==$TAG_NAME
+        \`\`\`
+        
+        **Note:** This is a pre-release version for testing purposes only.
+        EOF
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-pypi:
+    needs: create-release
+    runs-on: ubuntu-latest
+    if: "!contains(github.ref, 'alpha') && !contains(github.ref, 'beta') && !contains(github.ref, 'rc')"
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Install UV
+      uses: astral-sh/setup-uv@v3
+    
+    - name: Set up Python
+      run: uv python install 3.13
+    
+    - name: Install dependencies
+      run: uv sync --dev
+    
+    - name: Build package
+      run: uv build
+    
+    - name: Publish to PyPI
+      run: uv publish
+      env:
+        UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+    
+    - name: Update release with PyPI info
+      run: |
+        TAG_NAME=${GITHUB_REF#refs/tags/}
+        gh release edit $TAG_NAME --notes-file - << EOF
+        $(gh release view $TAG_NAME --json body -q .body)
+        
+        ## PyPI Release
+        This release is also available on PyPI:
+        \`\`\`bash
+        pipx install localport==$TAG_NAME
+        \`\`\`
+        EOF
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test-release:
+    needs: [create-release, build-and-upload]
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Install UV
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+    
+    - name: Set up Python 3.13
+      run: uv python install 3.13
+    
+    - name: Test installation from release
+      run: |
+        # Test installation from GitHub with Python 3.13
+        pipx install --python $(uv python find 3.13) git+https://github.com/dawsonlp/localport.git@${{ github.ref_name }}
+        
+        # Verify installation
+        localport --version
+        localport --help
+        
+        # Test basic functionality
+        localport config validate --help
+        
+        # Clean up
+        pipx uninstall localport
+        
+        echo "✅ Release installation test passed!"
+
+  notify-success:
+    needs: [create-release, build-and-upload, test-release]
+    runs-on: ubuntu-latest
+    if: success()
+    
+    steps:
+    - name: Notify success
+      run: |
+        echo "🎉 Release ${{ github.ref_name }} created successfully!"
+        echo "📦 Assets uploaded and tested"
+        echo "🔗 Release URL: https://github.com/dawsonlp/localport/releases/tag/${{ github.ref_name }}"
