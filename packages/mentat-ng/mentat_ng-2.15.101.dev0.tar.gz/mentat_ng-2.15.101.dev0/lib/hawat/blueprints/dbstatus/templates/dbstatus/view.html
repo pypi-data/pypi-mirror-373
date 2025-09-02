@@ -1,0 +1,449 @@
+{%- extends "_layout.html" %}
+
+{%- block content %}
+    <div>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('home.index') }}">{{ _("Home") }}</a>
+            </li>
+            <li class="breadcrumb-item active">
+                {{ _("Database status") }}
+            </li>
+        </ol>
+    </div>
+
+    <!-- Tab navigation - BEGIN --------------------------------------->
+    <ul class="nav nav-tabs" role="tablist">
+        <li role="presentation" class="nav-item">
+            <a href="#tab-dbstatus-events"
+               aria-controls="tab-dbstatus-events"
+               role="tab"
+               data-bs-toggle="tab"
+               class="nav-link active">
+                <strong>{{ _("Event database") }}</strong>
+            </a>
+        </li>
+        <li role="presentation" class="nav-item">
+            <a href="#tab-dbstatus-postgresql"
+               aria-controls="tab-dbstatus-postgresql"
+               role="tab"
+               data-bs-toggle="tab"
+               class="nav-link">
+                <strong>{{ _("PostgreSQL") }}</strong>
+            </a>
+        </li>
+    </ul>
+    <!-- Tab navigation - END ----------------------------------------->
+
+    <!-- Tab panels - BEGIN ------------------------------------------->
+    <div class="tab-content">
+        <!-- Tab panel - BEGIN ---------------------------------------->
+        <div role="tabpanel"
+             class="tab-pane fade in show active"
+             id="tab-dbstatus-events">
+            <h3>
+                {{ _("Event database") }}
+            </h3>
+            <br>
+
+            <!-- Inner tab navigation - BEGIN ------------------------->
+            <ul class="nav nav-tabs nav-tabs-inner" role="tablist">
+                <li role="presentation" class="nav-item">
+                    <a href="#tab-dbstatus-events-queries"
+                       aria-controls="tab-dbstatus-events-queries"
+                       role="tab"
+                       data-bs-toggle="tab"
+                       class="nav-link active">
+                        <strong>{{ _("User queries") }}</strong>
+                    </a>
+                </li>
+                <li role="presentation" class="nav-item">
+                    <a href="#tab-dbstatus-events-tables"
+                       aria-controls="tab-dbstatus-events-tables"
+                       role="tab"
+                       data-bs-toggle="tab"
+                       class="nav-link">
+                        <strong>{{ _("Tables") }}</strong>
+                    </a>
+                </li>
+                {{ macros_chart.render_dashboard_nav(chart_sections,
+                                                     'dbstatus-events',
+                                                     active_first = False,
+                                                     include_tag = False,
+                                                     bold = True)
+                }}
+            </ul>
+            <!-- Inner tab navigation - END --------------------------->
+
+            <!-- Inner tab panels - BEGIN ----------------------------->
+            <div class="tab-content">
+                <!-- Inner tab panel - BEGIN -------------------------->
+                <div role="tabpanel"
+                     class="tab-pane fade in show active"
+                     id="tab-dbstatus-events-queries">
+                    <br>
+                    {%- if query_status_events %}
+                        <div class="table-responsive">
+                            <table class="table table-sm table-striped">
+                                <tr>
+                                    <th>
+                                        {{ _("PID") }}
+                                    </th>
+                                    <th>
+                                        {{ _("Name") }}
+                                    </th>
+                                    <th>
+                                        {{ _("Owner") }}
+                                    </th>
+                                    <th>
+                                        {{ _("State") }}
+                                    </th>
+                                    <th>
+                                        {{ _("Start time") }}
+                                    </th>
+                                    <th>
+                                        {{ _("Duration") }}
+                                    </th>
+                                    <th>
+                                        {{ _("Query") }}
+                                    </th>
+                                    <th data-bs-toggle="tooltip" title="{{ _('Contextual item actions') }}">
+                                        {{ get_icon("actions") }}
+                                    </th>
+                                </tr>
+                                {%- for query_data in query_status_events %}
+                                    <tr>
+                                        <td>
+                                            {{ query_data.pid }}
+                                        </td>
+                                        {% if 'query_name' in query_data and query_data.query_name %}
+                                            <td>
+                                                {{ query_data.query_name }}
+                                            </td>
+                                            <td>
+                                                {{ macros_site.render_endpoint_link('users.show',
+                                                                                    params = {'item_id': query_data.user_id,
+                                                                                              'item': query_data.user},
+                                                                                    label = query_data.user.fullname,
+                                                                                    with_icon = True)
+                                                }}
+                                            </td>
+                                        {% else %}
+                                            <td>
+                                                ---
+                                            </td>
+                                            <td>
+                                                ---
+                                            </td>
+                                        {% endif %}
+                                        <td>
+                                            {{ query_data.state }}
+                                        </td>
+                                        {% if 'query_start' in query_data and query_data.query_start %}
+                                            <td>
+                                                {{ babel_format_datetime(query_data.query_start) }}
+                                            </td>
+                                            <td>
+                                                {{ babel_format_timedelta(get_datetime_utc(aware = True) - query_data.query_start) }}
+                                            </td>
+                                        {% else %}
+                                            <td>
+                                                ---
+                                            </td>
+                                            <td>
+                                                ---
+                                            </td>
+                                        {% endif %}
+                                        {% if 'query' in query_data and query_data.query %}
+                                            <td>
+                                                <div class="query-scroll">
+                                                    {{ query_data.query }}
+                                                </div>
+                                            </td>
+                                        {% else %}
+                                            <td>
+                                                ---
+                                            </td>
+                                        {% endif %}
+                                        {% if 'query_name' in query_data and query_data.query_name %}
+                                            <td>
+                                                {{ macros_page.render_menu_context_actions(
+                                                    query_data,
+                                                    action_menu = context_action_menu_query)
+                                                }}
+                                            </td>
+                                        {% else %}
+                                            <td>
+                                                ---
+                                            </td>
+                                        {% endif %}
+                                    </tr>
+                                {%- endfor %}
+                            </table>
+                        </div>
+                    {%- else %}
+                        {%- call macros_site.render_alert('info', False) %}
+                            {{ _("There are currently no running user queries.") }}
+                        {%- endcall %}
+                    {%- endif %}
+                </div>
+                <!-- /.tabpanel #tab-dbstatus-events-queries -->
+
+                <!-- Inner tab panel - BEGIN -------------------------->
+                <div role="tabpanel" class="tab-pane fade" id="tab-dbstatus-events-tables">
+                    <br>
+                    <a name="tab-dbstatus-events-tables-top">
+                        {#- Reference for this hack: https://stackoverflow.com/a/11842865 -#}
+                        <p style="padding-top: 70px; margin-top: -70px;">
+                            <strong>
+                                {{ _("List of available tables:") }}
+                            </strong>
+                        </p>
+                    </a>
+                    <div class="btn-group btn-group-xs btn-group-sm" role="group">
+                        {%- for table_name, table_data in database_status_events['tables'] | dictsort %}
+                            <a role="button"
+                               class="btn btn-secondary"
+                               href="#tab-dbstatus-events-tables-{{ table_name }}">
+                                {{ table_name }}
+                            </a>
+                        {%- endfor %}
+                    </div>
+                    <hr>
+                    {%- for table_name, table_data in database_status_events['tables'] | dictsort %}
+                        <a name="tab-dbstatus-events-tables-{{ table_name }}">
+                            {#- Reference for this hack: https://stackoverflow.com/a/11842865 -#}
+                            <h4 style="padding-top: 70px; margin-top: -70px;">
+                                {{ _('Table <strong>%(table_name)s</strong>', table_name = table_name) }}
+                                <a href="#tab-dbstatus-events-tables-top">
+                                    {{ get_icon("backtotop") }}
+                                </a>
+                            </h4>
+                        </a>
+                        <table class="table table-sm table-striped">
+                            <tr>
+                                <th>
+                                    {{ _("Estimated number of records:") }}
+                                </th>
+                                <td>
+                                    {%- if table_data['row_estimate'] %}
+                                        {{ babel_format_decimal(table_data['row_estimate']) }}
+                                    {%- else %}
+                                        {{ table_data['row_estimate'] }}
+                                    {%- endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>
+                                    {{ _("Table size:") }}
+                                </th>
+                                <td>
+                                    {{ table_data['table_bytes_str'] }}
+                                    ({{ babel_format_percent(table_data['table_bytes'] / table_data['total_bytes']) }})
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>
+                                    {{ _("Index size:") }}
+                                </th>
+                                <td>
+                                    {{ table_data['index_bytes_str'] }}
+                                    ({{ babel_format_percent(table_data['index_bytes'] / table_data['total_bytes']) }})
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>
+                                    {{ _("Tablespace size:") }}
+                                </th>
+                                <td>
+                                    {{ table_data['toast_bytes_str'] }}
+                                    ({{ babel_format_percent(table_data['toast_bytes'] / table_data['total_bytes']) }})
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>
+                                    {{ _("Total size:") }}
+                                </th>
+                                <td>
+                                    {{ table_data['total_bytes_str'] }}
+                                    ({{ babel_format_percent(table_data['total_bytes'] / table_data['total_bytes']) }})
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>
+                                    {{ _("Oldest record:") }}
+                                </th>
+                                <td>
+                                    {%- if 'dt_oldest' in table_data and table_data['dt_oldest'] %}
+                                        {{ babel_format_datetime(table_data['dt_oldest']) }}
+                                        ({{ _('%(delta)s ago', delta = babel_format_timedelta(current_datetime_utc - table_data['dt_oldest'])) }})
+                                    {%- else %}
+                                        {{ _("unknown") }}
+                                    {%- endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>
+                                    {{ _("Newest record:") }}
+                                </th>
+                                <td>
+                                    {%- if 'dt_newest' in table_data and table_data['dt_newest'] %}
+                                        {{ babel_format_datetime(table_data['dt_newest']) }}
+                                        ({{ _('%(delta)s ago', delta = babel_format_timedelta(current_datetime_utc - table_data['dt_newest'])) }})
+                                    {%- else %}
+                                        {{ _("unknown") }}
+                                    {%- endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>
+                                    {{ _("Record timespan:") }}
+                                </th>
+                                <td>
+                                    {%- if ('dt_oldest' in table_data and table_data['dt_oldest']
+                                                and 'dt_newest' in table_data and table_data['dt_newest']) %}
+                                        {{ babel_format_timedelta(table_data['dt_newest'] - table_data['dt_oldest']) }}
+                                    {%- else %}
+                                        {{ _("unknown") }}
+                                    {%- endif %}
+                                </td>
+                            </tr>
+                        </table>
+                        <div class="progress"
+                             data-bs-toggle="tooltip"
+                             title="{{ _('Table size visual representation.') }}">
+                            <div class="progress-bar"
+                                 style="width: {{ '{:3.0f}'.format(table_data['table_bytes']/table_data['total_bytes']*100) }}%">
+                                <span>{{ table_data['table_bytes_str'] }}</span>
+                            </div>
+                            <div class="progress-bar bg-info"
+                                 style="width: {{ '{:3.0f}'.format(table_data['index_bytes']/table_data['total_bytes']*100) }}%">
+                                <span>{{ table_data['index_bytes_str'] }}</span>
+                            </div>
+                        </div>
+                        {% if not loop.last %}
+                            <hr>
+                        {% endif %}
+                    {%- endfor %}
+                </div>
+                <!-- /.tabpanel #tab-dbstatus-events-tables -->
+                {{ macros_chart.render_dashboard_panels(chart_sections,
+                                                        'dbstatus-events',
+                                                        active_first = False)
+                }}
+            </div>
+            <!-- Inner tab panels - END ------------------------------->
+        </div>
+        <!-- /.tabpanel -->
+
+        <!-- Tab panel - BEGIN ---------------------------------------->
+        <div role="tabpanel" class="tab-pane fade" id="tab-dbstatus-postgresql">
+            <h3>
+                {{ _("Configuration") }}
+            </h3>
+            <br>
+
+            <table class="table table-sm table-striped">
+                <tr>
+                    <th>
+                        {{ _("Name") }}
+                    </th>
+                    <th>
+                        {{ _("Type") }}
+                    </th>
+                    <th>
+                        {{ _("Value [unit]") }}
+                    </th>
+                    <th>
+                        {{ _("Boot / Reset") }}
+                    </th>
+                    <th>
+                        {{ _("Description") }}
+                    </th>
+                </tr>
+                <tr>
+                    <th>
+                        {{ _("version:") }}
+                    </th>
+                    <td>
+                        string
+                    </td>
+                    <td>
+                        {{ sw_versions['postgresql'] }}
+                    </td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                {#- Reference: https://www.postgresql.org/docs/current/view-pg-settings.html -#}
+                {%- for setting in ['autovacuum_vacuum_cost_limit', 'autovacuum_vacuum_delay', 'bytea_output',
+                                    'checkpoint_timeout', 'default_statistics_target', 'effective_cache_size',
+                                    'effective_io_concurrency', 'maintenance_work_mem', 'min_parallel_index_scan_size',
+                                    'max_connections', 'max_parallel_workers', 'max_parallel_workers_per_gather',
+                                    'max_wal_size', 'parallel_tuple_cost', 'parallel_setup_cost', 'random_page_cost',
+                                    'seq_page_cost', 'shared_buffers', 'wal_buffers', 'work_mem'] | sort %}
+                    {%- if setting in database_status_events['pg_settings'] %}
+                        <tr>
+                            <th>
+                                {{ setting }}:
+                            </th>
+                            <td>
+                                {{ database_status_events['pg_settings'][setting].vartype }}
+                                {%- if database_status_events['pg_settings'][setting].vartype in ['integer', 'real'] %}
+                                    <span data-bs-toggle="tooltip"
+                                          title="{{ database_status_events['pg_settings'][setting].min_val }} - {{ database_status_events['pg_settings'][setting].max_val }}">{{ get_icon("help") }}</span>
+                                {%- elif database_status_events['pg_settings'][setting].vartype in ['enum'] %}
+                                    <span data-bs-toggle="tooltip"
+                                          title="['{{ database_status_events['pg_settings'][setting].enumvals | join("', '") }}']">{{ get_icon("help") }}</span>
+                                {%- endif %}
+                            </td>
+                            <td>
+                                {% if database_status_events['pg_settings'][setting].setting != database_status_events['pg_settings'][setting].boot_val %}
+                                    <em class="text-danger">
+                                {%- endif %}
+                                {%- if database_status_events['pg_settings'][setting].vartype in ['integer', 'real'] %}
+                                    {{ babel_format_decimal(database_status_events['pg_settings'][setting].setting) }}
+                                {%- else %}
+                                    {{ database_status_events['pg_settings'][setting].setting }}
+                                {%- endif %}
+                                {% if database_status_events['pg_settings'][setting].setting != database_status_events['pg_settings'][setting].boot_val %}
+                                    </em>
+                                {%- endif %}
+                                [{{ database_status_events['pg_settings'][setting].unit | default("none") }}]
+                                <span data-bs-toggle="tooltip"
+                                      title="{{ _('source:') }} {{ database_status_events['pg_settings'][setting].source }}">
+                                    {{ get_icon("help") }}
+                                </span>
+                            </td>
+                            <td>
+                                {%- if database_status_events['pg_settings'][setting].vartype in ['integer', 'real'] %}
+                                    {{ babel_format_decimal(database_status_events['pg_settings'][setting].boot_val) }}
+                                    /
+                                    {{ babel_format_decimal(database_status_events['pg_settings'][setting].reset_val) }}
+                                {%- else %}
+                                    {{ database_status_events['pg_settings'][setting].boot_val }}
+                                    /
+                                    {{ database_status_events['pg_settings'][setting].reset_val }}
+                                {%- endif %}
+                            </td>
+                            <td>
+                                {{ database_status_events['pg_settings'][setting].category }}
+                                <span data-bs-toggle="tooltip"
+                                      title="{{ database_status_events['pg_settings'][setting].short_desc }}{% if database_status_events['pg_settings'][setting].extra_desc %} {{ database_status_events['pg_settings'][setting].extra_desc }}{% endif %}">{{ get_icon("help") }}</span>
+                            </td>
+                        </tr>
+                    {%- endif %}
+                {%- endfor %}
+            </table>
+        </div>
+        <!-- /.tabpanel -->
+    </div>
+    <!-- Tab panels - END --------------------------------------------->
+
+    {%- if permission_can('developer') %}
+        <hr>
+        {{ macros_site.render_raw_var('query_status_events', query_status_events) }}
+        {{ macros_site.render_raw_var('database_status_events', database_status_events) }}
+        {{ macros_site.render_raw_var('database_statistics_events', database_statistics_events) }}
+        {{ macros_site.render_raw_var('sw_versions', sw_versions) }}
+    {%- endif %}
+{%- endblock content %}

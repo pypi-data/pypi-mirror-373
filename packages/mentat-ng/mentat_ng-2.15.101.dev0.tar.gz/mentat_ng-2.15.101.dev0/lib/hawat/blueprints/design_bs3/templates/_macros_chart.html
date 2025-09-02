@@ -1,0 +1,610 @@
+{%- import '_macros_site.html' as macros_site with context -%}
+
+{#- ############################################################################
+
+    MACROS FOR RENDERING CHARTS AND TABLES.
+
+    These macros encapsulate common functionality when generating various charts
+    and tables within the Mentat GUI. There are macros responsible for rendering
+    HTML, all with code reusability in mind.
+
+############################################################################ -#}
+
+
+{%- macro _get_table_agg_footer(data_frame, format_dict={}) %}
+    <tfoot>
+        {%- for table_aggregation in hawat_table_aggregations %}
+            <tr>
+                <td>
+                    <span data-bs-toggle="tooltip" title="{{ table_aggregation.tooltip }}">{{ get_icon(table_aggregation.icon_name) }} {{ table_aggregation.name }}</span>
+                </td>
+                {%- for col, val in data_frame.agg(table_aggregation.func).items() %}
+                    <td>
+                        {{ table_aggregation.format_func(val, format=format_dict.get(col)) }}
+                    </td>
+                {%- endfor %}
+            </tr>
+        {%- endfor %}
+    </tfoot>
+{%- endmacro %}
+
+{#-
+
+    Render HTML table based on the timeline chart dataframe.
+
+    ChartData chart_data: Chart data containing dataframe and table configuration.
+    bool add_agg_footer: Add aggregation footer to the table.
+    bool add_color: Add color to the table cells. (If both chart and table are obtained from the
+        `get_timeline_chart_and_table_data_frame()` function, the colors for each set will match.)
+
+-#}
+{%- macro get_table_timeline(chart_data, add_agg_footer=True, add_color=True) %}
+    {%- set data_frame = chart_data.df %}{# get pandas DataFrame #}
+    <table class="table table-bordered table-striped table-sm table-dataset table-dataset-timeline">
+        <thead>
+            <tr>
+                <th>
+                    {{ _("Date") }}
+                </th>
+                {%- for column in data_frame %}
+                    {%- if column == '__SUM__' %}
+                        <th>
+                            {{ _("Sum") }}
+                        </th>
+                    {%- else %}
+                        <th {% if add_color %}style="background-color: {{ hawat_color_list[loop.index0 % (hawat_color_list | length)] }};"{% endif %}>
+                            {{ column }}
+                        </th>
+                    {%- endif %}
+                {%- endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {%- for bucket, row in data_frame.iterrows() %}
+                <tr>
+                    <td>
+                        {{ bucket }}
+                    </td>
+                    {%- for val in row %}
+                        <td>
+                            {{ babel_format_decimal(val) }}
+                        </td>
+                    {%- endfor %}
+                </tr>
+            {%- endfor %}
+        </tbody>
+        {%- if add_agg_footer %}
+            {{ _get_table_agg_footer(data_frame) }}
+        {%- endif %}
+    </table>
+{%- endmacro %}
+
+{#-
+
+    Render HTML table based on the secondary chart dataframe.
+
+    ChartData chart_data: Chart data containing dataframe and table configuration.
+    bool add_agg_footer: Add aggregation footer to the table.
+    bool add_color: Add color to the table cells. (If both chart and table are obtained from the
+        `get_timeline_chart_and_table_data_frame()` function, the colors for each set will match.)
+    string csag_group: Name of the CSAG group to render the Context search for.
+-#}
+{%- macro get_table_secondary(chart_data, add_agg_footer=True, add_color=True, csag_group=None) %}
+    {%- set data_frame = chart_data.df %}{# get pandas DataFrame #}
+    <table class="table table-bordered table-striped table-sm table-dataset">
+        <thead>
+            <tr>
+                <th>
+                    {{ chart_data.config.column_name }}
+                </th>
+                <th>
+                    {{ chart_data.config.value_name }}
+                </th>
+                {% if '__SHARE__' in data_frame %}
+                    <th>
+                        {{ _("Share") }}
+                    </th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {%- for name, row in data_frame.iterrows() %}
+                <tr>
+                    <td>
+                        {%- if add_color %}
+                            <i class="fas fa-fw fa-circle"
+                               style="color: {{ hawat_color_list[loop.index0 % (hawat_color_list | length)] }}"></i>
+                        {%- endif %}
+                        <span>{{ name }}
+                            {% if csag_group and name and name not in ('__REST__','__unknown__') %}
+                                {{ macros_site.render_widget_csag_any(csag_group, [name], separate_dropdown = True, without_label = True) }}
+                            {% endif %}
+                        </span>
+                    </td>
+                    <td>
+                        <span>{{ chart_data.config.format_function(row['count']) }}</span>
+                    </td>
+                    {%- if '__SHARE__' in row %}
+                        <td>
+                            <span>{{ babel_format_percent(row['__SHARE__'], format='#,##0.##%') }}</span>
+                        </td>
+                    {%- endif %}
+                </tr>
+            {%- endfor %}
+        </tbody>
+        {%- if add_agg_footer %}
+            {{ _get_table_agg_footer(data_frame, format_dict={'__SHARE__': '🗙'}) }}
+        {%- endif %}
+    </table>
+{%- endmacro %}
+
+{#-
+
+    Render HTML table based on the chart data.
+
+    ChartData chart_data: Chart data containing dataframe and table configuration.
+    This macro is used for rendering the HTML table representation of the chart data.
+-#}
+{%- macro render_html_table(chart_data) %}
+    <div>
+        <table class="table-narrow">
+            <thead>
+                <tr>
+                    <th scope="col"></th>
+                    {%- for header in chart_data.iter_header() %}
+                    <th scope="col" data-bs-toggle="tooltip" data-bs-title="{{ header }}">
+                        <div>{{ header }}</div>
+                    </th>
+                    {%- endfor %}
+                    {%- if chart_data.config.show_total %}
+                        <th scope="col" data-bs-toggle="tooltip" data-bs-title="{{ _('Row Total') }}" class="total-header">
+                            <div>{{ _('Total') }}</div>
+                        </th>
+                    {%- endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {%- for row in chart_data.iter_rows() %}
+                <tr>
+                    <th scope="row" data-bs-toggle="tooltip" data-bs-title="{{ row.header }}">
+                        {{ row.header }}
+                    </th>
+                    {%- for cell in row.cells %}
+                        <td {%- if cell.color %}
+                                style="background-color: {{ cell.color }}; color: {{ cell.get_font_color() }}"
+                            {% endif %}>
+                            {{ chart_data.config.format_function(cell.value) }}
+                        </td>
+                    {%- endfor %}
+                    {%- if chart_data.config.show_total %}
+                        <td>
+                            {{ chart_data.config.format_function(row.get_row_total()) }}
+                        </td>
+                    {%- endif %}
+                </tr>
+                {%- endfor %}
+                {%- if chart_data.config.show_total %}
+                <tr>
+                    <th scope="row" data-bs-toggle="tooltip" data-bs-title="{{ _('Column Total') }}" class="total-header">
+                        {{ _('Total') }}
+                    </th>
+                    {%- for column_total_value in chart_data.iter_column_totals() %}
+                        <td>
+                            {{ chart_data.config.format_function(column_total_value) }}
+                        </td>
+                    {%- endfor %}
+                    <td>
+                        {{ chart_data.config.format_function(chart_data.get_total()) }}
+                    </td>
+                {% endif %}
+                </tr>
+            </tbody>
+        </table>
+    </div>
+{%- endmacro %}
+
+
+{%- macro _render_chart_data(chart_data) %}
+    {%- if chart_data.renderer == 'plotly' %}
+        <script class="json-data" type="application/json">
+            {{ chart_data.to_dict() | tojson }}
+        </script>
+        <script class="chart-data" type="application/json">
+            {{ chart_data.chart | tojson }}
+        </script>
+    {%- elif chart_data.renderer == 'html_table' %}
+        <script class="json-data" type="application/json">
+            {{ chart_data.to_dict() | tojson }}
+        </script>
+    {%- endif %}
+{%- endmacro %}
+
+{%- macro _render_chart_download_dropdown(chart_id, renderer) %}
+    <div class="btn-group" role="group">
+        <button type="button"
+                class="btn btn-secondary btn-sm dropdown-toggle"
+                data-bs-toggle="dropdown"
+                aria-haspopup="true"
+                aria-expanded="false">
+            {{ get_icon("action-download") }} {{ _("Download") }}
+        </button>
+        <ul class="dropdown-menu">
+            {%- if renderer == 'html_table' %}
+                <li>
+                    <a class="dropdown-item export-dataset-html"
+                       id="{{ chart_id }}_export_html"
+                       aria-pressed="false"
+                       autocomplete="off">
+                        {{ get_icon("action-download-html") }} {{ _("Download chart as HTML") }}
+                    </a>
+                </li>
+            {%- endif %}
+            {%- if renderer == 'plotly' %}
+            <li>
+                <a class="dropdown-item export-dataset-svg"
+                   id="{{ chart_id }}_export_svg"
+                   aria-pressed="false"
+                   autocomplete="off">
+                    {{ get_icon("action-download-svg") }} {{ _("Download chart as SVG") }}
+                </a>
+            </li>
+            {%- endif %}
+            <li>
+                <a class="dropdown-item export-dataset-csv"
+                   id="{{ chart_id }}_export_csv"
+                   aria-pressed="false"
+                   autocomplete="off">
+                    {{ get_icon("action-download-csv") }} {{ _("Download dataset as CSV") }}
+                </a>
+            </li>
+            <li>
+                <a class="dropdown-item export-dataset-json"
+                   id="{{ chart_id }}_export_json"
+                   aria-pressed="false"
+                   autocomplete="off">
+                    {{ get_icon("action-download-js") }} {{ _("Download dataset as JSON") }}
+                </a>
+            </li>
+        </ul>
+    </div>
+{%- endmacro %}
+
+{#-
+
+    Render HTML columns that will contain chart and its related dataset table.
+
+    string chart_id: Unique identifier of the chart. This will be used for
+        generating all other required unique identifiers.
+    ChartData chart_data: Chart data containing dataframe and table configuration.
+    jinja macro table_macro: Reference to macro for rendering the table.
+    dict table_config: Additional configuration for the table rendering, passed to table_macro.
+    bool scrollable_table: Make the viewport of the dataset table scrollable.
+-#}
+{%- macro chart_table_columns(chart_id, chart_data, table_macro, table_config = {}, scrollable_table = True, in_tab = False) %}
+    <div class="row row-chart-main" id="{{ chart_id }}_row">
+        <div class="col-md-6">
+            <div class="btn-toolbar chart-toolbar"
+                 role="toolbar"
+                 aria-label="{{ _('Chart toolbar') }}">
+                {{ _render_chart_download_dropdown(chart_id, chart_data.renderer) }}
+            </div>
+            <div class="w-100 overflow-auto">
+                <div id="{{ chart_id }}"
+                    style="{{ chart_data.get_css_style() }}"
+                    data-renderer="{{ chart_data.renderer }}"
+                    class="chart-container row mx-auto{% if not in_tab %} always-visible{% endif %}">
+                    <div class="d-flex justify-content-center align-items-center h-100 loading">
+                        <div class="spinner-border spinner-large" role="status">
+                            <span class="visually-hidden">{{ _("Loading...") }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div id="{{ chart_id }}_table"
+                 {%- if scrollable_table %}
+                 class="scrollable-viewport"
+                 {%- endif %}>
+                {{ table_macro(chart_data, **table_config) }}
+            </div>
+        </div>
+        {{ _render_chart_data(chart_data) }}
+    </div>
+{%- endmacro %}
+
+{#-
+
+    Render HTML columns that will contain chart and its related dataset table,
+    but in this case make the table togglable and hidden
+    by default.
+
+    string chart_id: Unique identifier of the chart. This will be used for
+        generating all other required unique identifiers.
+    ChartData chart_data: Chart data containing dataframe and table configuration.
+    jinja macro table_macro: Reference to macro for rendering the table.
+    dict table_config: Additional configuration for the table rendering, passed to table_macro.
+    bool scrollable_table: Make the viewport of the dataset table scrollable.
+-#}
+{%- macro chart_table_togglable(chart_id, chart_data, table_macro, table_config = {}, scrollable_table = True, in_tab = False) %}
+    <div class="row-chart-main" id="{{ chart_id }}_row">
+        <div class="column-chart-content" id="{{ chart_id }}_content">
+            <div class="btn-toolbar chart-toolbar"
+                 role="toolbar"
+                 aria-label="{{ _('Chart toolbar') }}">
+                <div class="btn-group" role="group">
+                    <button type="button"
+                            class="btn btn-secondary btn-sm"
+                            id="{{ chart_id }}_toggle"
+                            aria-pressed="false"
+                            autocomplete="off"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#{{ chart_id }}_sidebar"
+                            aria-expanded="false"
+                            aria-controls="{{ chart_id }}_sidebar">
+                        {{ get_icon("table") }} {{ _("Toggle table") }}
+                    </button>
+                    {{ _render_chart_download_dropdown(chart_id, chart_data.renderer) }}
+                </div>
+            </div>
+            <div class="w-100 overflow-auto">
+                <div id="{{ chart_id }}"
+                    style="{{ chart_data.get_css_style() }}"
+                    data-renderer="{{ chart_data.renderer }}"
+                    class="chart-container row mx-auto{% if not in_tab %} always-visible{% endif %}">
+                    <div class="d-flex justify-content-center align-items-center h-100 loading">
+                        <div class="spinner-border spinner-large" role="status">
+                            <span class="visually-hidden">{{ _("Loading...") }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="column-chart-sidebar collapse" id="{{ chart_id }}_sidebar">
+            <div id="{{ chart_id }}_table"
+                 class="w-100{% if scrollable_table %} table-responsive{% endif %}"
+                 style="height: 700px;">
+                {{ table_macro(chart_data, **table_config) }}
+            </div>
+        </div>
+        {{ _render_chart_data(chart_data) }}
+    </div>
+{%- endmacro %}
+
+{%- macro chart_tableless(chart_id, chart_data, in_tab = False) %}
+    <div class="row-chart-main" id="{{ chart_id }}_row">
+        <div class="column-chart-content" id="{{ chart_id }}_content">
+            <div class="btn-toolbar chart-toolbar"
+                 role="toolbar"
+                 aria-label="{{ _('Chart toolbar') }}">
+                {{ _render_chart_download_dropdown(chart_id, chart_data.renderer) }}
+            </div>
+
+            <div class="w-100 overflow-auto">
+                <div id="{{ chart_id }}"
+                    style="{{ chart_data.get_css_style() }}"
+                    data-renderer="{{ chart_data.renderer }}"
+                    class="chart-container row mx-auto{% if not in_tab %} always-visible{% endif %}">
+                    <div class="d-flex justify-content-center align-items-center h-100 loading">
+                        <div class="spinner-border spinner-large" role="status">
+                            <span class="visually-hidden">{{ _("Loading...") }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{ _render_chart_data(chart_data) }}
+    </div>
+{%- endmacro %}
+
+
+{%- macro chart_html_table(chart_id, chart_data, in_tab = False) %}
+    <div class="row-chart-main html_table" id="{{ chart_id }}_row">
+        <div class="column-chart-content" id="{{ chart_id }}_content">
+            <div class="btn-toolbar chart-toolbar"
+                 role="toolbar"
+                 aria-label="{{ _('Chart toolbar') }}">
+                {{ _render_chart_download_dropdown(chart_id, chart_data.renderer) }}
+            </div>
+
+            <div class="w-100 overflow-auto">
+                <div id="{{ chart_id }}"
+                     style="{{ chart_data.get_css_style() }}"
+                     data-renderer="{{ chart_data.renderer }}"
+                     class="chart-container row mx-auto{% if not in_tab %} always-visible{% endif %}">
+                    {{ render_html_table(chart_data) }}
+                </div>
+            </div>
+        </div>
+        {{ _render_chart_data(chart_data) }}
+    </div>
+{%- endmacro %}
+
+
+{#- ============================================================================
+
+    High-level chart rendering macros.
+
+============================================================================ -#}
+
+
+{#-
+    Render chart based on the chart data.
+
+    ChartData chart_data: Chart data to render.
+    bool in_tab: True if the chart is being rendered in a tab.
+-#}
+{%- macro render_chart(chart_data, in_tab = False) %}
+    {%- set chart_id = 'chart_' + get_uuid4().__str__() -%}
+
+    {%- if chart_data.chart_type == 'timeline' %}
+        {%- set table_macro = get_table_timeline %}
+        {%- set table_config = {
+            'add_agg_footer': chart_data.config.allow_table_aggregation is none or chart_data.config.allow_table_aggregation
+        } %}
+    {%- elif chart_data.chart_type == 'secondary' %}
+        {%- set table_macro = get_table_secondary %}
+        {%- set table_config = {
+            'csag_group': chart_data.config.csag_group,
+            'add_agg_footer': chart_data.config.allow_table_aggregation is not none and chart_data.config.allow_table_aggregation,
+            'add_color': chart_data.config.data_complexity == 'single'
+        } %}
+        {# default table macro is not implemented yet #}
+    {%- endif %}
+
+    {%- if chart_data.renderer == 'plotly' %}
+        {%- if chart_data.config.table_type == 'toggleable' %}
+            {{ chart_table_togglable(chart_id, chart_data, table_macro, table_config, in_tab = in_tab) }}
+        {%- elif chart_data.config.table_type == 'columns' %}
+            {{ chart_table_columns(chart_id, chart_data, table_macro, table_config, in_tab = in_tab) }}
+        {% else %}
+            {{ chart_tableless(chart_id, chart_data, in_tab = in_tab) }}
+        {% endif %}
+    {%- elif chart_data.renderer == 'html_table' %}
+        {{ chart_html_table(chart_id, chart_data, in_tab = in_tab) }}
+    {%- endif %}
+{%- endmacro %}
+
+{#-
+
+    Render content of the chart panel
+
+    dict charts: Dictionary of chart data to render.
+    dict table_data: Dictionary of table data to render.
+    ChartSection chsection: Chart section to render.
+    string id_prefix: Prefix for all subsequent unique identifiers.
+    bool dynamic: True Iff the current use is being fetched dynamically by the frontend
+-#}
+{%- macro render_dashboard_panel_content(chsection, id_prefix, dynamic=False) %}
+    {%- if dynamic and permission_can('developer') %}
+        {{ macros_site.render_sql_queries(sqlqueries, key=chsection.key) }}
+        {{ macros_site.render_timemarks(time_marks, key=chsection.key, show_to_render_time=False) }}
+    {%- endif %}
+    {%- for chart_data in chsection.data %}
+        {{ render_chart(chart_data, in_tab = True) }}
+        <br>
+    {%- endfor %}
+{%- endmacro %}
+
+{#-
+
+    Render tab panel navigation for common list of IDEA event charts.
+
+    list chart_sections: List of ChartSection objects to render.
+    string id_prefix: Prefix for all subsequent unique identifiers.
+    render_empty: Render the section even in case the required key does not
+        exist in the data.
+    bool active_first: Highlight the first section as active.
+    string active_section_key: The name of the section that should be active on load (takes
+        precedence over active_first)
+    function get_url_func: function which will return url to redirect to if the section
+        key is not present in charts (useful with render_empty = True)
+    bool include_tag: Include the '#' tag in the tab label. (if False, and tab fetched dynamically,
+        spinner will not be present)
+    bool bold: Make the tab label bold.
+-#}
+{%- macro render_dashboard_nav(chart_sections, id_prefix, render_empty = False, active_first = True, active_section_key = None, get_url_func = None, include_tag = True, bold = False) %}
+    {%- set tmp = {"cntr": 0} %}
+    {%- for chsection in chart_sections -%}
+        {%- if chsection.key not in hide_sections and (not only_sections or chsection.key in only_sections) %}
+            {%- if render_empty or chsection.data %}
+                <li role="presentation" class="nav-item text-center">
+                    <a id="tab-nav-{{ id_prefix }}-{{ chsection.key }}"
+                       role="tab"
+                       data-bs-toggle="tab"
+                       {%- if not chsection.data and get_url_func %}
+                           data-tab-content-url="{{ get_url_func(chsection.key) }}"
+                       {%- endif %}
+                       data-tab-id-prefix="{{ id_prefix }}-{{ chsection.key }}"
+                       href="#tab-{{ id_prefix }}-{{ chsection.key }}"
+                       class="nav-link{% if active_section_key == chsection.key or (active_section_key == None and active_first and not tmp['cntr']) %} active{% endif %} chart-tab">
+                        {% if bold %}
+                            <strong>
+                        {% endif %}
+                        {% if include_tag %}
+                            <span class="tab-tag">
+                                {% if render_empty and chsection.data %}
+                                    <span class="text-success">
+                                        {{ get_icon("ok") }}
+                                    </span>
+                                {% else %}
+                                    #
+                                {% endif %}
+                            </span>
+                        {% endif %}
+                        {{ chsection.label }}
+                        {% if bold %}
+                            </strong>
+                        {% endif %}
+                    </a>
+                </li>
+                {%- if tmp.update({'cntr': tmp['cntr'] + 1}) %}{%- endif %}
+            {%- endif %}
+        {%- endif %}
+    {%- endfor %}
+{%- endmacro %}
+
+
+{#-
+
+    Render tab panels for common list of IDEA event charts.
+
+    list chart_sections: List of ChartSection objects to render.
+    string id_prefix: Prefix for all subsequent unique identifiers.
+    bool render_empty: Render the section even in case the required key does not
+        exist in the data.
+    bool active_first: Highlight the first section as active.
+    string active_section_key: The name of the section that should be active on load (takes precedence over active_first)
+
+-#}
+{%- macro render_dashboard_panels(chart_sections, id_prefix, render_empty = False, active_first = True, active_section_key = None) %}
+    {%- set tmp = {"cntr": 0} %}
+    {%- for chsection in chart_sections -%}
+        {%- if render_empty or chsection.data %}
+            <div role="tabpanel"
+                 class="tab-pane fade{% if active_section_key == chsection.key or (active_section_key == None and active_first and not tmp['cntr']) %} in show active{% endif %}"
+                 id="tab-{{ id_prefix }}-{{ chsection.key }}">
+                <div class="clearfix">
+                    {%- if chsection.short_description %}
+                        <h4>
+                            {{ chsection.short_description }}
+                        </h4>
+                    {%- endif %}
+                    {%- if not chsection.data %}
+                        <button class="btn btn-secondary float-end ms-2 mb-2 tab-reload-btn clearfix"
+                                data-target-tab-id="tab-nav-{{ id_prefix }}-{{ chsection.key }}"
+                                aria-label="{{ _('Reload data') }}"
+                                data-bs-toggle="tooltip"
+                                data-bs-title="{{ _('Reload data') }}">
+                            {{ get_icon("action-reload") }}
+                        </button>
+                    {%- endif %}
+                    {%- if chsection.description %}
+                        <p>
+                            {{ chsection.description }}
+                        </p>
+                    {%- endif %}
+                </div>
+                <div class="chart-tab-content"
+                     data-text-error-occurred="{{ _('There was an error fetching your data.') }}">
+                    {%- if chsection.data %}
+                        {{ render_dashboard_panel_content(chsection,
+                                                    '{}-{}'.format(id_prefix, chsection.key))
+                        }}
+                    {%- else %}
+                        <div class="d-flex justify-content-center align-items-center loading"
+                             style="width: 100%; height: 700px;">
+                            <div class="spinner-border spinner-large" role="status">
+                                <span class="visually-hidden">{{ _("Loading...") }}</span>
+                            </div>
+                        </div>
+                    {%- endif %}
+                </div>
+
+                {%- if tmp.update({'cntr': tmp['cntr'] + 1}) %}{%- endif %}
+            </div>
+        {%- endif %}
+    {%- endfor %}
+{%- endmacro %}

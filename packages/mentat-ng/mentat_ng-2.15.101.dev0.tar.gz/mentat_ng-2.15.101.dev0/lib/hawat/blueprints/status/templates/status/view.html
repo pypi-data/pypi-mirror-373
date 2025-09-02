@@ -1,0 +1,391 @@
+{%- extends "_layout.html" %}
+
+{%- block content %}
+    <div>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('home.index') }}">
+                    {{ _("Home") }}
+                </a>
+            </li>
+            <li class="breadcrumb-item active">
+                {{ _("System status") }}
+            </li>
+        </ol>
+        {%- if mentat_status and mentat_modules and mentat_cronjobs and mentat_runlogs %}
+            <p>
+                <strong>{{ _("Overall status:") }}</strong>
+                <span class="badge text-bg-{% if mentat_status['result'][0] == 0 %}success{% else %}secondary{% endif %}">
+                    {{ mentat_status['result'][1] }}
+                </span>
+            </p>
+            <p>
+                <strong>{{ _("Information gathered at:") }}</strong>
+                {{ babel_format_datetime(mentat_status['dt']) }}
+            </p>
+            <!-- Nav tabs -->
+            <ul class="nav nav-tabs" role="tablist">
+                <li role="presentation" class="nav-item">
+                    <a href="#tab-status-overview"
+                       aria-controls="tab-status-overview"
+                       role="tab"
+                       data-bs-toggle="tab"
+                       class="nav-link active">
+                        <strong>{{ _("Overview") }}</strong>
+                    </a>
+                </li>
+                <li role="presentation" class="nav-item">
+                    <a href="#tab-status-rtmodules"
+                       aria-controls="tab-status-rtmodules"
+                       role="tab"
+                       data-bs-toggle="tab"
+                       class="nav-link">
+                        <strong>{{ _("RT modules") }}</strong>
+                    </a>
+                </li>
+                <li role="presentation" class="nav-item">
+                    <a href="#tab-status-cronjobs"
+                       aria-controls="tab-status-cronjobs"
+                       role="tab"
+                       data-bs-toggle="tab"
+                       class="nav-link">
+                        <strong>{{ _("Cronjobs") }}</strong>
+                    </a>
+                </li>
+                <li role="presentation" class="nav-item">
+                    <a href="#tab-status-logfiles"
+                       aria-controls="tab-status-logfiles"
+                       role="tab"
+                       data-bs-toggle="tab"
+                       class="nav-link">
+                        <strong>{{ _("Log files") }}</strong>
+                    </a>
+                </li>
+                <li role="presentation" class="nav-item">
+                    <a href="#tab-status-pidfiles"
+                       aria-controls="tab-status-pidfiles"
+                       role="tab"
+                       data-bs-toggle="tab"
+                       class="nav-link">
+                        <strong>{{ _("PID files") }}</strong>
+                    </a>
+                </li>
+                <li role="presentation" class="nav-item">
+                    <a href="#tab-status-processes"
+                       aria-controls="tab-status-processes"
+                       role="tab"
+                       data-bs-toggle="tab"
+                       class="nav-link">
+                        <strong>{{ _("Processes") }}</strong>
+                    </a>
+                </li>
+            </ul>
+
+            <!-- Tab panes -->
+            <div class="tab-content">
+                <div role="tabpanel"
+                     class="tab-pane fade in show active"
+                     id="tab-status-overview">
+                    <h4>
+                        {{ _("Real-time message processing modules") }}
+                    </h4>
+                    <p>
+                        <strong>{{ _("Overall status:") }}</strong>
+                        <span class="badge text-bg-{% if mentat_status['resultm'][0] == 0 %}success{% else %}secondary{% endif %}">
+                            {{ mentat_status['resultm'][1] }}
+                        </span>
+                    </p>
+                    <ul class="list-group">
+                        {%- for modname, moddata in mentat_modules.items() %}
+                            <li class="list-group-item">
+                                <strong>{{ modname }}:</strong>
+                                <span class="badge text-bg-{% if mentat_status['modules'][modname][0] == 0 %}success{% else %}secondary{% endif %}">
+                                    {{ mentat_status['modules'][modname][1] }}
+                                </span>
+                            </li>
+                        {%- endfor %}
+                    </ul>
+
+                    <br>
+                    <h4>
+                        {{ _("Cronjob message post-processing modules") }}
+                    </h4>
+                    <p>
+                        <strong>{{ _("Overall status:") }}</strong>
+                        <span class="badge text-bg-{% if mentat_status['resultc'][0] == 0 %}success{% else %}secondary{% endif %}">
+                            {{ mentat_status['resultc'][1] }}
+                        </span>
+                    </p>
+                    <ul class="list-group">
+                        {%- for modname, moddata in mentat_cronjobs.items() %}
+                            <li class="list-group-item">
+                                <strong>{{ modname }}:</strong>
+                                <span class="badge text-bg-{% if mentat_status['cronjobs'][modname][0] == 0 %}success{% else %}secondary{% endif %}">
+                                    {{ mentat_status['cronjobs'][modname][1] }}
+                                </span>
+                            </li>
+                        {%- endfor %}
+                    </ul>
+
+                    {%- if mentat_status['messages']['error'] or mentat_status['messages']['info'] or mentat_status['messages']['notice'] or mentat_status['messages']['warning'] %}
+                        <br>
+                        <h4>
+                            {{ _("Messages:") }}
+                        </h4>
+                        {%- for msgtype in ['error', 'warning', 'notice', 'info'] %}
+                            {%- for msg in mentat_status['messages'][msgtype] %}
+                                {%- call macros_site.render_alert(msgtype) %}
+                                    {{ msg[0] }}
+                                {%- endcall %}
+                            {%- endfor %}
+                        {%- endfor %}
+                    {%- endif %}
+                </div>
+
+                <div role="tabpanel" class="tab-pane fade" id="tab-status-rtmodules">
+                    <h4>
+                        {{ _("Real-time message processing modules") }}
+                    </h4>
+                    {%- for modname, moddata in mentat_modules.items() %}
+                        <h5>
+                            {{ modname }}
+                        </h5>
+                        <p>
+                            <strong>{{ _("Module status:") }}</strong>
+                            <br>
+                            <span class="badge text-bg-{% if mentat_status['modules'][modname][0] == 0 %}success{% else %}secondary{% endif %}">
+                                {{ mentat_status['modules'][modname][1] }}
+                            </span>
+                        </p>
+                        {%- if modname in mentat_status['runlog_files'] %}
+                            {%- for rlf_key, rlf_data in mentat_status['runlog_files'][modname].items() %}
+                                <p>
+                                    <strong>{{ _("Module runlog file:") }}</strong>
+                                    <br>
+                                    <em>{{ _("PID:") }}</em> {{ rlf_data['data']['pid'] }} |
+                                    <em>{{ _("File:") }}</em> {{ rlf_data['path'] }} |
+                                    <em>{{ _("Size:") }}</em> {{ babel_format_bytes(rlf_data['size'], 'B') }} |
+                                    <em>{{ _("Last modification at:") }}</em>
+                                    {{ babel_format_datetime(rlf_data['mtime']) }}
+                                    ({{ _('%(delta)s ago', delta = babel_format_timedelta(current_datetime_utc - rlf_data['mtime'])) }})
+                                    <table>
+                                        {%- for component_stats in rlf_data['data']['statistics']['components']|dictsort %}
+                                            {%- for stats_counter in component_stats[1]|dictsort %}
+                                                {%- if stats_counter[1] is number %}
+                                                    <tr>
+                                                        <td>
+                                                            {{ component_stats[0] }}.{{ stats_counter[0] }}
+                                                        </td>
+                                                        <td>
+                                                            &nbsp;&nbsp;
+                                                            <span class="badge rounded-pill  text-bg-secondary">
+                                                                {{- stats_counter[1] -}}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                {%- endif %}
+                                            {%- endfor %}
+                                        {%- endfor %}
+                                    </table>
+                                </p>
+                            {%- endfor %}
+                        {%- endif %}
+                        {%- if modname in mentat_status['pid_files'] %}
+                            <p>
+                                <strong>{{ _("Module PID files:") }}</strong>
+                                <br>
+                                {%- for pid, piddata in mentat_status['pid_files'][modname].items() %}
+                                    <em>{{ _("PID:") }}</em> {{ piddata['pid'] }} |
+                                    <em>{{ _("File:") }}</em> {{ piddata['path'] }} |
+                                    <em>{{ _("Size:") }}</em> {{ babel_format_bytes(piddata['size'], 'B') }} |
+                                    <em>{{ _("Last modification at:") }}</em>
+                                    {{ babel_format_datetime(piddata['mtime']) }}
+                                    ({{ _('%(delta)s ago', delta = babel_format_timedelta(current_datetime_utc - piddata['mtime'])) }})
+                                    {%- if not loop.last %}
+                                        <br>
+                                    {%- endif %}
+                                {%- endfor %}
+                            </p>
+                        {%- endif %}
+                        {%- if modname in mentat_status['processes'] %}
+                            <p>
+                                <strong>{{ _("Module processes:") }}</strong>
+                                <br>
+                                {%- for pid, psdata in mentat_status['processes'][modname].items() %}
+                                    <em>{{ _("PID:") }}</em> {{ psdata['pid'] }} |
+                                    <em>{{ _("Process:") }}</em> {{ psdata['process'] }} {{ psdata['exec'] }}
+                                    {% if psdata['args'] %}
+                                        {{ psdata['args'] }}
+                                    {% endif %}
+                                    {%- if not loop.last %}
+                                        <br>
+                                    {%- endif %}
+                                {%- endfor %}
+                            </p>
+                        {%- endif %}
+                        {%- if modname in mentat_status['log_files'] %}
+                            <p>
+                                <strong>{{ _("Module log file:") }}</strong>
+                                <br>
+                                <em>{{ _("File:") }}</em>
+                                {{ mentat_status['log_files'][modname]['path'] }} |
+                                <em>{{ _("Size:") }}</em>
+                                {{ babel_format_bytes(mentat_status['log_files'][modname]['size'], 'B') }} |
+                                <em>{{ _("Last modification at:") }}</em>
+                                {{ babel_format_datetime(mentat_status['log_files'][modname]['mtime']) }}
+                                ({{ _('%(delta)s ago', delta = babel_format_timedelta(current_datetime_utc - mentat_status['log_files'][modname]['mtime'])) }})
+                            </p>
+                        {%- endif %}
+                        {%- if not loop.last %}
+                            <hr>
+                        {%- endif %}
+                    {%- endfor %}
+                </div>
+
+                <div role="tabpanel" class="tab-pane fade" id="tab-status-cronjobs">
+                    <h4>
+                        {{ _("Cronjob message post-processing modules") }}
+                    </h4>
+                    {%- for modname, moddata in mentat_cronjobs.items() %}
+                        <h5>
+                            {{ modname }}
+                        </h5>
+                        <p>
+                            <strong>{{ _("Module status:") }}</strong>
+                            <br>
+                            <span class="badge text-bg-{% if mentat_status['cronjobs'][modname][0] == 0 %}success{% else %}secondary{% endif %}">
+                                {{ mentat_status['cronjobs'][modname][1] }}
+                            </span>
+                        </p>
+                        {%- if modname in mentat_status['log_files'] %}
+                            <p>
+                                <strong>{{ _("Module log file:") }}</strong>
+                                <br>
+                                <em>{{ _("File:") }}</em>
+                                {{ mentat_status['log_files'][modname]['path'] }} |
+                                <em>{{ _("Size:") }}</em>
+                                {{ babel_format_bytes(mentat_status['log_files'][modname]['size'], 'B') }} |
+                                <em>{{ _("Last modification at:") }}</em>
+                                {{ babel_format_datetime(mentat_status['log_files'][modname]['mtime']) }}
+                                ({{ _('%(delta)s ago', delta = babel_format_timedelta(current_datetime_utc - mentat_status['log_files'][modname]['mtime'])) }})
+                            </p>
+                        {%- endif %}
+                        {%- if modname in mentat_status['cron_files'] %}
+                            <p>
+                                <strong>{{ _("Module cron file:") }}</strong>
+                                <br>
+                                <em>{{ _("File:") }}</em>
+                                {{ mentat_status['cron_files'][modname]['path'] }} |
+                                <em>{{ _("Link:") }}</em>
+                                {{ mentat_status['cron_files'][modname]['link'] }} |
+                                <em>{{ _("Size:") }}</em>
+                                {{ babel_format_bytes(mentat_status['cron_files'][modname]['size'], 'B') }} |
+                                <em>{{ _("Last modification at:") }}</em>
+                                {{ babel_format_datetime(mentat_status['cron_files'][modname]['mtime']) }}
+                                ({{ _('%(delta)s ago', delta = babel_format_timedelta(current_datetime_utc - mentat_status['cron_files'][modname]['mtime'])) }})
+                            </p>
+                        {%- endif %}
+                        {%- if modname in mentat_status['processes'] %}
+                            <p>
+                                <strong>{{ _("Module processes:") }}</strong>
+                                <br>
+                                {%- for pid, psdata in mentat_status['processes'][modname].items() %}
+                                    <em>{{ _("PID:") }}</em> {{ psdata['pid'] }} |
+                                    <em>{{ _("Process:") }}</em> {{ psdata['process'] }} {{ psdata['exec'] }}
+                                    {% if psdata['args'] %}
+                                        {{ psdata['args'] }}
+                                    {% endif %}
+                                    {%- if not loop.last %}
+                                        <br>
+                                    {%- endif %}
+                                {%- endfor %}
+                            </p>
+                        {%- endif %}
+                        {%- if not loop.last %}
+                            <hr>
+                        {%- endif %}
+                    {%- endfor %}
+                </div>
+
+                <div role="tabpanel" class="tab-pane fade" id="tab-status-logfiles">
+                    <ul class="list-group">
+                        {%- for modname, moddata in mentat_status['log_files'].items() %}
+                            <li class="list-group-item">
+                                <h4 class="list-group-item-heading">
+                                    {{ modname }}
+                                </h4>
+                                <p>
+                                    <strong>{{ _("File:") }}</strong> {{ moddata['path'] }} |
+                                    <strong>{{ _("Size:") }}</strong>
+                                    {{ babel_format_bytes(moddata['size'], 'B') }} |
+                                    <strong>{{ _("Last modification at:") }}</strong>
+                                    {{ babel_format_datetime(moddata['mtime']) }}
+                                    ({{ _('%(delta)s ago', delta = babel_format_timedelta(current_datetime_utc - moddata['mtime'])) }})
+                                </p>
+                            </li>
+                        {%- endfor %}
+                    </ul>
+                </div>
+
+                <div role="tabpanel" class="tab-pane fade" id="tab-status-pidfiles">
+                    <ul class="list-group">
+                        {%- for modname, moddata in mentat_status['pid_files'].items() %}
+                            <li class="list-group-item">
+                                <h4 class="list-group-item-heading">
+                                    {{ modname }}
+                                </h4>
+                                {%- for pid, piddata in moddata.items() %}
+                                    <p>
+                                        <strong>{{ _("PID:") }}</strong> {{ piddata['pid'] }} |
+                                        <strong>{{ _("File:") }}</strong> {{ piddata['path'] }} |
+                                        <strong>{{ _("Size:") }}</strong>
+                                        { babel_format_bytes(piddata['size'], 'B') }} |
+                                        <strong>{{ _("Last modification at:") }}</strong>
+                                        {{ babel_format_datetime(piddata['mtime']) }}
+                                        ({{ _('%(delta)s ago', delta = babel_format_timedelta(current_datetime_utc - piddata['mtime'])) }})
+                                    </p>
+                                {%- endfor %}
+                            </li>
+                        {%- endfor %}
+                    </ul>
+                </div>
+
+                <div role="tabpanel" class="tab-pane fade" id="tab-status-processes">
+                    <ul class="list-group">
+                        {%- for modname, moddata in mentat_status['processes'].items() %}
+                            <li class="list-group-item">
+                                <h4 class="list-group-item-heading">
+                                    {{ modname }}
+                                </h4>
+                                {%- for pid, psdata in moddata.items() %}
+                                    <p>
+                                        <strong>{{ _("PID:") }}</strong> {{ psdata['pid'] }} |
+                                        <strong>{{ _("Process:") }}</strong>
+                                        {{ psdata['process'] }} {{ psdata['exec'] }}
+                                        {% if psdata['args'] %}
+                                            {{ psdata['args'] }}
+                                        {% endif %}
+                                    </p>
+                                {%- endfor %}
+                            </li>
+                        {%- endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            {%- if permission_can('developer') %}
+                <h4 class="mt-4">
+                    Mentat status:
+                </h4>
+                <div>
+                    {% highlight 'json' %}{{ mentat_status | tojson_pretty }}{% endhighlight %}
+                </div>
+            {%- endif %}
+
+        {%- else %}
+            <p>
+                {{ _("Unable to display system status information.") }}
+            </p>
+        {%- endif %}
+    </div>
+{%- endblock content %}

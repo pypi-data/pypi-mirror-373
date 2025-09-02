@@ -1,0 +1,302 @@
+{% extends "_layout.html" %}
+
+{% block content %}
+    <div>
+        {{ macros_page.render_breadcrumbs() }}
+
+        <!-- Search form - BEGIN ---------------------------------->
+        <div class="jumbotron bg-light" style="margin-top: 1em;">
+            <h2>
+                {{ hawat_current_view.get_view_title() }}
+            </h2>
+            <hr>
+            <form method="GET" class="form" action="{{ url_for(request.endpoint) }}">
+                <div class="row">
+                    <div class="col-sm-6">
+                        {{ macros_form.render_form_item_datetime(g.search_form.dt_from, 'datetimepicker-from') }}
+                    </div>
+                    <div class="col-sm-6">
+                        {{ macros_form.render_form_item_datetime(g.search_form.dt_to, 'datetimepicker-to') }}
+                    </div>
+                </div>
+                <hr>
+                <div class="btn-toolbar"
+                     role="toolbar"
+                     aria-label="{{ _('Form submission buttons') }}">
+                    <div class="btn-group" role="group">
+                        {{ g.search_form.submit(class_='btn btn-primary') }}
+                        <a role="button"
+                           class="btn btn-secondary"
+                           href="{{ url_for('events.dashboard') }}">
+                            {{ _("Clear") }}
+                        </a>
+                        {{ macros_site.render_quicksearch(quicksearch_list) }}
+                    </div>
+                </div>
+            </form>
+        </div>
+        <!-- Search form - END ------------------------------------>
+
+        <p>
+            {{ _("This module displays various statistics for events. These statistics are calculated from in advance precalculated artefacts and can therefore provide quick overview of event processing.") | safe }}
+        </p>
+    </div>
+
+    {%- if searched %}
+        {%- if items %}
+            <!-- Search result summary - BEGIN -------------------------------->
+            <div class="card overflow-hidden mb-3">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        {{ _("Result summary") }}
+                    </h5>
+                </div>
+                <table class="table">
+                    <tr>
+                        <th>
+                            {{ _("Number of statistical records") }}:
+                        </th>
+                        <td>
+                            {{ babel_format_decimal(items_count) }}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>
+                            {{ _("Number of events") }}:
+                        </th>
+                        <td>
+                            {{ babel_format_decimal(statistics['count']) }}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>
+                            {{ _("Result time interval") }}:
+                        </th>
+                        <td>
+                            {{ babel_format_datetime(statistics['dt_from']) }} - {{ babel_format_datetime(statistics['dt_to']) }}
+                            ({{ babel_format_timedelta(statistics['dt_to'] - statistics['dt_from']) }})
+                        </td>
+                    </tr>
+                    {%- if 'timeline_cfg' in statistics %}
+                        <tr>
+                            <th>
+                                {{ _("Timeline time interval") }}:
+                            </th>
+                            <td>
+                                {{ babel_format_datetime(statistics['timeline_cfg'].t_from) }} - {{ babel_format_datetime(statistics['timeline_cfg'].t_to) }}
+                                ({{ babel_format_timedelta(statistics['timeline_cfg'].t_to - statistics['timeline_cfg'].t_from) }})
+                            </td>
+                        </tr>
+                    {%- endif %}
+                    {%- if permission_can('admin') and 'timeline_cfg' in statistics %}
+                        <tr>
+                            <th>
+                                <span class="float-end">
+                                    {{- get_icon("role-admin") -}}
+                                </span>
+                                {{- _("Timeline steps") }}:
+                            </th>
+                            <td>
+                                {{ babel_format_decimal(statistics['timeline_cfg'].count) }} x {{ statistics['timeline_cfg'].step.__str__() }}
+                            </td>
+                        </tr>
+                    {%- endif %}
+                </table>
+            </div>
+
+            <p id="statusbar-chart-rendering"></p>
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <p>
+                        {{ _("Comparison of the event counts for <em>overall</em>, <em>internal</em> and <em>external</em> categories:") | safe }}
+                    </p>
+                    <table class="table table-sm">
+                        <tr>
+                            <th>
+                                {{ _("Overall event counts") }}:
+                            </th>
+                            <td class="text-end">
+                                {{ babel_format_decimal(statistics['stats_overall']['cnt_alerts']) }}
+                            </td>
+                            {%- if statistics['stats_overall']['cnt_alerts'] != 0 %}
+                                <td class="text-end">
+                                    {{ babel_format_percent(statistics['stats_overall']['cnt_alerts']/statistics['stats_overall']['cnt_alerts'], format="0.0%") }}
+                                </td>
+                            {%- endif %}
+                        </tr>
+                        <tr>
+                            <th>
+                                {{ _("Internal event counts") }}:
+                            </th>
+                            <td class="text-end">
+                                {{ babel_format_decimal(statistics['stats_internal']['cnt_alerts']) }}
+                            </td>
+                            {%- if statistics['stats_overall']['cnt_alerts'] != 0 %}
+                                <td class="text-end">
+                                    {{ babel_format_percent(statistics['stats_internal']['cnt_alerts']/statistics['stats_overall']['cnt_alerts'], format="0.0%") }}
+                                </td>
+                            {%- endif %}
+                        </tr>
+                        <tr>
+                            <th>
+                                {{ _("External event counts") }}:
+                            </th>
+                            <td class="text-end">
+                                {{ babel_format_decimal(statistics['stats_external']['cnt_alerts']) }}
+                            </td>
+                            {%- if statistics['stats_overall']['cnt_alerts'] != 0 %}
+                                <td class="text-end">
+                                    {{ babel_format_percent(statistics['stats_external']['cnt_alerts']/statistics['stats_overall']['cnt_alerts'], format="0.0%") }}
+                                </td>
+                            {%- endif %}
+                        </tr>
+                    </table>
+                    {%- if statistics['stats_overall']['cnt_alerts'] != 0 %}
+                        <div class="progress">
+                            <div class="progress-bar bg-danger"
+                                 style="width: {{ '{:3.0f}'.format(statistics['stats_internal']['cnt_alerts']/statistics['stats_overall']['cnt_alerts']*100) }}%"
+                                 title="{{ babel_format_decimal(statistics['stats_internal']['cnt_alerts']) }} {{ _('internal events') }}"
+                                 data-bs-toggle="tooltip">
+                            </div>
+                            <div class="progress-bar bg-warning"
+                                 style="width: {{ '{:3.0f}'.format(statistics['stats_external']['cnt_alerts']/statistics['stats_overall']['cnt_alerts']*100) }}%"
+                                 title="{{ babel_format_decimal(statistics['stats_external']['cnt_alerts']) }} {{ _('external events') }}"
+                                 data-bs-toggle="tooltip">
+                            </div>
+                        </div>
+                    {%- endif %}
+                </div>
+            </div>
+            <!-- Search result summary - END ---------------------------------->
+
+            <!-- Tab navigation - BEGIN --------------------------------------->
+            <ul class="nav nav-tabs" role="tablist">
+                <li role="presentation" class="nav-item">
+                    <a href="#tab-stats-overall"
+                       aria-controls="tab-stats-overall"
+                       role="tab"
+                       data-bs-toggle="tab"
+                       class="nav-link active super-chart-tab">
+                        <strong>{{ _("Overall statistics") }}</strong>
+                    </a>
+                </li>
+                <li role="presentation" class="nav-item">
+                    <a href="#tab-stats-internal"
+                       aria-controls="tab-stats-internal"
+                       role="tab"
+                       data-bs-toggle="tab"
+                       class="nav-link super-chart-tab">
+                        <strong>{{ _("Internal statistics") }}</strong>
+                    </a>
+                </li>
+                <li role="presentation" class="nav-item">
+                    <a href="#tab-stats-external"
+                       aria-controls="tab-stats-external"
+                       role="tab"
+                       data-bs-toggle="tab"
+                       class="nav-link super-chart-tab">
+                        <strong>{{ _("External statistics") }}</strong>
+                    </a>
+                </li>
+            </ul>
+            <!-- Tab navigation - END ----------------------------------------->
+
+            <!-- Tab panels - BEGIN ------------------------------------------->
+            <div class="tab-content">
+                <!-- Tab panel - BEGIN ---------------------------------------->
+                <div role="tabpanel"
+                     class="tab-pane fade in show active"
+                     id="tab-stats-overall">
+                    <h3>
+                        {{ _("Overall processing statistics") }}
+                    </h3>
+                    <p>
+                        {{ _("This panel shows overall statistics calculated from all available data.") | safe }}
+                    </p>
+
+                    <!-- Inner tab navigation - BEGIN ------------------------->
+                    <ul class="nav nav-tabs nav-tabs-tooltipped nav-tabs-inner"
+                        role="tablist">
+                        {{ macros_chart.render_dashboard_nav(chart_sections_overall,
+                                                             'stats-overall') }}
+                    </ul>
+                    <!-- Inner tab navigation - END --------------------------->
+
+                    <!-- Inner tab panels - BEGIN ----------------------------->
+                    <div class="tab-content">
+                        {{ macros_chart.render_dashboard_panels(chart_sections_overall,
+                                                                'stats-overall') }}
+                    </div>
+                    <!-- Inner tab panels - END ------------------------------->
+                </div>
+
+                <!-- Tab panel - BEGIN ---------------------------------------->
+                <div role="tabpanel" class="tab-pane fade" id="tab-stats-internal">
+                    <h3>
+                        {{ _("Internal processing statistics") }}
+                    </h3>
+                    <p>
+                        {{ _("This panel shows statistics calculated only for data regarding <em>internal</em> networks. The <em>internal</em> networks are those that are registered within the Mentat system, because they are important and interesting to the system users.") | safe }}
+                    </p>
+
+                    <!-- Inner tab navigation - BEGIN ------------------------->
+                    <ul class="nav nav-tabs nav-tabs-tooltipped nav-tabs-inner"
+                        role="tablist">
+                        {{ macros_chart.render_dashboard_nav(chart_sections_internal,
+                                                             'stats-internal') }}
+                    </ul>
+                    <!-- Inner tab navigation - END --------------------------->
+                    <div class="tab-content">
+                        {{ macros_chart.render_dashboard_panels(chart_sections_internal,
+                                                                'stats-internal') }}
+                    </div>
+                </div>
+                <!-- /.tabpanel -->
+
+                <!-- Tab panel - BEGIN ---------------------------------------->
+                <div role="tabpanel" class="tab-pane fade" id="tab-stats-external">
+                    <h3>
+                        {{ _("External processing statistics") }}
+                    </h3>
+                    <p>
+                        {{ _("This panel shows statistics calculated only for data regarding <em>external</em> networks. The <em>external</em> networks are those that are not registered within the Mentat system and are therefore not that important or interesting to the system users.") | safe }}
+                    </p>
+
+                    <!-- Inner tab navigation - BEGIN ------------------------->
+                    <ul class="nav nav-tabs nav-tabs-tooltipped nav-tabs-inner"
+                        role="tablist">
+                        {{ macros_chart.render_dashboard_nav(chart_sections_external,
+                                                             'stats-external') }}
+                    </ul>
+                    <!-- Inner tab navigation - END --------------------------->
+
+                    <!-- Inner tab panels - BEGIN ----------------------------->
+                    <div class="tab-content">
+                        {{ macros_chart.render_dashboard_panels(chart_sections_external,
+                                                                'stats-external') }}
+                    </div>
+                    <!-- Inner tab panels - END ------------------------------->
+                </div>
+                <!-- /.tabpanel -->
+            </div>
+            <!-- Tab panels - END --------------------------------------------->
+
+            {%- if permission_can('developer') %}
+                <hr>
+                {{ macros_site.render_raw_var('statistics', statistics) }}
+            {%- endif %}
+        {%- else %}
+            {%- call macros_site.render_alert('warning', False) %}
+                {{ _("No data matches your search criteria.") }}
+            {%- endcall %}
+        {%- endif %}
+    {%- endif %}
+
+    {%- if permission_can('developer') %}
+        <hr>
+        {{ macros_site.render_raw_var('request_args', request.args) }}
+        {{ macros_site.render_raw_var('form_data', form_data) }}
+        {{ macros_site.render_raw_var('query_params', query_params) }}
+    {%- endif %}
+{%- endblock content %}

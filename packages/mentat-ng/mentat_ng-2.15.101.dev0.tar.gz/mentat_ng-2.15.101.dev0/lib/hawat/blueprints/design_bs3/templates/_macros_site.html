@@ -1,0 +1,1811 @@
+{%- import '_macros_page.html' as macros_page with context -%}
+
+{#- ----------------------------------------------------------------------------
+
+    Macro for rendering of dropdown submenus.
+
+    Entries in the menus are automatically hidden based on the permissions of
+    the current user.
+
+----------------------------------------------------------------------------- #}
+
+{%- macro render_dropdown_submenus(submenus, align_right) -%}
+    <div class="dropdown-menu{% if align_right %} dropdown-menu-right{% endif %}">
+        {%- for menu_item in submenus recursive %}
+            {%- set menu_item_submenu = menu_item.get_entries() %}
+            {%- if menu_item.group %}
+                {%- if not loop.first %}
+                    <div role="separator" class="dropdown-divider"></div>
+                {%- endif %}
+                <span class="dropdown-header">{{ menu_item.group }}</span>
+            {%- endif %}
+            {%- if menu_item.type == 'submenu' %}
+                <a href="#"
+                   class="dropdown-item dropdown-toggle{% if menu_item_submenu %} dropdown dropdown-submenu{% elif menu_item.is_active(request) %} active{% endif %}"
+                   data-bs-toggle="dropdown"
+                   role="button"
+                   aria-haspopup="true"
+                   aria-expanded="false">
+            {%- else %}
+                <a class="dropdown-item{% if menu_item.is_active(request) %} active{% endif %}"
+                   href="{% if menu_item.is_active(request) %}#{% else %}{{ menu_item.get_url() }}{% endif %}"
+                   {% if menu_item.get_legend() and menu_item.get_legend().lower() != menu_item.get_title().lower() %} data-bs-toggle="tooltip" title="{{ menu_item.get_legend() }}"{% endif %}>
+            {%- endif %}
+            {% if menu_item.get_icon() %}
+                {{ get_icon(menu_item.get_icon()) }}
+            {% endif %}
+            {% if menu_item.get_title() %}
+                {% if menu_item.resptitle %}
+                    <span> {{ menu_item.get_title() }}</span>
+                {% else %}
+                    {{ menu_item.get_title() }}
+                {% endif %}
+            {% endif %}
+                </a>
+            {%- if menu_item_submenu %}
+                <div class="dropdown-menu{% if menu_item.align_right %} dropdown-menu-right{% endif %}">
+                    {{ loop(menu_item_submenu) }}
+                </div>
+            {%- endif %}
+        {%- endfor %}
+    </div>
+{% endmacro %}
+
+
+{#- ----------------------------------------------------------------------------
+
+    Macro for rendering the main menu of the application.
+
+    Entries in the menu are automatically hidden based on the permissions of the
+    current user.
+
+----------------------------------------------------------------------------- #}
+
+{%- macro render_menu_main() -%}
+    <ul class="navbar-nav me-auto">
+        {%- for menu_item in hawat_current_menu_main.get_entries() recursive %}
+            {%- set menu_item_submenu = menu_item.get_entries() %}
+            {%- if menu_item.group %}
+                <li role="separator" class="dropdown-divider"></li>
+                <li class="dropdown-header">
+                    {{ menu_item.group }}
+                </li>
+            {%- endif %}
+            <li class="nav-item{% if menu_item_submenu %} dropdown dropdown-submenu {% endif %}">
+                {%- if menu_item.type == 'submenu' %}
+                    <a href="#"
+                       class="dropdown-toggle nav-link{% if menu_item.is_active(request) %} active{% endif %}"
+                       data-bs-toggle="dropdown"
+                       role="button"
+                       aria-haspopup="true"
+                       aria-expanded="false">
+                {%- else %}
+                    <a class="nav-link{% if menu_item.is_active(request) %} active{% endif %}"
+                       href="{% if menu_item.is_active(request) %}#{% else %}{{ menu_item.get_url() }}{% endif %}"
+                       {% if menu_item.get_legend() %} data-bs-toggle="tooltip" title="{{ menu_item.get_legend() }}"{% endif %}>
+                {%- endif %}
+                {% if menu_item.get_icon() %}
+                    {{ get_icon(menu_item.get_icon()) }}
+                {% endif %}
+                {% if menu_item.get_title() %}
+                    {% if menu_item.resptitle %}
+                        <span class="d-sm-none d-lg-inline"> {{ menu_item.get_title() }}</span>
+                    {% else %}
+                        {{ menu_item.get_title() }}
+                    {% endif %}
+                {% endif %}
+                    </a>
+                {%- if menu_item_submenu %}
+                    {{ render_dropdown_submenus(menu_item_submenu, menu_item.align_right) }}
+                {%- endif %}
+            </li>
+        {%- endfor %}
+    </ul>
+{%- endmacro %}
+
+{#- ----------------------------------------------------------------------------
+
+    Macros for rendering the footer of the application.
+
+----------------------------------------------------------------------------- #}
+
+{%- macro _render_subfooter_content(line_break) -%}
+    <span>
+        <span data-bs-toggle="tooltip" title="{{ hawat_bversion_full }}">
+            {{ hawat_appname }} {{ hawat_version }}
+        </span>
+        <span class="d-none d-md-inline-block"> | </span>
+        <br class="d-md-none">
+        <span>© {{ _("since") }} 2011</span>
+    </span>
+    {%- if line_break %}
+        <br>
+    {%- endif %}
+    <span>
+        <span data-bs-toggle="tooltip" title="{{ _('Page generated at: ') }}">{{ get_icon("clock") }}</span><span class="d-none d-md-inline-block"> <em>{{ _('Page generated at: ') }}</em></span> {{ babel_format_datetime(current_datetime_utc) }}
+        <span class="d-none d-md-inline-block"> | </span>
+        <br class="d-md-none">
+        <span data-bs-toggle="tooltip" title="{{ _('Page generated in: ') }}">{{ get_icon("stopwatch") }}</span><span class="d-none d-md-inline-block"> <em>{{ _('Page generated in: ') }}</em></span> {{ get_timedelta(g.requeststart) }}
+    </span>
+{%- endmacro %}
+
+{%- macro render_footer(large_footer=False) -%}
+    <footer class="container-fluid mt-auto" id="footer">
+        {% set top_footer = config['FOOTER_LOGO_FILE_NAME'] or config['FOOTER_LINKS'] or config['FOOTER_CONTACTS'] %}
+        {%- if top_footer %}
+            <hr{%- if not large_footer %} class="mb-0"{%- endif %}>
+            <div class="row align-items-top {%- if not large_footer %} align-items-center justify-content-between{% else %} justify-content-around{% endif %}">
+                {%- if config['FOOTER_LOGO_FILE_NAME'] %}
+                    <div class="col-md-2 text-center text-md-start">
+                        <a href="{% if config['FOOTER_LOGO_REDIRECT_URL'] %}{{ config['FOOTER_LOGO_REDIRECT_URL'] }}
+                                {%- else %}#{% endif %}">
+
+                            <img src="{{ url_for('static', filename='images/' + config['FOOTER_LOGO_FILE_NAME']) }}"
+                                class="footer-logo{% if large_footer %} large{% endif %}"
+                                loading="lazy"
+                                alt="Company logo"
+                                {% if config['FOOTER_LOGO_TOOLTIP'] %}
+                                    data-bs-toggle="tooltip"
+                                    title="{{ config['FOOTER_LOGO_TOOLTIP'] }}"
+                                {% endif %}
+                            >
+                        </a>
+                    </div>
+                {%- endif %}
+                {%- if config['FOOTER_LINKS'] %}
+                <div class="col-md-2 text-center">
+                    {% if large_footer %}
+                        <h6>{{ _('Links') }}</h6>
+                    {% endif %}
+                    {% for link in config['FOOTER_LINKS'] %}
+                    {% if loop.first or large_footer %}
+                        <a
+                            {% if link[2] %}
+                            data-bs-toggle="tooltip"
+                            title="{{ link[2] }}"
+                            {% endif %}
+                            href="{{ link[1] }}"
+                            >
+                            {{ link[0] }}
+                        </a>
+                    {% endif %}
+                    {% if not loop.last and large_footer %}
+                        <br>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                {%- endif %}
+                {% if config['FOOTER_CONTACTS'] %}
+                    <div class="col-md-2 text-center {% if large_footer %}text-md-start{% endif %}">
+                        {% if large_footer %}
+                            <h6 class="mt-2 mt-md-0">{{ _('Contact') }}</h6>
+                        {% endif %}
+                        {% for contact in config['FOOTER_CONTACTS'] %}
+                            {% if loop.first or large_footer %}
+                                {% if contact[1] %}
+                                    <a href="{{ contact[1] }}"
+                                        {% if contact[2] %}
+                                            data-bs-toggle="tooltip"
+                                            title="{{ contact[2] }}"
+                                            {% endif %}
+                                    >
+                                        {{ contact[0] }}
+                                    </a>
+                                {% else %}
+                                    <span
+                                        {% if contact[2] %}
+                                            data-bs-toggle="tooltip"
+                                            title="{{ contact[2] }}"
+                                        {% endif %}
+                                    >
+                                        {{ contact[0] }}
+                                    </span>
+                                {% endif %}
+                            {% endif %}
+                            {% if not loop.last and large_footer %}
+                                <br>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                {% endif %}
+                {%- if not large_footer %}
+                    <div class="col-md-5 text-center text-md-end">
+                        {{ _render_subfooter_content(line_break=True) }}
+                    </div>
+                {%- endif %}
+            </div>
+        {%- endif %}
+        {%- if large_footer or not top_footer %}
+            <hr class="mb-0">
+            <div class="d-flex justify-content-between">
+                {{ _render_subfooter_content(line_break=False) }}
+            </div>
+        {%- endif %}
+    </footer>
+{%- endmacro %}
+
+
+{#- ----------------------------------------------------------------------------
+
+    Macro for rendering the authentication and anonymous submenus of the
+    application. These menus get special handling.
+
+----------------------------------------------------------------------------- #}
+
+{%- macro render_submenu_auth() -%}
+    {%- if current_user.is_authenticated %}
+        <!-- Authenticated menu widget - BEGIN ---------------->
+        <li class="dropdown dropdown-submenu nav-item">
+            <a href="#"
+               class="dropdown-toggle nav-link"
+               data-bs-toggle="dropdown"
+               data-user-name="{{ current_user.login }}"
+               role="button"
+               aria-haspopup="true"
+               aria-expanded="false">
+                {%- if current_user.has_role('admin') %}{{ get_icon("role-admin") }}
+                {% elif current_user.has_role('maintainer') %}
+                    {{ get_icon("role-maintainer") }}
+                {% elif current_user.has_role('developer') %}
+                    {{ get_icon("role-developer") }}
+                {% else %}
+                    {{ get_icon("role-user") }}
+                {% endif %}
+                <span class="d-sm-none d-xl-inline-block"> {{ current_user.login }}</span>
+            </a>
+            <div class="dropdown-menu dropdown-menu-end dropdown-menu-xl-start">
+                {%- for menu_item in hawat_current_menu_auth.get_entries() recursive %}
+                    {%- set menu_item_submenu = menu_item.get_entries() %}
+                    {%- if menu_item.group %}
+                        <div role="separator" class="dropdown-divider"></div>
+                        <span class="dropdown-header">{{ menu_item.group }}</span>
+                    {%- endif %}
+                    <div class="{% if menu_item_submenu %}dropdown dropdown-submenu{% elif menu_item.is_active(request) %}active{% endif %}">
+                        {%- if menu_item.type == 'submenu' %}
+                            <a href="#"
+                               class="dropdown-item dropdown-toggle{% if menu_item_submenu %} dropdown dropdown-submenu{% elif menu_item.is_active(request) %} active{% endif %}"
+                               data-bs-toggle="dropdown"
+                               role="button"
+                               aria-haspopup="true"
+                               aria-expanded="false">
+                        {%- else %}
+                            <a class="dropdown-item{% if menu_item_submenu %} dropdown dropdown-submenu{% elif menu_item.is_active(request) %} active{% endif %}"
+                               href="{% if menu_item.is_active(request) %}#{% else %}{{ menu_item.get_url() }}{% endif %}"
+                               {% if menu_item.get_legend() %} data-bs-toggle="tooltip" title="{{ menu_item.get_legend() }}"{% endif %}>
+                        {%- endif %}
+                        {% if menu_item.get_icon() %}
+                            {{ get_icon(menu_item.get_icon()) }}
+                        {% endif %}
+                        {% if menu_item.get_title() %}
+                            {% if menu_item.resptitle %}
+                                <span> {{ menu_item.get_title() }}</span>
+                            {% else %}
+                                {{ menu_item.get_title() }}
+                            {% endif %}
+                        {% endif %}
+                            </a>
+                        {%- if menu_item_submenu %}
+                            {{ render_dropdown_submenus(menu_item_submenu, menu_item.align_right) }}
+                        {%- endif %}
+                    </div>
+                {%- endfor %}
+                <div role="separator" class="dropdown-divider"></div>
+                <a class="dropdown-item"
+                   href="{{ url_for('logout') }}"
+                   title="{{ _('Logout') }}">{{ get_icon("logout") }} {{ _("Logout") }}</a>
+            </div>
+            <!-- /.dropdown-menu -->
+        </li>
+        <!-- Authenticated menu widget - END ------------------>
+    {%- else %}
+        <!-- Anonymous menu widget - BEGIN -------------------->
+        <li class="dropdown dropdown-submenu nav-item">
+            <a href="#"
+               class="dropdown-toggle nav-link"
+               data-bs-toggle="dropdown"
+               role="button"
+               aria-haspopup="true"
+               aria-expanded="false"
+               title="{{ _('Anonymous') }}">
+                {{ get_icon("role-anonymous") }}<span class="d-md-none d-lg-inline"> {{ _("Anonymous") }}</span>
+            </a>
+            <div class="dropdown-menu dropdown-menu-end dropdown-menu-xl-start">
+                {%- for menu_item in hawat_current_menu_anon.get_entries() recursive %}
+                    {%- set menu_item_submenu = menu_item.get_entries() %}
+                    {%- if menu_item.group %}
+                        <div role="separator" class="dropdown-divider"></div>
+                        <span class="dropdown-header">{{ menu_item.group }}</span>
+                    {%- endif %}
+                    <div class="{% if menu_item_submenu %}dropdown dropdown-submenu{% elif menu_item.is_active(request) %}active{% endif %}">
+                        {%- if menu_item.type == 'submenu' %}
+                            <a href="#"
+                               class="dropdown-item dropdown-toggle{% if menu_item_submenu %} dropdown dropdown-submenu{% elif menu_item.is_active(request) %} active{% endif %}"
+                               data-bs-toggle="dropdown"
+                               role="button"
+                               aria-haspopup="true"
+                               aria-expanded="false">
+                        {%- else %}
+                            <a class="dropdown-item{% if menu_item_submenu %} dropdown dropdown-submenu{% elif menu_item.is_active(request) %} active{% endif %}"
+                               href="{% if menu_item.is_active(request) %}#{% else %}{{ menu_item.get_url() }}{% endif %}"
+                               {% if menu_item.get_legend() %} data-bs-toggle="tooltip" title="{{ menu_item.get_legend() }}"{% endif %}>
+                        {%- endif %}
+                        {% if menu_item.get_icon() %}
+                            {{ get_icon(menu_item.get_icon()) }}
+                        {% endif %}
+                        {% if menu_item.get_title() %}
+                            {% if menu_item.resptitle %}
+                                <span class="hidden-sm"> {{ menu_item.get_title() }}</span>
+                            {% else %}
+                                {{ menu_item.get_title() }}
+                            {% endif %}
+                        {% endif %}
+                        {%- if menu_item_submenu %}
+                            {{ render_dropdown_submenus(menu_item_submenu, menu_item.align_right) }}
+                        {%- endif %}
+                            </a>
+                    </div>
+                {%- endfor %}
+            </div>
+            <!-- /.dropdown-menu -->
+        </li>
+        <!-- Anonymous menu widget - END ---------------------->
+    {%- endif %}
+{%- endmacro %}
+
+
+{#- ----------------------------------------------------------------------------
+
+    Macro for rendering the single view button.
+
+----------------------------------------------------------------------------- #}
+
+{%- macro render_endpoint_link(endpoint_name, params = {}, label = False, css_class = '', with_icon = False) %}
+    {%- set tmp_endpoint_class = get_endpoint_class(endpoint_name, quiet = True) %}
+    {%- if tmp_endpoint_class %}
+        <a {% if css_class %} class="{{ css_class }}"{% endif %}
+           href="{{ tmp_endpoint_class.get_view_url(**params) }}"
+           data-bs-toggle="tooltip"
+           title="{{ tmp_endpoint_class.get_menu_legend(**params) }}">
+            {% if with_icon %}
+                {{ get_icon(tmp_endpoint_class.get_view_icon()) }}
+            {% endif %}
+            {% if label %}
+                {{ label }}
+            {% else %}
+                {{ tmp_endpoint_class.get_menu_title(**params) }}
+            {% endif %}
+        </a>
+    {%- endif %}
+{%- endmacro %}
+
+
+{%- macro render_view_buttons(endpoint_names, btn_size = 'sm', with_title = False, css_class = '') %}
+    <!-- Item context action menu widget - BEGIN ------------------>
+    <div class="btn-toolbar{% if css_class %} {{ css_class }}{% endif %}"
+         role="toolbar">
+        <div class="btn-group btn-group-{{ btn_size }}" role="group">
+            {%- for endpoint_name in endpoint_names %}
+                <a role="button"
+                   class="btn btn-secondary btn-{{ btn_size }}"
+                   href="{{ url_for(get_endpoint_class(endpoint_name).get_view_endpoint()) }}"
+                   data-bs-toggle="tooltip"
+                   title="{{ get_endpoint_class(endpoint_name).get_menu_legend() }}">
+                    {{ get_icon(get_endpoint_class(endpoint_name).get_view_icon()) }}
+                    {% if with_title %}
+                        {{ get_endpoint_class(endpoint_name).get_menu_title() }}
+                    {% endif %}
+                </a>
+            {%- endfor %}
+        </div>
+    </div>
+    <!-- Item context action menu widget - END -------------------->
+{%- endmacro %}
+
+
+{#- ----------------------------------------------------------------------------
+
+    Macro for rendering the quicksearch dropdown.
+
+----------------------------------------------------------------------------- #}
+
+{%- macro render_quicksearch(search_list) %}
+    {%- if search_list %}
+        <!-- Quicksearch widget - BEGIN -------------------------------->
+        <a data-bs-toggle="dropdown"
+           role="button"
+           aria-haspopup="true"
+           href="#"
+           class="btn btn-secondary dropdown-toggle"
+           aria-expanded="false">
+            <span data-bs-toggle="tooltip" title="{{ _('Quick search menu') }}">
+                {{ get_icon("quicksearch") }}<span class="d-sm-none d-md-inline-block"> {{ _("Quick search") }}</span>
+            </span>
+        </a>
+        <ul class="dropdown-menu">
+            {%- for search_item in search_list %}
+                <li>
+                    <a href="{{ url_for(request.endpoint, **search_item['params']) }}"
+                       class="dropdown-item">
+                        {{ get_endpoint_icon(request.endpoint) }} {{ search_item['label'] | safe }}
+                    </a>
+                </li>
+            {%- endfor %}
+        </ul>
+        <!-- Quicksearch widget - END ---------------------------------->
+    {%- endif %}
+{%- endmacro %}
+
+
+{#- ----------------------------------------------------------------------------
+
+    Macro for rendering the time window pager.
+
+----------------------------------------------------------------------------- #}
+
+{%- macro render_timepager(qparams_p, dt_from_p, tiid) %}
+    {%- if dt_from_p %}
+        {%- set qparams = make_copy_deep(qparams_p) %}
+        {%- set dt_from = make_copy_deep(dt_from_p) %}
+
+        {%- set dt_from = dt_from.replace(tzinfo = None) %}
+        {%- set dt_to = get_datetime_window(tiid, 'next', dt_from) %}
+        {%- if dt_from and dt_to %}
+            <nav class="d-flex justify-content-between align-items-center mb-3">
+                {%- set x = qparams.__setitem__('tiid', tiid) %}
+                {%- set x = qparams.__setitem__('dt_from', get_datetime_window(tiid, 'previous', dt_from).isoformat(sep = ' ')) %}
+                {%- set x = qparams.__setitem__('dt_to',   dt_from.isoformat(sep = ' ')) %}
+                <a class="btn btn-outline-primary"
+                   href="{{ url_for(request.endpoint, **qparams) }}"
+                   data-bs-toggle="tooltip"
+                   title="{{ _('Go to previous time window: %(from)s — %(to)s', from = qparams.dt_from, to = qparams.dt_to) | safe }}">
+                    <span aria-hidden="true">⇐</span> {{ _("Previous time window") }}
+                </a>
+                <span>
+                    <strong>
+                        {{ babel_format_datetime(dt_from) }}
+                        —
+                        {{ babel_format_datetime(dt_to) }}
+                        ({{ babel_format_timedelta(dt_to - dt_from) }})
+                    </strong>
+                </span>
+                {%- set x = qparams.__setitem__('dt_from', dt_to.isoformat(sep = ' ')) %}
+                {%- set x = qparams.__setitem__('dt_to', get_datetime_window(tiid, 'next', dt_to).isoformat(sep = ' ')) %}
+                <a class="btn btn-outline-primary"
+                   href="{{ url_for(request.endpoint, **qparams) }}"
+                   data-bs-toggle="tooltip"
+                   title="{{ _('Go to next time window: %(from)s — %(to)s',
+                               from = qparams.dt_from, to = qparams.dt_to) | safe }}">
+                    {{ _("Next time window") }} <span aria-hidden="true">⇒</span>
+                </a>
+            </nav>
+        {%- endif %}
+    {%- endif %}
+{%- endmacro %}
+
+
+{#- ----------------------------------------------------------------------------
+
+    Macro for rendering the locale switcher widget.
+
+----------------------------------------------------------------------------- #}
+
+{%- macro render_locale_switcher() %}
+    <li class="nav-item dropdown">
+        <a href="#"
+           class="nav-link dropdown-toggle"
+           data-bs-toggle="dropdown"
+           role="button"
+           aria-expanded="false">
+            <span data-bs-toggle="tooltip"
+                  data-bs-placement="bottom"
+                  title="{{ _('Switch site locale') }}">
+                {{ get_icon("language") }}
+                <span class="d-sm-none d-xl-inline-block">
+                    {{ config['SUPPORTED_LOCALES'][session.locale] | capitalize }}
+                </span>
+            </span>
+        </a>
+        <div class="dropdown-menu dropdown-menu-end locales" role="menu">
+            {%- for locale in config['SUPPORTED_LOCALES'] %}
+                <a class="dropdown-item{% if session.locale == locale %} active{% endif %}"
+                   href="{{ url_for('locale', code = locale) }}">
+                    {{ get_country_flag(locale|upper) }}
+                    {{ config['SUPPORTED_LOCALES'][locale] | capitalize }}
+                </a>
+            {%- endfor %}
+        </div>
+        <!-- /.dropdown-menu -->
+    </li>
+{%- endmacro %}
+
+
+{#- ----------------------------------------------------------------------------
+
+    Macros for rendering various usefull widgets.
+
+----------------------------------------------------------------------------- #}
+
+{%- macro render_alert(alert_level, dismissible = True, forceicon = None) %}
+    {%- if alert_level == 'error' %}
+        {%- set alert_level = "danger" %}
+    {% elif alert_level == 'message' %}
+        {%- set alert_level = "info" %}
+    {%- endif %}
+    <div class="alert alert-{{ alert_level }}{% if dismissible %} alert-dismissible{% endif %}">
+        {%- if dismissible %}
+            <button type="button"
+                    class="btn-close"
+                    data-bs-dismiss="alert"
+                    data-bs-toggle="tooltip"
+                    aria-label="{{ _('Close') }}"
+                    title="{{ _('Close') }}">
+            </button>
+        {%- endif %}
+        {%- if forceicon %}
+            {{ get_icon(forceicon) }}
+        {%- else %}
+            {{ get_icon('alert-' + alert_level) }}
+        {%- endif %}
+        {{ caller() }}
+    </div>
+{%- endmacro %}
+
+{%- macro render_help_popover(title, helptext, btn_size = 'sm', placement = 'left') %}
+    <a tabindex="0"
+       class="btn btn-{{ btn_size }} btn-info text-light"
+       role="button"
+       data-bs-toggle="popover"
+       data-bs-placement="{{ placement }}"
+       data-bs-trigger="hover focus"
+       title="{{ title }}"
+       data-bs-content="{{ helptext }}">
+        {{ get_icon("help") }}
+    </a>
+{%- endmacro %}
+
+{%- macro render_pager(endpoint, qparams, ii_low, ii_high, ii_limit) %}
+    <nav class="d-flex justify-content-between align-items-center mb-3">
+        {#- Workaround for updating dictionaries in Jinja2 templates.
+            The obvious qparams['page'] = qparams.get('page', 1) - 1 does raise syntax error.
+            Source: https://stackoverflow.com/a/43265291
+        #}
+        {#-  Convert the value into an integer. If the conversion doesn’t work it will return 0. #}
+        {%- set tmppage = qparams.get('page', 1) | int %}
+        {%- if tmppage < 1 %}
+            {%- set tmppage = 1 %}
+        {%- endif %}
+        {%- set x = qparams.__setitem__('page', (tmppage - 1)) %}
+        {%- if not qparams['page'] %}
+            <a class="btn btn-outline-secondary disabled"
+               data-bs-toggle="tooltip"
+               title="{{ _('You are already at first page') }}">
+                <span aria-hidden="true">←</span> {{ _("Previous") }}
+            </a>
+        {%- else %}
+            <a class="btn btn-outline-primary"
+               href="{{ url_for(endpoint, **qparams) }}"
+               data-bs-toggle="tooltip"
+               title="{{ _('Go to previous page') }}">
+                <span aria-hidden="true">←</span> {{ _("Previous") }}
+            </a>
+        {%- endif %}
+        <span>
+            <strong>{{ _('Page %(page)d, entries #%(ilow)d to #%(ihigh)s', page = tmppage, ilow = ii_low, ihigh = ii_high) }}</strong>
+        </span>
+        {%- set x = qparams.__setitem__('page', (tmppage + 1)) %}
+        {%- if ii_high != ii_limit %}
+            <a class="btn btn-outline-secondary disabled"
+               data-bs-toggle="tooltip"
+               title="{{ _('You are already at last page') }}">
+                {{ _("Next") }} <span aria-hidden="true">→</span>
+            </a>
+        {%- else %}
+            <a class="btn btn-outline-primary"
+               href="{{ url_for(endpoint, **qparams) }}"
+               data-bs-toggle="tooltip"
+               title="{{ _('Go to next page') }}">
+                {{ _("Next") }} <span aria-hidden="true">→</span>
+            </a>
+        {%- endif %}
+    </nav>
+    {%- set x = qparams.__setitem__('page', (qparams.get('page', 1) - 1)) %}
+{%- endmacro %}
+
+{%- macro render_sorter(endpoint, qparams, sortname) %}
+    {%- set origsort = qparams.get('sortby', None) %}
+    <span class="float-end">{%- set x = qparams.__setitem__('sortby', '{}.desc'.format(sortname)) -%}
+        <a href="{{ url_for(endpoint, **qparams) }}"
+           data-bs-toggle="tooltip"
+           title="{{ _('Sort by this column in descending order') }}">
+            {{ get_icon("action-sort-desc") }}
+        </a>
+        {%- set x = qparams.__setitem__('sortby', '{}.asc'.format(sortname)) -%}
+        <a href="{{ url_for(endpoint, **qparams) }}"
+           data-bs-toggle="tooltip"
+           title="{{ _('Sort by this column in ascending order') }}">
+            {{ get_icon("action-sort-asc") }}
+        </a>
+    </span>
+    {%- set x = qparams.__setitem__('sortby', origsort) %}
+{%- endmacro %}
+
+
+{#- ----------------------------------------------------------------------------
+
+    Macro for rendering raw view of item internals.
+
+----------------------------------------------------------------------------- #}
+
+{%- macro render_timemarks(timemark_list, key = '', show_to_render_time=True) %}
+    {%- set dur_ns = {} %}
+    {%- if timemark_list %}
+        {%- set total_duration = timemark_list[-1][0] - timemark_list[0][0] %}
+    {%- endif %}
+    <div class="alert alert-info">
+        <h5 class="card-title mb-0">
+            <a role="button"
+               data-bs-toggle="collapse"
+               href="#timemark_list{%- if key %}_{{ key }}{%- endif %}"
+               aria-expanded="false"
+               aria-controls="timemark_list{%- if key %}_{{ key }}{%- endif %}"
+               class="alert-link">
+                {{ get_icon("role-admin") }} {{ _("Time marks") }} {{ get_icon("expand") }}
+            </a>
+        </h5>
+        <div id="timemark_list{%- if key %}_{{ key }}{%- endif %}"
+             class="collapse">
+            <hr>
+            <table class="table table-sm" style="background-color: white">
+                <tbody>
+                    {% for time_mark in timemark_list %}
+                        <tr {% if time_mark[2] == 'end' %} class="table-danger"{% endif %}>
+                            <td>
+                                <strong>{{ time_mark[3] }}:{{ time_mark[2] }}:{{ time_mark[1] }}</strong>
+                            </td>
+                            <td>
+                                <span data-bs-toggle="tooltip"
+                                      title="{{ _('Mark timestamp: ') }}{{ time_mark[0].isoformat() }}">
+                                    {{ get_icon("clock") }}&nbsp;
+                                </span>
+                                {%- if loop.index0 != 0 %}
+                                    {%- set time_mark_prev = timemark_list[loop.index0 - 1] %}
+                                    <span data-bs-toggle="tooltip"
+                                          title="{{ _('Time difference from: ') }}{{ time_mark_prev[3] }}:{{ time_mark_prev[2] }}:{{ time_mark_prev[1] }}">
+                                        {{ time_mark[0] - timemark_list[loop.index0 - 1][0] }} s&nbsp;
+                                        {{ babel_format_percent((time_mark[0] - time_mark_prev[0]) /total_duration) }}
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if time_mark[2] == 'end' %}
+                                    {%- set dur_key = '{}:begin:{}'.format(time_mark[3], time_mark[1]) %}
+                                    {%- if dur_key in dur_ns and dur_ns[dur_key] != timemark_list[loop.index0 - 1][0] %}
+                                        <span data-bs-toggle="tooltip"
+                                              title="{{ _('Time difference from: ') }}{{ dur_key }}">
+                                            {{ time_mark[0] - dur_ns[dur_key] }} s&nbsp;
+                                            {{ babel_format_percent((time_mark[0] - dur_ns[dur_key]) /total_duration) }}
+                                        </span>
+                                    {%- endif %}
+                                {%- elif time_mark[2] == 'begin' %}
+                                    {%- set dur_key = '{}:{}:{}'.format(time_mark[3], time_mark[2], time_mark[1]) %}
+                                    {%- set _dummy = dur_ns.update({dur_key: time_mark[0]}) %}
+                                {%- endif %}
+                            </td>
+                            <td class="d-none d-lg-table-cell">
+                                {{ time_mark[4] }}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <p>
+                <strong>{{ _("Total duration") }}:</strong>
+                <span id="total_duration{%- if key %}_{{ key }}{%- endif %}">
+                    {%- if timemark_list %}{{ total_duration }}{%- endif %}
+                </span>
+                <br>
+                {%- if show_to_render_time %}
+                    <strong>{{ _("Duration to rendering time") }}:</strong>
+                    <span id="to_rendering_time{%- if key %}_{{ key }}{%- endif %}">
+                        {%- if timemark_list %}{{ get_datetime_utc() - timemark_list[0][0] }}{%- endif %}
+                    </span>
+                    <br>
+                {%- endif %}
+            </p>
+        </div>
+    </div>
+{%- endmacro %}
+
+{%- macro render_sql_queries(query_list, key = '') %}
+    <div class="alert alert-info">
+        <h5 class="card-title mb-0">
+            <a role="button"
+               data-bs-toggle="collapse"
+               href="#query_list{%- if key %}_{{ key }}{%- endif %}"
+               aria-expanded="false"
+               aria-controls="query_list{%- if key %}_{{ key }}{%- endif %}"
+               class="alert-link">
+                {{ get_icon("role-admin") }} {{ _("SQL queries") }} {{ get_icon("expand") }}
+            </a>
+        </h5>
+        <div id="query_list{%- if key %}_{{ key }}{%- endif %}" class="collapse">
+            <hr>
+            <ol class="list-group list-group-numbered">
+                {%- for q in query_list %}
+                    <li class="list-group-item highlight">
+                        {% highlight 'sql' %}{{ q | wordwrap(140) }}{% endhighlight %}
+                    </li>
+                {%- endfor %}
+            </ol>
+        </div>
+    </div>
+{%- endmacro %}
+
+{%- macro render_raw_item_view(item) %}
+    <div class="px-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title mb-0">
+                    {{ get_icon("debug") }} {{ _("Raw item") }}
+                </h5>
+                <hr>
+<pre class="card-text">
+{{ item | pprint }}
+{{ item | pprint_item }}
+</pre>
+            </div>
+        </div>
+    </div>
+{%- endmacro %}
+
+{%- macro render_raw_var(label, var) %}
+    <div class="card pb-1 mb-3">
+        <div class="card-header">
+            <h5>
+                {{ get_icon("debug") }} {{ _("Variable dump:") }} <strong>{{ label }}</strong>
+            </h5>
+        </div>
+        <div class="accordion accordion-flush"
+             id="vardump-{{ label }}"
+             role="tablist">
+            <div class="accordion-item">
+                <h5 class="accordion-header" id="vardump-{{ label }}-pprint-h">
+                    <button class="accordion-button collapsed"
+                            type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#vardump-{{ label }}-pprint"
+                            aria-expanded="false"
+                            aria-controls="vardump-{{ label }}-pprint">
+                        <span data-bs-toggle="tooltip" title="{{ _('Expand/Collapse') }}">{{ _("PPRINT") }}</span>
+                    </button>
+                </h5>
+                <div id="vardump-{{ label }}-pprint"
+                     class="accordion-collapse collapse"
+                     data-bs-parent="#vardump-{{ label }}"
+                     aria-labelledby="vardump-{{ label }}-pprint-h">
+                    <div class="accordion-body">
+                        <pre>{{ var | pprint }}</pre>
+                    </div>
+                </div>
+            </div>
+            <div class="accordion-item">
+                <h5 class="accordion-header" id="vardump-{{ label }}-repr-h">
+                    <button class="accordion-button collapsed"
+                            type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#vardump-{{ label }}-repr"
+                            aria-expanded="false"
+                            aria-controls="vardump-{{ label }}-repr">
+                        <span data-bs-toggle="tooltip" title="{{ _('Expand/Collapse') }}">{{ _("REPR") }}</span>
+                    </button>
+                </h5>
+                <div id="vardump-{{ label }}-repr"
+                     class="accordion-collapse collapse"
+                     data-bs-parent="#vardump-{{ label }}"
+                     aria-labelledby="vardump-{{ label }}-repr-h">
+                    <div class="accordion-body">
+                        <pre>{{ var.__repr__() }}</pre>
+                    </div>
+                </div>
+            </div>
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed"
+                            type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#vardump-{{ label }}-str"
+                            aria-expanded="false"
+                            aria-controls="vardump-{{ label }}-str">
+                        <span data-bs-toggle="tooltip" title="{{ _('Expand/Collapse') }}">{{ _("STR") }}</span>
+                    </button>
+                </h2>
+                <div id="vardump-{{ label }}-str"
+                     class="accordion-collapse collapse"
+                     data-bs-parent="#vardump-{{ label }}"
+                     aria-labelledby="vardump-{{ label }}-str-h">
+                    <div class="accordion-body">
+                        <pre>{{ var.__str__() }}</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{%- endmacro %}
+
+
+{#- ----------------------------------------------------------------------------
+
+    Macros for rendering event related widgets.
+
+----------------------------------------------------------------------------- #}
+
+{%- macro render_tlp_warning(item) %}
+    {% if item.has_restricted_access() %}
+        <div class="alert alert-warning" role="alert">
+            {{ get_icon("alert-warning") }} {{ _("This event is TLP:%(tlp)s. Only members of your group and maintainers of Mentat can see it.", tlp = item.get_tlp()) }}
+        </div>
+    {% endif %}
+{%- endmacro %}
+
+{%- macro render_common_event_header(item, breadcrumb_text, margin_below_note=False) %}
+    <div>
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('home.index') }}">
+                    {{ _("Home") }}
+                </a>
+            </li>
+            <li class="breadcrumb-item">
+                <a href="{{ url_for('events.search') }}">
+                    {{ _("Event database") }}
+                </a>
+            </li>
+            <li class="breadcrumb-item active">
+                {{ breadcrumb_text }}
+            </li>
+        </ol>
+        {{ render_tlp_warning(item) }}
+        <h3>
+            {% if item['Description'] %}
+                {{ item['Description'] }}
+            {% else %}
+                {{ item.get_id() }}
+            {% endif %}
+        </h3>
+        <div class="clearfix">
+            <div class="float-end mt-1 ms-3">
+                {{ macros_page.render_menu_actions(item) }}
+            </div>
+            {% if item['Note'] %}
+                <p class="m-0{% if margin_below_note %} mb-3{% endif %}">
+                    <small>
+                        {{ item['Note'] }}
+                    </small>
+                </p>
+            {% endif %}
+        </div>
+    </div>
+{%- endmacro %}
+
+
+{#- ----------------------------------------------------------------------------
+
+    Macros for rendering event report related widgets.
+
+----------------------------------------------------------------------------- #}
+
+
+{%- macro render_report_label_type(report, with_label = False) %}
+    {%- if report.type == 'summary' %}
+        <span class="badge text-bg-secondary"
+              title="{{ _('Summary report') }}"
+              data-bs-toggle="tooltip">
+            {{ get_icon("r-t-summary") }}
+            {% if with_label %}
+                {{ _("summary").capitalize() }}
+            {% endif %}
+        </span>
+    {%- elif report.type == 'extra' %}
+        <span class="badge text-bg-secondary"
+              title="{{ _('Extra report') }}"
+              data-bs-toggle="tooltip">
+            {{ get_icon("r-t-extra") }}
+            {% if with_label %}
+                {{ _("extra").capitalize() }}
+            {% endif %}
+        </span>
+    {%- elif report.type == 'target' %}
+        <span class="badge text-bg-secondary"
+              title="{{ _('Target report') }}"
+              data-bs-toggle="tooltip">
+            {{ get_icon("r-t-target") }}
+            {% if with_label %}
+                {{ _("target").capitalize() }}
+            {% endif %}
+        </span>
+    {%- endif %}
+{%- endmacro %}
+
+{%- macro render_report_label_severity(report, with_label = False) %}
+    {%- if report.severity == 'info' %}
+        <span class="badge bg-sinfo"
+              title="{{ _('Info severity') }}"
+              data-bs-toggle="tooltip">
+            {{ get_icon("r-s-info") }}
+            {% if with_label %}
+                {{ _("info").capitalize() }}
+            {% endif %}
+        </span>
+    {%- elif report.severity == 'low' %}
+        <span class="badge bg-low"
+              title="{{ _('Low severity') }}"
+              data-bs-toggle="tooltip">
+            {{ get_icon("r-s-low") }}
+            {% if with_label %}
+                {{ _("low").capitalize() }}
+            {% endif %}
+        </span>
+    {%- elif report.severity == 'medium' %}
+        <span class="badge bg-medium"
+              title="{{ _('Medium severity') }}"
+              data-bs-toggle="tooltip">
+            {{ get_icon("r-s-medium") }}
+            {% if with_label %}
+                {{ _("medium").capitalize() }}
+            {% endif %}
+        </span>
+    {%- elif report.severity == 'high' %}
+        <span class="badge bg-high"
+              title="{{ _('High severity') }}"
+              data-bs-toggle="tooltip">
+            {{ get_icon("r-s-high") }}
+            {% if with_label %}
+                {{ _("high").capitalize() }}
+            {% endif %}
+        </span>
+    {%- elif report.severity == 'critical' %}
+        <span class="badge bg-critical"
+              title="{{ _('Critical severity') }}"
+              data-bs-toggle="tooltip">
+            {{ get_icon("r-s-critical") }}
+            {% if with_label %}
+                {{ _("critical").capitalize() }}
+            {% endif %}
+        </span>
+    {%- endif %}
+{%- endmacro %}
+
+{%- macro render_report_label_weight(report) %}
+    {%- if report.evcount_rep < 10 %}
+        <span class="badge bg-info text-light"
+              title="{{ _('Low event count') }}"
+              data-bs-toggle="tooltip">
+            {{ get_icon("weight") }}
+            <span class="badge rounded-pill text-bg-secondary my-n2">
+                {{ report.evcount_rep }}
+            </span>
+        </span>
+    {%- elif report.evcount_rep < 100 %}
+        <span class="badge text-bg-primary"
+              title="{{ _('Medium event count') }}"
+              data-bs-toggle="tooltip">
+            {{ get_icon("weight") }}
+            <span class="badge rounded-pill text-bg-secondary my-n2">
+                {{ report.evcount_rep }}
+            </span>
+        </span>
+    {%- elif report.evcount_rep < 1000 %}
+        <span class="badge bg-warning text-light"
+              title="{{ _('High event count') }}"
+              data-bs-toggle="tooltip">
+            {{ get_icon("weight") }}
+            <span class="badge rounded-pill text-bg-secondary my-n2">
+                {{ report.evcount_rep }}
+            </span>
+        </span>
+    {%- else %}
+        <span class="badge text-bg-danger"
+              title="{{ _('Very high event count') }}"
+              data-bs-toggle="tooltip">
+            {{ get_icon("weight") }}
+            <span class="badge rounded-pill text-bg-secondary my-n2">
+                {{ report.evcount_rep }}
+            </span>
+        </span>
+    {%- endif %}
+{%- endmacro %}
+
+{% macro render_popover(time, timezone_name) %}
+    {{ format_datetime_wz(time, None, tz) }} ({{ item.structured_data['timezone'] }})
+    {% if tz != tz_utc -%}
+        <br />
+        {{ format_datetime(time, None, utc=True, rfc_complaint=False) }}
+    {%- endif %}
+{% endmacro %}
+
+{% macro render_different_time_formats(time, timezone_name) %}
+    <button type="button"
+            class="btn underlined-tooltip border border-0 p-0 user-select-auto"
+            data-bs-toggle="popover"
+            data-bs-container="body"
+            data-bs-placement="top"
+            data-bs-html="true"
+            data-bs-content="{{ render_popover(time, timezone_name) }}">
+        {{ format_datetime(time, tz) }}
+    </button>
+{%- endmacro %}
+
+{% macro format_number(number, empty_value='---') -%}
+    <td class="align-middle" style="text-align:right">
+        {% if number %}
+            {{ number }}
+        {% else %}
+            {{ empty_value }}
+        {% endif %}
+    </td>
+{%- endmacro %}
+
+{% macro report_table_header(report_type, default=None) -%}
+    {%- if report_type != 'target' -%}
+        <th>
+            {{ _("Source") }}
+        </th>
+    {%- endif -%}
+    <th>
+        {{ _("First event") }}
+    </th>
+    <th>
+        {{ _("Last event") }}
+    </th>
+    <th style="text-align:right">
+        {{ _("Detectors") }}
+    </th>
+    <th style="text-align:right">
+        {{ _("Messages") }}
+    </th>
+{%- endmacro %}
+
+{% macro report_table_row(key, data, is_authenticated, item, timezone, default=None) -%}
+    {% if is_authenticated and item.type != 'target' -%}
+        <td class="align-middle">
+            {{ render_widget_csag_address([key]) }}
+        </td>
+    {% elif item.type != 'target' -%}
+        <td class="align-middle">
+            {{ key }}
+        </td>
+    {% endif -%}
+    <td class="align-middle">
+        {{ render_different_time_formats(data["first_time"], timezone) }}
+    </td>
+    <td class="align-middle">
+        {{ render_different_time_formats(data["last_time"], timezone) }}
+    </td>
+    {% if item.is_old_type() -%}
+        {{ format_number(data['detectors_count']) }}
+        {{ format_number(data['count']) }}
+    {% else -%}
+        {{ format_number(data.get_detector_count()) }}
+        {{ format_number(data.event_count) }}
+    {% endif -%}
+{%- endmacro %}
+
+{%- macro render_report_icons(item) -%}
+    {%- if item.evcount_flt_blk %}
+        <span class="badge text-bg-secondary"
+              data-bs-toggle="tooltip"
+              title="{{ _('Some of the data for this report were filtered out by reporting filters') }}">
+            {{ get_icon("report-data-filtered") }}
+        </span>
+    {%- endif %}
+    {%- if item.structured_data and item.structured_data.get("relapsed") %}
+        <span class="badge text-bg-danger"
+              data-bs-toggle="tooltip"
+              title="{{ _('Report contains relapsed events') }}">
+            {{ get_icon("report-data-relapsed") }}
+        </span>
+    {%- endif %}
+    {%- if item.flag_shadow %}
+        <span class="badge text-bg-warning"
+              data-bs-toggle="tooltip"
+              title="{{ _('Shadow report visible only to maintainers and not sent via email. Shadow reports are also generated from events with Test category.') }}">
+            {{ get_icon("report-data-test") }} Shadow
+        </span>
+    {%- endif %}
+    {%- if item.flag_testdata %}
+        <span class="badge text-bg-warning"
+              data-bs-toggle="tooltip"
+              title="{{ _('Report was generated from test data.') }}">
+            {{ get_icon("report-data-test") }} Test
+        </span>
+    {%- endif %}
+    {%- if item.flag_mailed %}
+        <span class="badge text-bg-secondary"
+              data-bs-toggle="tooltip"
+              title="{{ _('Report was mailed at') }} {{ render_mailed(item, False) }}">
+            {{ get_icon("report-data-mailed") }}
+        </span>
+    {%- endif %}
+{%- endmacro -%}
+
+{%- macro report_header(item, menu, breadcrumbs_last) -%}
+    <div>
+        {%- if not unauth %}
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('home.index') }}">
+                        {{ _("Home") }}
+                    </a>
+                </li>
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('reports.search') }}">
+                        {{ _("Reports") }}
+                    </a>
+                </li>
+                <li class="breadcrumb-item active">
+                    {{ breadcrumbs_last }}
+                </li>
+            </ol>
+        {%- endif %}
+
+        <div class="d-flex flex-row align-items-center">
+            <h3>
+                {{ item.label }}
+            </h3>
+            <div class="ms-2 h5">
+                {{ render_report_label_type(item, with_label = True) }}
+                {{ render_report_label_severity(item, with_label = True) }}
+                {{ render_report_label_weight(item) }}
+                {{ render_report_icons(item) }}
+            </div>
+        </div>
+        {%- if item.is_old_type() %}
+            {%- call render_alert('warning', False) %}
+                {{ _("This report is in the old format, so the displayed data might be incomplete. Please look at the data in JSON if necessary.") }}
+            {%- endcall %}
+        {%- endif %}
+        {%- if item.flag_shadow %}
+            {%- call render_alert('info', False, 'debug') %}
+                {{ _("This is a shadow report – it is only visible to maintainers and is not emailed. Shadow reports are also generated from events with Test category.") }}
+            {%- endcall %}
+        {%- endif %}
+        {%- if item.flag_testdata %}
+            {%- call render_alert('info', False, 'debug') %}
+                {{ _("This report was generated from test data.") }}
+            {%- endcall %}
+        {%- endif %}
+        {%- if not current_user.is_authenticated %}
+            {%- call render_alert('warning', False) %}
+                {{ _("You are currently viewing this report in unauthenticated mode. Please be aware, that additional functions are available only to authenticated users. Please login or register new account to use them.") }}
+            {%- endcall %}
+        {%- endif %}
+        <div class="float-end mt-3">
+            {{ menu }}
+        </div>
+        <p>
+            <strong>{{ _("Unprotected access link") }}:</strong>
+            <a href="{{ url_for('reports.unauth', item_id = item.label) }}"
+               data-bs-toggle="tooltip"
+               title="{{ _('Unprotected access to report &quot;%(item)s&quot;', item = item.label) }}">
+                {{ item.label }}
+            </a>
+        </p>
+        {%- if current_user.is_authenticated and item.parent %}
+            <p>
+                <strong>{{ _("Parent summary report") }}:</strong>
+                <a href="{{ url_for('reports.show', item_id = item.parent.id) }}"
+                   data-bs-toggle="tooltip"
+                   title="{{ _('View parent summary report &quot;%(item)s&quot;', item = item.parent.label) }}">
+                    {{ item.parent.label }}
+                </a>
+            </p>
+        {%- endif %}
+        <p class="my-0">
+            <strong>{{ _("Group") }}:</strong>
+            {%- for group in item.groups %}
+                {%- if current_user.is_authenticated %}
+                    {%- if loop.index != 1 %},{%- endif %}
+                    <a href="{{ url_for('groups.show', item_id = group.id) }}"
+                       data-bs-toggle="tooltip"
+                       title="{{ _('View details of group &quot;%(item)s&quot;', item = group.name) }}">
+                        {{ group.name -}}
+                    </a>
+                {%- else -%}
+                    {%- if loop.index != 1 %},{%- endif %}
+                        {{ group.name }}
+                    {%- endif -%}
+            {%- else %}
+                ---
+            {%- endfor %}
+        </p>
+        <p class="my-0">
+            <strong>{{ _("Report window") }}:</strong>
+            {{ babel_format_datetime(item.dt_from) }} - {{ babel_format_datetime(item.dt_to) }}
+            ({{ babel_format_timedelta(item.delta) }})
+        </p>
+        <p class="my-0">
+            <strong>{{ _("Report created") }}:</strong>
+            {{ babel_format_datetime(item.createtime) }}
+            ({{ _('%(delta)s ago', delta = babel_format_timedelta(current_datetime_utc - item.createtime)) }})
+        </p>
+        <p class="my-0">
+            <strong>{{ _("Report mailed") }}:</strong>
+            {% if item.flag_mailed %}
+                {{ render_mailed(item, True) }}
+            {% else %}
+                ---
+            {% endif %}
+        </p>
+        <p class="my-0">
+            <strong>{{ _("Event count") }}:</strong> {{ item.evcount_rep }} {{ _("reported") }}
+            {%- if item.type == 'summary' %}
+                ({{ item.evcount_all }} {{ _("matched") }},
+                {{ item.evcount_new }} {{ _("new events") }},
+                {{ item.evcount_flt_blk }} {{ _("filtered out") }},
+                {{ item.evcount_det_blk if item.evcount_det_blk else 0 }} {{ _("uncredible") }},
+                {{ item.evcount_thr_blk }} {{ _("thresholded") }},
+                {{ item.evcount_rlp }} {{ _("relapsed") }})
+            {%- elif item.type != 'target' -%}
+                , {{ item.evcount_all }} {{ _("total in parent summary report") }}
+            {%- endif %}
+        </p>
+        {%- if item.filtering -%}
+            <p class="my-0">
+                <strong>{{ _("Filtering") }}:</strong>
+                {%- for subitem in item.filtering | dictsort %}
+                    {% if can_access_endpoint('filters.list', item) %}
+                        <a href="{{ url_for('filters.list', search=subitem[0], submit=_('Search')) }}">
+                            {{ subitem[0] }}
+                        </a>
+                    {% else %}
+                        {{ subitem[0] }}
+                    {% endif %}
+                    <span class="badge rounded-pill text-bg-secondary"
+                          data-toggle="tooltip"
+                          title="{{ subitem[1] }} {% if subitem[1] == 1 %}{{ _('event was') }}{% else %}{{ _('events were') }}{% endif %} {{ _('filtered by this filter') }}.">
+                        {{ subitem[1] }}
+                    </span>
+                    {%- if not loop.last -%}
+                        ,
+                    {%- endif %}
+                {%- endfor %}
+            </p>
+        {%- endif %}
+    </div>
+{%- endmacro -%}
+
+{#- ----------------------------------------------------------------------------
+
+    Macros for rendering event related widgets.
+
+----------------------------------------------------------------------------- #}
+
+{%- macro render_info_timeinterval(lower, upper) -%}
+    {%- if lower < upper -%}
+        {{ _('%(delta)s ago', delta = babel_format_timedelta(upper - lower)) }}
+    {%- else -%}
+        {{ _('%(delta)s in future', delta = babel_format_timedelta(lower - upper)) }}
+    {%- endif -%}
+{%- endmacro %}
+
+{%- macro render_mailed(item, replace_to_and_cc=False) -%}
+    {{ babel_format_datetime(item.mail_dt) }}
+    ({{ _('%(delta)s ago', delta = babel_format_timedelta(current_datetime_utc - item.mail_dt)) }})
+    {% if item.mail_to and replace_to_and_cc -%}
+        {{ _("to") }} {{ item.mail_to | join(", ") | replace('to:', '') | replace('cc:', '') }}
+    {%- elif item.mail_to and not replace_to_and_cc -%}
+        {{ _("to") }} {{ item.mail_to | join(", ") }}
+    {% endif %}
+{%- endmacro -%}
+
+{%- macro _render_csag_dropdown(csag_group, subitem, context_param) %}
+    {%- set tmp_csag_list = get_csag(csag_group) -%}
+    <ul class="dropdown-menu{% if align_right %} dropdown-menu-right{% endif %}">
+        <li class="dropdown-item-text">
+            {{ _('Context search actions for <strong class="text-nowrap">%(name)s</strong>:', name = subitem) }}
+        </li>
+        <li class="dropdown-divider"></li>
+        {%- set tmp = {'section_header_rendered': False} %}
+        {%- for csag_item in tmp_csag_list %}
+            {%- set _discard = tmp.update({'section_header_rendered': tmp['section_header_rendered'] and loop.previtem['identifier'].module_name == csag_item['identifier'].module_name and loop.previtem['identifier'].view_name == csag_item['identifier'].view_name}) %}
+            {%- if 'url' in csag_item %}
+                {%- if not tmp['section_header_rendered'] %}
+                    <li class="dropdown-header">
+                        {{ _("External links") }}
+                    </li>
+                    {%- set _discard = tmp.update({'section_header_rendered': True}) %}
+                {%- endif %}
+                <li>
+                    <a href="{{ csag_item.url(subitem) }}"
+                       target="_blank"
+                       class="dropdown-item">
+                        <span class="ms-2">
+                            {{ get_icon(csag_item.icon) }} {{ _(csag_item.title) | safe }}
+                        </span>
+                    </a>
+                </li>
+            {%- else %}
+                {%- set value_supported = csag_item.view.check_csag_value_supported(csag_item.identifier.csag_group, subitem) %}
+                {%- if value_supported and check_endpoint_exists(csag_item.view.get_view_endpoint()) %}
+                    {%- set tmp_endpoint_name = csag_item.view.get_view_endpoint() %}
+                    {%- set context = request.view_instance.get_csag_context(csag_item.identifier, context_param) %}
+                    {%- set is_context_relevant = context and csag_item.params.is_context_relevant(**context) %}
+                    {%- if not tmp['section_header_rendered'] and context != None %}
+                        <li class="dropdown-header fw-bold mb-n2 {% if not loop.first %}mt-2{% endif %}">
+                            {{ get_endpoint_icon(tmp_endpoint_name) }} {{ csag_item['view'].get_view_title() }}
+                        <li>
+                        {% set _discard = tmp.update({'section_header_rendered': True}) %}
+                    {%- endif %}
+                    {%- if context != None %}
+                        <li>
+                            <a href="{{ url_for(tmp_endpoint_name, **csag_item.params.get_params(subitem, **context)) }}"
+                               target="_blank"
+                               class="dropdown-item">
+                                <span class="ms-2">
+                                    {%- if is_context_relevant or csag_item.title_context_nonrelevant == None %}
+                                        {{ _(csag_item.title) | safe }}
+                                    {%- else %}
+                                        {{ _(csag_item.title_context_nonrelevant) | safe }}
+                                    {%- endif %}
+                                </span>
+                            </a>
+                        </li>
+                    {%- endif %}
+                    {%- if is_context_relevant and csag_item.title_contextless != None %}
+                        <li>
+                            <a href="{{ url_for(tmp_endpoint_name, **csag_item.params.get_params(subitem)) }}"
+                               target="_blank"
+                               class="dropdown-item">
+                                <span class="ms-2">
+                                    {{ _(csag_item.title_contextless) | safe }}
+                                </span>
+                            </a>
+                        </li>
+                    {%- endif %}
+                {%- endif %}
+            {%- endif %}
+        {%- endfor %}
+    </ul>
+{%- endmacro %}
+
+{#-
+    Complex internal macro for rendering context search action dropdown menu for
+    given group. Main use cases are rendering context action menus for values on
+    event search result and event detail views.
+
+    string csag_group: Name of the context search action group for which to render
+        the widget.
+    list item_list: List of items for which to generate the widgets. This macro can
+        generate multiple witgets at once, which is very handy for example on
+        event search result view.
+    list mark_list: List of items, that should be highlighted. This is usefull for
+        for example for highlighting search results within the result set.
+    bool align_right: Align dropdown to the right instead of the default left.
+    bool separate_dropdown: Generate dropdown separatelly from the label (use
+        only caret for the button label).
+    bool without_label: Generate widget without the label.
+    bool as_code: Generate separate label inside HTML CODE tags.
+    int item_limit: Limit number of items for which to generate the widgets. This
+        feature is usefull for limiting number of displayed items in the result,
+        for example for keeping the table columns in the result from bloating up.
+    string empty_title: Title to be displayed in case the item_list is empty.
+    string empty_icon: Icon to be displayed in case the item_list is empty.
+    bool add_newline: Add newline after each widget.
+-#}
+{%- macro _render_widget_csag(csag_group, item_list, mark_list = None, align_right = False,
+                              separate_dropdown = False, without_label = False, as_code = False,
+                              item_limit = 0, empty_title = _('-- unassigned --'), empty_icon = 'unassigned',
+                              add_newline = False, context_param = None) %}
+    {%- if item_list -%}
+        {%- for subitem in item_list -%}
+            {#- Limit number of items from item_list for which to generate CSAG widget. -#}
+            {%- if item_limit and loop.index > item_limit -%}
+                {%- if loop.index0 == item_limit -%}
+                    <span class="underlined-tooltip"
+                          data-bs-toggle="tooltip"
+                          title="{{ _('Please download raw message to view full list.') }}">
+                        ({{ _('%(count)s more', count = loop.length - loop.index0) }})
+                    </span>
+                {%- endif -%}
+            {%- else -%}
+                {%- if separate_dropdown and not without_label %}
+                    {%- if as_code %}
+                        <code>
+                    {%- endif %}
+                    {% if mark_list and subitem.__str__() in mark_list %}
+                        <mark>{{ subitem }}</mark>
+                    {%- else %}
+                        {{ subitem }}
+                    {%- endif %}
+                    {%- if as_code %}
+                        </code>
+                    {%- endif %}
+                {%- endif -%}
+                <div class="btn-group">
+                    <button class="btn btn-outline-dark btn-xs btn-sm dropdown-toggle m-1"
+                            type="button"
+                            data-bs-toggle="dropdown"
+                            aria-haspopup="true"
+                            aria-expanded="false">
+                        {%- if separate_dropdown and not without_label %}
+                            <i class="fas fa-fw fa-bars"></i>
+                        {%- elif not without_label %}
+                            {% if mark_list and subitem.__str__() in mark_list %}
+                                <mark class="user-select-all">{{ subitem }}</mark>
+                            {%- else %}
+                                <span class="user-select-all">
+                                    {{ subitem }}
+                                </span>
+                            {%- endif %}
+                        {%- else %}
+                            <i class="fas fa-fw fa-bars"></i>
+                        {%- endif %}
+                    </button>
+                    {{ _render_csag_dropdown(csag_group, subitem, context_param) }}
+                </div>
+            {%- endif %}
+            {%- if add_newline and not loop.last %}
+                <br>
+            {% endif %}
+        {% endfor %}
+    {%- else %}
+        <span data-bs-toggle="tooltip" title="{{ empty_title }}">
+            {{ get_icon(empty_icon) }}
+        </span>
+    {%- endif %}
+{%- endmacro %}
+
+{%- macro render_widget_csag_abuse(item_list, mark_list = None, align_right = False, separate_dropdown = False, without_label = False, context_param = None) %}
+    {{
+        _render_widget_csag(
+            'abuses',
+            item_list,
+            mark_list,
+            align_right,
+            separate_dropdown,
+            without_label,
+            context_param = context_param
+        )
+    }}
+{%- endmacro %}
+
+{%- macro render_widget_csag_address(item_list, mark_list = None, align_right = False, separate_dropdown = False, without_label = False, as_code = True, item_limit = 0, add_newline = False, context_param = None) %}
+    {{
+        _render_widget_csag(
+            'ips',
+            item_list,
+            mark_list,
+            align_right,
+            separate_dropdown,
+            without_label,
+            as_code,
+            item_limit,
+            _('-- undisclosed --'),
+            'undisclosed',
+            add_newline,
+            context_param = context_param
+        )
+    }}
+{%- endmacro %}
+
+{%- macro render_widget_csag_category(item_list, mark_list = None, align_right = False, separate_dropdown = False, without_label = False, context_param = None) %}
+    {{
+        _render_widget_csag(
+            'categories',
+            item_list,
+            mark_list,
+            align_right,
+            separate_dropdown,
+            without_label,
+            context_param = context_param
+        )
+    }}
+{%- endmacro %}
+
+{%- macro render_widget_csag_class(item_list, mark_list = None, align_right = False, separate_dropdown = False, without_label = False, context_param = None) %}
+    {{
+        _render_widget_csag(
+            'classes',
+            item_list,
+            mark_list,
+            align_right,
+            separate_dropdown,
+            without_label,
+            context_param = context_param
+        )
+    }}
+{%- endmacro %}
+
+{%- macro render_widget_csag_detector(item_list, mark_list = None, align_right = False, separate_dropdown = False, without_label = False, context_param = None) %}
+    {{
+        _render_widget_csag(
+            'detectors',
+            item_list,
+            mark_list,
+            align_right,
+            separate_dropdown,
+            without_label,
+            context_param = context_param
+        )
+    }}
+{%- endmacro %}
+
+{%- macro render_widget_csag_detectortype(item_list, mark_list = None, align_right = False, separate_dropdown = False, without_label = False, context_param = None) %}
+    {{
+        _render_widget_csag(
+            'detector_types',
+            item_list,
+            mark_list,
+            align_right,
+            separate_dropdown,
+            without_label,
+            context_param = context_param
+        )
+    }}
+{%- endmacro %}
+
+{%- macro render_widget_csag_hostname(item_list, mark_list = None, align_right = False, separate_dropdown = False, without_label = False, as_code = True, item_limit = 0, add_newline = False, context_param = None) %}
+    {{
+        _render_widget_csag(
+            'hostnames',
+            item_list,
+            mark_list,
+            align_right,
+            separate_dropdown,
+            without_label,
+            as_code,
+            item_limit,
+            _('-- undisclosed --'),
+            'undisclosed',
+            add_newline,
+            context_param = context_param
+        )
+    }}
+{%- endmacro %}
+
+{%- macro render_widget_csag_hosttype(item_list, mark_list = None, align_right = False, separate_dropdown = False, without_label = False, context_param = None) %}
+    {{
+        _render_widget_csag(
+            'host_types',
+            item_list,
+            mark_list,
+            align_right,
+            separate_dropdown,
+            without_label,
+            context_param = context_param
+        )
+    }}
+{%- endmacro %}
+
+{%- macro render_widget_csag_port(item_list, mark_list = None, align_right = False, separate_dropdown = False, without_label = False, item_limit = 0, context_param = None) %}
+    {{
+        _render_widget_csag(
+            'ports',
+            item_list,
+            mark_list,
+            align_right,
+            separate_dropdown,
+            without_label,
+            True,
+            item_limit,
+            _('-- undisclosed --'),
+            'undisclosed',
+            context_param = context_param
+        )
+    }}
+{%- endmacro %}
+
+{%- macro render_widget_csag_protocol(item_list, mark_list = None, align_right = False, separate_dropdown = False, without_label = False, item_limit = 0, context_param = None) %}
+    {{
+        _render_widget_csag(
+            'protocols',
+            item_list,
+            mark_list,
+            align_right,
+            separate_dropdown,
+            without_label,
+            True,
+            item_limit,
+            _('-- undisclosed --'),
+            'undisclosed',
+            context_param = context_param
+        )
+    }}
+{%- endmacro %}
+
+{%- macro render_widget_csag_severity_simple(item_list, mark_list = None, align_right = False, separate_dropdown = False, without_label = False, item_limit = 0, context_param = None) %}
+    {{
+        _render_widget_csag(
+            'severities',
+            item_list,
+            mark_list,
+            align_right,
+            separate_dropdown,
+            without_label,
+            False,
+            item_limit,
+            context_param = context_param
+        )
+    }}
+{%- endmacro %}
+
+
+{%- macro render_widget_csag_severity(item_list, mark_list = None, align_right = False, separate_dropdown = False, without_label = False, context_param = None) %}
+    {%- if item_list %}
+        {%- for subitem in item_list %}
+            {%- if separate_dropdown and not without_label %}
+                {% if mark_list and subitem in mark_list %}
+                    <mark>{{ subitem }}</mark>
+                {%- else %}
+                    {{ subitem }}
+                {%- endif %}
+            {%- endif %}
+            <div class="btn-group">
+                {%- if subitem == 'info' %}
+                    {%- set tmpcolor = "bg-sinfo" %}
+                    {%- set tmpicon = "r-s-info" %}
+                {%- elif subitem == 'low' %}
+                    {%- set tmpcolor = "bg-low" %}
+                    {%- set tmpicon = "r-s-low" %}
+                {%- elif subitem == 'medium' %}
+                    {%- set tmpcolor = "bg-medium" %}
+                    {%- set tmpicon = "r-s-medium" %}
+                {%- elif subitem == 'high' %}
+                    {%- set tmpcolor = "bg-high" %}
+                    {%- set tmpicon = "r-s-high" %}
+                {%- elif subitem == 'critical' %}
+                    {%- set tmpcolor = "bg-critical" %}
+                    {%- set tmpicon = "r-s-critical" %}
+                {%- else %}
+                    {%- set tmpcolor = "btn-secondary" %}
+                    {%- set tmpicon = "r-s-unknown" %}
+                {%- endif %}
+                <button class="btn {{ tmpcolor }} btn-xs btn-sm dropdown-toggle m-1 text-light"
+                        type="button"
+                        data-bs-toggle="dropdown"
+                        aria-haspopup="true"
+                        aria-expanded="false">
+                    {%- if not separate_dropdown and not without_label %}
+                        {{ get_icon(tmpicon) }}
+                        {% if mark_list and subitem in mark_list %}
+                            <mark>{{ _(subitem) | upper }}</mark>
+                        {%- else %}
+                            {{ _(subitem) | upper }}
+                        {%- endif %}
+                    {%- endif %}
+                </button>
+                {{ _render_csag_dropdown('severities', subitem, context_param) }}
+            </div>
+        {%- endfor %}
+    {%- else %}
+        <span data-bs-toggle="tooltip" title="{{ _('-- unassigned --') }}">
+            {{ get_icon("unassigned") }}
+        </span>
+    {%- endif %}
+{%- endmacro %}
+
+
+{%- macro no_csag(item_list, mark_list = None, align_right = False, separate_dropdown = False, without_label = False, item_limit = 0, add_newline = False, context_param = None) %}
+{%- endmacro %}
+
+
+{%- macro render_widget_csag_any(csag_group, item_list) %}
+    {%- if csag_group == 'abuses' %}
+        {% set csag_macro = render_widget_csag_abuse %}
+    {%- elif csag_group == 'ips' %}
+        {% set csag_macro = render_widget_csag_address %}
+    {%- elif csag_group == 'categories' %}
+        {% set csag_macro = render_widget_csag_category %}
+    {%- elif csag_group == 'classes' %}
+        {% set csag_macro = render_widget_csag_class %}
+    {%- elif csag_group == 'detectors' %}
+        {% set csag_macro = render_widget_csag_detector %}
+    {%- elif csag_group == 'detector_types' %}
+        {% set csag_macro = render_widget_csag_detectortype %}
+    {%- elif csag_group == 'hostnames' %}
+        {% set csag_macro = render_widget_csag_hostname %}
+    {%- elif csag_group == 'host_types' %}
+        {% set csag_macro = render_widget_csag_hosttype %}
+    {%- elif csag_group == 'ports' %}
+        {% set csag_macro = render_widget_csag_port %}
+    {%- elif csag_group == 'protocols' %}
+        {% set csag_macro = render_widget_csag_protocol %}
+    {%- elif csag_group == 'severities' %}
+        {% set csag_macro = render_widget_csag_severity_simple %}
+    {%- else %}
+        {% set csag_macro = no_csag %}
+    {%- endif %}
+
+    {{ csag_macro(item_list, **kwargs) }}
+{%- endmacro %}
+
+
+{%- macro render_label_item_state(state, with_label = False) %}
+    {%- if state in [True, EVENT_CLASS_STATE.ENABLED] %}
+        <span class="badge text-bg-success"
+              title="{{ _('Enabled') }}"
+              data-bs-toggle="tooltip">
+            {{ get_icon("item-enabled") }}
+            {% if with_label %}
+                {{ _("Enabled") }}
+            {% endif %}
+        </span>
+    {%- elif state == EVENT_CLASS_STATE.SHADOW %}
+        <span class="badge text-bg-info"
+              title="{{ _('Shadow') }}"
+              data-bs-toggle="tooltip">
+            {{ get_icon("item-enabled") }}
+            {% if with_label %}
+                {{ _("Shadow") }}
+            {% endif %}
+        </span>
+    {%- else %}
+        <span class="badge text-bg-secondary"
+              title="{{ _('Disabled') }}"
+              data-bs-toggle="tooltip">
+            {{ get_icon("item-disabled") }}
+            {% if with_label %}
+                {{ _("Disabled") }}
+            {% endif %}
+        </span>
+    {%- endif %}
+{%- endmacro %}
+
+
+{%- macro render_labels_role_list(role_list, item, with_label = False) -%}
+    {%- for role_name in role_list -%}
+        {%- if item.has_role(role_name) -%}
+            <span class="badge text-bg-success">
+                {{- get_icon("item-enabled") }} {{ role_name }}
+                {{ get_icon('role-{}'.format(role_name)) -}}
+            </span>
+        {%- else -%}
+            <span class="badge text-bg-secondary">
+                {{- get_icon("item-disabled") }} {{ role_name }}
+                {{ get_icon('role-{}'.format(role_name)) -}}
+            </span>
+        {%- endif -%}
+        {%- if not loop.last -%}&nbsp;{%- endif -%}
+    {%- endfor -%}
+{%- endmacro -%}
+
+{%- macro ref_to_html_link(ref) -%}
+    {%- import '_macros.common.txt.j2' as macros_common -%}
+    {%- set ref = decode_url(ref) -%}
+    {%- if ref.startswith("cve") -%}
+        {%- set cve = ref.split(":")[1] %}
+        <a href="{{ macros_common.ref_to_link(ref) }}" target="_blank">{{ cve }}</a>
+    {%- elif ref.startswith("cvr:") -%}
+        {#
+            CESNET vulnerability report namespace
+            Syntax: "cvr:ID" or "cvr:ID-item_index1,item_index2,item_index3..." (indexes start from 1)
+            - "cvr:12-2,3" means report items 2 and 3 from report with ID 12
+            - "cvr:13" means all report items from report with ID 13
+        #}
+        {%- set id = ref.split(":")[1].split("-")[0] %}
+        <a href="{{ macros_common.ref_to_link(ref) }}"
+           data-bs-toggle="tooltip"
+           target="_blank">
+            {{ _("CESNET Vulnerability Report") }} (ID {{ id }})
+        </a>
+    {%- elif macros_common.ref_to_link(ref).startswith("http") -%}
+        <a href="{{ macros_common.ref_to_link(ref) }}" target="_blank">{{ ref }}</a>
+    {%- else -%}
+        <a>{{ ref }}</a>
+    {%- endif -%}
+{%- endmacro -%}
+
+{%- macro display_reporting_settings_warnings(item) -%}
+    {%- set warnings = item.generate_warnings() -%}
+    {% if warnings %}
+        <div class="alert alert-warning my-2" role="alert">
+            {{ get_icon("alert-danger") }}
+            {% if (warnings | length) == 1 -%}
+                <b>{{ _("There is a possible issue with the reporting settings") }}</b>:
+            {%- else -%}
+                <b>{{ _("There are possible issues with the reporting settings") }}</b>:
+            {%- endif %}
+            {{ warnings | join(", ") }}.
+        </div>
+    {% endif %}
+{%- endmacro -%}
