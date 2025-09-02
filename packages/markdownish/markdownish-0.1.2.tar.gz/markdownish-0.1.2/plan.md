@@ -1,0 +1,7 @@
+- [ ] Scaffold MarkdownIt parser + DFS walk
+- [ ] Emit plain text with break rules
+- [ ] Implement heading hN conversion
+- [ ] Add UTF-16 cursor utilities
+- [ ] Collect inline style spans
+- [ ] Handle code blocks as monospace
+- [ ] Expand fixtures/tests for coverage

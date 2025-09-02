@@ -1,0 +1,44 @@
+# Use bash with strict mode
+set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
+
+# Publish to PyPI using maturin, mirroring the successful local flow.
+#
+# Usage:
+#   - Put your token in `.env` as `PYPI_TOKEN=...` (recommended)
+#   - Or export `PYPI_TOKEN`, `MATURIN_PYPI_TOKEN`, or `PYPI_API_TOKEN` in your shell
+#   - Then run: `just publish`
+#
+# Notes:
+# - Uses MATURIN_PYPI_TOKEN if set, else PYPI_API_TOKEN
+# - Enables PyO3 stable-ABI forward compatibility for newer local Pythons
+# - Builds a wheel for the current interpreter and an sdist, then uploads
+
+publish:
+    # Load .env if present (export all vars)
+    if [ -f .env ]; then set -a; . ./.env; set +a; fi; \
+    # Determine maturin path (global or from .venv)
+    if command -v maturin >/dev/null 2>&1; then \
+        MATURIN_PATH="$$(command -v maturin)"; \
+    elif [ -x .venv/bin/maturin ]; then \
+        MATURIN_PATH=".venv/bin/maturin"; \
+    else \
+        echo "maturin not found. Install with: pip install maturin (or add to .venv)"; \
+        exit 1; \
+    fi; \
+    # Require token via env
+    # Prefer MATURIN_PYPI_TOKEN if already exported; else prefer PYPI_TOKEN from .env; else fall back to PYPI_API_TOKEN
+    if [ -z "$$MATURIN_PYPI_TOKEN" ]; then \
+        if [ -n "$$PYPI_TOKEN" ]; then \
+            export MATURIN_PYPI_TOKEN="$$PYPI_TOKEN"; \
+        elif [ -n "$$PYPI_API_TOKEN" ]; then \
+            export MATURIN_PYPI_TOKEN="$$PYPI_API_TOKEN"; \
+        fi; \
+    fi; \
+    if [ -z "$$MATURIN_PYPI_TOKEN" ]; then \
+        echo "Set PYPI_TOKEN in .env or export MATURIN_PYPI_TOKEN/PYPI_API_TOKEN."; \
+        exit 1; \
+    fi; \
+    # Enable forward-compat for PyO3 if local Python is newer than supported
+    export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1; \
+    # Publish wheel + sdist to PyPI (skip existing versions)
+    "$$MATURIN_PATH" publish -F python --skip-existing -u __token__
