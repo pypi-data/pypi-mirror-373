@@ -1,0 +1,218 @@
+# Copyright 2024 Rapyuta Robotics
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+from time import sleep
+import typing
+import click
+from click_help_colors import HelpColorsCommand
+from riocli.config import new_client
+from riocli.constants import Colors, Symbols
+from riocli.device.util import fetch_devices
+from rapyuta_io import Command
+from shlex import join
+
+
+@click.command(
+    "execute",
+    cls=HelpColorsCommand,
+    help_headers_color=Colors.YELLOW,
+    help_options_color=Colors.GREEN,
+)
+@click.option("--user", default="root")
+@click.option("--timeout", default=300)
+@click.option("--shell", default="/bin/bash")
+@click.option(
+    "--async",
+    "run_async",
+    is_flag=True,
+    default=False,
+    help="Run the command asynchronously.",
+)
+@click.option(
+    "--bg",
+    "bg",
+    default=False,
+    is_flag=True,
+    help="Run command in background.",
+    hidden=True,
+)
+@click.argument("device-name-or-regex", type=str)
+@click.argument("command", nargs=-1)
+def execute_command(
+    device_name_or_regex: str,
+    user: str,
+    timeout: int,
+    shell: str,
+    run_async: bool,
+    bg: bool,
+    command: typing.List[str],
+) -> None:
+    """Execute commands on one or more devices.
+
+    You can specify the user, shell, run-async, and timeout options to customize
+    the command execution. To specify the user, use the --user flag.
+    The default is 'root'. To specify the shell, use the --shell flag.
+    The default shell is '/bin/bash'. To run the command asynchronously,
+    set the --async flag to true. The default value is false. To
+    specify the timeout, use the --timeout flag, providing the duration
+    in seconds. The default value is 300.
+
+    Make sure you put your command in quotes to avoid any issues.
+
+    Usage Examples:
+
+        $ rio device execute DEVICE_NAME_OR_REGEX "ls -l"
+
+        To execute the command asynchronously:
+
+            $ rio device execute DEVICE_NAME_OR_REGEX "ls -l" --async
+
+        To run the command on all devices:
+
+            $ rio device execute ".*" "ls -l"
+    """
+
+    if command == ("",):
+        click.secho(f"{Symbols.ERROR} No command specified", fg=Colors.RED)
+        raise SystemExit(1)
+
+    client = new_client()
+
+    try:
+        devices = fetch_devices(
+            client, device_name_or_regex, include_all=False, online_devices=True
+        )
+    except Exception as e:
+        click.secho(str(e), fg=Colors.RED)
+        raise SystemExit(1) from e
+
+    if not devices:
+        click.secho("No device(s) found", fg=Colors.RED)
+        raise SystemExit(1)
+
+    device_guids = [d.uuid for d in devices if d.status == "ONLINE"]
+    device_dict = {d.uuid: d.name for d in devices}
+    cmd = Command(
+        cmd=join(("bash", "-c", *command)),
+        shell=shell,
+        bg=bg,
+        run_async=run_async,
+        runas=user,
+        timeout=timeout,
+    )
+
+    if run_async:
+        # Async mode: first-come-first-serve output streaming
+        execute_async(
+            client=client,
+            device_guids=device_guids,
+            device_dict=device_dict,
+            command=cmd,
+            timeout=timeout,
+        )
+    else:
+        # Sync mode: collect all outputs before displaying
+        execute_sync(
+            client=client,
+            device_guids=device_guids,
+            device_dict=device_dict,
+            command=cmd,
+            timeout=timeout,
+        )
+
+
+def execute_sync(client, device_guids, device_dict, command, timeout):
+    """Execute commands synchronously - collect all outputs before displaying together."""
+    try:
+        result = client.execute_command(
+            device_ids=device_guids,
+            command=command,
+            timeout=timeout,
+        )
+    except Exception as e:
+        click.secho(str(e), fg=Colors.RED)
+        raise SystemExit(1) from e
+
+    # In sync mode, collect all outputs and display them together
+    devices_no_output = print_response(
+        result=result, device_guids=device_guids, device_dict=device_dict
+    )
+
+    if devices_no_output:
+        print_no_output_error(devices_no_output)
+
+
+def execute_async(client, device_guids, device_dict, command, timeout):
+    try:
+        result = client.execute_command(
+            device_ids=device_guids,
+            command=command,
+            timeout=timeout,
+        )
+    except Exception as e:
+        click.secho(str(e), fg=Colors.RED)
+        raise SystemExit(1) from e
+
+    jid = result.get("jid")
+
+    get_async_output(
+        client=client,
+        jid=jid,
+        device_guids=device_guids,
+        device_dict=device_dict,
+        timeout=timeout,
+    )
+
+
+def get_async_output(client, jid, device_guids, device_dict, timeout):
+    max_retries = 3
+    remaining_devices = device_guids.copy()
+    for _ in range(max_retries):
+        wait_result = client.fetch_cmd_result(
+            jid=jid, device_ids=remaining_devices, timeout=timeout
+        )
+        remaining_devices = print_response(
+            result=wait_result, device_guids=remaining_devices, device_dict=device_dict
+        )
+
+        if len(remaining_devices) <= 0:
+            break
+        sleep(2)
+
+    if remaining_devices:
+        print_no_output_error(remaining_devices)
+
+
+def print_response(result, device_guids, device_dict):
+    """Print immediate responses for async mode and return remaining devices."""
+    devices_no_output = device_guids.copy()
+
+    for device_guid, output in result.items():
+        click.secho(
+            f">>> {device_dict.get(device_guid, device_guid)}({device_guid})",
+            fg=Colors.YELLOW,
+        )
+        if device_guid in devices_no_output:
+            devices_no_output.remove(device_guid)
+        if output:  # Only print if there's actual output
+            click.echo(f"{output}\n")
+
+    return devices_no_output
+
+
+def print_no_output_error(remaining_devices):
+    click.secho(
+        f"Failed to execute command on devices: {', '.join(remaining_devices)}",
+        fg=Colors.RED,
+    )
+    raise SystemExit(1)
