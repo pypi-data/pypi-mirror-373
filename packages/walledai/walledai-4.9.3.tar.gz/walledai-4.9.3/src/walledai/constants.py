@@ -1,0 +1,1 @@
+base_url="https://services.walled.ai/v1"
