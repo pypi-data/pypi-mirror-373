@@ -1,0 +1,411 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+FL_REGISTRY_KEY = r"HKEY_CURRENT_USER\Software\FontLab\FontStudio 5\Options"
+
+option_keys = {
+    "ATMPPM": "dword",
+    "ATMScaler": "dword",
+    "ATMSmooth": "dword",
+    "AutoAlignVector": "dword",
+    "AutohintingEngine": "dword",
+    "AutohintingHRatio": "str",
+    "AutohintingMaxHWidth": "dword",
+    "AutohintingMaxVWidth": "dword",
+    "AutohintingMinHLen": "dword",
+    "AutohintingMinHWidth": "dword",
+    "AutohintingMinVLen": "dword",
+    "AutohintingMinVWidth": "dword",
+    "AutohintingRemoveHints": "dword",
+    "AutohintingVRatio": "str",
+    "AutoMetricsClose": "dword",
+    "AutoMetricsLeft": "dword",
+    "AutoMetricsRight": "dword",
+    "AutoRemoveHints": "dword",
+    "AutoSave": "dword",
+    "AutoSaveTick": "dword",
+    "Backup": "dword",
+    "BitmapSize": "dword",
+    "CacheTTPath": "str",
+    "CacheTTUse": "dword",
+    "ChartApplyTemplate": "dword",
+    "ChartAutoActivateCodepage": "dword",
+    "ChartAutoHide": "dword",
+    "ChartAutoUnicode": "dword",
+    "ChartCaptionFontCharSet": "dword",
+    "ChartCaptionFontName": "str",
+    "ChartCaptionFontSize": "dword",
+    "ChartCopyKerning": "dword",
+    "ChartDoubleClick": "dword",
+    "ChartDragDrop": "dword",
+    "ChartGenerate": "dword",
+    "ChartGenerateRTL": "dword",
+    "ChartPreviewMarks": "dword",
+    "ChartSampleSize": "dword",
+    "ChartShowNotes": "dword",
+    "ChartSorting": "dword",
+    "ChartStyle": "dword",
+    "ChartTemplateFontCharSet": "dword",
+    "ChartTemplateFontName": "str",
+    "ChartTemplateFontSize": "dword",
+    "ChartUseTemplate": "dword",
+    "ClosepathArrowLen": "dword",
+    "CodepagesCount": "dword",
+    "ColorBackground": "dword",
+    "ColorBackgroundMask": "dword",
+    "ColorBackgroundMetrics": "dword",
+    "ColorBitmap": "dword",
+    "ColorClosepath": "dword",
+    "ColorEcho": "dword",
+    "ColorForegroundMetrics": "dword",
+    "ColorGlobalGuide": "dword",
+    "ColorGrid": "dword",
+    "ColorGroups": "dword",
+    "ColorGuide": "dword",
+    "ColorHintsPen": "dword",
+    "ColorMaskPen": "dword",
+    "ColorMetrics": "dword",
+    "ColorNeighbors": "dword",
+    "ColorOutline": "dword",
+    "ColorSeacPen": "dword",
+    "ColorTemplate": "dword",
+    "ColorVMetrics": "dword",
+    "ContourSnapAllPoints": "dword",
+    "ControlSwitch": "dword",
+    "CopyHDMXData": "dword",
+    "CreateUnexistingCharacters": "dword",
+    "CustomDict": "str",
+    "CustomMarkColor": "dword",
+    "DefaultGlyph": "dword",
+    "DSIG_KeyPath": "str",
+    "DSIG_Password": "str",
+    "DSIG_SertPath": "str",
+    "DSIG_TimeStamp": "dword",
+    "DSIG_Use": "dword",
+    "DuplicateX": "dword",
+    "DuplicateY": "dword",
+    "EditAllSmooth": "dword",
+    "EditAutoSelectLayers": "dword",
+    "EditBCPsFixed": "dword",
+    "EditBCVOpacity": "dword",
+    "EditBitmapStyle": "dword",
+    "EditChangeCursor": "dword",
+    "EditComponentsByOutline": "dword",
+    "EditConnectMasters": "dword",
+    "EditDeleteAlt": "dword",
+    "EditDoubleClickBitmap": "dword",
+    "EditDoubleClickMask": "dword",
+    "EditEditSelection": "dword",
+    "EditFollowScroll": "dword",
+    "EditGridX": "dword",
+    "EditGridY": "dword",
+    "EditHandleTool": "dword",
+    "EditHitDistance": "dword",
+    "EditInstantRefresh": "dword",
+    "EditKeyboardEditBCP": "dword",
+    "EditLayersExpanded": "dword",
+    "EditLeaveEcho": "dword",
+    "EditNotFillOpen": "dword",
+    "EditPreviewKey": "dword",
+    "EditRulers": "dword",
+    "EditScaleEPS": "dword",
+    "EditShowAnchorNames": "dword",
+    "EditShowCross": "dword",
+    "EditShowMasterPoints": "dword",
+    "EditShowMeasurementLine": "dword",
+    "EditShowNodesSelection": "dword",
+    "EditShowPosition": "dword",
+    "EditShowSelection": "dword",
+    "EditSmallNodes": "dword",
+    "EditSmoothIsSmooth": "dword",
+    "EditSmoothOutline": "dword",
+    "EditThickOutline": "dword",
+    "EditUndoSelection": "dword",
+    "EditZoomMode": "dword",
+    "EmbeddingType": "dword",
+    "EnableExtPythonEditor": "dword",
+    "EnablePython": "dword",
+    "EnableStickPanels": "dword",
+    "EnableTooltips": "dword",
+    "EraseSize": "dword",
+    "ExpandKernCodepage": "str",
+    "ExpandKernCount": "dword",
+    "ExpandKernFlags": "dword",
+    "ExtPythonEditor": "str",
+    "FileOpenSample": "str",
+    "FitAscender": "dword",
+    "FitDescender": "dword",
+    "FontAudit": "dword",
+    "FontAuditLive": "dword",
+    "FontDialogName": "str",
+    "FontDialogSize": "dword",
+    "FontExpanded": "dword",
+    "FontFixedName": "str",
+    "FontFixedSize": "dword",
+    "FontLabNodes": "dword",
+    "FontPanelName": "str",
+    "FontPanelSize": "dword",
+    "FontRulerName": "str",
+    "FontRulerSize": "dword",
+    "FontSmallName": "str",
+    "FontSmallSize": "dword",
+    "FontTableName": "str",
+    "FontTableSize": "dword",
+    "GlyphNameSortMode": "dword",
+    "GlyphsBarOpen": "dword",
+    "GlyphsBarTop": "dword",
+    "GroupCenter": "dword",
+    "GroupDoubleClick": "dword",
+    "GroupFill": "dword",
+    "GroupKerning": "dword",
+    "GroupMask": "dword",
+    "GroupShapeFill": "dword",
+    "GroupShapeMask": "dword",
+    "GroupShapeOpacity": "dword",
+    "GroupShiftX": "dword",
+    "GroupShiftY": "dword",
+    "GroupUseMetrics": "dword",
+    "HideAllLayers": "dword",
+    "HideToolbars": "dword",
+    "LockStyleEx": "dword",
+    "MacroFontName": "str",
+    "MaskMetrics": "dword",
+    "MetricsBarExpanded0": "dword",
+    "MetricsBarExpanded1": "dword",
+    "MetricsBarExpanded2": "dword",
+    "MetricsBarExpanded3": "dword",
+    "MetricsBottomBar0": "dword",
+    "MetricsBottomBar1": "dword",
+    "MetricsBottomBar2": "dword",
+    "MetricsBottomBar3": "dword",
+    "MetricsShowBar0": "dword",
+    "MetricsShowBar1": "dword",
+    "MetricsShowBar2": "dword",
+    "MetricsShowBar3": "dword",
+    "MetricsShowTable0": "dword",
+    "MetricsShowTable1": "dword",
+    "MetricsShowTable2": "dword",
+    "MetricsShowTable3": "dword",
+    "MMExtrapolation": "dword",
+    "OpenOutput": "dword",
+    "OptimizeAlign": "dword",
+    "OptimizeReduce": "dword",
+    "OTAddClasses": "dword",
+    "OTAddMetricsClasses": "dword",
+    "OTCompileFeatures": "dword",
+    "OTGenerate": "dword",
+    "OTOldContextRule": "dword",
+    "OTPreviewSize": "dword",
+    "OTReadMort": "dword",
+    "OTSampleSize": "dword",
+    "OTWriteGDEF": "dword",
+    "OTWriteMort": "dword",
+    "OutputFontName": "str",
+    "OverlapMode": "dword",
+    "PaintAutoTransform": "dword",
+    "PaintAutoView": "dword",
+    "PaintBrushBody": "dword",
+    "PaintBrushCap": "dword",
+    "PaintBrushJoin": "dword",
+    "PaintBrushRoundness": "dword",
+    "PaintBrushVectorX": "dword",
+    "PaintBrushVectorY": "dword",
+    "PaintBrushWidth": "dword",
+    "PaintColor": "dword",
+    "PaintJapanese": "dword",
+    "PaintMode": "dword",
+    "PaintReverseBrushAutoColor": "dword",
+    "PaintStyleEx": "dword",
+    "PaintTextFont": "str",
+    "PaintTextSize": "dword",
+    "PaintTool": "dword",
+    "PaintTracePolygon": "dword",
+    "PasteX": "dword",
+    "PasteY": "dword",
+    "PreviewAlternativeArrows": "dword",
+    "PreviewApplyTemplate": "dword",
+    "PreviewAutoScroll": "dword",
+    "PreviewAutoWrap": "dword",
+    "PreviewBlueColor": "dword",
+    "PreviewExpanded": "dword",
+    "PreviewExpandedHeight": "dword",
+    "PreviewFilterKerning": "dword",
+    "PreviewFilterMetrics": "dword",
+    "PreviewFocusString": "dword",
+    "PreviewHighlightKeyGlyphs": "dword",
+    "PreviewKeepExceptions": "dword",
+    "PreviewKerningIcons": "dword",
+    "PreviewListWidth": "dword",
+    "PreviewLockDependences": "dword",
+    "PreviewLockStyle": "dword",
+    "PreviewMode": "dword",
+    "PreviewPaintStyle": "dword",
+    "PreviewPanelTop": "dword",
+    "PreviewPointSize": "str",
+    "PreviewPPMs": "str",
+    "PreviewPPMsExpanded": "str",
+    "PreviewProcessFeatures": "dword",
+    "PreviewSecondLine": "str",
+    "PreviewShowClassMembers": "dword",
+    "PreviewShowReferences": "dword",
+    "PreviewSize": "dword",
+    "PreviewSmooth": "dword",
+    "PreviewSnapStyle": "dword",
+    "PreviewWidth": "dword",
+    "QuickZoomScale": "dword",
+    "RemoveZeroKerning": "dword",
+    "SamplePPM1": "dword",
+    "SamplePPM2": "dword",
+    "Shift10": "dword",
+    "ShowMeterPanel": "dword",
+    "SnapStyleEx": "dword",
+    "StyleInactiveMetrics": "dword",
+    "StyleMetrics": "dword",
+    "SyncronizeMasters": "dword",
+    "T1AFM": "dword",
+    "T1Autohint": "dword",
+    "T1Decompose": "dword",
+    "T1Encoding": "dword",
+    "T1ExportCompatibleCyrillic": "dword",
+    "T1ExportEncoding": "dword",
+    "T1FSType": "dword",
+    "T1MatchEncoding": "dword",
+    "T1PFM": "dword",
+    "T1Sort": "dword",
+    "T1Terminal": "dword",
+    "T1Unicode": "dword",
+    "T1UseOS2": "dword",
+    "T1UseOTFamilyName": "dword",
+    "T1UseOTStyleName": "dword",
+    "T1UseTrademarkName": "dword",
+    "Template_BDF": "str",
+    "Template_Path": "str",
+    "Template_Use": "dword",
+    "TracerCurveFit": "dword",
+    "TracerCurves": "dword",
+    "TracerExtremePoints": "dword",
+    "TracerPresetMode": "dword",
+    "TracerStraightenAngle": "dword",
+    "TracerTolerance": "dword",
+    "TrackingDistance": "dword",
+    "TrackingMode": "dword",
+    "TTEAddCharacters": "dword",
+    "TTEApplyBBoxSavings": "dword",
+    "TTEAutohint": "dword",
+    "TTEAutoWinAscDesc": "dword",
+    "TTECmap10": "dword",
+    "TTEDecompose": "dword",
+    "TTEExportOT": "dword",
+    "TTEExportUnicode": "dword",
+    "TTEExportVOLT": "dword",
+    "TTEFontNames": "dword",
+    "TTEheadBBoxSavings": "dword",
+    "TTEHint": "dword",
+    "TTEKeep": "dword",
+    "TTENoReorder": "dword",
+    "TTESmartFontName": "dword",
+    "TTESmartMacNames": "dword",
+    "TTEStoreTables": "dword",
+    "TTESubrize": "dword",
+    "TTEVersionOS2": "dword",
+    "TTEVisual": "dword",
+    "TTEWriteBitmaps": "dword",
+    "TTEWriteKernFeature": "dword",
+    "TTEWriteKernTable": "dword",
+    "TTFScaler": "dword",
+    "TTFSmooth": "dword",
+    "TTHHintingOptions": "dword",
+    "TTHPPM": "dword",
+    "TTIAutohint": "dword",
+    "TTIConvert": "dword",
+    "TTIDecompose": "dword",
+    "TTIFontNames": "dword",
+    "TTIGenerateNames": "dword",
+    "TTIKeepHints": "dword",
+    "TTIReadBinaryOT": "dword",
+    "TTIReadBitmaps": "dword",
+    "TTIReadKernFeature": "dword",
+    "TTIReadOT": "dword",
+    "TTIScale1000": "dword",
+    "TTIStoreBinaryOT": "dword",
+    "TTIStoreTables": "dword",
+    "TTToolReverseShift": "dword",
+    "UnicodeKeyboard": "dword",
+    "UnicodeRangePercent": "dword",
+    "UnicodeStrings": "dword",
+    "VendorCode": "str",
+}
+
+
+def parse_registry_file(file_path: Path) -> dict[str, dict[str, str | int | float]]:
+    with open(file_path, "r") as f:
+        data = f.read()
+
+    reg = {}
+    lines = data.splitlines()
+    if not lines:
+        raise EOFError
+
+    assert lines[0] == "Windows Registry Editor Version 5.00"
+
+    key: str | None = None
+    values: dict[str, str] = {}
+
+    for line in lines[1:]:
+        if line.strip() == "":
+            continue
+
+        if line.startswith("[") and line.endswith("]"):
+            if key:
+                reg[key] = values
+            key = line.strip("[]")
+            values = {}
+
+        elif line.startswith('"') and '"=' in line:
+            k, v = line.split("=", 1)
+            values[k.strip('"')] = v
+
+        else:
+            print("Unhandled line in registry file:")
+            print(line)
+            raise ValueError
+
+    if key:
+        reg[key] = values
+
+    # We now have a dict where the keys may be unknown, and the values are in raw format
+
+    parsed: dict[str, dict[str, str | int | float]] = {}
+
+    reg_options = reg.get(FL_REGISTRY_KEY)
+    if reg_options is None:
+        print("Could not find data section in registry file")
+        raise ValueError
+
+    for key, val_type in option_keys.items():
+        if key not in reg_options:
+            continue
+
+        if val_type == "dword":
+            hex_str = reg_options[key].split(":", 1)[1]
+            assert len(hex_str) == 8
+            val: str | int = int(hex_str, 16)
+
+        elif val_type == "str":
+            s = reg_options[key]
+            assert s.startswith('"')
+            assert s.endswith('"')
+            val = reg_options[key][1:-1]
+
+        else:
+            print(f"Unhandled registry value type {val_type}")
+            raise ValueError
+
+        parsed[key] = val
+
+    return parsed
