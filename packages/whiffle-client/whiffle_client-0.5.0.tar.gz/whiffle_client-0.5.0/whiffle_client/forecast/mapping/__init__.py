@@ -1,0 +1,3 @@
+from whiffle_client.forecast.mapping.asset_model import AssetEndpoints
+from whiffle_client.forecast.mapping.forecast_model import ForecastModelEndpoints
+from whiffle_client.forecast.mapping.observation_model import ObservationModelEndpoints
