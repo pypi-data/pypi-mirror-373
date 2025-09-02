@@ -1,0 +1,159 @@
+# PyVisAlgo
+
+**🧠 Python-Based Algorithm Visualization Framework for Teaching, Learning, and Exploring**
+
+---
+
+## ✨ Overview
+
+**PyVisAlgo** is a modular, extensible algorithm visualization framework built in Python using Pygame.  
+It is designed to **help students and educators better understand algorithm behavior** through interactive and animated visualizations.
+
+> Ideal for computer science courses, algorithm lectures, coding practice, or even demos during interviews or workshops.
+
+---
+
+## 🧩 Supported Algorithms
+
+| Category | Algorithms |
+|----------|------------|
+| Sorting  | Bubble, Selection, Insertion, Shell, Merge, Heap, Quick, Count, Radix |
+| Searching | Linear Search, Binary Search |
+| Utility | Max Element, k-th Selection |
+
+> ✍️ More algorithms (e.g., DFS, BFS, Dijkstra, DP, A*) coming soon.
+
+---
+
+## 📦 Installation
+
+### ▶ From PyPI (planned)
+
+```bash
+pip install pyvisalgo
+```
+
+### ▶ From source (for development)
+
+```bash
+git clone https://github.com/scgyong-kpu/pyvisalgo.git
+cd pyvisalgo
+pip install .
+```
+
+---
+
+## 🔧 Example: Heap Sort Visualization
+
+```python
+from pyvisalgo import HeapSortVisualizer as Visualizer
+#from pyvisalgo import Dummy as Visualizer
+from random import randint
+from time import time
+
+def heapify(root, size):
+    lc = root * 2 + 1
+    if lc >= size: return
+    child = lc
+    rc = root * 2 + 2
+    if rc < size:
+        vis.compare(rc, lc)
+        if array[rc] > array[lc]:
+            child = rc
+    vis.compare(root, child)
+    if array[root] < array[child]:
+        vis.swap(root, child)
+        array[root], array[child] = array[child], array[root]
+        heapify(child, size)
+
+def main():
+    vis.build_tree()
+    for i in range(len(array)//2 - 1, -1, -1):
+        vis.set_root(i)
+        heapify(i, len(array))
+    for i in range(len(array)-1, 0, -1):
+        vis.compare(0, i)
+        vis.swap(0, i)
+        array[0], array[i] = array[i], array[0]
+        vis.set_tree_size(i)
+        heapify(0, i)
+    vis.set_tree_size(0)
+
+if __name__ == '__main__':
+    array = [randint(1, 99) for _ in range(15)]
+    vis = Visualizer("Heap Sort")
+    vis.setup(__import__('__main__'))
+    print('Before:', array)
+    start = time()
+    main()
+    print('After :', array)
+    print(f'Elapsed: {time() - start:.3f}s')
+    vis.end()
+```
+
+---
+
+## 📸 Screenshots
+
+- in development
+
+---
+
+## 🔍 Features
+
+- Interactive animations for each algorithm step
+- Clear visuals using color, text, motion, and layout
+- Consistent API across all visualizers (`compare`, `swap`, `mark`, etc.)
+- Toggle between visual mode and headless mode (`Dummy`)
+- Easily embeddable in teaching material or automated testing
+
+---
+
+## 🔬 For Developers
+
+- Python 3.7+
+- Dependencies:
+  - `pygame`
+- Structure:
+  ```
+  pyvisalgo/
+    ├── base.py
+    ├── array.py
+    ├── array_sort.py
+    ├── ...
+    └── __init__.py
+  ```
+
+---
+
+## 🛠️ To Do
+
+- [ ] DFS / BFS / Graph visualization
+- [ ] Step-by-step debugging mode
+- [ ] Export to GIF / MP4
+- [ ] Web-based replayer (HTML5 or JS frontend)
+- [ ] Jupyter Notebook integration
+
+---
+
+## 📜 License
+
+[MIT License](LICENSE)
+
+---
+
+## 🤝 Contributions
+
+Contributions are welcome!  
+Whether it's a bug fix, algorithm addition, or performance improvement—feel free to open an issue or pull request.
+
+---
+
+## 👋 Author
+
+**Kiyong Kim**  
+📍 Tech University of Korea  
+🏸 Educator, Developer, and Tennis Enthusiast  
+📧 [scgyong@tukorea.ac.kr](mailto:scgyong@tukorea.ac.kr)
+
+---
