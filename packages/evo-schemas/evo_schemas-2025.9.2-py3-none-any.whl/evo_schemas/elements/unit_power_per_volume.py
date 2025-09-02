@@ -1,0 +1,26 @@
+import enum
+
+
+class UnitPowerPerVolume_V1_0_1_UnitCategories(str, enum.Enum):
+    Unit_Pa_per_s = "Pa/s"
+    Unit_Pa2_per_Pa_s = "Pa2/(Pa.s)"
+    Unit_W_per_m3 = "W/m3"
+    Unit_atm_per_h = "atm/h"
+    Unit_bar_per_h = "bar/h"
+    Unit_kPa_per_h = "kPa/h"
+    Unit_kPa_per_min = "kPa/min"
+    Unit_MPa_per_h = "MPa/h"
+    Unit_Pa_per_h = "Pa/h"
+    Unit_psi_per_h = "psi/h"
+    Unit_psi_per_min = "psi/min"
+    Unit_0_point_001_kPa2_per_cP = "0.001 kPa2/cP"
+    Unit_bar2_per_cP = "bar2/cP"
+    Unit_kPa2_per_cP = "kPa2/cP"
+    Unit_psi2_per_cP = "psi2/cP"
+    Unit_Btu_IT_per_h_ft3 = "Btu[IT]/(h.ft3)"
+    Unit_Btu_IT_per_s_ft3 = "Btu[IT]/(s.ft3)"
+    Unit_cal_th_per_h_cm3 = "cal[th]/(h.cm3)"
+    Unit_cal_th_per_s_cm3 = "cal[th]/(s.cm3)"
+    Unit_hp_per_ft3 = "hp/ft3"
+    Unit_kW_per_m3 = "kW/m3"
+    Unit_uW_per_m3 = "uW/m3"

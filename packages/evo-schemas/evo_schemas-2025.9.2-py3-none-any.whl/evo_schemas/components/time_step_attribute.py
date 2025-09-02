@@ -1,0 +1,5 @@
+from .time_step_continuous_attribute import TimeStepContinuousAttribute_V1_0_1, TimeStepContinuousAttribute_V1_1_0
+from .time_step_date_time_attribute import TimeStepDateTimeAttribute_V1_0_1, TimeStepDateTimeAttribute_V1_1_0
+
+TimeStepAttribute_V1_1_0 = TimeStepContinuousAttribute_V1_1_0 | TimeStepDateTimeAttribute_V1_1_0
+TimeStepAttribute_V1_0_1 = TimeStepContinuousAttribute_V1_0_1 | TimeStepDateTimeAttribute_V1_0_1

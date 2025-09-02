@@ -1,0 +1,28 @@
+import enum
+
+
+class UnitMassPerTimePerLength_V1_0_1_UnitCategories(str, enum.Enum):
+    Unit_P = "P"
+    Unit_kg_per_m_s = "kg/(m.s)"
+    Unit_Pa_s = "Pa.s"
+    Unit_lbm_per_ft_h = "lbm/(ft.h)"
+    Unit_lbm_per_ft_s = "lbm/(ft.s)"
+    Unit_dyne_s_per_cm2 = "dyne.s/cm2"
+    Unit_kgf_s_per_m2 = "kgf.s/m2"
+    Unit_lbf_s_per_ft2 = "lbf.s/ft2"
+    Unit_lbf_s_per_in2 = "lbf.s/in2"
+    Unit_mPa_s = "mPa.s"
+    Unit_N_s_per_m2 = "N.s/m2"
+    Unit_psi_s = "psi.s"
+    Unit_cP = "cP"
+    Unit_dP = "dP"
+    Unit_EP = "EP"
+    Unit_fP = "fP"
+    Unit_GP = "GP"
+    Unit_kP = "kP"
+    Unit_mP = "mP"
+    Unit_MP = "MP"
+    Unit_nP = "nP"
+    Unit_pP = "pP"
+    Unit_TP = "TP"
+    Unit_uP = "uP"

@@ -1,0 +1,26 @@
+import enum
+
+
+class UnitVolumePerMass_V1_0_1_UnitCategories(str, enum.Enum):
+    Unit_m3_per_kg = "m3/kg"
+    Unit_0_point_01_L_per_kg = "0.01 L/kg"
+    Unit_bbl_per_ton_UK = "bbl/ton[UK]"
+    Unit_bbl_per_ton_US = "bbl/ton[US]"
+    Unit_cm3_per_g = "cm3/g"
+    Unit_dm3_per_kg = "dm3/kg"
+    Unit_dm3_per_t = "dm3/t"
+    Unit_ft3_per_kg = "ft3/kg"
+    Unit_ft3_per_lbm = "ft3/lbm"
+    Unit_ft3_per_sack_94lbm = "ft3/sack[94lbm]"
+    Unit_gal_UK_per_lbm = "gal[UK]/lbm"
+    Unit_gal_US_per_lbm = "gal[US]/lbm"
+    Unit_gal_US_per_sack_94lbm = "gal[US]/sack[94lbm]"
+    Unit_gal_US_per_ton_UK = "gal[US]/ton[UK]"
+    Unit_gal_US_per_ton_US = "gal[US]/ton[US]"
+    Unit_L_per_kg = "L/kg"
+    Unit_L_per_t = "L/t"
+    Unit_L_per_ton_UK = "L/ton[UK]"
+    Unit_m3_per_g = "m3/g"
+    Unit_m3_per_t = "m3/t"
+    Unit_m3_per_ton_UK = "m3/ton[UK]"
+    Unit_m3_per_ton_US = "m3/ton[US]"

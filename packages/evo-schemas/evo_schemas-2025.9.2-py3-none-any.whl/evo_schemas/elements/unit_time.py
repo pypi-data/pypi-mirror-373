@@ -1,0 +1,28 @@
+import enum
+
+
+class UnitTime_V1_0_1_UnitCategories(str, enum.Enum):
+    Unit_s = "s"
+    Unit_a = "a"
+    Unit_a_t = "a[t]"
+    Unit_d = "d"
+    Unit_h = "h"
+    Unit_min = "min"
+    Unit_wk = "wk"
+    Unit_one_half_ms = "1/2 ms"
+    Unit_100_ka_t = "100 ka[t]"
+    Unit_ca = "ca"
+    Unit_cs = "cs"
+    Unit_ds = "ds"
+    Unit_Ea_t = "Ea[t]"
+    Unit_fa = "fa"
+    Unit_Ga_t = "Ga[t]"
+    Unit_hs = "hs"
+    Unit_ka_t = "ka[t]"
+    Unit_Ma_t = "Ma[t]"
+    Unit_ms = "ms"
+    Unit_na = "na"
+    Unit_ns = "ns"
+    Unit_ps = "ps"
+    Unit_Ta_t = "Ta[t]"
+    Unit_us = "us"

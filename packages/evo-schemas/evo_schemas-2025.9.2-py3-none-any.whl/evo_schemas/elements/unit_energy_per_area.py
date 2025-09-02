@@ -1,0 +1,25 @@
+import enum
+
+
+class UnitEnergyPerArea_V1_0_1_UnitCategories(str, enum.Enum):
+    Unit_J_per_m2 = "J/m2"
+    Unit_N_per_m = "N/m"
+    Unit_erg_per_cm2 = "erg/cm2"
+    Unit_J_per_cm2 = "J/cm2"
+    Unit_kgf_m_per_cm2 = "kgf.m/cm2"
+    Unit_lbf_ft_per_in2 = "lbf.ft/in2"
+    Unit_mJ_per_cm2 = "mJ/cm2"
+    Unit_mJ_per_m2 = "mJ/m2"
+    Unit_0_point_01_lbf_per_ft = "0.01 lbf/ft"
+    Unit_one_thirtieth_lbf_per_m = "1/30 lbf/m"
+    Unit_one_thirtieth_N_per_m = "1/30 N/m"
+    Unit_dyne_per_cm = "dyne/cm"
+    Unit_kgf_per_cm = "kgf/cm"
+    Unit_kN_per_m = "kN/m"
+    Unit_lbf_per_ft = "lbf/ft"
+    Unit_lbf_per_in = "lbf/in"
+    Unit_mN_per_km = "mN/km"
+    Unit_mN_per_m = "mN/m"
+    Unit_pdl_per_cm = "pdl/cm"
+    Unit_tonf_UK_per_ft = "tonf[UK]/ft"
+    Unit_tonf_US_per_ft = "tonf[US]/ft"
