@@ -1,0 +1,26 @@
+FROM node:24.4.1-alpine3.21 AS gui_builder
+
+WORKDIR /home/biolib/
+
+RUN corepack enable
+COPY .yarnrc.yml .
+COPY package.json .
+COPY index.html .
+COPY vite.config.mts .
+RUN yarn install
+
+COPY gui gui
+RUN yarn build
+
+FROM python:3.13.5-slim
+WORKDIR /home/biolib/
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY run.sh .
+COPY run.py .
+
+RUN mkdir output
+
+COPY --from=gui_builder /home/biolib/dist/index.html result.html
