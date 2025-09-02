@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% load static %}
+{% load survey_tags %}
+
+{% block localheader %}
+<link rel="stylesheet" media="screen" href="{% static 'vendor/css/nv.d3.css'%}" />
+{% endblock %}
+
+{% block content %}
+<div>
+	<p>
+		<a href="{% url 'survey_edit' survey %}">&laquo; All Questions</a>
+	</p>
+	<h1>Results for {{survey.title}} survey</h1>
+	<h3>Description</h3>
+	<p>{{survey.description}}</p>
+</div>
+
+<section id="summary">
+	<table>
+		<tr>
+			<th>Start date</th>
+			<th>End date</th>
+			<th>Duration</th>
+			<th>Questions</th>
+			<th>Interviewee(s) number</th>
+		</tr>
+		<tr>
+			<td>{{survey.created_at}}</td>
+			<td>{{questions|length}}</td>
+			<td>{{number_interviewees}}</td>
+		</tr>
+	</table>
+	<a href="{% url 'survey_respondent_list' survey %}">Respondents</a>
+</section>
+
+<section id="questions">
+	<section id="table-of-content">
+		<h3>Questions list</h3>
+		<ul>
+			{% for question in questions %}
+			<li><a href="#{{question.rank}}">{{question.text}}</a></li>
+			{% endfor %}
+		</ul>
+	</section>
+	<section id="details">
+		{% for question in questions %}
+		<div id="{{question.rank}}">
+			<h3>#{{question.rank}} : {{ question.text }}</h3>
+		{% if question.ui_hint == Question.TEXT %}
+			<table>
+				{% for answer_body in individuals|by_key:question.rank %}
+				<tr>
+					<td>{{answer_body}}</td>
+				</tr>
+				{% endfor %}
+			</table>
+		{% else %}
+			<div id="chart-{{question.rank}}" >
+				<svg style="width:500px; height:250px;"></svg>
+			</div>
+		{% endif %}
+		</div>
+		{% endfor %}
+	</section>
+</section>
+{% endblock %}
+
+{% block survey_bodyscripts %}
+<script type="text/javascript" charset="utf-8"
+        src="{% static 'vendor/js/d3.js' %}"></script>
+<script type="text/javascript" src="{% static 'vendor/js/nv.d3.js' %}"></script>
+<script type="text/javascript"
+        src="{% static 'js/djaodjin-survey.js' %}"></script>
+<script type="text/javascript">
+$(document).ready(function() {
+	var data = ({{aggregates|safe}});
+	for( var i = 0; i < data.length; i++ ) {
+		updateChart("#chart-" + data[i].key +" svg", data[i].values);
+	}
+});
+</script>
+{% endblock %}
+
