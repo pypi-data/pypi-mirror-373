@@ -1,0 +1,610 @@
+import json
+from pathlib import Path
+from typing import List, Dict, Optional, Tuple, Set
+
+import click
+
+from settings import MaterConfig
+
+
+def build_dimensions_hierarchy(config: MaterConfig) -> None:
+    """
+    # Build final dimensions hierarchy from mapping file
+    
+    ## Arguments
+    - `config` (MaterConfig): Configuration object containing paths and simulation parameters
+    
+    ## Returns
+    - `None`: Creates final hierarchy file but doesn't return a value
+    """
+    
+    try:
+        # Load mapping file
+        dimensions_mapping = load_mapping_file(config.paths.dimensions_mapping_file)
+        
+        # Validate mapping completeness
+        validation_result = validate_mapping_completeness(dimensions_mapping)
+        display_mapping_validation(validation_result)
+        
+        if not validation_result["can_proceed"]:
+            return
+        
+        # Build complete hierarchy with parent resolution and missing parents
+        complete_hierarchy = build_complete_hierarchy_from_mapping(dimensions_mapping)
+        
+        # Save final hierarchy file
+        save_hierarchy_file(complete_hierarchy, config.paths.dimensions_hierarchy_file)
+        
+        # Display final results
+        click.echo(f"📊 Built hierarchy with {len(complete_hierarchy)} dimension values")
+        click.echo("🎯 Complete hierarchy generated!")
+        display_elegant_hierarchy(complete_hierarchy)
+        
+    except FileNotFoundError as e:
+        click.echo(f"⚠️  File not found: {e}")
+        if "dimensions_mapping" in str(e):
+            click.echo("💡 Run 'uv run mater-cli dimensions map' first to create mapping file")
+    except json.JSONDecodeError as e:
+        click.echo(f"⚠️  Invalid JSON format: {e}")
+    except PermissionError:
+        click.echo("⚠️  Permission denied")
+    except Exception as e:
+        click.echo(f"⚠️  Error building dimensions hierarchy: {e}")
+
+
+def build_complete_hierarchy_from_mapping(mapping: List[Dict]) -> List[Dict]:
+    """
+    # Build complete hierarchy by resolving parents and creating missing parents
+    
+    ## Arguments
+    - `mapping` (List[Dict]): Dimensions mapping with parent relationships
+    
+    ## Returns
+    - `List[Dict]`: Complete hierarchy with resolved parents and missing parents
+    """
+    complete_hierarchy = []
+    processed_combinations = set()
+    reference_dimensions = []
+    reference_index = {}
+    
+    # Load reference if available
+    reference_path = Path("data/references/dimensions.json")
+    if reference_path.exists():
+        reference_dimensions = load_reference_dimensions(reference_path)
+        reference_index = create_reference_indexes(reference_dimensions)
+    
+    # First pass: Process mapping entries and resolve parents
+    for entry in mapping:
+        name, value = entry["name"], entry["value"]
+        combination = (name, value)
+        
+        if combination in processed_combinations:
+            continue
+        
+        # Resolve parent using reference_equivalence logic
+        resolved_entry = resolve_parent_from_reference(entry, reference_index)
+        complete_hierarchy.append(resolved_entry)
+        processed_combinations.add(combination)
+    
+    # Second pass: Create missing parents recursively
+    missing_parents = find_and_create_missing_parents(complete_hierarchy, reference_index)
+    for parent_entry in missing_parents:
+        parent_combination = (parent_entry["name"], parent_entry["value"])
+        if parent_combination not in processed_combinations:
+            complete_hierarchy.append(parent_entry)
+            processed_combinations.add(parent_combination)
+    
+    return complete_hierarchy
+
+
+def resolve_parent_from_reference(mapping_entry: Dict, reference_index: Dict) -> Dict:
+    """
+    # Resolve parent hierarchy using reference_equivalence logic
+    
+    ## Arguments
+    - `mapping_entry` (Dict): Entry from mapping file
+    - `reference_index` (Dict): Reference lookup indexes
+    
+    ## Returns
+    - `Dict`: Entry with resolved parent hierarchy
+    """
+    name = mapping_entry["name"]
+    value = mapping_entry["value"]
+    reference_equivalence = mapping_entry.get("reference_equivalence", {})
+    parent_hierarchy = mapping_entry.get("parent_hierarchy", {})
+    
+    # Skip entries with TODOs
+    if "TODO" in reference_equivalence or "TODO" in parent_hierarchy:
+        raise ValueError(f"Cannot build entry with TODO keys: {name}={value}")
+    
+    # Start with original entry
+    resolved_entry = {
+        "name": name,
+        "value": value,
+        "reference_equivalence": reference_equivalence.copy(),
+        "parent_hierarchy": parent_hierarchy.copy()
+    }
+    
+    # Apply parent resolution logic
+    if reference_equivalence:
+        # Find reference entry using equivalence
+        ref_value = list(reference_equivalence.values())[0] if reference_equivalence else None
+        if ref_value:
+            ref_entry = find_dimension_in_reference(name, ref_value, reference_index)
+            if ref_entry:
+                # If parent_hierarchy is empty, use reference default
+                if not parent_hierarchy or not parent_hierarchy.get("default"):
+                    ref_parent = get_parent_value(ref_entry)
+                    if ref_parent:
+                        resolved_entry["parent_hierarchy"] = {"default": ref_parent}
+                # If parent_hierarchy is provided, keep it (user override)
+    
+    # Ensure parent_hierarchy has default value
+    if not resolved_entry["parent_hierarchy"].get("default"):
+        resolved_entry["parent_hierarchy"]["default"] = "top-level"
+    
+    return resolved_entry
+
+
+def find_and_create_missing_parents(hierarchy_entries: List[Dict], reference_index: Dict) -> List[Dict]:
+    """
+    # Find and create missing parent entries recursively
+    
+    ## Arguments
+    - `hierarchy_entries` (List[Dict]): Current hierarchy entries
+    - `reference_index` (Dict): Reference lookup indexes
+    
+    ## Returns
+    - `List[Dict]`: Missing parent entries to add
+    """
+    existing_values_by_name = {}
+    missing_parents = []
+    parents_to_process = []
+    
+    # Index existing values by dimension name
+    for entry in hierarchy_entries:
+        name = entry["name"]
+        value = entry["value"]
+        if name not in existing_values_by_name:
+            existing_values_by_name[name] = set()
+        existing_values_by_name[name].add(value)
+    
+    # Collect all referenced parents
+    for entry in hierarchy_entries:
+        name = entry["name"]
+        parent_value = entry.get("parent_hierarchy", {}).get("default")
+        if parent_value and parent_value != "top-level":
+            if name not in existing_values_by_name or parent_value not in existing_values_by_name[name]:
+                parents_to_process.append((name, parent_value))
+    
+    # Process parents recursively
+    while parents_to_process:
+        name, parent_value = parents_to_process.pop(0)
+        
+        # Skip if already processed
+        if name in existing_values_by_name and parent_value in existing_values_by_name[name]:
+            continue
+        
+        # Create parent entry
+        parent_entry = create_parent_entry(name, parent_value, reference_index)
+        missing_parents.append(parent_entry)
+        
+        # Update index
+        if name not in existing_values_by_name:
+            existing_values_by_name[name] = set()
+        existing_values_by_name[name].add(parent_value)
+        
+        # Check if this parent has its own parent
+        grandparent_value = parent_entry.get("parent_hierarchy", {}).get("default")
+        if grandparent_value and grandparent_value != "top-level":
+            if name not in existing_values_by_name or grandparent_value not in existing_values_by_name[name]:
+                parents_to_process.append((name, grandparent_value))
+    
+    return missing_parents
+
+
+def create_parent_entry(name: str, value: str, reference_index: Dict) -> Dict:
+    """
+    # Create parent entry, using reference if available
+    
+    ## Arguments
+    - `name` (str): Dimension name
+    - `value` (str): Dimension value
+    - `reference_index` (Dict): Reference lookup indexes
+    
+    ## Returns
+    - `Dict`: Parent entry with proper format
+    """
+    # Try to find in reference first
+    ref_entry = find_dimension_in_reference(name, value, reference_index)
+    
+    if ref_entry:
+        # Create from reference
+        ref_parent = get_parent_value(ref_entry)
+        return {
+            "name": name,
+            "value": value,
+            "reference_equivalence": ref_entry.get("equivalence", {}),
+            "parent_hierarchy": {"default": ref_parent or "top-level"}
+        }
+    else:
+        # Create basic parent entry
+        return {
+            "name": name,
+            "value": value,
+            "reference_equivalence": {},
+            "parent_hierarchy": {"default": "top-level"}
+        }
+
+
+def validate_mapping_completeness(mapping: List[Dict]) -> Dict:
+    """
+    # Validate mapping completeness by detecting TODO keys
+    
+    ## Arguments
+    - `mapping` (List[Dict]): Dimensions mapping to validate
+    
+    ## Returns
+    - `Dict`: Validation result with completion status and statistics
+    """
+    mapped_count, todo_count = count_mapping_statistics(mapping)
+    total_count = len(mapping)
+    completion_rate = (mapped_count / total_count * 100) if total_count > 0 else 0
+    
+    # Identify TODO entries by checking for TODO keys
+    todo_entries = []
+    for entry in mapping:
+        reference_equivalence = entry.get("reference_equivalence", {})
+        parent_hierarchy = entry.get("parent_hierarchy", {})
+        
+        if "TODO" in reference_equivalence or "TODO" in parent_hierarchy:
+            todo_entries.append(entry)
+    
+    return {
+        "total": total_count,
+        "mapped": mapped_count,
+        "todo": todo_count,
+        "completion_rate": completion_rate,
+        "todo_entries": todo_entries,
+        "can_proceed": todo_count == 0
+    }
+
+
+def display_mapping_validation(validation_result: Dict) -> None:
+    """
+    # Display mapping validation status and guidance
+    
+    ## Arguments
+    - `validation_result` (Dict): Validation result from validate_mapping_completeness
+    
+    ## Returns
+    - `None`: Displays validation status but doesn't return a value
+    """
+    mapped = validation_result["mapped"]
+    todo = validation_result["todo"]
+    completion_rate = validation_result["completion_rate"]
+    
+    click.echo(f"📋 Mapping validation:")
+    click.echo(f"   ✅ {mapped} dimensions mapped ({completion_rate:.1f}%)")
+    
+    if todo > 0:
+        click.echo(f"   ❌ {todo} dimensions with TODOs")
+        click.echo(f"\n⚠️  Cannot build hierarchy with incomplete mapping!")
+        click.echo(f"💡 Complete TODOs in mapping file:")
+        click.echo(f"      - Remove TODO keys and fill with real data")
+        click.echo(f"      - Check out existing dimensions values:")
+        click.secho("        uv run mater-cli simulation list-dimensions", fg='bright_blue', bold=True)
+        click.echo(f"   - Use 'uv run mater-cli simulation list-dimensions' to see available values")
+    else:
+        click.echo(f"   🎯 Mapping complete! Building hierarchy...")
+
+
+def display_elegant_hierarchy(complete_hierarchy: List[Dict]) -> None:
+    """
+    # Display complete hierarchy in elegant tree format
+    
+    ## Arguments
+    - `complete_hierarchy` (List[Dict]): Complete validated hierarchy
+    
+    ## Returns
+    - `None`: Displays hierarchy but doesn't return a value
+    """
+    # Group by dimension name
+    dimensions_by_name = {}
+    for entry in complete_hierarchy:
+        name = entry.get("name", "unknown")
+        if name not in dimensions_by_name:
+            dimensions_by_name[name] = []
+        dimensions_by_name[name].append(entry)
+    
+    click.echo(f"\n🌳 Complete Hierarchy:")
+    
+    for dim_name, entries in dimensions_by_name.items():
+        click.echo(f"\n📁 {dim_name.capitalize()}:")
+        
+        # Build hierarchy tree for this dimension
+        tree_structure = build_hierarchy_tree(entries)
+        if tree_structure:
+            display_tree_structure(tree_structure, "   ")
+        else:
+            click.echo("   (No hierarchical structure found)")
+
+
+def build_hierarchy_tree(entries: List[Dict]) -> Dict:
+    """
+    # Build tree structure from flat dimension entries
+    
+    ## Arguments
+    - `entries` (List[Dict]): Dimension entries for same dimension name
+    
+    ## Returns
+    - `Dict`: Tree structure with parent-child relationships
+    """
+    # Create lookup by value
+    entries_by_value = {entry["value"]: entry for entry in entries}
+    
+    # Find root nodes (no parent or parent is top-level)
+    root_nodes = []
+    for entry in entries:
+        parent = get_parent_value_from_hierarchy(entry)
+        if not parent or parent == "top-level":
+            root_nodes.append(entry["value"])
+    
+    # Build tree structure
+    tree = {}
+    for root in root_nodes:
+        if root in entries_by_value:
+            tree[root] = build_subtree(root, entries_by_value)
+    
+    return tree
+
+
+def build_subtree(parent_value: str, entries_by_value: Dict) -> Dict:
+    """
+    # Recursively build subtree for a parent node
+    
+    ## Arguments
+    - `parent_value` (str): Parent node value
+    - `entries_by_value` (Dict): Lookup dictionary of all entries
+    
+    ## Returns
+    - `Dict`: Subtree structure
+    """
+    subtree = {"entry": entries_by_value.get(parent_value, {}), "children": {}}
+    
+    # Find children of this parent
+    for value, entry in entries_by_value.items():
+        entry_parent = get_parent_value_from_hierarchy(entry)
+        if entry_parent == parent_value:
+            subtree["children"][value] = build_subtree(value, entries_by_value)
+    
+    return subtree
+
+
+def display_tree_structure(tree: Dict, indent: str = "") -> None:
+    """
+    # Display tree structure with elegant formatting
+    
+    ## Arguments
+    - `tree` (Dict): Tree structure to display
+    - `indent` (str): Current indentation level
+    
+    ## Returns
+    - `None`: Displays tree but doesn't return a value
+    """
+    if not tree:
+        return
+        
+    items = list(tree.items())
+    
+    for i, (value, subtree) in enumerate(items):
+        is_last = i == len(items) - 1
+        current_prefix = indent + ("└── " if is_last else "├── ")
+        next_indent = indent + ("    " if is_last else "│   ")
+        
+        click.echo(f"{current_prefix}{value}")
+        
+        # Display children
+        if subtree.get("children"):
+            display_tree_structure(subtree["children"], next_indent)
+
+
+def get_parent_value_from_hierarchy(entry: Dict) -> Optional[str]:
+    """
+    # Get parent value from hierarchy entry using 'parent_hierarchy' field
+    
+    ## Arguments
+    - `entry` (Dict): Dimension entry from hierarchy file
+    
+    ## Returns
+    - `Optional[str]`: Parent value if found, None otherwise
+    """
+    parent_hierarchy = entry.get("parent_hierarchy", {})
+    return parent_hierarchy.get("default")
+
+
+def load_mapping_file(mapping_file: Path) -> List[Dict]:
+    """
+    # Load dimensions mapping from JSON file
+    
+    ## Arguments
+    - `mapping_file` (Path): Path to mapping JSON file
+    
+    ## Returns
+    - `List[Dict]`: Dimensions mapping data
+    """
+    if not mapping_file.exists():
+        raise FileNotFoundError(f"Mapping file not found: {mapping_file}")
+    
+    try:
+        with open(mapping_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        if not isinstance(data, list):
+            raise ValueError(f"Mapping file must contain an array, got: {type(data)}")
+        
+        click.echo(f"📁 Loaded mapping: {mapping_file} ({len(data)} entries)")
+        return data
+        
+    except json.JSONDecodeError as e:
+        click.echo(f"❌ Invalid JSON in mapping file: {mapping_file}")
+        click.echo(f"   Error: {e.msg} at line {e.lineno}, column {e.colno}")
+        raise json.JSONDecodeError(f"Invalid JSON in mapping file {mapping_file}", e.doc, e.pos)
+
+
+def save_hierarchy_file(complete_hierarchy: List[Dict], output_file: Path) -> None:
+    """
+    # Save complete hierarchy to JSON file with user confirmation if exists
+    
+    ## Arguments
+    - `complete_hierarchy` (List[Dict]): Complete dimension hierarchy data
+    - `output_file` (Path): Output file path
+    
+    ## Returns
+    - `None`: Saves file but doesn't return a value
+    """
+    if output_file.exists():
+        response = input(f"File '{output_file}' already exists. Overwrite? (y/N): ")
+        if response.lower() not in ['y', 'yes']:
+            click.echo(f"Skipped: {output_file}")
+            return
+    
+    # Ensure parent directory exists
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(complete_hierarchy, f, indent=2, ensure_ascii=False)
+    
+    click.echo(f"✅ Generated dimensions hierarchy: {output_file}")
+
+
+def load_reference_dimensions(reference_path: Path) -> List[Dict]:
+    """
+    # Load reference dimensions from JSON file
+    
+    ## Arguments
+    - `reference_path` (Path): Path to reference dimensions JSON file
+    
+    ## Returns
+    - `List[Dict]`: Reference dimensions data
+    """
+    if not reference_path.exists():
+        return []
+    
+    try:
+        with open(reference_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        if not isinstance(data, list):
+            return []
+        
+        return data
+        
+    except json.JSONDecodeError:
+        return []
+
+
+def create_reference_indexes(reference_dimensions: List[Dict]) -> Dict:
+    """
+    # Create lookup indexes for reference dimensions (direct + equivalence, case-insensitive)
+    
+    ## Arguments
+    - `reference_dimensions` (List[Dict]): Reference dimensions data
+    
+    ## Returns
+    - `Dict`: Dictionary with 'direct' and 'equivalence' indexes
+    """
+    direct_index = {}
+    equivalence_index = {}
+    
+    for entry in reference_dimensions:
+        name = entry.get("name")
+        value = entry.get("value")
+        
+        if not name or not value:
+            continue
+            
+        # Direct index (lowercase for case-insensitive matching)
+        direct_index[(name, value.lower())] = entry
+        
+        # Equivalence index (lowercase for case-insensitive matching)
+        equivalences = entry.get("equivalence", {})
+        for equiv_key, equiv_value in equivalences.items():
+            if isinstance(equiv_value, str):
+                equivalence_index[(name, equiv_value.lower())] = entry
+    
+    return {"direct": direct_index, "equivalence": equivalence_index}
+
+
+def find_dimension_in_reference(name: str, value: str, reference_index: Dict) -> Optional[Dict]:
+    """
+    # Find dimension in reference by exact match or equivalence lookup (case-insensitive)
+    
+    ## Arguments
+    - `name` (str): Dimension name to search
+    - `value` (str): Dimension value to search
+    - `reference_index` (Dict): Pre-built reference indexes
+    
+    ## Returns
+    - `Optional[Dict]`: Reference entry if found, None otherwise
+    """
+    if not reference_index:
+        return None
+        
+    direct_index, equivalence_index = reference_index["direct"], reference_index["equivalence"]
+    value_lower = value.lower()
+    
+    # Try direct lookup first
+    if (name, value_lower) in direct_index:
+        return direct_index[(name, value_lower)]
+    
+    # Try equivalence lookup
+    if (name, value_lower) in equivalence_index:
+        return equivalence_index[(name, value_lower)]
+    
+    return None
+
+
+def count_mapping_statistics(mapping: List[Dict]) -> Tuple[int, int]:
+    """
+    # Count mapped vs TODO entries in mapping by detecting TODO keys
+    
+    ## Arguments
+    - `mapping` (List[Dict]): Mapping data
+    
+    ## Returns
+    - `Tuple[int, int]`: (mapped_count, todo_count)
+    """
+    mapped_count = 0
+    todo_count = 0
+    
+    for entry in mapping:
+        reference_equivalence = entry.get("reference_equivalence", {})
+        parent_hierarchy = entry.get("parent_hierarchy", {})
+        
+        # Check if TODOs are present
+        has_ref_todo = "TODO" in reference_equivalence
+        has_parent_todo = "TODO" in parent_hierarchy
+        
+        if has_ref_todo or has_parent_todo:
+            todo_count += 1
+        else:
+            # Entry is mapped if it has useful data and no TODOs
+            if reference_equivalence or parent_hierarchy:
+                mapped_count += 1
+    
+    return mapped_count, todo_count
+
+
+def get_parent_value(entry: Dict) -> Optional[str]:
+    """
+    # Get parent value from reference entry using 'parents_values' field
+    
+    ## Arguments
+    - `entry` (Dict): Reference entry with parents_values
+    
+    ## Returns
+    - `Optional[str]`: Parent value if found, None otherwise
+    """
+    parents_values = entry.get("parents_values", {})
+    return parents_values.get("default")

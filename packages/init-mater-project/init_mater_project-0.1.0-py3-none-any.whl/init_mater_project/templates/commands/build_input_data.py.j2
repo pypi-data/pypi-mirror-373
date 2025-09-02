@@ -1,0 +1,156 @@
+import subprocess
+import sys
+from pathlib import Path
+from typing import List
+
+import click
+
+from settings import MaterConfig
+
+
+def build_input_data(config: MaterConfig) -> None:
+    """
+    # Execute transformation scripts to build MATER input data
+    
+    ## Arguments
+    - `config` (MaterConfig): Configuration object containing scripts and output paths
+    
+    ## Returns
+    - `None`: Executes scripts and displays results to console
+    """
+    
+    try:
+        scripts = get_scripts(config.paths.transforms_script_path)
+        if not scripts:
+            click.echo(f"⚠️  No Python scripts found in {config.paths.transforms_script_path}")
+            return
+
+        existing_files = check_existing_json_files(config.paths.input_path)
+        if existing_files:
+            click.echo(f"⚠️  Found {len(existing_files)} existing JSON file(s) in: {config.paths.input_path}")
+            for file_path in existing_files:
+                click.echo(f"   - {file_path.name}")
+            
+            response = input("\nOverride existing files? (y/N): ")
+            if response.lower() not in ['y', 'yes']:
+                click.echo("Build cancelled by user")
+                return
+        
+        click.echo(f"🚀 Executing {len(scripts)} transformation script(s)...")
+
+        success_count = 0
+        
+        for script in scripts:
+            click.echo(f"   ⚙️  Executing {script.name}...")
+            
+            if execute_script(script):
+                click.echo(f"   ✅ {script.name} completed successfully")
+                success_count += 1
+            else:
+                click.echo(f"   ❌ {script.name} failed")
+
+        failed_count = len(scripts) - success_count
+        click.echo(f"\n📊 Summary: ✅ {success_count} successful, ❌ {failed_count} failed")
+        
+        if failed_count == 0:
+            click.echo("🎯 All scripts executed successfully!")
+            show_output_files(config.paths.input_path)
+
+    except Exception as e:
+        click.echo(f"❌ Error: {e}")
+
+
+def get_scripts(script_path: Path) -> List[Path]:
+    """
+    # Discover Python scripts to execute from specified path
+    
+    ## Arguments
+    - `script_path` (Path): Path to script file or directory containing scripts
+    
+    ## Returns
+    - `List[Path]`: List of Python script paths ready for execution
+    """
+    if not script_path.exists():
+        raise FileNotFoundError(f"Script path not found: {script_path}")
+    
+    if script_path.is_file():
+        if script_path.suffix != '.py':
+            raise ValueError(f"File must be a Python script (.py): {script_path}")
+        click.echo(f"📁 Found script file: {script_path}")
+        return [script_path]
+    
+    scripts = sorted(script_path.glob('*.py'))
+    click.echo(f"📁 Found {len(scripts)} Python script(s) in: {script_path}")
+    for script in scripts:
+        click.echo(f"   - {script.name}")
+    
+    return scripts
+
+
+def check_existing_json_files(input_path: Path) -> List[Path]:
+    """
+    # Check for existing JSON files in the input path
+    
+    ## Arguments
+    - `input_path` (Path): Output directory to check for existing JSON files
+    
+    ## Returns
+    - `List[Path]`: List of existing JSON files, empty list if none found
+    """
+    if not input_path.exists():
+        return []
+    
+    existing_files = list(input_path.glob('*.json'))
+    return existing_files
+
+
+
+def execute_script(script_path: Path) -> bool:
+    """
+    # Execute a single transformation script and return success status
+    
+    ## Arguments
+    - `script_path` (Path): Path to Python script to execute
+    
+    ## Returns
+    - `bool`: True if script executed successfully, False if failed or timeout
+    """
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script_path)],
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        return result.returncode == 0
+        
+    except subprocess.TimeoutExpired:
+        click.echo(f"   ⏰ {script_path.name} timed out")
+        return False
+    except Exception as e:
+        click.echo(f"   ❌ {script_path.name} error: {e}")
+        return False
+
+
+def show_output_files(output_path: Path) -> None:
+    """
+    # Display generated output files in specified directory
+    
+    ## Arguments
+    - `output_path` (Path): Directory to check for generated JSON files
+    
+    ## Returns
+    - `None`: Displays file list to console or warning message
+    """
+    if not output_path.exists():
+        click.echo("⚠️  Output directory not found")
+        return
+    
+    json_files = list(output_path.glob('*.json'))
+    if json_files:
+        click.echo(f"\n📄 Generated {len(json_files)} file(s) in {output_path}")
+        for json_file in json_files:
+            click.echo(f"   - {json_file.name}")
+    else:
+        click.echo(f"\n⚠️  No JSON files found in {output_path}")
+
