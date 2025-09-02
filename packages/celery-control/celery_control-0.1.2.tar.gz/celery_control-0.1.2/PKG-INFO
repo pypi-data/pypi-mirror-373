@@ -1,0 +1,351 @@
+Metadata-Version: 2.1
+Name: celery-control
+Version: 0.1.2
+Summary: 
+Author: Anton Zubarev
+Author-email: aszubarev@domclick.ru
+Requires-Python: >=3.10,<4.0
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Dist: celery (>=5.4,<6.0)
+Requires-Dist: filelock (>=3.14.0,<4.0.0)
+Requires-Dist: prometheus-client (>=0.20.0,<1.0.0)
+Description-Content-Type: text/markdown
+
+# Celery Control
+
+A Prometheus monitoring library for Celery that implements a **pull-based** approach to collect metrics directly from workers, providing better performance, scalability, and flexibility compared to traditional event-based monitoring solutions.
+
+## Features
+
+- **Pull-based metrics**: Exposes a `/metrics` endpoint for Prometheus scraping.
+- **Comprehensive task metrics**:
+  - Successful tasks counter
+  - Error counter with exception labels
+  - Retry counter with reason labels
+  - Revoked tasks counter (expired/terminated)
+  - Unknown tasks counter
+  - Rejected tasks and messages counters
+  - Internal Celery errors counter
+  - Task runtime histogram
+- **Worker state metrics**:
+  - Prefetched requests
+  - Active requests
+  - Waiting requests
+  - Scheduled tasks
+- **Worker health monitoring**: Tracks worker online status.
+- **Task publication metrics**: Tracks tasks published by clients, beat, or other services.
+- **Multiprocessing support**: Compatible with both `prefork` and `threads` pools.
+- **Django integration**: Easy setup for Django + Celery + Beat projects.
+
+## Why Celery Control?
+
+Traditional event-based monitoring (e.g., Flower) has limitations:
+- Additional load on the worker (17-46% performance impact)
+- Single point of failure
+- Difficulty scaling horizontally
+- Old metrics accumulation
+
+Celery Control solves these by:
+- Reducing worker load (only 6-12% performance impact)
+- Enabling horizontal scaling
+- Providing real-time internal state metrics
+- Allowing application-level metrics (DB, cache, external services)
+
+## Explanation
+- [[ru] Celery Monitoring. Pull model](https://habr.com/ru/companies/domclick/articles/942584/)
+
+## Installation
+
+```bash
+pip install celery-control
+```
+
+## Quick Start
+
+### For Celery Workers
+
+```python
+from celery import Celery
+from celery_control import setup_worker
+
+app = Celery()
+
+setup_worker()
+```
+
+### For Task Publisher — Celery Beat
+
+```python
+from celery import Celery
+from celery_control import setup_publisher
+
+app = Celery()
+
+setup_publisher(start_wsgi_server=True)  # For beat or standalone publishers
+```
+
+### For Task Publishers — WSGI Server
+
+```python
+import os
+
+from celery_control import setup_publisher
+from django.core.wsgi import get_wsgi_application
+
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'server.settings')
+
+application = get_wsgi_application()
+
+setup_publisher(start_wsgi_server=False)  # For server publishers
+```
+
+### Environment Variables
+
+- `CELERY_CONTROL_SERVER_HOST`: Metrics server host (default: `0.0.0.0`)
+- `CELERY_CONTROL_SERVER_PORT`: Metrics server port (default: `5555`)
+- `CELERY_CONTROL_SERVER_DISABLE_COMPRESSION`: Disable compression (default: `False`)
+- `CELERY_CONTROL_TRACKER_DAEMON_INTERVAL`: Daemon update interval (default: `15`)
+
+
+## Performance
+
+Celery Control introduces minimal overhead compared to event-based monitoring solutions. Below are the performance test results comparing different configurations.
+
+All tests conducted on MacBook M1 Pro with:
+- Log level: ERROR
+- Gossip, mingle, heartbeat: disabled
+- Prefetch multiplier: 1,000
+- Concurrency: 1
+
+### Test 1: Constant Load Simulation
+- **Scenario**: 100 batches of 1,000 tasks each (total: 100K tasks)
+- **Execution**: Publisher sends all tasks to queue, then worker processes them
+- **Measurement**: Median processing time per batch
+- **Purpose**: Simulates continuous workload with always-available tasks
+
+### Test 2: Temporary Load Simulation  
+- **Scenario**: 10 batches of 1,000 tasks each, repeated 10 times (total: 100K tasks)
+- **Execution**: Each iteration: publish → start worker → process → stop worker
+- **Measurement**: Median of maximum processing times
+- **Purpose**: Simulates burst workload
+
+### Prefork Pool Results
+
+```
+Test 1 - Constant Load (Median TPS):
+┌────────────────────────────────────────┐
+│ Default:             2097 tasks/second │
+│ With Events:         1252 tasks/second │
+│ With Celery Control: 1968 tasks/second │
+└────────────────────────────────────────┘
+
+Test 2 - Temporary Load (Median Max Time):
+┌────────────────────────────────────────┐
+│ Default:             3191 tasks/second │
+│ With Events:         1720 tasks/second │
+│ With Celery Control: 2816 tasks/second │
+└────────────────────────────────────────┘
+```
+
+![](/docs/performance_prefork.png)
+
+**Performance Impact**:
+- Events: 40% reduction in Test 1, 46% in Test 2
+- Celery Control: 6% reduction in Test 1, 12% in Test 2
+
+### Threads Pool Results
+
+```
+Test 1 - Constant Load (Median TPS):
+┌────────────────────────────────────────┐
+│ Default:             2452 tasks/second │
+│ With Events:         2038 tasks/second │
+│ With Celery Control: 2285 tasks/second │
+└────────────────────────────────────────┘
+
+Test 2 - Temporary Load (Median Max Time):
+┌────────────────────────────────────────┐
+│ Default:             3672 tasks/second │
+│ With Events:         2135 tasks/second │
+│ With Celery Control: 3400 tasks/second │
+└────────────────────────────────────────┘
+```
+
+![](/docs/performance_threads.png)
+
+**Performance Impact**:
+- Events: 17% reduction in Test 1, 42% in Test 2
+- Celery Control: 7% reduction in Test 1 and Test 2
+
+### Key Findings
+
+1. **Event-based monitoring** introduces significant overhead (17-46% reduction)
+2. **Celery Control** adds minimal overhead (6-12% reduction)
+3. **Threads pool** generally outperforms prefork pool
+4. **Temporary load scenarios** (Test 2) show more pronounced performance differences
+
+
+## Multiprocessing Mode
+
+Enable multiprocessing mode by setting:
+```bash
+export PROMETHEUS_MULTIPROC_DIR=/path/to/metrics/dir
+```
+
+This allows metrics aggregation across multiple worker processes.
+
+## Metrics Reference
+
+### Counters
+
+`celery_task_accepted_total` — Total number of accepted tasks.
+
+**Labels**:
+- `worker` (string): Name of the worker that accepted the task
+- `task` (string): Name of the task that was accepted
+
+<br>
+
+`celery_task_succeeded_total` — Total number of successfully completed tasks.
+
+**Labels**:
+- `worker` (string): Name of the worker that processed the task
+- `task` (string): Name of the task that was executed
+
+<br>
+
+`celery_task_failed_total` — Total number of tasks that failed with unhandled exceptions.
+
+**Labels**:
+- `worker` (string): Name of the worker that processed the task
+- `task` (string): Name of the task that failed
+- `exception` (string): Type of exception that caused the failure
+
+<br>
+
+`celery_task_retried_total` — Total number of task retry attempts. 
+
+**Labels**:
+- `worker` (string): Name of the worker that processed the task
+- `task` (string): Name of the task being retried
+- `exception` (string): Reason for retry (exception type)
+
+<br>
+
+`celery_task_revoked_total` — Total number of revoked tasks.
+
+**Labels**:
+- `worker` (string): Name of the worker that processed the task
+- `task` (string): Name of the revoked task
+- `expired` (boolean): Whether the task was revoked due to expiration
+- `terminated` (boolean): Whether the task was terminated via remote control
+
+<br>
+
+`celery_task_unknown_total` — Total number of unknown tasks received.
+
+**Labels**:
+- `worker` (string): Name of the worker that received the task
+- *Note: No `task` label to prevent metric cardinality explosion*
+
+<br>
+
+`celery_task_rejected_total` — Total number of tasks rejected by `Reject` exception.
+
+**Labels**:
+- `worker` (string): Name of the worker that rejected the task
+- `task` (string): Name of the rejected task
+- `requeue` (boolean): Whether the task was requeued after rejection
+
+<br>
+
+`celery_message_rejected_total` — Total number of messages rejected due to unknown type.
+
+**Labels**:
+- `worker` (string): Name of the worker that rejected the message
+
+<br>
+
+`celery_task_internal_errors_total` — Total number of internal Celery errors.
+
+**Labels**:
+- `worker` (string): Name of the worker that processed the task
+- `task` (string): Name of the task that failed
+- `exception` (string): Type of exception that caused the failure
+
+<br>
+
+`celery_task_published_total` — Total number of tasks published to queue.
+
+**Labels**:
+- `task` (string): Name of the published task
+- *Note: No `worker` label as publication typically happens outside workers*
+
+### Gauges
+
+`celery_worker_online` — Timestamp of when the worker was last online.
+
+**Labels**:
+- `worker` (string): Name of the worker
+
+<br>
+
+`celery_task_prefetched` — Number of tasks currently prefetched (waiting or active).
+
+**Labels**:
+- `worker` (string): Name of the worker
+- `task` (string): Name of the reserved task
+
+<br>
+
+`celery_task_active` — Number of tasks currently being executed.
+
+**Labels**:
+- `worker` (string): Name of the worker
+- `task` (string): Name of the active task
+
+<br>
+
+`celery_task_waiting` — Number of tasks currently being waited.
+
+**Labels**:
+- `worker` (string): Name of the worker
+- `task` (string): Name of the waiting task
+
+<br>
+
+`celery_task_scheduled` — Number of tasks scheduled for future execution.
+
+**Labels**:
+- `worker` (string): Name of the worker
+- `task` (string): Name of the scheduled task
+
+### Histograms
+
+`celery_task_runtime_seconds` — Histogram of task execution times.
+
+**Labels**:
+- `worker` (string): Name of the worker that executed the task
+- `task` (string): Name of the task
+
+**Default Buckets**: `Histogram.DEFAULT_BUCKETS`
+
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+MIT
+
+## Useful Links
+
+- [Source Code & Examples](https://gitverse.ru/domclick/celery-control)
+- [[ru] Celery Monitoring. Pull-based model](https://habr.com/ru/companies/domclick/articles/942584/)
+- [[ru] Celery Monitoring. Event-based model](https://habr.com/ru/companies/domclick/articles/804535/)
+- [[ru] Metrics Collection with Gunicorn Multiprocessing](https://habr.com/ru/companies/domclick/articles/773136/)
+
