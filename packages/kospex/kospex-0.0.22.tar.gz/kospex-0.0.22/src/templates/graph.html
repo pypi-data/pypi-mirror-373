@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Force Graph - Kospex Web</title>
+        <!-- Local static assets -->
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+        <script src="/static/js/d3.min.js"></script>
+        <style>
+            body {
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            }
+            
+            .content-wrapper {
+                display: flex;
+                height: calc(100vh - 4rem); /* Account for header height */
+                overflow: hidden;
+            }
+
+            #sidebar {
+                width: 250px;
+                min-width: 100px;
+                max-width: 50%;
+                background-color: #f9fafb;
+                box-sizing: border-box;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                resize: horizontal;
+                position: relative;
+                border-right: 1px solid #e5e7eb;
+            }
+
+            #sidebar::after {
+                content: "";
+                position: absolute;
+                top: 0;
+                right: 0;
+                bottom: 0;
+                width: 5px;
+                background: #d1d5db;
+                cursor: ew-resize;
+            }
+
+            #graph {
+                flex-grow: 1;
+                position: relative;
+                background-color: #ffffff;
+            }
+            
+            #resetButton {
+                position: absolute;
+                top: 16px;
+                right: 16px;
+                z-index: 10;
+            }
+            
+            .slider-container {
+                display: flex;
+                flex-direction: column;
+                margin-bottom: 20px;
+            }
+            
+            .button-container {
+                display: flex;
+                justify-content: center;
+                margin-top: 10px;
+            }
+            
+            .slider {
+                width: 100%;
+                margin: 10px 0;
+                height: 6px;
+                border-radius: 3px;
+                background: #e5e7eb;
+                outline: none;
+                -webkit-appearance: none;
+            }
+            
+            .slider::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                appearance: none;
+                width: 20px;
+                height: 20px;
+                border-radius: 50%;
+                background: #2563eb;
+                cursor: pointer;
+                border: 2px solid #ffffff;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+            
+            .slider::-moz-range-thumb {
+                width: 20px;
+                height: 20px;
+                border-radius: 50%;
+                background: #2563eb;
+                cursor: pointer;
+                border: 2px solid #ffffff;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+            
+            .sliderValue {
+                text-align: center;
+                margin-bottom: 5px;
+            }
+        </style>
+    </head>
+    <body class="bg-white">
+        {% include '_header.html' %}
+
+        <!-- Sidebar and Graph -->
+        <div class="content-wrapper">
+            <div id="sidebar" class="p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Filters</h3>
+                
+                <div class="slider-container">
+                    <label for="commitSlider" class="block text-sm font-medium text-gray-700 mb-2">Commit Filter</label>
+                    <input
+                        type="range"
+                        id="commitSlider"
+                        class="slider"
+                        min="0"
+                        max="100"
+                        value="0"
+                    />
+                    <span id="commitValue" class="sliderValue text-sm text-gray-600">Minimum commits: 0</span>
+                    <div class="button-container">
+                        <button class="w-8 h-8 text-lg bg-white border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" id="commitMinus">
+                            -
+                        </button>
+                        <button class="w-8 h-8 text-lg bg-white border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ml-2" id="commitPlus">+</button>
+                    </div>
+                </div>
+
+                <div class="slider-container">
+                    <label for="repoSlider" class="block text-sm font-medium text-gray-700 mb-2">Repository Filter</label>
+                    <input
+                        type="range"
+                        id="repoSlider"
+                        class="slider"
+                        min="0"
+                        max="10"
+                        value="0"
+                    />
+                    <span id="repoValue" class="sliderValue text-sm text-gray-600">Minimum repos: 0</span>
+                    <div class="button-container">
+                        <button class="w-8 h-8 text-lg bg-white border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" id="repoMinus">-</button>
+                        <button class="w-8 h-8 text-lg bg-white border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ml-2" id="repoPlus">+</button>
+                    </div>
+                </div>
+                
+                <hr class="my-6 border-gray-200" />
+                
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Node Information</h3>
+                <div id="nodeInfo" class="text-sm text-gray-600">
+                    <p>Click on a node to see its information.</p>
+                </div>
+            </div>
+            
+            <div id="graph">
+                <button id="resetButton" class="bg-white hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 border border-gray-300 rounded-lg shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    Reset Positions
+                </button>
+            </div>
+        </div>
+
+        {% include '_footer_scripts.html' %}
+        <script>
+            let data = {
+                nodes: [],
+                links: [],
+            };
+
+            const width = window.innerWidth - 250; // Subtract sidebar width
+            const height = window.innerHeight - 64; // Subtract header height
+
+            const svg = d3
+                .select("#graph")
+                .append("svg")
+                .attr("width", width)
+                .attr("height", height);
+
+            const g = svg.append("g");
+            <!-- Pilot - remove orange line on click outside-->
+            // Add this after your SVG creation
+            svg.on("click", function (event) {
+                if (event.target === this) {
+                    // Reset styles here
+                    link.style("stroke", "#999").style("stroke-opacity", 0.6);
+                    node.style("stroke", null).style("stroke-width", null);
+                }
+            });
+
+            svg.on("contextmenu", function (event) {
+                event.preventDefault();
+                showContextMenu(event);
+            });
+
+            let simulation = d3
+                .forceSimulation()
+                .force(
+                    "link",
+                    d3.forceLink().id((d) => d.id),
+                )
+                .force("charge", d3.forceManyBody().strength(-400))
+                .force("center", d3.forceCenter(width / 2, height / 2));
+
+            let linkScale = d3.scaleLinear().range([1, 10]);
+
+            let link = g.append("g").selectAll("line");
+            let node = g.append("g").selectAll("circle");
+            let text = g.append("g").selectAll("text");
+            let commitText = g.append("g").selectAll("text");
+
+            const zoom = d3.zoom().scaleExtent([0.1, 4]).on("zoom", zoomed);
+
+            svg.call(zoom);
+
+            function zoomed(event) {
+                g.attr("transform", event.transform);
+            }
+
+            async function fetchGraphData() {
+                try {
+                    const response = await fetch("/org-graph/{{org_key}}");
+                    if (!response.ok) {
+                        throw new Error(
+                            `HTTP error! status: ${response.status}`,
+                        );
+                    }
+                    const data = await response.json();
+                    return data;
+                } catch (error) {
+                    console.error("Could not fetch graph data:", error);
+                }
+            }
+
+            function updateGraph(newData) {
+                data = newData;
+
+                linkScale.domain([0, d3.max(data.links, (d) => d.commits)]);
+
+                // Calculate repos for each developer
+                const repoCount = new Map();
+                data.links.forEach((link) => {
+                    const sourceId =
+                        typeof link.source === "object"
+                            ? link.source.id
+                            : link.source;
+                    const targetId =
+                        typeof link.target === "object"
+                            ? link.target.id
+                            : link.target;
+                    const devNode = data.nodes.find(
+                        (n) => n.id === sourceId && n.group === 1,
+                    );
+                    const repoNode = data.nodes.find(
+                        (n) => n.id === targetId && n.group === 2,
+                    );
+
+                    if (devNode && repoNode) {
+                        repoCount.set(
+                            sourceId,
+                            (repoCount.get(sourceId) || 0) + 1,
+                        );
+                    }
+                });
+
+                data.nodes.forEach((node) => {
+                    if (node.group === 1) {
+                        node.repos = repoCount.get(node.id) || 0;
+                    }
+                });
+
+                // Update links
+                link = link.data(
+                    data.links,
+                    (d) =>
+                        `${d.source.id || d.source}-${d.target.id || d.target}`,
+                );
+                link.exit().remove();
+                link = link
+                    .enter()
+                    .append("line")
+                    .attr("stroke", "#999")
+                    .attr("stroke-opacity", 0.6)
+                    .merge(link)
+                    .attr("stroke-width", (d) => linkScale(d.commits));
+
+                // Update nodes
+                node = node.data(data.nodes, (d) => d.id);
+                node.exit().remove();
+                node = node
+                    .enter()
+                    .append("circle")
+                    .attr("r", 10)
+                    .attr("fill", (d) =>
+                        d.group === 1 ? "#3b82f6" : "#10b981",
+                    )
+                    .call(
+                        d3
+                            .drag()
+                            .on("start", dragstarted)
+                            .on("drag", dragged)
+                            .on("end", dragended),
+                    )
+                    .on("click", nodeClicked)
+                    .on("contextmenu", function (event, d) {
+                        event.preventDefault();
+                        showContextMenu(event, d);
+                    })
+                    .merge(node);
+
+                // Update text labels
+                text = text.data(data.nodes, (d) => d.id);
+                text.exit().remove();
+                text = text
+                    .enter()
+                    .append("text")
+                    .attr("font-size", 12)
+                    .attr("dx", 12)
+                    .attr("dy", 4)
+                    .attr("fill", "#374151")
+                    .merge(text)
+                    .text((d) => d.label || d.id);
+
+                // Update commit text
+                commitText = commitText.data(
+                    data.links,
+                    (d) =>
+                        `${d.source.id || d.source}-${d.target.id || d.target}`,
+                );
+                commitText.exit().remove();
+                commitText = commitText
+                    .enter()
+                    .append("text")
+                    .attr("font-size", 10)
+                    .attr("fill", "#6b7280")
+                    .merge(commitText)
+                    .text((d) => d.commits);
+
+                // Update simulation
+                simulation.nodes(data.nodes);
+                simulation.force("link").links(data.links);
+                simulation.alpha(1).restart();
+
+                // Update slider max values
+                const maxCommits = d3.max(data.links, (d) => d.commits);
+                d3.select("#commitSlider").attr("max", maxCommits);
+                const maxRepos = d3.max(data.nodes, (d) =>
+                    d.group === 1 ? d.repos : 0,
+                );
+                d3.select("#repoSlider").attr("max", maxRepos);
+
+                // Apply filters
+                updateVisibility();
+            }
+
+            function updateVisibility() {
+                const minCommits = +d3
+                    .select("#commitSlider")
+                    .property("value");
+                const minRepos = +d3.select("#repoSlider").property("value");
+
+                // First, determine which developers meet the minimum repos criteria
+                const validDevs = new Set(
+                    data.nodes
+                        .filter((d) => d.group === 1 && d.repos >= minRepos)
+                        .map((d) => d.id),
+                );
+
+                // Filter links
+                const visibleLinks = data.links.filter((d) => {
+                    const sourceId = d.source.id || d.source;
+                    const targetId = d.target.id || d.target;
+                    return d.commits >= minCommits && validDevs.has(sourceId);
+                });
+
+                // Create sets of visible developers and repositories
+                const visibleDevs = new Set();
+                const visibleRepos = new Set();
+                visibleLinks.forEach((d) => {
+                    const sourceId = d.source.id || d.source;
+                    const targetId = d.target.id || d.target;
+                    visibleDevs.add(sourceId);
+                    visibleRepos.add(targetId);
+                });
+
+                // Show/hide nodes based on filter criteria instead of removing them
+                node.style("display", (d) => {
+                    if (d.group === 1) {
+                        return visibleDevs.has(d.id) ? "block" : "none";
+                    } else {
+                        return visibleRepos.has(d.id) ? "block" : "none";
+                    }
+                });
+
+                // Show/hide text labels based on filter criteria
+                text.style("display", (d) => {
+                    if (d.group === 1) {
+                        return visibleDevs.has(d.id) ? "block" : "none";
+                    } else {
+                        return visibleRepos.has(d.id) ? "block" : "none";
+                    }
+                });
+
+                // Show/hide links based on filter criteria
+                link.style("display", (l) => {
+                    const sourceId = l.source.id || l.source;
+                    const targetId = l.target.id || l.target;
+                    const sourceVisible = l.source.group === 1 ? visibleDevs.has(sourceId) : visibleRepos.has(sourceId);
+                    const targetVisible = l.target.group === 1 ? visibleDevs.has(targetId) : visibleRepos.has(targetId);
+                    return sourceVisible && targetVisible ? "block" : "none";
+                });
+
+                // Show/hide commit text based on link visibility
+                commitText.style("display", (l) => {
+                    const sourceId = l.source.id || l.source;
+                    const targetId = l.target.id || l.target;
+                    const sourceVisible = l.source.group === 1 ? visibleDevs.has(sourceId) : visibleRepos.has(sourceId);
+                    const targetVisible = l.target.group === 1 ? visibleDevs.has(targetId) : visibleRepos.has(targetId);
+                    return sourceVisible && targetVisible ? "block" : "none";
+                });
+
+                // Filter the simulation to only include visible nodes and links for physics
+                const visibleNodes = data.nodes.filter((d) => {
+                    if (d.group === 1) {
+                        return visibleDevs.has(d.id);
+                    } else {
+                        return visibleRepos.has(d.id);
+                    }
+                });
+
+                // Update simulation with filtered nodes and links but don't restart to preserve positions
+                simulation.nodes(visibleNodes);
+                simulation.force("link").links(visibleLinks);
+                // Don't call alpha(1).restart() to preserve node positions
+            }
+
+            function ticked() {
+                link.attr("x1", (d) => d.source.x)
+                    .attr("y1", (d) => d.source.y)
+                    .attr("x2", (d) => d.target.x)
+                    .attr("y2", (d) => d.target.y);
+
+                node.attr("cx", (d) => d.x).attr("cy", (d) => d.y);
+
+                text.attr("x", (d) => d.x).attr("y", (d) => d.y);
+
+                commitText
+                    .attr("x", (d) => (d.source.x + d.target.x) / 2)
+                    .attr("y", (d) => (d.source.y + d.target.y) / 2);
+            }
+
+            simulation.on("tick", ticked);
+
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                // Node remains fixed at its new position
+            }
+
+            function nodeClicked(event, d) {
+                // Reset all links to their original state
+                link.attr("stroke-width", (d) => linkScale(d.commits))
+                    .attr("stroke", "#999")
+                    .attr("stroke-opacity", 0.6);
+
+                // Highlight links connected to the clicked node
+                link.style("stroke", (l) =>
+                    l.source === d || l.target === d ? "#f97316" : "#999",
+                ).style("stroke-opacity", (l) =>
+                    l.source === d || l.target === d ? 1 : 0.6,
+                );
+
+                node.style("stroke", (n) => (n === d ? "#1f2937" : null)).style(
+                    "stroke-width",
+                    (n) => (n === d ? 2 : null),
+                );
+
+                updateSidebar(d);
+            }
+
+            function showContextMenu(event, d) {
+                event.preventDefault();
+                const contextMenu = d3.select("#contextMenu");
+                contextMenu
+                    .style("left", event.pageX + "px")
+                    .style("top", event.pageY + "px")
+                    .style("display", "block");
+
+                // Show/hide options based on node type (if a node was clicked)
+                if (d) {
+                    d3.select("#addDevelopers").style(
+                        "display",
+                        d.group === 2 ? "block" : "none",
+                    );
+                    d3.select("#addRepos").style(
+                        "display",
+                        d.group === 1 ? "block" : "none",
+                    );
+                    d3.select("#addFiles").style(
+                        "display",
+                        d.group === 2 ? "block" : "none",
+                    );
+                } else {
+                    // Show all options if right-clicked on SVG background
+                    d3.selectAll("#contextMenu li").style("display", "block");
+                }
+
+                // Set up click handlers for menu items
+                d3.select("#addDevelopers").on("click", () =>
+                    addItems(d, "developers"),
+                );
+                d3.select("#addRepos").on("click", () => addItems(d, "repos"));
+                d3.select("#addFiles").on("click", () => addItems(d, "files"));
+            }
+
+            // Hide context menu when clicking outside
+            d3.select("body").on("click", () => {
+                d3.select("#contextMenu").style("display", "none");
+            });
+
+            async function addItems(node, itemType) {
+                const nodeId = node.id;
+                const endpoint = `/add-${itemType}/${nodeId}`;
+                try {
+                    const response = await fetch(endpoint, { method: "POST" });
+                    if (!response.ok) {
+                        throw new Error(
+                            `HTTP error! status: ${response.status}`,
+                        );
+                    }
+                    const result = await response.json();
+                    console.log(`Added ${itemType} to ${nodeId}:`, result);
+                    // Refresh the graph data
+                    await updateGraphPeriodically();
+                } catch (error) {
+                    console.error(
+                        `Error adding ${itemType} to ${nodeId}:`,
+                        error,
+                    );
+                }
+                // Hide the context menu
+                d3.select("#contextMenu").style("display", "none");
+            }
+
+            function updateSidebar(d) {
+                const nodeInfo = d3.select("#nodeInfo");
+                const node_label = d.label || d.id;
+                nodeInfo.html(`
+                    <div class="space-y-3">
+                        <h4 class="font-semibold text-gray-900">${d.label || d.id}</h4>
+                        ${d.id_b64 ? `<h4><a href="/developer/${d.id_b64}" class="text-blue-600 hover:text-blue-800 underline">${node_label}</a></h4>` : ''}
+                        <div class="space-y-2">
+                            <p class="text-sm"><span class="font-medium text-gray-700">Type:</span> <span class="text-gray-600">${d.group === 1 ? "Developer" : "Repository"}</span></p>
+                            <p class="text-sm"><span class="font-medium text-gray-700">ID:</span> <span class="text-gray-600 font-mono text-xs">${d.id}</span></p>
+                            ${d.id_b64 ? `<p class="text-sm"><span class="font-medium text-gray-700">Base64:</span> <span class="text-gray-600 font-mono text-xs">${d.id_b64}</span></p>` : ''}
+                            ${d.group === 1 ? `<p class="text-sm"><span class="font-medium text-gray-700">Repos contributed to:</span> <span class="text-gray-600">${d.repos}</span></p>` : ""}
+                            ${d.info ? `<p class="text-sm"><span class="font-medium text-gray-700">Info:</span> <span class="text-gray-600">${d.info}</span></p>` : ""}
+                        </div>
+                    </div>
+                `);
+            }
+
+            async function updateGraphPeriodically() {
+                const newData = await fetchGraphData();
+                if (newData) {
+                    updateGraph(newData);
+                }
+            }
+
+            async function setInitialGraph() {
+                const newData = await fetchGraphData();
+                if (newData) {
+                    updateGraph(newData);
+                }
+            }
+
+            // Update every 5 minutes (300000 milliseconds)
+            // setInterval(updateGraphPeriodically, 300000);
+
+            // Reset button functionality
+            d3.select("#resetButton").on("click", async function () {
+                const newData = await fetchGraphData();
+                if (newData) {
+                    newData.nodes.forEach((d) => {
+                        d.fx = null;
+                        d.fy = null;
+                    });
+                    updateGraph(newData);
+                    // Reset zoom
+                    svg.transition()
+                        .duration(750)
+                        .call(zoom.transform, d3.zoomIdentity);
+                }
+            });
+
+            // Commit slider functionality
+            d3.select("#commitSlider").on("input", function () {
+                const minCommits = +this.value;
+                d3.select("#commitValue").text(
+                    `Minimum commits: ${minCommits}`,
+                );
+                updateVisibility();
+            });
+
+            // Repo slider functionality
+            d3.select("#repoSlider").on("input", function () {
+                const minRepos = +this.value;
+                d3.select("#repoValue").text(`Minimum repos: ${minRepos}`);
+                updateVisibility();
+            });
+
+            function updateSlider(sliderId, increment) {
+                const slider = document.getElementById(sliderId);
+                let newValue = parseInt(slider.value) + increment;
+                newValue = Math.max(
+                    parseInt(slider.min),
+                    Math.min(parseInt(slider.max), newValue),
+                );
+                slider.value = newValue;
+
+                // Trigger the input event to update the graph
+                const event = new Event("input", { bubbles: true });
+                slider.dispatchEvent(event);
+            }
+
+            document
+                .getElementById("commitMinus")
+                .addEventListener("click", () =>
+                    updateSlider("commitSlider", -1),
+                );
+            document
+                .getElementById("commitPlus")
+                .addEventListener("click", () =>
+                    updateSlider("commitSlider", 1),
+                );
+            document
+                .getElementById("repoMinus")
+                .addEventListener("click", () =>
+                    updateSlider("repoSlider", -1),
+                );
+            document
+                .getElementById("repoPlus")
+                .addEventListener("click", () => updateSlider("repoSlider", 1));
+
+            // Initial data fetch and graph creation
+            // TODO - cleanup the
+            // updateGraphPeriodically();
+            setInitialGraph();
+        </script>
+        <div id="contextMenu" class="hidden fixed z-50 bg-white border border-gray-300 rounded-lg shadow-lg">
+            <ul class="py-2">
+                <li><a href="#" id="addDevelopers" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Add developers</a></li>
+                <li><a href="#" id="addRepos" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Add repos</a></li>
+                <li><a href="#" id="addFiles" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Add files</a></li>
+            </ul>
+        </div>
+    </body>
+</html>
