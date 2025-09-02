@@ -1,0 +1,132 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  FORCE_COLOR: 1
+  PY_COLORS: 1
+  UV_LOCKED: 1
+  UV_NO_SYNC: 1
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    if: ${{ github.actor != 'dependabot[bot]' && !cancelled() }}
+    name: ${{ matrix.conformance-tests && '(conformance) ' || '' }}${{ matrix.version }} ${{matrix.platform}}
+    runs-on: ${{ matrix.platform }}
+
+    env:
+      UV_PYTHON: ${{ matrix.version }}
+
+    strategy:
+      fail-fast: false
+      # https://blog.jaraco.com/efficient-use-of-ci-resources/
+      matrix:
+        conformance-tests: [false]
+        version: ['3.9', '3.13']
+        platform: [ubuntu-latest, macos-latest]
+        include:
+        - version: '3.10'
+          platform: ubuntu-latest
+        - version: '3.11'
+          platform: ubuntu-latest
+        - version: '3.12'
+          platform: ubuntu-latest
+        - version: '3.13'
+          platform: ubuntu-latest
+          conformance-tests: true
+        # rdflib appears to be broken on 3.14
+        # - version: '3.14'
+        #   platform: ubuntu-latest
+        - version: pypy3.10
+          platform: ubuntu-latest  
+        - version: pypy3.11
+          platform: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - uses: astral-sh/setup-uv@v6
+      with:
+        enable-cache: true
+
+    - name: Install
+      id: install
+      run: uv sync
+
+    - name: Install jelly-cli
+      uses: jelly-rdf/setup-cli@v1
+      if: ${{ !cancelled() && steps.install.conclusion == 'success' && matrix.conformance-tests }}
+
+    - name: Run unit tests
+      run: uv run pytest -vv
+      if: ${{ !cancelled() && steps.install.conclusion == 'success' && !matrix.conformance-tests }}
+
+    - name: Run unit tests (with conformance tests and coverage)
+      run: uv run pytest -vv --cov --cov-branch --cov-report=xml
+      if: ${{ !cancelled() && steps.install.conclusion == 'success' && matrix.conformance-tests }}
+
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v5
+      if: ${{ !cancelled() && steps.install.conclusion == 'success' && matrix.conformance-tests }}
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+
+    - name: Check formatting
+      id: formatting
+      run: uv run ruff format . --diff
+      if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
+
+    - name: Lint
+      id: linting
+      run: uv run ruff check --output-format github
+      if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
+
+    - name: Check type safety
+      id: types
+      run: uv run mypy .
+      if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
+
+  check-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          submodules: true
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install
+        id: install
+        run: uv sync --group docs
+
+      - name: Check docs build
+        run: uv run mkdocs build -s
+
+      - name: Check docs for dead links
+        run: |
+          uv run mkdocs serve &
+          sleep 10
+          uv run linkchecker \
+            --no-warning \
+            --check-extern \
+            --ignore "https://doi.org" \
+            http://localhost:8000
+          kill $!
