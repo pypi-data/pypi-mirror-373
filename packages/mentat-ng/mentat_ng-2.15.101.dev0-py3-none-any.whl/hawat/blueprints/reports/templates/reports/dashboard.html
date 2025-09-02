@@ -1,0 +1,161 @@
+{% extends "_layout.html" %}
+
+{% block content %}
+    <div>
+        {{ macros_page.render_breadcrumbs() }}
+
+        <!-- Search form - BEGIN ---------------------------------->
+        <div class="jumbotron bg-light" style="margin-top: 1em;">
+            <h2>
+                {{ hawat_current_view.get_view_title() }}
+            </h2>
+            <hr>
+            <form method="GET" class="form" action="{{ url_for(request.endpoint) }}">
+                <div class="row">
+                    <div class="col-sm-4">
+                        {{ macros_form.render_form_item_select(g.search_form.groups) }}
+                    </div>
+                    <div class="col-sm-4">
+                        {{ macros_form.render_form_item_datetime(g.search_form.dt_from, 'datetimepicker-from') }}
+                    </div>
+                    <div class="col-sm-4">
+                        {{ macros_form.render_form_item_datetime(g.search_form.dt_to, 'datetimepicker-to') }}
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="btn-toolbar"
+                     role="toolbar"
+                     aria-label="{{ _('Form submission buttons') }}">
+                    <div class="btn-group" role="group">
+                        {{ g.search_form.submit(class_='btn btn-primary') }}
+                        <a role="button"
+                           class="btn btn-secondary"
+                           href="{{ url_for(request.endpoint) }}">
+                            {{ _("Clear") }}
+                        </a>
+                        {{ macros_site.render_quicksearch(quicksearch_list) }}
+                    </div>
+                </div>
+            </form>
+        </div>
+        <!-- Search form - END ------------------------------------>
+
+        <p>
+            {{ _("This module displays various statistical information regarding the reporting component of the Mentat system. These statistics are calculated directly from all <em>summary</em> reports, that were generated. The <em>extra</em> reports reports are included only in total number of reports overview, because otherwise they contain data duplicit to those in <em>summary</em> reports. Reports are included into the result based on their creation time.") | safe }}
+        </p>
+    </div>
+
+    {%- if searched %}
+        {%- if 'tiid' in request.args %}
+            {{ macros_site.render_timepager(query_params, form_data.dt_from, request.args.tiid) }}
+        {%- endif %}
+
+        {%- if items %}
+            <!-- Search result summary - BEGIN -------------------------------->
+            <div class="card overflow-hidden mb-3">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        {{ _("Result summary") }}
+                    </h5>
+                </div>
+                <table class="table">
+                    <tr>
+                        <th>
+                            {{ _("Number of reports") }}:
+                        </th>
+                        <td>
+                            {{ babel_format_decimal(items_count) }}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>
+                            {{ _("Number of e-mails") }}:
+                        </th>
+                        <td>
+                            {{ babel_format_decimal(statistics['cnt_emails']) }}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>
+                            {{ _("Number of reported events") }}:
+                        </th>
+                        <td>
+                            {{ babel_format_decimal(statistics['cnt_events']) }}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>
+                            {{ _("Result time interval") }}:
+                        </th>
+                        <td>
+                            {{ babel_format_datetime(statistics['dt_from']) }} - {{ babel_format_datetime(statistics['dt_to']) }}
+                            ({{ babel_format_timedelta(statistics['dt_to'] - statistics['dt_from']) }})
+                        </td>
+                    </tr>
+                    {%- if 'timeline_cfg' in statistics %}
+                        <tr>
+                            <th>
+                                {{ _("Timeline time interval") }}:
+                            </th>
+                            <td>
+                                {{ babel_format_datetime(statistics['timeline_cfg'].t_from) }} - {{ babel_format_datetime(statistics['timeline_cfg'].t_to) }}
+                                ({{ babel_format_timedelta(statistics['timeline_cfg'].t_to - statistics['timeline_cfg'].t_from) }})
+                            </td>
+                        </tr>
+                    {%- endif %}
+                    {%- if permission_can('admin') and 'timeline_cfg' in statistics %}
+                        <tr>
+                            <th>
+                                <span class="float-end">{{ get_icon("role-admin") }}</span>{{ _("Timeline steps") }}:
+                            </th>
+                            <td>
+                                {{ babel_format_decimal(statistics['timeline_cfg'].count) }} x {{ statistics['timeline_cfg'].step.__str__() }}
+                            </td>
+                        </tr>
+                    {%- endif %}
+                </table>
+            </div>
+            <!-- Search result summary - END ---------------------------------->
+
+            <!-- Tab navigation - BEGIN --------------------------------------->
+            <ul class="nav nav-tabs nav-tabs-tooltipped" role="tablist">
+                {{
+                    macros_chart.render_dashboard_nav(
+                        chart_sections,
+                        'reporting-stats'
+                    )
+                }}
+            </ul>
+            <!-- Tab navigation - END ----------------------------------------->
+
+            <!-- Tab panels - BEGIN ------------------------------------------->
+            <div class="tab-content">
+                {{
+                    macros_chart.render_dashboard_panels(
+                        chart_sections,
+                        'reporting-stats'
+                    )
+                }}
+            </div>
+            <!-- Tab panels - END --------------------------------------------->
+
+            {%- if permission_can('developer') %}
+                <hr>
+                {{ macros_site.render_raw_var('statistics', statistics) }}
+            {%- endif %}
+        {%- else %}
+            {%- call macros_site.render_alert('warning', False) %}
+                {{ _("No data matches your search criteria.") }}
+            {%- endcall %}
+        {%- endif %}
+    {%- endif %}
+
+    {%- if permission_can('developer') %}
+        <hr>
+        {{ macros_site.render_raw_var('request_args', request.args) }}
+        {{ macros_site.render_raw_var('form_data', form_data) }}
+        {{ macros_site.render_raw_var('query_params', query_params) }}
+    {%- endif %}
+{%- endblock content %}

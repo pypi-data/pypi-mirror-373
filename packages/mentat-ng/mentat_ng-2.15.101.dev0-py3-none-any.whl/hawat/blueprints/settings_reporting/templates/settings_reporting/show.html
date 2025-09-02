@@ -1,0 +1,208 @@
+{%- extends "_layout.html" %}
+
+{%- block content %}
+    <div>
+        {{ macros_page.render_breadcrumbs(item) }}
+
+        {{ macros_site.display_reporting_settings_warnings(item) }}
+
+        <h3>
+            {{ _('Reporting settings for group %(item)s', item = item.group.name) }}
+            {% if item.group.description %}
+                <small>{{ item.group.description }}</small>
+            {% endif %}
+        </h3>
+        <div class="float-end">
+            {{ macros_page.render_menu_actions(item) }}
+        </div>
+        <p>
+            <small>
+                <strong>{{ _("Record created") }}:</strong>
+                {{ babel_format_datetime(item.createtime) }}
+                ({{ _('%(delta)s ago', delta = babel_format_timedelta(current_datetime_utc - item.createtime)) }})
+            </small>
+        </p>
+
+        <!-- Nav tabs -->
+        <ul class="nav nav-tabs mb-0" role="tablist">
+            <li role="presentation" class="nav-item">
+                <a href="#tab-general"
+                   aria-controls="tab-general"
+                   role="tab"
+                   data-bs-toggle="tab"
+                   class="nav-link active">
+                    <strong>{{ get_icon("alert-info") }} {{ _("General information") }}</strong>
+                </a>
+            </li>
+            {%- if can_access_endpoint('settings_reporting.update', item) %}
+                <li role="presentation" class="nav-item">
+                    <a href="#tab-changelog"
+                       aria-controls="tab-changelog"
+                       role="tab"
+                       data-bs-toggle="tab"
+                       class="nav-link">
+                        <strong>{{ get_icon("module-changelogs") }} {{ _("Changelogs") }}</strong> <span class="badge rounded-pill  text-bg-secondary">{{ item_changelog | length }}</span>
+                    </a>
+                </li>
+            {%- endif %}
+        </ul>
+
+        <!-- Tab panes -->
+        <div class="tab-content">
+            <div role="tabpanel" class="tab-pane fade in show active" id="tab-general">
+                <table class="table table-striped">
+                    <tbody>
+                        <tr>
+                            <th>
+                                {{ _("Target e-mails - severity info and above") }}:
+                            </th>
+                            <td>
+                                {{ render_emails(item.emails_info) }}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>
+                                {{ _("Target e-mails - severity low and above") }}:
+                            </th>
+                            <td>
+                                {%- if item.emails_low %}
+                                    {{ render_emails(item.emails_low) }}
+                                {%- else %}
+                                    {{ render_emails(item.emails_info, inherited=True) }}
+                                {%- endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>
+                                {{ _("Target e-mails - severity medium and above") }}:
+                            </th>
+                            <td>
+                                {%- if item.emails_medium %}
+                                    {{ render_emails(item.emails_medium) }}
+                                {%- else %}
+                                    {{ render_emails(item.emails_low or item.emails_info, inherited=True) }}
+                                {%- endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>
+                                {{ _("Target e-mails - severity high and above") }}:
+                            </th>
+                            <td>
+                                {%- if item.emails_high %}
+                                    {{ render_emails(item.emails_high) }}
+                                {%- else %}
+                                    {{ render_emails(item.emails_medium or item.emails_low or item.emails_info, inherited=True) }}
+                                {%- endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>
+                                {{ _("Target e-mails - critical severity") }}:
+                            </th>
+                            <td>
+                                {%- if item.emails_critical %}
+                                    {{ render_emails(item.emails_critical) }}
+                                {%- else %}
+                                    {{ render_emails(item.emails_high or item.emails_medium or item.emails_low or item.emails_info, inherited=True) }}
+                                {%- endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>
+                                {{ _("Report locale") }}:
+                            </th>
+                            <td>
+                                {%- if item.locale is not none %}
+                                    {{ get_country_flag(item.locale|upper) }}
+                                    {{ babel_translate_locale(item.locale, True) }} ({{ item.locale }})
+                                {%- else %}
+                                    <i>
+                                        {{ get_country_flag(system_default_repsettings.locale|upper) }}
+                                        {{ babel_translate_locale(system_default_repsettings.locale, True) }} - {{ system_default_repsettings.locale }}
+                                    </i>
+                                    ({{ _("default") }})
+                                {%- endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>
+                                {{ _("Report timezone") }}:
+                            </th>
+                            <td>
+                                {%- if item.timezone is not none %}
+                                    {{ item.timezone }}
+                                {%- else %}
+                                    <i>{{ system_default_repsettings.timezone }}</i>
+                                    ({{ _("default") }})
+                                {%- endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>
+                                {{ _("Reporting mode") }}:
+                            </th>
+                            <td>
+                                {%- if item.mode is not none %}
+                                    {{ item.mode }}
+                                {%- else %}
+                                    <i>{{ system_default_repsettings.mode }}</i>
+                                    ({{ _("default") }})
+                                {%- endif %}
+                            </td>
+                        </tr>
+                        {%- if permission_can('power') %}
+                            <tr>
+                                <th>
+                                    {{ _("Report redirection") }}:
+                                </th>
+                                <td>
+                                    {%- if item.redirect is not none %}
+                                        {{ macros_site.render_label_item_state(item.redirect, True) }}
+                                    {%- else %}
+                                        {{ macros_site.render_label_item_state(system_default_repsettings.redirect, True) }}
+                                        ({{ _("default") }})
+                                    {%- endif %}
+                                </td>
+                            </tr>
+                        {%- endif %}
+                    </tbody>
+                </table>
+
+                {%- if permission_can('developer') %}
+                    <hr>
+                    {{ macros_site.render_raw_item_view(item) }}
+                {%- endif %}
+            </div>
+
+            {%- if can_access_endpoint('settings_reporting.update', item) %}
+                <div role="tabpanel" class="tab-pane fade" id="tab-changelog">
+                    {%- if item_changelog %}
+                        {{ macros_page.render_changelog_records(item_changelog, context_action_menu_changelogs) }}
+                        <p>
+                            <small>
+                                {{ _('Displaying only latest %(count)s changelogs', count = 100) }}
+                            </small>
+                        </p>
+                    {%- else %}
+                        {%- call macros_site.render_alert('info', False) %}
+                            {{ _("This object does not have any changelog records at the moment.") }}
+                        {%- endcall %}
+                    {%- endif %}
+                </div>
+            {%- endif %}
+        </div>
+    </div>
+{%- endblock content %}
+
+{% macro render_emails(emails, inherited=False) -%}
+    {%- if emails %}
+        {%- if inherited -%}<i>{%- endif -%}
+        {%- for subitem in emails %}
+            {{ subitem }}{%- if not loop.last %}, {%- endif %}
+        {%- endfor %}
+        {%- if inherited %}</i> ({{ _("inherited") }}){%- endif -%}
+    {%- else -%}
+        {{ _("<< none >>") }}
+    {%- endif %}
+{%- endmacro -%}

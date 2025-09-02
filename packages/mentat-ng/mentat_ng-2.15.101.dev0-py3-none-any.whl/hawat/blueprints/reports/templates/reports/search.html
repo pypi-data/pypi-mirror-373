@@ -1,0 +1,120 @@
+{%- extends "_layout_search.html" %}
+
+{%- block contentsearchform %}
+    <div class="row gy-2">
+        <div class="col-sm-4">
+            {{ macros_form.render_form_item_default(g.search_form.label) }}
+        </div>
+        <div class="col-sm-4">
+            {{ macros_form.render_form_item_datetime(g.search_form.dt_from, 'datetimepicker-hm-from') }}
+        </div>
+        <div class="col-sm-4">
+            {{ macros_form.render_form_item_datetime(g.search_form.dt_to, 'datetimepicker-hm-to') }}
+        </div>
+    </div>
+    <div class="row gy-2">
+        <div class="col-sm-4">
+            {{ macros_form.render_form_item_select(g.search_form.groups) }}
+        </div>
+        <div class="col-sm-4">
+            {{ macros_form.render_form_item_select(g.search_form.severities) }}
+        </div>
+        <div class="col-sm-4">
+            {{ macros_form.render_form_item_select(g.search_form.types) }}
+        </div>
+    </div>
+    <div class="row gy-2">
+        <div class="col-sm-4">
+            {{ macros_form.render_form_item_select(g.search_form.categories) }}
+        </div>
+        <div class="col-sm-4">
+            {{ macros_form.render_form_item_select(g.search_form.classes) }}
+        </div>
+        <div class="col-sm-4">
+            {{ macros_form.render_form_item_select(g.search_form.detectors) }}
+        </div>
+    </div>
+    <div class="row gy-2">
+        <div class="col-sm-6">
+            {{ macros_form.render_form_item_default(g.search_form.source_ips) }}
+        </div>
+        <div class="col-sm-6">
+            {{ macros_form.render_form_item_default(g.search_form.target_ips) }}
+        </div>
+    </div>
+    {%- if permission_can('power') %}
+        <hr/>
+        <div class="row gy-2">
+            <div class="col-sm-4">
+                {{ macros_form.render_form_item_select(g.search_form.shadow_type, empty_message=_("All reports")) }}
+            </div>
+            <div class="col-sm-4">
+                {{ macros_form.render_form_item_select(g.search_form.relapse_type, empty_message=_("All reports")) }}
+            </div>
+        </div>
+    {%- endif -%}
+{%- endblock contentsearchform %}
+
+{%- block contentsearchresult %}
+    <ul class="list-group list-group-hover">
+        {%- for item in items %}
+            <li class="list-group-item p-3">
+                <h5 class="list-group-item-heading">
+                    <div class="float-end">
+                        {{ macros_page.render_menu_context_actions(item) }}
+                    </div>
+                    {{ item.label }}
+                    {{ macros_site.render_report_label_type(item, with_label = True) }}
+                    {{ macros_site.render_report_label_severity(item, with_label = True) }}
+                    {{ macros_site.render_report_label_weight(item) }}
+                    {{ macros_site.render_report_icons(item) }}
+                </h5>
+                <hr>
+                <p class="list-group-item-text">
+                    <strong>{{ _("Group:") }}</strong>
+
+                    {%- for group in item.groups %}
+                        {%- if loop.index != 1 %},{%- endif %}
+                        <a href="{{ url_for('groups.show', item_id = group.id) }}"
+                           data-bs-toggle="tooltip"
+                           title="{{ _('View details of group &quot;%(item)s&quot;', item = group.name) }}">{{ group.name }}</a>
+                    {%- endfor %}
+
+                    &nbsp;|&nbsp;
+                    <strong>{{ _("Created:") }}</strong>
+                    {{ babel_format_datetime(item.createtime) }}
+                    ({{ _('%(delta)s ago', delta = babel_format_timedelta(current_datetime_utc - item.createtime)) }})
+                    &nbsp;|&nbsp;
+                    <strong>{{ _("Report window:") }}</strong>
+                    {{ babel_format_datetime(item.dt_from) }} - {{ babel_format_datetime(item.dt_to) }}
+                    ({{ babel_format_timedelta(item.delta) }})
+                    &nbsp;|&nbsp;
+                    <strong>{{ _("Event counts:") }}</strong>
+                    {{ item.evcount_rep }} {{ _("reported") }}
+                    {%- if item.type == 'summary' %}
+                        ({{ item.evcount_all }} {{ _("matched") }},
+                        {{ item.evcount_new }} {{ _("new events") }},
+                        {{ item.evcount_flt_blk }} {{ _("filtered out") }},
+                        {{ item.evcount_det_blk if item.evcount_det_blk else 0 }} {{ _("uncredible") }},
+                        {{ item.evcount_thr_blk }} {{ _("thresholded") }},
+                        {{ item.evcount_rlp }} {{ _("relapsed") }})
+                    {%- elif item.type != "target" -%}
+                        , {{ item.evcount_all }} {{ _("total in parent summary report") }}
+                    {%- endif %}
+                </p>
+                <hr>
+                <div class="progress"
+                     data-bs-toggle="tooltip"
+                     title="{{ _('Number of events in this report in comparison with other reports in the result.') }}">
+                    <div class="progress-bar bg-warning"
+                         role="progressbar"
+                         aria-valuenow="60"
+                         aria-valuemin="0"
+                         aria-valuemax="100"
+                         style="width: {{ '{:3.0f}'.format(item.evcount_rep/max_evcount_rep*100) }}%">
+                    </div>
+                </div>
+            </li>
+        {%- endfor %}
+    </ul>
+{%- endblock contentsearchresult %}

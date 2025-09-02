@@ -1,0 +1,93 @@
+{%- extends "_layout_creatupdate.html" %}
+
+{%- block itemform_fields %}
+    {%- if item_action == 'createfor' %}
+        {{ macros_form.render_form_item_static(_('Group:'), parent.name) }}
+    {%- elif item_action == 'create' or current_user.has_role('admin') %}
+        {{ macros_form.render_form_item_select(form.group, empty_message=_("No group selected (global filter)")) }}
+    {%- elif item_action == 'update' %}
+        {{ macros_form.render_form_item_static(_('Group:'), item.group.name) }}
+    {%- endif %}
+
+    {{ macros_form.render_form_item_default(form.name) }}
+    {{ macros_form.render_form_item_default(form.description) }}
+    {{ macros_form.render_form_item_radiobutton(form.source_based, equally_big = True) }}
+    {{ macros_form.render_form_item_default(form.type) }}
+
+    <hr>
+
+    <fieldset id="filter-advanced"
+              class="{% if form.type.data and form.type.data == 'advanced' %}show{% else %}d-none{% endif %}">
+        {{ macros_form.render_form_item_ransack(form.filter) }}
+    </fieldset>
+
+    <fieldset id="filter-basic"
+              class="d-grid row-gap-2 {% if not form.type.data or form.type.data == 'basic' %}show{% else %}d-none{% endif %}">
+        {{ macros_form.render_form_item_select(form.detectors) }}
+        {{ macros_form.render_form_item_select(form.categories) }}
+        {{ macros_form.render_form_item_select(form.event_classes) }}
+        {{ macros_form.render_form_item_default(form.sources) }}
+        {{ macros_form.render_form_item_default(form.targets) }}
+        {{ macros_form.render_form_item_select(form.protocols) }}
+    </fieldset>
+
+    <hr>
+
+    {{ macros_form.render_form_item_radiobutton(form.enabled) }}
+    {{ macros_form.render_form_item_datetime(form.valid_from, 'datetimepicker-from') }}
+    {{ macros_form.render_form_item_datetime(form.valid_to, 'datetimepicker-to') }}
+{%- endblock itemform_fields %}
+
+{%- block itemform_buttons %}
+    <a href="{{ referrer }}" class="btn btn-secondary">{{ _("Cancel") }}</a>
+    <button id="test-button" class="btn btn-secondary" type="button">
+        {{ _("Test") }}
+    </button>
+    {{ form.submit(class_='btn btn-primary') }}
+{%- endblock itemform_buttons %}
+
+{%- block itemform_devel %}
+    {%- if filter_tree %}
+        {{ macros_site.render_raw_var('raw-filter-tree', filter_tree) }}
+    {%- endif %}
+{%- endblock itemform_devel %}
+
+{%- block bodyjs %}
+    {{ super() }}
+    <script>
+        const filter_playground_url = "{{ url_for('filters.playground') }}";
+    </script>
+    <script>
+        function hawat_filter_toggle() {
+            const element = document.getElementById('type');
+            const fadvanced = document.getElementById('filter-advanced');
+            const fbasic = document.getElementById('filter-basic');
+            const tbutton = document.getElementById('test-button');
+            if (!element.value || element.value == 'basic') {
+                fadvanced.classList.remove('show');
+                fadvanced.classList.add('d-none');
+                fbasic.classList.remove('d-none');
+                fbasic.classList.add('show');
+                tbutton.classList.add('d-none');
+            } else if (element.value == 'advanced') {
+                fadvanced.classList.remove('d-none');
+                fadvanced.classList.add('show');
+                fbasic.classList.remove('show');
+                fbasic.classList.add('d-none');
+                tbutton.classList.remove('d-none');
+            }
+        }
+
+        function test_filter() {
+            const rule = document.getElementById("filter").value;
+            window.open(`${filter_playground_url}?rule=${encodeURIComponent(rule)}`, '_blank');
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            hawat_filter_toggle();
+            document.getElementById('type').addEventListener('change', hawat_filter_toggle);
+
+            document.getElementById('test-button').addEventListener('click', test_filter);
+        });
+    </script>
+{%- endblock bodyjs %}

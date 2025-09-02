@@ -1,0 +1,513 @@
+{% extends "_layout.html" %}
+
+{%- import '_macros_site.html' as macros_site with context -%}
+
+{% block content %}
+    {{ macros_site.report_header(item, macros_page.render_menu_actions(item), _('Report detail')) }}
+
+    <div>
+        {%- if item.structured_data -%}
+            {%- set structured_data = item.get_structured_data_as_dataclass() -%}
+            {%- import '_macros.common.txt.j2' as macros_common -%}
+
+            {%- macro render_numeric_fields(event_class, section_data, detector_data) -%}
+                {%- for field in section_data.get_all_fields_for_view() -%}
+                    {%- set value = macros_common.get_number_value(section_data, detector_data, field.name)|int -%}
+                    {%- if value and event_class.should_be_displayed(section_data.get_section(), field.name) -%}
+                        <tr>
+                            <td class="col-sm w-25 align-middle">
+                                {{ _(section_data.get_display_name(field)) }}:
+                            </td>
+                            <td class="col">
+                                {{ value }}
+                            </td>
+                        </tr>
+                    {%- endif -%}
+                {%- endfor -%}
+            {% endmacro %}
+
+            {%- macro render_list_fields(event_class, section_data, detector_data) -%}
+                {%- set ns = namespace() -%}
+                {%- for field in section_data.get_all_fields_for_view() -%}
+                    {{- macros_common.set_list_values(ns, event_class, section_data, detector_data, field.name) -}}
+                    {%- if ns.should_be_rendered -%}
+                        <tr>
+                            <td class="col-sm w-25 align-middle">
+                                {{ _(section_data.get_display_name(field)) }}:
+                            </td>
+                            <td class="col">
+                                {%- for item in ns.values|sort -%}
+                                    {%- if loop.index0 < search_widget_item_limit -%}
+                                        {%- if field.name.lower() in ['ips', 'relevant_ips'] and current_user.is_authenticated -%}
+                                            {{ macros_site.render_widget_csag_address([item], separate_dropdown=True, as_code=False) }}
+                                        {%- elif field.name.lower() == 'hostname' and current_user.is_authenticated -%}
+                                            {{ macros_site.render_widget_csag_hostname([item], separate_dropdown=True, as_code=False) }}
+                                        {%- else -%}
+                                            {%- if field.name == 'services' -%}
+                                                {%- set name = item[0] -%}
+                                                {%- set version = item[1] -%}
+                                                {%- if version -%}
+                                                    {{ name }} ({{ _("version") }} {{ version }})
+                                                {%- else -%}
+                                                    {{ name }}
+                                                {%- endif -%}
+                                            {%- elif field.name == "UsernameAndPassword" -%}
+                                                ('{{ item[0] }}', '{{ item[1] }}')
+                                            {%- elif field.name in ["Ref", "URL"] -%}
+                                                {{ macros_site.ref_to_html_link(item) }}
+                                            {%- else -%}
+                                                {{ item }}
+                                            {%- endif -%}
+                                            {%- if not loop.last -%},
+                                            {% endif -%}
+                                            {%- if not loop.last and loop.index0 + 1 == search_widget_item_limit %} ... {%- endif -%}
+                                            {%- endif -%}
+                                        {%- elif loop.index0 == search_widget_item_limit %}
+                                            <span class="underlined-tooltip"
+                                                  data-bs-toggle="tooltip"
+                                                  title="{{ _('Please search the related events to view the full list.') }}">
+                                                ({{ _('%(count)s more', count = loop.length - loop.index0) }})
+                                            </span>
+                                        {%- endif %}
+                                    {%- endfor -%}
+                                </td>
+                            </tr>
+                        {%- endif -%}
+                    {%- endfor -%}
+                {%- endmacro -%}
+
+                {% macro render_detector_details(event_class, detector_data) %}
+                    {{- render_list_fields(event_class, detector_data.main_list_data, detector_data) }}
+                    {{- render_numeric_fields(event_class, detector_data.main_numeric_data, detector_data) }}
+                    {{- render_list_fields(event_class, detector_data.source_list_data, detector_data) }}
+                    {{- render_numeric_fields(event_class, detector_data.source_numeric_data, detector_data) }}
+                    {{- render_list_fields(event_class, detector_data.target_list_data, detector_data) }}
+                    {{- render_numeric_fields(event_class, detector_data.target_numeric_data, detector_data) }}
+                {% endmacro %}
+
+                {%- macro render_report_subsection(key, data, section_name, event_class) -%}
+                    {% set id = escape_id(section_name + '-' + key) %}
+                    <table class="table table-sm feedback-table mb-2">
+                        <thead>
+                            {{ macros_site.report_table_header(item.type) }}
+                            {%- if current_user.is_authenticated %}
+                                <th>
+                                </th>
+                            {%- endif %}
+                        </thead>
+                        <tbody class="table-light">
+                            <tr id="{{ 'data-line-' + id }}">
+                                {{ macros_site.report_table_row(key, data, current_user.is_authenticated, item, tz) }}
+                                {%- if current_user.is_authenticated %}
+                                    <td class="align-middle">
+                                        <div class="btn-group float-end my-auto" role="group">
+                                            <button type="button"
+                                                    class="btn btn-outline-dark btn-xs btn-sm"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="{{ '#feedback-modal-' + id }}">
+                                                {{ _("Feedback") }}
+                                            </button>
+                                            {%- if not item.is_old_type() -%}
+                                                {%- set section_url, exact = section_event_search_url(data, item, section_name, key) -%}
+                                                <a role="button"
+                                                   class="btn btn-outline-dark btn-xs btn-sm"
+                                                   href="{{ section_url }}"
+                                                   data-bs-toggle="tooltip"
+                                                   title="{{ _('This search might find some events that are not included in the report.') if not exact else '' }}">
+                                                    {{ get_icon("module-events") }} {{ _("Search events") }}
+                                                </a>
+                                            {%- endif -%}
+                                        </div>
+                                    </td>
+                                {%- endif %}
+                            </tr>
+                        </tbody>
+                    </table>
+                    {%- if data["reference"] -%}
+                        <div class="mb-2">
+                            {{ _("Initial incident report") }}:
+                            <a href="{{ url_for('reports.unauth', item_id=data['reference']) }}"
+                               data-bs-toggle="tooltip"
+                               title="{{ _('View initial incident report &quot;%(item)s&quot;', item=data['reference']) }}">
+                                {{ data['reference'] }}
+                            </a>
+                        </div>
+                    {% endif %}
+                    {%- if item.is_old_type() -%}
+                        {# For backwards compatibility with old structured data format. #}
+                        <table class="table table-sm table-responsive m-0">
+                            <b class="mx-2 my-0">{{ _("Additional information") }}:</b>
+                            {%- if data["approx_conn_count"] -%}
+                                <tr>
+                                    <td class="col-sm ps-2 w-25">
+                                        {{ _("Approximated connection count") }}:
+                                    </td>
+                                    <td class="col">
+                                        {{ data["approx_conn_count"] }}
+                                    </td>
+                                </tr>
+                            {%- endif -%}
+                            {%- if data["flow_count"] -%}
+                                <tr>
+                                    <td class="col-sm ps-2 w-25">
+                                        {{ _("Flow count") }}:
+                                    </td>
+                                    <td class="col">
+                                        {{ data["flow_count"] }}
+                                    </td>
+                                </tr>
+                            {%- endif -%}
+                            {%- if data["packet_count"] -%}
+                                <tr>
+                                    <td class="col-sm ps-2 w-25">
+                                        {{ _("Packet count") }}:
+                                    </td>
+                                    <td class="col">
+                                        {{ data["packet_count"] }}
+                                    </td>
+                                </tr>
+                            {%- endif -%}
+                            {%- if data["byte_count"] -%}
+                                <tr>
+                                    <td class="col-sm ps-2 w-25">
+                                        {{ _("Byte count") }}:
+                                    </td>
+                                    <td class="col">
+                                        {{ data["byte_count"] }}
+                                    </td>
+                                </tr>
+                            {%- endif -%}
+                            {%- if data["source"]["hostname"] -%}
+                                <tr>
+                                    <td class="col-sm ps-2 w-25">
+                                        {{ _("Hostname") }}:
+                                    </td>
+                                    <td class="col">
+                                        {{ data["source"]["hostname"] | sort | join(", ") }}
+                                    </td>
+                                </tr>
+                            {%- endif -%}
+                            {%- if data["source"]["proto"] + data["target"]["proto"] != [] -%}
+                                <tr>
+                                    <td class="col-sm ps-2 w-25">
+                                        {{ _("Protocol") }}:
+                                    </td>
+                                    <td class="col">
+                                        {{ (data["source"]["proto"] + data["target"]["proto"]) | unique | sort | join(", ") }}
+                                    </td>
+                                </tr>
+                            {%- endif -%}
+                            {%- if data["source"]["port"] + data["target"]["port"] != [] -%}
+                                <tr>
+                                    <td class="col-sm ps-2 w-25">
+                                        {{ _("Port") }}:
+                                    </td>
+                                    <td class="col">
+                                        {{ (data["source"]["port"] + data["target"]["port"]) | unique | sort | join(", ") }}
+                                    </td>
+                                </tr>
+                            {%- endif -%}
+                        </table>
+                    {%- elif event_class and data.detector_data -%}
+                        <div class="accordion" id="accordion-{{ section_number }}">
+                            {%- for detector in data.detector_data -%}
+                                {%- set detector_data = data.detector_data[detector] -%}
+                                {% if render_detector_details(event_class, detector_data).strip() %}
+                                    <div class="accordion-item">
+                                        <h5 class="m-0 fw-bolder accordion-header">
+                                            <button class="accordion-button p-2"
+                                                    type="button"
+                                                    data-bs-toggle="collapse"
+                                                    data-bs-target="#collapse-{{ section_number }}-{{ id }}-{{ loop.index }}">
+                                                <b class="m-0">Details from detector {{ detector }}</b>
+                                            </button>
+                                        </h5>
+                                        <div id="collapse-{{ section_number }}-{{ id }}-{{ loop.index }}"
+                                             class="accordion-collapse collapse show"
+                                             data-bs-parent="#accordion-{{ section_number }}-{{ loop.index }}">
+                                            <div class="accordion-body px-1 py-0">
+                                                <table class="table table-sm table-responsive m-0">
+                                                    {{ render_detector_details(event_class, detector_data) }}
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                            {%- endfor -%}
+                        </div>
+                    {%- else -%}
+                        <p class="m-0">
+                            {{ _("Additional information is not available for this source.") }}
+                        </p>
+                    {%- endif -%}
+                {%- endmacro -%}
+
+                {%- macro render_feedback_form(id, key, section_data, type, section_name, is_target) -%}
+                    <div id="{{ 'feedback-modal-' + id }}"
+                         class="modal"
+                         tabindex="-1"
+                         role="dialog">
+                        <div class="modal-dialog modal-lg" role="document">
+                            <div class="modal-content">
+                                <form id="{{ 'feedback-form-' + id }}"
+                                      method="POST"
+                                      action="{{ url_for('reports.feedback', item_id=item.label) }}"
+                                      class="feedback-form">
+                                    <div class="modal-header">
+                                        <h4 class="modal-title">
+                                            {{ _("Feedback for {:s}").format(key) }}
+                                        </h4>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="table-responsive" style="margin-bottom: 0">
+                                            <table class="table table-sm" style="margin-bottom: 0">
+                                                <thead>
+                                                    {{ macros_site.report_table_header(item.type) }}
+                                                </thead>
+                                                <tbody>
+                                                    {{ macros_site.report_table_row(key, section_data, false, item, tz) }}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        {{ form.csrf_token }}
+                                        {{ form.ip(id='feedback-ip-' + id, value=None if is_target else key) }}
+                                        {{ form.section(id='feedback-section-' + id, value=type ~ '_' ~ get_event_class_from_whole_class(section_name)) }}
+                                        {{ form.text(id='feedback-text-' + id, class="form-control", placeholder=_('Please, write a message for administrators here')) }}
+                                        <span id="{{ 'feedback-message-' + id }}"
+                                              class="form-text form-error text-danger d-none"></span>
+                                        {{ form.submit(id='feedback-submit-' + id, class="btn btn-secondary btn-xs btn-sm") }}
+                                        <button type="button"
+                                                class="btn btn-secondary btn-xs btn-sm"
+                                                data-bs-dismiss="modal">
+                                            {{ _("Close") }}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                {%- endmacro -%}
+
+                {%- macro render_report_section(section_number, section_name, type) %}
+                    {%- if item.is_old_type() -%}
+                        {%- set section_data = item.structured_data[type][section_name] -%}
+                    {%- else -%}
+                        {%- set section_data = structured_data[type][section_name] -%}
+                    {%- endif -%}
+                    {%- set event_class = get_event_class(section_name) -%}
+
+                    {%- if babel_get_locale() == "cs" %}
+                        {%- set section_text = event_class.label_cz or "Zaznamenali jsme dosud neklasifikovaný problém. Prosím prostudujte si data a události, nebo nás kontaktujte." -%}
+                    {% else %}
+                        {%- set section_text = event_class.label_en or "We encountered a problem that was not yet classified. Please study the relevant data and events, or contact us." -%}
+                    {% endif %}
+                    {% if event_class and event_class.reference %}
+                        {{ '[' ~ section_number ~ '] ' }}
+                        <a href="{{ event_class.reference }}">
+                            {{ section_text }}
+                        </a>
+                    {% else %}
+                        {{ '[' ~ section_number ~ '] ' ~ section_text }}
+                    {% endif %}
+
+                    <div class="report-message mt-1" style="margin-left:2em">
+                        {%- if item.type == 'target' -%}
+                            {{ render_report_subsection('', section_data, section_name, event_class) }}
+                        {%- else -%}
+                            {%- for ip in section_data | dictsort %}
+                                {{ render_report_subsection(ip[0], ip[1], section_name, event_class) }}
+                                {%- if not loop.last %}
+                                    <br />
+                                {% endif %}
+                            {%- endfor -%}
+                        {%- endif -%}
+
+                        {%- if current_user.is_authenticated and item.type != 'target' -%}
+                            {%- for ip in section_data | dictsort -%}
+                                {%- set id = escape_id(section_name + '-' + ip[0]) -%}
+                                {{ render_feedback_form(id, ip[0], ip[1], type, section_name, False) }}
+                            {%- endfor %}
+                        {%- elif current_user.is_authenticated -%}
+                            {%- set id = escape_id(section_name + '-') -%}
+                            {{ render_feedback_form(id, get_event_class_from_whole_class(section_name), section_data, type, section_name, True) }}
+                        {%- endif %}
+                        {% if event_class and permission_can('power') %}
+                            <div class="d-flex justify-content-end mt-2">
+                                <a class="btn btn-sm btn-secondary"
+                                   href="{{ url_for('event_classes.show', item_id=event_class.id) }}">
+                                    {{ get_icon("module-event-classes") }}
+                                    {{ _("Manage %(name)s event class", name = event_class.name) }}
+                                </a>
+                            </div>
+                        {% endif %}
+                    </div>
+                {%- endmacro -%}
+
+                <hr class="bg-success" />
+                <div class="report-message">
+                    {{ _("Dear colleagues,") }}
+                </div>
+                {%- if structured_data.regular -%}
+                    {%- if item.type == 'summary' %}
+                        <div class="report-message">
+                            {{ _("our detection systems registered possible problem(s) related to your IP address range or domain:") }}
+                        </div>
+                    {% elif item.type == 'extra' %}
+                        <div class="report-message">
+                            {{ _("our detection systems registered the following possible problem(s) related to host {:s}, that appears to belong to your IP address range or domain:").format(item.structured_data['regular'].values() | list | first | first) }}
+                        </div>
+                    {% elif item.type == 'target' %}
+                        <div class="report-message">
+                            {{ _("our detection systems registered problem(s) targeting your IP address range or domain:") }}
+                        </div>
+                    {% endif -%}
+                    {%- for section_name in structured_data.regular.keys() | sort %}
+                        {{ render_report_section(loop.index, section_name, 'regular') }}
+                        {%- if not loop.last -%}
+                            <hr />
+                        {%- endif -%}
+                    {% endfor -%}
+                {%- endif %}
+                {%- if structured_data.relapsed -%}
+                    {%- if item.type == 'summary' %}
+                        <div class="report-message">
+                            {{ _("our detection systems registered the following RECURRING possible problem(s) related to your IP address range or domain:") }}
+                        </div>
+                    {% elif item.type == 'extra' %}
+                        <div class="report-message">
+                            {{ _("our detection systems registered the following RECURRING possible problem(s) related to host {:s}, that appears belong to your IP address range or domain:").format(item.structured_data['relapsed'].values() | list | first | first) }}
+                        </div>
+                    {% elif item.type == 'target' %}
+                        <div class="report-message">
+                            {{ _("our detection systems registered the following RECURRING problem(s) targeting your IP address range or domain:") }}
+                        </div>
+                    {% endif -%}
+                    {% for section_name in structured_data.relapsed.keys() | sort %}
+                        {{ render_report_section(loop.index, section_name, 'relapsed') }}
+                    {% endfor %}
+                    <div class="report-message">
+                        {{ _("These possible problem(s) were already reported to you some time before, however we have detected relapses.") }}
+                    </div>
+                {% endif -%}
+                <div class="report-message">
+                    {{ macros_common.render_report_severity_message(item) }}
+                </div>
+                {% autoescape false %}
+                    <div class="report-message">
+                        <!-- djlint:off H025 -->
+                        {%- if item.type == 'target' -%}
+                            {{ _("In case of issues or for further communication, please use the contact e-mail address <{:s}> and keep the identifier [{:s}] in e-mail subject.").format("<a href=\"mailto:{:s}?subject={:s}\">{:s}</a>", item.label).format(template_vars['contact_email'], item.label, template_vars['contact_email']) }}
+                        {%- else -%}
+                            {{ _("For further communication please use the contact e-mail address <{:s}> and keep the identifier [{:s}] in e-mail subject.").format("<a href=\"mailto:{:s}?subject={:s}\">{:s}</a>", item.label).format(template_vars['contact_email'], item.label, template_vars['contact_email']) }}
+                        {%- endif -%}
+                        <!-- djlint:on -->
+                    </div>
+                {% endautoescape %}
+            {% else %}
+                <hr />
+                <samp>
+                    {{ item.message | replace('&', '&amp;') | replace("<", "&lt;") | replace(">", "&gt;") | replace("\n", "<br />\n") | replace(' ', '&nbsp;') | replace("\t", '&nbsp;&nbsp;&nbsp;&nbsp;') | safe }}
+                </samp>
+            {% endif %}
+        </div>
+
+        {%- if permission_can('developer') %}
+            <hr>
+            {{ macros_site.render_raw_var('item', item.to_dict_short()) }}
+            {{ macros_site.render_raw_var('structured_data', item.structured_data) }}
+            {{ macros_site.render_raw_var('statistics', statistics) }}
+            {{ macros_site.render_raw_var('filtering', item.filtering) }}
+        {%- endif %}
+    {%- endblock content %}
+
+
+    {%- block bodyjs %}
+        {{ super() }}
+        <script>
+            const ajax_reports_feedback_post_url = "{{ url_for('reports.feedback', item_id = item.label) }}";
+            const something_went_wrong_message = "{{ _('We are sorry, something went wrong. Please try again later.') }}";
+        </script>
+
+        <script>
+            {#
+                // This code does not seem to be doing anything, however, if someone were to implement the showing of feedback, it might come in handy                // document.addEventListener("DOMContentLoaded", () => {
+                //     [...document.getElementsByClassName('feedback-table')].forEach(e => {
+                //         const colspan = e.querySelectorAll('thead > tr > th').length - 1;
+                //         [...e.querySelectorAll('tbody > tr > .feedback-message-cell')].forEach(e => {
+                //             e.colspan = colspan;
+                //         });
+                //     });
+                // });
+
+                // $(document).ready(function() {
+                //     $('.feedback-table').each(function() {
+                //         var colspan = $(this).children('thead').children('tr').children('th').length - 1;
+                //         $(this).children('tbody').children('tr').children('.feedback-message-cell').prop('colspan', colspan);
+                //     })
+                // });
+
+                // $('.feedback-show-btn').click(function(event) {
+                //     event.preventDefault();
+                //     var id = event.target.id.slice('feedback-show-'.length).replace(/[.\/:]/g, "\\$&");
+                //     if ($('#feedback-line-' + id).css('visibility') == 'visible')
+                //         $('#feedback-line-' + id).css('visibility', 'collapse');
+                //     else
+                //         $('#feedback-line-' + id).css('visibility', 'visible');
+                //     $('#feedback-text-' + id).focus();
+                //     $('#feedback-message-' + id).tooltip('destroy');
+                // });
+            #}
+
+            [...document.getElementsByClassName('feedback-form')].forEach(form => {
+                form.addEventListener("submit", async event => {
+                    event.preventDefault();
+
+                    const id = event.target.id.slice('feedback-form-'.length).replace(/[.\/:]/g, "\\$&");
+                    const feedback_text = document.getElementById(`feedback-text-${id}`);
+                    const feedback_submit = document.getElementById(`feedback-submit-${id}`);
+
+                    feedback_text.readonly = true;
+                    feedback_submit.disabled = true;
+                    try {
+                        const response = await fetch(ajax_reports_feedback_post_url, {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/x-www-form-urlencoded"
+                            },
+                            body: new URLSearchParams(new FormData(form))
+                        });
+
+                        const feedback_message = document.getElementById(`feedback-message-${id}`);
+
+                        let data;
+                        if (response.ok) {
+                            data = await response.json();
+                            console.log(`Feedback ended with status: '${response.status}', '${data.message}'`);
+                            feedback_message.innerHTML = data.message;
+                        } else {
+                            console.log(`Feedback ended with error: '${response.status}', '${response.statusText}'`);
+                            feedback_message.innerHTML = something_went_wrong_message;
+                        }
+
+                        feedback_message.classList.remove('d-none');
+
+                        if (!response.ok || data.form_errors) {
+                            feedback_text.readonly = false;
+                            feedback_submit.disabled = false;
+                        }
+                    } catch (error) {
+                        console.log(`Feedback ended with error: '${error.message}'`);
+                        const feedback_message = document.getElementById(`feedback-message-${id}`);
+                        feedback_message.innerHTML = something_went_wrong_message;
+                        feedback_message.classList.remove('d-none');
+                        feedback_text.readonly = false;
+                        feedback_submit.disabled = false;
+                    };
+                    // Ensure modal handles keyboard again
+                    document.getElementById(`feedback-modal-${id}`).focus();
+                });
+            });
+        </script>
+{%- endblock bodyjs %}

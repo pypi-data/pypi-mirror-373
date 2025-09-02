@@ -1,0 +1,208 @@
+{%- import '_macros_site.html' as macros_site with context -%}
+{%- import '_macros_page.html' as macros_page with context -%}
+{%- import '_macros_form.html' as macros_form with context -%}
+{%- import '_macros_chart.html' as macros_chart with context -%}
+
+<!DOCTYPE html>
+<html lang="en">
+    <!--
+    ============================================================================
+        HEADER
+    ============================================================================
+    -->
+    <head>
+        {%- block head %}
+
+            <!----------------------------------------------------------------------
+                Required meta tags
+            ----------------------------------------------------------------------->
+            <meta charset="utf-8">
+            <meta name="viewport"
+                  content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+            {%- block headcss %}
+                <!-- Font Awesome -->
+                <link rel="stylesheet"
+                      href="{{ url_for('static', filename='vendor/font-awesome/css/solid.min.css') }}">
+                <link rel="stylesheet"
+                      href="{{ url_for('static', filename='vendor/font-awesome/css/regular.min.css') }}">
+                <link rel="stylesheet"
+                      href="{{ url_for('static', filename='vendor/font-awesome/css/brands.min.css') }}">
+                <link rel="stylesheet"
+                      href="{{ url_for('static', filename='vendor/font-awesome/css/fontawesome.min.css') }}">
+
+                <!-- Bootstrap CSS -->
+                <link rel="stylesheet"
+                      href="{{ url_for('static', filename='vendor/bootstrap/css/bootstrap.min.css') }}">
+                <link rel="stylesheet"
+                      href="{{ url_for('static', filename='vendor/tom-select/css/tom-select.bootstrap5.min.css') }}">
+                <link rel="stylesheet"
+                      href="{{ url_for('static', filename='vendor/@eonasdan/tempus-dominus/css/tempus-dominus.min.css') }}">
+
+                <!-- Custom CSS -->
+                <link rel="stylesheet"
+                      href="{{ url_for('static', filename='css/hawat.css') }}">
+            {%- endblock headcss %}
+
+            {%- block headjs %}
+                <!-- Flask JSGlue plugin -->
+                {{ JSGlue.include() }}
+
+                <!-- @popperjs/core -->
+                <script defer
+                        src="{{ url_for('static', filename='vendor/popperjs/js/popper.min.js') }}"></script>
+
+                <!-- jQuery -->
+                <script defer
+                        src="{{ url_for('static', filename='vendor/jquery/js/jquery.min.js') }}"></script>
+
+                <!-- Plotly chart library -->
+                <script defer
+                        src="{{ url_for('static', filename='vendor/plotly/js/plotly.min.js') }}"></script> {# Maybe plotly-basic.min.js #}
+
+                <!-- Localization initializations -->
+                <script>
+                    // These global variables must be defined here to bypass browser caching,
+                    // they might change with each request.
+                    const GLOBAL_LOCALE = "{{ babel_get_locale() }}"
+                    const GLOBAL_TIMEZONE = "{{ babel_get_timezone() }}"
+                </script>
+
+                <!-- Main application library -->
+                <script defer src="{{ url_for('mainjs') }}"></script>
+
+                <!-- Custom libraries -->
+                <script defer src="{{ url_for('static', filename='js/hawat-charts.js') }}"></script>
+            {%- endblock headjs %}
+
+            <!----------------------------------------------------------------------
+                Page metadata
+            ----------------------------------------------------------------------->
+            <link rel="shortcut icon"
+                  href="{{ url_for('static', filename='favicon.ico') }}">
+
+            <title>
+                {% block title -%}
+                    {{ hawat_current_view.get_view_title() }}
+                {%- endblock title %} - Mentat
+            </title>
+        {%- endblock head %}
+    </head>
+
+    <!--
+    ============================================================================
+        BODY
+    ============================================================================
+    -->
+    <body class="d-flex flex-column min-vh-100">
+        <!--
+        inner bodies are here to allow bootstrap to use both popovers and
+        tooltips on dynamically added HTML elements without printing errors into
+        the console.
+        -->
+        <div id="inner-body-1" class="d-flex flex-column min-vh-100">
+            <div id="inner-body-2" class="d-flex flex-column min-vh-100">
+                {%- block body %}
+
+                    <div id="ajax-loader-overlay">
+                        <div id="ajax-loader">
+                            {{ get_icon("ajax-loader") }}
+                            <hr>
+                            <h3>
+                                <strong>{{ _("... LOADING ...") }}</strong>
+                            </h3>
+                        </div>
+                    </div>
+
+                    <!-- Fixed header and navbar - BEGIN ---------------------------------->
+                    <nav class="navbar navbar-expand-sm navbar-light navbar-fixed-top bg-light mb-3">
+                        <div class="container-fluid">
+                            <a id="navbar-header"
+                               class="navbar-brand"
+                               href="{{ url_for(config['ENDPOINT_HOME']) }}">
+                                <img src="{{ url_for('static', filename='images/' + (config['APP_LOGO_MINI_FILENAME'] or 'app-logo-mini.svg')) }}"
+                                     alt="Mentat logo"
+                                     class="mentat-logo-mini">
+                            </a>
+                            <button class="navbar-toggler"
+                                    type="button"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#navbarContent"
+                                    aria-controls="navbarContent"
+                                    aria-expanded="false"
+                                    aria-label="_('Toggle navigation')">
+                                <span class="navbar-toggler-icon"></span>
+                            </button>
+
+                            <div class="collapse navbar-collapse" id="navbarContent">
+                                {{ macros_site.render_menu_main() }}
+                                <ul class="navbar-nav">
+                                    {{ macros_site.render_submenu_auth() }}
+                                    {{ macros_site.render_locale_switcher() }}
+                                    {%- if hawat_current_view.has_help %}
+                                        <li class="nav-item">
+                                            {{ macros_page.render_help_link(icon = 'help', text = '', in_navbar = True) }}
+                                        </li>
+                                    {%- endif %}
+                                </ul>
+                            </div>
+                        </div>
+                    </nav>
+                    <!-- Fixed header and navbar - END ------------------------------------>
+
+                    <!-- Content container - BEGIN ---------------------------------------->
+                    <div class="container-fluid px-3">
+                        <!-- Flashed messages - BEGIN ------------------------------------->
+                        <div class="container-flashed-messages">
+                            {%- with messages = get_flashed_messages(with_categories=true) %}
+                                {%- if messages %}
+                                    {%- for category, message in messages %}
+                                        {%- call macros_site.render_alert(category) %}
+                                            {{ message }}
+                                        {%- endcall %}
+                                    {%- endfor %}
+                                {%- endif %}
+                            {%- endwith %}
+                        </div>
+                        <!-- Flashed messsages - END -------------------------------------->
+
+                        <!-- Content - BEGIN ---------------------------------------------->
+                        {%- block content %}
+                        {% endblock content %}
+                        <!-- Content - END ------------------------------------------------>
+                    </div>
+                    <!-- /container-fluid -->
+                    <!-- Content container - END ------------------------------------------>
+
+                    <!-- Footer container - BEGIN ----------------------------------------->
+                    {{ macros_site.render_footer(large_footer=request.endpoint in config['LARGE_FOOTER_ENDPOINTS']) }}
+                    <!-- Footer container - END ------------------------------------------->
+
+                    {%- block bodyjs %}
+                        <!-- Optional JavaScript ---------------------------------------------->
+                        <script>
+                            window.STATIC_BASE_URL = "{{ url_for('static', filename='') }}";
+                        </script>
+
+                        <script defer
+                                src="{{ url_for('static', filename='vendor/bootstrap/js/bootstrap.min.js') }}"></script>
+                        <script defer
+                                src="{{ url_for('static', filename='vendor/tom-select/js/tom-select.popular.min.js') }}"></script>
+
+                        <script defer
+                                src="{{ url_for('static', filename='vendor/@eonasdan/tempus-dominus/js/tempus-dominus.min.js') }}"></script>
+
+                       <script defer
+                                src="{{ url_for('static', filename='vendor/monaco-editor/vs/loader.js') }}"></script>
+
+                       <script defer
+                                src="{{ url_for('static', filename='vendor/monaco-ransack/index.js') }}"></script>
+
+                        <script defer src="{{ url_for('static', filename='js/hawat-jquery.js') }}"></script>
+                    {%- endblock bodyjs %}
+
+                {%- endblock body %}
+            </div>
+        </div>
+    </body>
+</html>
