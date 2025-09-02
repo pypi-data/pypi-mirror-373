@@ -1,0 +1,56 @@
+template_keyword_1: list = [
+    ["AC_set_record_enable", [True]],
+    ["AC_write", {"write_string": "Hello World"}],
+    ["AC_type_keyboard", {"keycode": "return"}],
+    ["AC_write", {"write_string": "If you want Windows write upcase string"}],
+    ["AC_type_keyboard", {"keycode": "return"}],
+    ["AC_write", {"write_string": "you need to press shift first"}],
+    ["AC_type_keyboard", {"keycode": "return"}],
+    ["AC_press_keyboard_key", {"keycode": "shift"}],
+    ["AC_write", {"write_string": "UPCASEE"}],
+    ["AC_release_keyboard_key", {"keycode": "shift"}],
+    ["AC_type_keyboard", {"keycode": "return"}],
+    ["AC_write", {"write_string": "this is example how to use keyword"}],
+    ["AC_write", {"write_string": " and add module to executor"}],
+    ["AC_type_keyboard", {"keycode": "return"}],
+    ["AC_write", {"write_string": "now i will add time module and sleep 3 sec"}],
+    ["AC_add_package_to_executor", ["time"]],
+    ["time_sleep", [3]],
+    ["AC_type_keyboard", {"keycode": "return"}],
+    ["AC_write", {"write_string": "also you can use builtin function on executor like print"}],
+    ["print", ["Google Bye World"]],
+    ["AC_type_keyboard", {"keycode": "return"}],
+    ["AC_write", {"write_string": "and i will create an html report for you"}],
+    ["AC_generate_html_report"],
+    ["AC_type_keyboard", {"keycode": "return"}]
+]
+
+template_keyword_2: list = [
+    ["AC_set_record_enable", [True]],
+    ["AC_write", {"write_string": "in this keyword file we will change the mouse position"}],
+    ["AC_type_keyboard", {"keycode": "return"}],
+    ["AC_set_mouse_position", [500, 500]],
+    ["AC_set_mouse_position", {"x": 100, "y": 100}],
+    ["AC_set_mouse_position", [600, 600]],
+    ["AC_set_mouse_position", {"x": 100, "y": 100}],
+    ["AC_set_mouse_position", [400, 400]],
+    ["AC_set_mouse_position", {"x": 100, "y": 100}],
+    ["AC_set_mouse_position", [300, 300]],
+    ["AC_set_mouse_position", {"x": 100, "y": 100}],
+    ["AC_set_mouse_position", [200, 200]],
+    ["AC_set_mouse_position", {"x": 100, "y": 100}],
+    ["AC_set_mouse_position", [700, 700]],
+    ["AC_set_mouse_position", {"x": 100, "y": 100}],
+    ["AC_set_mouse_position", [800, 800]],
+    ["AC_set_mouse_position", {"x": 100, "y": 100}],
+    ["AC_write", {"write_string": "now i will create an json report for you"}],
+    ["AC_type_keyboard", {"keycode": "return"}],
+    ["AC_generate_json_report"]
+]
+
+bad_template_1 = [
+    ["AC_set_record_enable", [True]],
+    ["AC_add_package_to_executor", ["os"]],
+    ["os_system", ["python --version"]],
+    ["os_system", ["python -m pip --version"]],
+]
