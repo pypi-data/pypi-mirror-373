@@ -1,0 +1,447 @@
+kubernetes:
+  pod_config:
+    metadata:
+      labels:
+        parent: trainy
+        trainy.ai/username: {{ user }}
+        {% if accelerator_type %}
+        trainy.ai/accelerator: {{ accelerator_type }}
+        {% endif %}
+        {% if konduktor_debug %}
+        konduktor.ai/debug: "true"
+        {% else %}
+        konduktor.ai/debug: "false"
+        {% endif %}
+        {% if tailscale_secret %}
+        konduktor.ai/tailscale: "true"
+        {% else %}
+        konduktor.ai/tailscale: "false"
+        {% endif %}
+    spec:
+      restartPolicy: "Never"
+      # trigger this on GPU request
+      {% if num_gpus > 0 %}
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+      {% endif %}
+      containers:
+        # TODO(asaiacai): should decide here whether we add the fabric interfaces/containers init etc.        
+        - name: konduktor-container
+          {% if enable_ssh %}
+          ports:
+            - name: ssh
+              containerPort: {{ konduktor_ssh_port }}
+          {% endif %}
+          {% if serving %}
+          ports:
+            - containerPort: {{ ports }}
+          # TODO (ryan): allow modification of thresholds and timings
+          {% if probe %}
+          livenessProbe:
+            httpGet:
+              path: {{ probe }}
+              port: {{ ports }}
+              scheme: HTTP
+            initialDelaySeconds: 60
+            failureThreshold: 3
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          readinessProbe:
+            httpGet:
+              path: {{ probe }}
+              port: {{ ports }}
+              scheme: HTTP
+            initialDelaySeconds: 60
+            failureThreshold: 10
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+          startupProbe:
+            httpGet:
+              path: {{ probe }}
+              port: {{ ports }}
+              scheme: HTTP
+            failureThreshold: 60
+            periodSeconds: 30
+            successThreshold: 1
+            timeoutSeconds: 1
+          {% endif %}
+          {% endif %}
+          image: {{ image_id }}
+          # this is set during jobset definition since we need to know the jobset
+          # name and number of nodes to set all the environment variables correctly here
+          # as well as the additional from the job definition
+          env:
+          # flush logs immediately to stdout for more reactive log streaming
+          - name: PYTHONUNBUFFERED
+            value: "0"
+          - name: NODE_HOST_IPS
+            value: "{{ node_hostnames }}"
+          - name: MASTER_ADDR
+            value: "{{ master_addr }}"
+          - name: RANK
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+          - name: LOCAL_ADDR
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: NUM_NODES
+            value: "{{ num_nodes }}"
+          - name: NUM_GPUS_PER_NODE
+            value: "{{ num_gpus }}"
+          {% if tailscale_secret %}
+          - name: TS_USERSPACE
+            value: "true"
+          - name: TS_AUTHKEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ tailscale_secret }}
+                key: TS_AUTHKEY
+                optional: true
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: POD_UID
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.uid
+          {% endif %}
+          {% if enable_ssh %}
+          - name: KONDUKTOR_SSHPUB
+            valueFrom:
+              secretKeyRef:
+                name: {{ secret_name }}
+                key: PUBKEY
+          - name: KONDUKTOR_SSHPRIV
+            valueFrom:
+              secretKeyRef:
+                name: {{ secret_name }}
+                key: PRIVKEY
+          - name: KONDUKTOR_SSH_PORT
+            value: "{{ konduktor_ssh_port }}"
+          {% endif %}
+          {% if git_ssh %}
+          - name: GIT_SSH_COMMAND
+            value: "ssh -i /run/konduktor/git-ssh-secret/gitkey -o StrictHostKeyChecking=no"
+          {% endif %}
+          {% if default_secrets %}
+          - name: KONDUKTOR_DEFAULT_SECRETS
+            value: "/konduktor/default-secrets"
+          {% endif %}
+          # these are for compatibility with skypilot
+          - name: SKYPILOT_NODE_IPS
+            value: "{{ node_hostnames }}"
+          - name: SKYPILOT_NODE_RANK
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+          - name: SKYPILOT_NUM_NODES
+            value: "{{ num_nodes }}"
+          - name: SKYPILOT_NUM_GPUS_PER_NODE
+            value: "{{ num_gpus }}"
+          volumeMounts:
+          - name: shared-memory
+            mountPath: /dev/shm
+          - name: sync
+            mountPath: /tmp/konduktor
+          {% for secret_type, secret_name in mount_secrets.items() %}
+          - name: {{ secret_type }}-secret
+            mountPath: /run/konduktor/{{ secret_type }}-secret
+          {% endfor %}
+          {% for secret in default_secrets %}
+          - name: default-secret-{{ secret.mount_name }}
+            mountPath: /konduktor/default-secrets/{{ secret.mount_name }}
+          {% endfor %}
+          {% if git_ssh %}
+          - name: git-ssh-secret
+            mountPath: /run/konduktor/git-ssh-secret
+          {% endif %}
+          {% if tailscale_secret %}
+          - name: tailscale-state
+            mountPath: /var/lib/tailscale
+          {% endif %}
+          command: ["bash", "-c"]
+          args:
+            - |
+              # TODO(asaiacai): add debug environment variable for printing the apt-update, apt-install, sync-files output
+              # Helper function to conditionally use sudo
+              export RDZV_CONF=is_host=$(if [ "$RANK" == "0" ]; then echo "true"; else echo "false"; fi)
+              set -eo pipefail
+              {% if konduktor_debug %}
+              set -x
+              {% endif %}
+              mkdir -p ~/.konduktor/tmp
+              start_epoch=$(date +%s);
+              start_setup=$(date +%s);
+              echo "===== KONDUKTOR: Running setup and installing packages ====="
+              prefix_cmd() { if [ $(id -u) -ne 0 ]; then echo "sudo"; else echo ""; fi; }
+              [ $(id -u) -eq 0 ] && function sudo() { "$@"; } || true;
+
+
+              PACKAGES="";
+              {% if 'rsync' in run_cmd or 'rsync' in setup_cmd %}
+              PACKAGES="$PACKAGES rsync";
+              {% endif %}
+              {% if 'curl' in run_cmd or 'curl' in setup_cmd or tailscale_secret %}
+              PACKAGES="$PACKAGES curl";
+              {% endif %}
+              {% if 'gs' in mount_secrets or 's3' in mount_secrets %}
+              PACKAGES="$PACKAGES unzip wget";
+              {% endif %}
+              {% if 'git' in run_cmd or 'git' in setup_cmd %}
+              PACKAGES="$PACKAGES git";
+              {% endif %}
+
+              if [ ! -z "${PACKAGES}" ]; then
+                # Run apt update, install missing packages
+                DEBIAN_FRONTEND=noninteractive $(prefix_cmd) apt-get update 2>&1 | tee -a ~/.konduktor/tmp/apt-update.log 2>&1 || \
+                $(prefix_cmd) echo "Warning: apt-get update failed. Continuing anyway..." >> ~/.konduktor/tmp/apt-update.log
+              fi
+              
+
+              # Separate packages into two groups: packages that are installed first
+              # so that curl and rsync are available sooner to unblock the following
+              # conda installation and rsync.
+              INSTALL_FIRST="";
+              MISSING_PACKAGES="";
+              for pkg in $PACKAGES; do
+                if ! dpkg -l | grep -q "^ii  $pkg "; then
+                  if [ "$pkg" == "curl" ] || [ "$pkg" == "rsync" ]; then
+                    INSTALL_FIRST="$INSTALL_FIRST $pkg";
+                  else
+                    MISSING_PACKAGES="$MISSING_PACKAGES $pkg";
+                  fi
+                fi
+              done;
+              if [ ! -z "$INSTALL_FIRST" ]; then
+                $(prefix_cmd) echo "Installing core packages: $INSTALL_FIRST";
+                DEBIAN_FRONTEND=noninteractive $(prefix_cmd) apt-get install -y $INSTALL_FIRST 2>&1 | tee -a ~/.konduktor/tmp/apt-install.log;
+              fi;
+
+              if [ ! -z "$MISSING_PACKAGES" ]; then
+                $(prefix_cmd) echo "Installing missing packages: $MISSING_PACKAGES";
+                DEBIAN_FRONTEND=noninteractive $(prefix_cmd) apt-get install -y $MISSING_PACKAGES 2>&1 | tee -a ~/.konduktor/tmp/apt-install.log;
+              fi;
+              end_epoch=$(date +%s);
+              
+              echo "Exposing ENV variables"
+              $(prefix_cmd) env -0 | awk -v RS='\0' '
+                {
+                  gsub(/\\/,"\\\\");      # escape existing backslashes first
+                  gsub(/"/,"\\\"");       # escape any double quotes
+                  gsub(/\n/,"\\n");       # turn real newlines into the two characters \n
+                  sub(/=/,"=\"");         # open the value-quoting
+                  print $0 "\"";          # close the quote and add a newline record separator
+                }
+              ' > /etc/environment
+              $(prefix_cmd) echo "set -a; source /etc/environment; set +a;" >> $HOME/.bashrc
+
+              {% if enable_ssh %}
+
+              function InstallSSH {
+                export DEBIAN_FRONTEND=noninteractive
+                export TZ=Etc/UTC
+                set -u
+                if service sshd status > /dev/null 2>&1; then
+                  $(prefix_cmd) echo "OpenSSH server is already started."
+                  return
+                fi
+                # Check if OpenSSH server is already installed
+                if ! command -v sshd &> /dev/null; then
+                    $(prefix_cmd) echo "OpenSSH server is not installed. Installing..."
+
+                    DEBIAN_FRONTEND=noninteractive $(prefix_cmd) apt update 2>&1 >> ~/.konduktor/tmp/apt-install.log;
+                    DEBIAN_FRONTEND=noninteractive $(prefix_cmd) apt install -y openssh-server >>  ~/.konduktor/tmp/apt-install.log;
+
+                    $(prefix_cmd) echo "OpenSSH server installation complete."
+                else
+                    $(prefix_cmd) echo "OpenSSH server is already installed."
+                fi
+
+                # Set root password if SSHKEY is provided
+                # Enable root login in SSH configuration
+                $(prefix_cmd) sed -i '/^#PermitRootLogin/c\PermitRootLogin without-password' /etc/ssh/sshd_config
+                $(prefix_cmd) sed -i '/^PermitRootLogin/c\PermitRootLogin without-password' /etc/ssh/sshd_config
+                $(prefix_cmd) echo "Root login is enabled."
+
+                # Create the .ssh directory and authorized_keys file if they don't exist
+                if [ ! -d "$HOME/.ssh" ]; then
+                    $(prefix_cmd) mkdir -p "$HOME/.ssh"
+                    $(prefix_cmd) chmod 0700 "$HOME/.ssh"
+                    $(prefix_cmd) echo "Directory $HOME/.ssh created."
+                fi
+                if [ ! -f "$HOME/.ssh/authorized_keys" ]; then
+                    $(prefix_cmd) touch "$HOME/.ssh/authorized_keys"
+                    $(prefix_cmd) chmod 0600 "$HOME/.ssh/authorized_keys"
+                    $(prefix_cmd) echo "File $HOME/.ssh/authorized_keys created."
+                fi
+                # Check if the public key is not already present in authorized_keys
+                if ! grep -q "${KONDUKTOR_SSHPUB}" "$HOME/.ssh/authorized_keys"; then
+                    # Append the public key to authorized_keys
+                    $(prefix_cmd) echo "${KONDUKTOR_SSHPUB}" >> "$HOME/.ssh/authorized_keys"
+                    $(prefix_cmd) echo "Public key added."
+                fi
+                if [ ! -f "$HOME/.ssh/konduktor-key" ]; then
+                    # create the private key to authorized_keys
+                    $(prefix_cmd) touch "$HOME/.ssh/konduktor-key"
+                    $(prefix_cmd) chmod 0600 "$HOME/.ssh/konduktor-key"
+                    $(prefix_cmd) echo "${KONDUKTOR_SSHPRIV}" >> "$HOME/.ssh/konduktor-key"
+                    $(prefix_cmd) echo "private key added."
+                fi
+                if [ ! -f "$HOME/.ssh/config" ]; then
+                    # create the private key to authorized_keys
+                    $(prefix_cmd) touch "$HOME/.ssh/config"
+                    $(prefix_cmd) chmod 0600 "$HOME/.ssh/config"
+                    $(prefix_cmd) printf '\nHost *\n    StrictHostKeyChecking no\n' >> "$HOME/.ssh/config"
+                    $(prefix_cmd) echo "ssh config set"
+                fi
+
+                # turn off PAM to fix sshd login issue
+                $(prefix_cmd) sed -i 's/UsePAM yes/UsePAM no/' /etc/ssh/sshd_config
+
+                # set default port to 22
+                $(prefix_cmd) sed -i 's/#Port 22/Port {{ konduktor_ssh_port }}/' /etc/ssh/sshd_config
+
+                $(prefix_cmd) mkdir /run/sshd
+                $(prefix_cmd) chmod 0755 /run/sshd
+
+                $(prefix_cmd) service ssh start
+                $(prefix_cmd) echo "sshd service started"
+                set +u
+              }
+
+              InstallSSH
+              {% endif %}
+              {% if tailscale_secret %}
+              export TS_HOSTNAME=$(echo "$POD_NAME" | sed 's/-[^-]*$//')
+              $(prefix_cmd) echo "TS_HOSTNAME=${TS_HOSTNAME}" >> /etc/environment
+              function InstallTailscale {
+                if ! command -v tailscale >/dev/null 2>&1; then
+                  $(prefix_cmd) curl -fsSL https://tailscale.com/install.sh | DEBIAN_FRONTEND=noninteractive $(prefix_cmd) sh > ~/.konduktor/tmp/tailscale-install.log 2>&1
+                fi
+                if ! tailscale status >/dev/null 2>&1; then
+                  $(prefix_cmd) mkdir -p /var/run/tailscale /var/cache/tailscale /var/lib/tailscale
+                  $(prefix_cmd) nohup tailscaled --tun=userspace-networking >~/.konduktor/tmp/tailscaled.log 2>&1 &
+                fi
+                until tailscale status >/dev/null 2>&1; do
+                  $(prefix_cmd) tailscale up --auth-key=${TS_AUTHKEY} --ssh --hostname=${TS_HOSTNAME} --accept-dns=false || echo "tailscale up failed retrying"
+                done
+                $(prefix_cmd) echo "Tailscale is up"
+                $(prefix_cmd) tailscale status
+                $(prefix_cmd) tailscale netcheck
+              }
+              InstallTailscale | tee ~/.konduktor/tmp/tailscale-out.log
+              {% if konduktor_debug %}
+              $(prefix_cmd) cat ~/.konduktor/tmp/tailscale*.log
+              {% endif %}
+              {% endif %}
+              end_epoch=$(date +%s);
+
+              $(prefix_cmd) echo "===== KONDUKTOR: Installing packages took $((end_epoch - start_epoch)) seconds ====="
+
+              # unpack secrets credentials
+              $(prefix_cmd) echo "===== KONDUKTOR: Unpacking secrets credentials ====="
+              start_epoch=$(date +%s);
+              mkdir -p ~/.konduktor
+              mkdir -p {{ remote_workdir }}
+              {% for secret_type, secret_name in mount_secrets.items() %}
+              {% if secret_type == "gs" %}
+              $(prefix_cmd) echo "Unpacking GCP secret"
+              $(prefix_cmd) mkdir -p ~/.config
+              $(prefix_cmd) unzip /run/konduktor/gs-secret/gcpcredentials -d ~/.config/gcloud
+              {% elif secret_type == "s3" %}
+              $(prefix_cmd) echo "Unpacking AWS secret"
+              $(prefix_cmd) mkdir -p ~/.aws
+              $(prefix_cmd) unzip /run/konduktor/s3-secret/awscredentials -d ~/.aws
+              {% endif %}
+              {% endfor %}
+              {% if git_ssh %}
+              $(prefix_cmd) echo "Unpacking GIT-SSH secret"
+              {% endif %}
+              end_epoch=$(date +%s);
+              $(prefix_cmd) echo "===== KONDUKTOR: Unpacking secrets credentials took $((end_epoch - start_epoch)) seconds ====="
+
+              # sync file mounts
+              {% for mkdir_command in mkdir_commands %}
+              $(prefix_cmd) {{ mkdir_command }}
+              {% endfor %}
+              {% if sync_commands|length > 0 %}
+              $(prefix_cmd) echo "===== KONDUKTOR: Syncing files ====="
+              start_epoch=$(date +%s);
+              {% for sync_command in sync_commands %}
+              $(prefix_cmd) {{ sync_command }} >> ~/.konduktor/tmp/sync-files.log
+              {% endfor %}
+              end_epoch=$(date +%s);
+              $(prefix_cmd) echo "===== KONDUKTOR: Syncing files took $((end_epoch - start_epoch)) seconds ====="
+              {% endif %}
+              end_epoch=$(date +%s);
+              end_setup_time=$((end_epoch - start_setup));
+              ulimit -Sc 0 && ulimit -Hc 0
+              $(prefix_cmd) echo "===== KONDUKTOR: Initialization took $end_setup_time seconds ====="
+              set +eo pipefail
+              # run task  
+              $(prefix_cmd) cd {{ remote_workdir }}
+              $(prefix_cmd) echo "===== KONDUKTOR: Running task ====="
+              start_epoch=$(date +%s);
+              {{ run_cmd | indent( width=14 ) }}
+              end_epoch=$(date +%s);
+              exit_code=$?
+              set +ex
+              $(prefix_cmd) echo "===== KONDUKTOR: Running task took $((end_epoch - start_epoch)) seconds and finished with exit code: $exit_code ====="
+              exit $exit_code
+          resources:
+            limits:
+              cpu: {{ cpu }}
+              memory: {{ memory }}Gi
+              # TODO(asaiacai): need to decide whether we include fabric configuration here
+              {% if num_gpus > 0 %}
+              nvidia.com/gpu: {{ num_gpus }}
+              {% endif %}
+            requests:
+              cpu: {{ cpu }}
+              memory: {{ memory }}Gi
+              {% if num_gpus > 0 %}
+              nvidia.com/gpu: {{num_gpus}}
+              {% endif %}
+          securityContext:
+            capabilities:
+              add: 
+              - "IPC_LOCK"  # May be needed for memlock
+
+      volumes:
+      - name: shared-memory
+        emptyDir:
+          medium: "Memory"
+          sizeLimit: 4Gi
+      {% if tailscale_secret %}
+      - name: tailscale-state
+        emptyDir: {}
+      {% endif %}
+      - name: sync
+        emptyDir: {}
+      {% for secret_type, secret_name in mount_secrets.items() %}
+      - name: {{ secret_type }}-secret
+        secret:
+          secretName: {{ secret_name }}
+      {% endfor %}
+      {% for secret in default_secrets %}
+      - name: default-secret-{{ secret.mount_name }}
+        secret:
+          secretName: {{ secret.k8s_name }}
+      {% endfor %}
+      {% if git_ssh %}
+      - name: git-ssh-secret
+        secret:
+          secretName: {{ git_ssh }}
+          defaultMode: 384
+      {% endif %}
+        
+
+      # TODO(asaiacai): should we add nodeSelectors here or leave to
+      # kueue resource flavors. leaning towards defining
+      # in kueue and just querying for the kueue resource flavor
