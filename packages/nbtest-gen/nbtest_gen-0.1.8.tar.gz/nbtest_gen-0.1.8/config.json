@@ -1,0 +1,409 @@
+{
+  "FILE_PATH": {
+    "ASSERTION_GENERATED_CSV": "assertion_generated.csv",
+    "PROPERTIES_CSV": "properties.csv",
+    "TMP_IPYNB": "tmp.ipynb",
+    "PARSE_LOG": "parse_log.pkl",
+    "PROPERTIES_DF": "properties_df.pkl",
+    "INSTRUMENTATION_PKL": "instrumentation.pkl",
+    "PROCESSED_IPYNB": "processed.ipynb"
+  },
+
+  "MUTANT_TYPES": {
+    "outliers": "num_outliers=int(len(df)*outlier_ratio)\noutlier_indices=np.random.choice(df.index,num_outliers,replace=False)\nfor col in numerical_cols:\n    df.loc[outlier_indices,col]=temp.astype(df[col].dtype)",
+    "repetition": "num_removed=int(len(df)*removal_ratio)\nremove_indices=np.random.choice(df.index,size=num_removed,replace=False)\nreplace_indices=np.random.choice(df.index.difference(remove_indices),size=num_removed,replace=False)\ndf.iloc[remove_indices]=df.iloc[replace_indices].values",
+    "added_null": "num_cols_to_null=max(1,int(len(df.columns)*subset_ratio))\ncols_to_null=np.random.choice(df.columns,size=num_cols_to_null,replace=False)\nfor col in cols_to_null:\n    num_nulls=int(len(df)*rows_ratio)\n    null_indices=np.random.choice(df.index,size=num_nulls,replace=False)\n    df.loc[null_indices,col]=np.nan",
+    "remove_torch_eval": "tree=ast.parse(cell.source)\ntree=EvalRemover(logger).visit(tree)\nast.fix_missing_locations(tree)",
+    "remove_torch_zero_grad": "tree=ast.parse(cell.source)\ntree=ZeroGradRemover(logger).visit(tree)\nast.fix_missing_locations(tree)",
+    "modify_hyperparameters": "num_to_modify=max(1,int(len(node.keywords)*modification_ratio))\nparams_to_modify=random.sample(node.keywords,num_to_modify)\nparams=\"\".join([keyword.arg for keyword in node.keywords])\nlogger.debug(f\"Modifying {call_type} '{call_name}' with parameters: {params}\")\nfor keyword in params_to_modify:\n    if modification_type=='remove':\n        if is_essential_param(keyword.arg,call_name):\n            continue\n        node.keywords.remove(keyword)\n        modified=True\n    else:\n        if modify_parameter(keyword,call_name):\n            modified=True",
+    "remove_hyperparameters": "num_to_modify=max(1,int(len(node.keywords)*modification_ratio))\nparams_to_modify=random.sample(node.keywords,num_to_modify)\nparams=\"\".join([keyword.arg for keyword in node.keywords])\nlogger.debug(f\"Modifying {call_type} '{call_name}' with parameters: {params}\")\nfor keyword in params_to_modify:\n    if modification_type=='remove':\n        if is_essential_param(keyword.arg,call_name):\n            continue\n        node.keywords.remove(keyword)\n        modified=True\n    else:\n        if modify_parameter(keyword,call_name):\n            modified=True",
+    "label_errors": "num_errors=max(1,int(len(y)*error_ratio))\nerror_indices=np.random.choice(len(y),num_errors,replace=False)\nfor idx in error_indices:\n    original_label=y.iloc[idx]\n    new_label=original_label\n    while(new_label==original_label):\n        new_label=np.random.choice(unique_labels)\n    df.loc[idx,label_slice]=new_label",
+    "preproc_data_leakage": "if api_cell > train_test_cell or (api_cell == train_test_cell and api_line > train_test_line):\n    mutant_cell = notebook.cells[train_test_cell].source\n    lines.append(f\"{X_var} = {var_name}.{api_name}({X_var})\")\n    logger.debug(f\"New lines: {str(lines)}\")\n    tree = ast.parse(mutant_cell)\n    new_tree = AddLinesBeforeTrainTestSplit(logger, lines).visit(tree)\n    notebook.cells[train_test_cell].source = ast.unparse(new_tree)",
+    "data_shift": "from scipy.stats import spearmanr, pearsonr\ncorrelations = {{}}\nfor col in {X_train}.columns:\n    if col != label_col:\n        corr, _ = spearmanr({X_train}[col], {Y_train})\n        correlations[col] = abs(corr)\n        \nmost_correlated_feature = max(correlations, key=correlations.get)\n\n# Break correlation by randomizing the feature in the test set\n{X_test}[most_correlated_feature] = np.random.permutation({X_test}[most_correlated_feature].values)",
+    "metric_swap": "node.func.id = new_value\nself.logger.info(f'Cell {self.cell_index}: Swapped {old_value} → {new_value} with parameter adjustments')\nself.changed = True\nif new_value not in self.existing_imports:\n    self.missing_imports.add(new_value)\n\nparams = {kw.arg: ast.unparse(kw.value) for kw in node.keywords}\n\nself.swaps_performed.append({\n    'line': getattr(node, 'lineno', 0),\n    'old_value': old_value,\n    'new_value': new_value,\n    'params': params,\n})"
+  },
+
+  "KNOWN_APIS": {
+    "train_test_split": {
+      "assert_type": "DATASET"
+    },
+    "read_csv": {
+      "assert_type": "DATASET"
+    },
+    "DataFrame": {
+      "assert_type": "DATASET"
+    },
+    "sqrt": {
+      "assert_type": "MODEL_PERF"
+    },
+    "fit": {
+      "assert_type": "MODEL_ARCH"
+    },
+    "Sequential": {
+      "assert_type": "MODEL_ARCH"
+    },
+    "accuracy_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "auc": {
+      "assert_type": "MODEL_PERF"
+    },
+    "average_precision_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "balanced_accuracy_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "brier_score_loss": {
+      "assert_type": "MODEL_PERF"
+    },
+    "class_likelihood_ratios": {
+      "assert_type": "MODEL_PERF"
+    },
+    "cohen_kappa_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "d2_log_loss_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "dcg_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "det_curve": {
+      "assert_type": "MODEL_PERF"
+    },
+    "f1_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "fbeta_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "hamming_loss": {
+      "assert_type": "MODEL_PERF"
+    },
+    "hinge_loss": {
+      "assert_type": "MODEL_PERF"
+    },
+    "jaccard_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "log_loss": {
+      "assert_type": "MODEL_PERF"
+    },
+    "matthews_corrcoef": {
+      "assert_type": "MODEL_PERF"
+    },
+    "multilabel_confusion_matrix": {
+      "assert_type": "MODEL_PERF"
+    },
+    "ndcg_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "precision_recall_curve": {
+      "assert_type": "MODEL_PERF"
+    },
+    "precision_recall_fscore_support": {
+      "assert_type": "MODEL_PERF"
+    },
+    "precision_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "recall_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "roc_auc_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "top_k_accuracy_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "zero_one_loss": {
+      "assert_type": "MODEL_PERF"
+    },
+    "d2_absolute_error_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "d2_pinball_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "d2_tweedie_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "explained_variance_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "max_error": {
+      "assert_type": "MODEL_PERF"
+    },
+    "mean_absolute_error": {
+      "assert_type": "MODEL_PERF"
+    },
+    "mean_absolute_percentage_error": {
+      "assert_type": "MODEL_PERF"
+    },
+    "mean_gamma_deviance": {
+      "assert_type": "MODEL_PERF"
+    },
+    "mean_pinball_loss": {
+      "assert_type": "MODEL_PERF"
+    },
+    "mean_poisson_deviance": {
+      "assert_type": "MODEL_PERF"
+    },
+    "mean_squared_error": {
+      "assert_type": "MODEL_PERF"
+    },
+    "mean_squared_log_error": {
+      "assert_type": "MODEL_PERF"
+    },
+    "mean_tweedie_deviance": {
+      "assert_type": "MODEL_PERF"
+    },
+    "median_absolute_error": {
+      "assert_type": "MODEL_PERF"
+    },
+    "r2_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "root_mean_squared_error": {
+      "assert_type": "MODEL_PERF"
+    },
+    "root_mean_squared_log_error": {
+      "assert_type": "MODEL_PERF"
+    },
+    "coverage_error": {
+      "assert_type": "MODEL_PERF"
+    },
+    "label_ranking_average_precision_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "label_ranking_loss": {
+      "assert_type": "MODEL_PERF"
+    },
+    "adjusted_mutual_info_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "adjusted_rand_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "calinski_harabasz_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "contingency_matrix": {
+      "assert_type": "MODEL_PERF"
+    },
+    "pair_confusion_matrix": {
+      "assert_type": "MODEL_PERF"
+    },
+    "completeness_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "davies_bouldin_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "fowlkes_mallows_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "homogeneity_completeness_v_measure": {
+      "assert_type": "MODEL_PERF"
+    },
+    "homogeneity_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "mutual_info_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "normalized_mutual_info_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "rand_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "silhouette_samples": {
+      "assert_type": "MODEL_PERF"
+    },
+    "silhouette_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "v_measure_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "consensus_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "DistanceMetric": {
+      "assert_type": "MODEL_PERF"
+    },
+    "additive_chi2_kernel": {
+      "assert_type": "MODEL_PERF"
+    },
+    "chi2_kernel": {
+      "assert_type": "MODEL_PERF"
+    },
+    "cosine_distances": {
+      "assert_type": "MODEL_PERF"
+    },
+    "cosine_similarity": {
+      "assert_type": "MODEL_PERF"
+    },
+    "distance_metrics": {
+      "assert_type": "MODEL_PERF"
+    },
+    "euclidean_distances": {
+      "assert_type": "MODEL_PERF"
+    },
+    "haversine_distances": {
+      "assert_type": "MODEL_PERF"
+    },
+    "kernel_metrics": {
+      "assert_type": "MODEL_PERF"
+    },
+    "laplacian_kernel": {
+      "assert_type": "MODEL_PERF"
+    },
+    "linear_kernel": {
+      "assert_type": "MODEL_PERF"
+    },
+    "manhattan_distances": {
+      "assert_type": "MODEL_PERF"
+    },
+    "nan_euclidean_distances": {
+      "assert_type": "MODEL_PERF"
+    },
+    "paired_cosine_distances": {
+      "assert_type": "MODEL_PERF"
+    },
+    "paired_distances": {
+      "assert_type": "MODEL_PERF"
+    },
+    "paired_euclidean_distances": {
+      "assert_type": "MODEL_PERF"
+    },
+    "paired_manhattan_distances": {
+      "assert_type": "MODEL_PERF"
+    },
+    "pairwise_kernels": {
+      "assert_type": "MODEL_PERF"
+    },
+    "polynomial_kernel": {
+      "assert_type": "MODEL_PERF"
+    },
+    "rbf_kernel": {
+      "assert_type": "MODEL_PERF"
+    },
+    "sigmoid_kernel": {
+      "assert_type": "MODEL_PERF"
+    },
+    "pairwise_distances": {
+      "assert_type": "MODEL_PERF"
+    },
+    "pairwise_distances_argmin": {
+      "assert_type": "MODEL_PERF"
+    },
+    "pairwise_distances_argmin_min": {
+      "assert_type": "MODEL_PERF"
+    },
+    "pairwise_distances_chunked": {
+      "assert_type": "MODEL_PERF"
+    },
+    "logloss": {
+      "assert_type": "MODEL_PERF"
+    },
+    "evaluate": {
+      "assert_type": "MODEL_PERF"
+    },
+    "best_score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "score": {
+      "assert_type": "MODEL_PERF"
+    },
+    "classification_report": {
+      "assert_type": "MODEL_PERF"
+    },
+    "confusion_matrix": {
+      "assert_type": "MODEL_PERF"
+    },
+    "show": {
+      "assert_type": "PLOT"
+    },
+    "bar": {
+      "assert_type": "PLOT"
+    },
+    "beeswarm": {
+      "assert_type": "PLOT"
+    },
+    "benchmark": {
+      "assert_type": "PLOT"
+    },
+    "decision": {
+      "assert_type": "PLOT"
+    },
+    "embedding": {
+      "assert_type": "PLOT"
+    },
+    "group_difference": {
+      "assert_type": "PLOT"
+    },
+    "heatmap": {
+      "assert_type": "PLOT"
+    },
+    "image": {
+      "assert_type": "PLOT"
+    },
+    "monitoring": {
+      "assert_type": "PLOT"
+    },
+    "partial_dependence": {
+      "assert_type": "PLOT"
+    },
+    "scatter": {
+      "assert_type": "PLOT"
+    },
+    "violin": {
+      "assert_type": "PLOT"
+    },
+    "waterfall": {
+      "assert_type": "PLOT"
+    },
+    "bar_plot": {
+      "assert_type": "PLOT"
+    },
+    "beeswarm_plot": {
+      "assert_type": "PLOT"
+    },
+    "benchmark_plot": {
+      "assert_type": "PLOT"
+    },
+    "decision_plot": {
+      "assert_type": "PLOT"
+    },
+    "embedding_plot": {
+      "assert_type": "PLOT"
+    },
+    "group_difference_plot": {
+      "assert_type": "PLOT"
+    },
+    "heatmap_plot": {
+      "assert_type": "PLOT"
+    },
+    "image_plot": {
+      "assert_type": "PLOT"
+    },
+    "monitoring_plot": {
+      "assert_type": "PLOT"
+    },
+    "partial_dependence_plot": {
+      "assert_type": "PLOT"
+    },
+    "scatter_plot": {
+      "assert_type": "PLOT"
+    },
+    "violin_plot": {
+      "assert_type": "PLOT"
+    },
+    "waterfall_plot": {
+      "assert_type": "PLOT"
+    }
+  }
+}
