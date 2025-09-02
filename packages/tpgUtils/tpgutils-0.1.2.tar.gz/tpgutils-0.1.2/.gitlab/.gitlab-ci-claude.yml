@@ -1,0 +1,194 @@
+# Official language image. Look for the different tagged releases at:
+# https://hub.docker.com/r/library/python/tags/
+image: python:latest
+
+# Define stages
+stages:
+  - test
+  - build
+  - deploy
+
+# Change pip's cache directory to be inside the project directory since we can
+# only cache local items.
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+# If you want to also cache the installed packages, you have to install
+# them in a virtualenv and cache it as well.
+cache:
+  paths:
+    - .cache/pip
+    - .venv/
+
+# The following example is for a project that runs branch and merge request pipelines
+# only, but does not run pipelines for any other case. It runs:
+#    Branch pipelines when a merge request is not open for the branch.
+#    Merge request pipelines when a merge request is open for the branch.
+workflow:
+  rules:
+    # Run on merge requests to main
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"'
+    # Run on main branch commits
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    # Run on ANY tag (this is key for your workflow)
+    - if: '$CI_COMMIT_TAG'
+    # Run on development branches when manually triggered
+    - if: '$CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != "main"'
+
+
+before_script:
+  - python --version ; pip --version  # For debugging
+  - curl -LsSf https://astral.sh/uv/install.sh | sh
+  - export PATH="$HOME/.local/bin:$PATH"
+  - uv --version
+  - uv venv
+  - source .venv/bin/activate
+
+# Test stage - include the test/coverage stage
+test:
+  stage: test
+  script:
+    # Install project with all dependencies from pyproject.toml
+    - uv sync --dev
+    # Add test dependencies if not in pyproject.toml
+    - uv add --dev pytest coverage
+    - uv pip install .
+    - uv pip install tox flake8 pytest # you can also use tox
+    - if [ -f requirements.txt ]; then uv pip install -r requirements.txt; fi
+
+    # Debug: show current directory and test structure
+    - pwd
+    - ls -la
+    - ls -la tests/
+
+    # Run tests with coverage
+    - cd tests/
+    - uv run coverage run -m pytest -vs
+    - uv run coverage report
+    - uv run coverage xml -o ../coverage.xml
+    - cd ..    # back to root
+
+  # Generate coverage report for GitLab
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+
+  # Store coverage artifacts
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    paths:
+      - coverage.xml
+    expire_in: 1 week
+
+# Build stage - create distribution packages
+build:
+  stage: build
+  script:
+    # Install build dependencies
+    - uv add --dev build twine
+
+    # Determine version based on context
+    - |
+      if [ "$CI_COMMIT_TAG" ]; then
+        # If we have a tag, use it
+        VERSION=$CI_COMMIT_TAG
+        echo "Using tag version: $VERSION"
+      else
+        # If no tag, create a dev version
+        VERSION=$(python -c "import datetime; print(f'0.0.0.dev{datetime.datetime.now().strftime(\"%Y%m%d%H%M%S\")}')")
+        echo "Using dev version: $VERSION"
+      fi
+
+    # Set version in your package (adjust this based on your project structure)
+    # Option 1: If using setuptools_scm, it should pick up git tags automatically
+    # Option 2: If you need to set version manually, uncomment and modify:
+    # - echo "__version__ = '$VERSION'" > src/your_package/_version.py
+
+    # Build the package
+    - uv run python -m build
+
+    # Verify the build
+    - ls -la dist/
+
+    # Store version for later jobs
+    - echo "$VERSION" > .version
+
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 hour
+  rules:
+    # Only build when we have a tag on main branch
+    #- if: '$CI_COMMIT_TAG && $CI_COMMIT_REF_NAME == "main"'
+    # Build on any tag
+    - if: '$CI_COMMIT_TAG '
+    # Allow manual trigger on any branch, any time
+    - when: manual  # Requires manual trigger
+
+
+# Deploy to PyPI - only runs on tags on main branch
+deploy_pypi:
+  stage: deploy
+  dependencies:
+    - build
+  id_tokens:
+    PYPI_ID_TOKEN:
+      aud: pypi
+  script:
+    # Install twine for uploading
+    - uv add --dev twine
+    - VERSION=$(cat .version)
+    - echo "Deploying version $VERSION to PyPI"
+    #- echo "Deploying version $CI_COMMIT_TAG to PyPI"
+    # Check the built packages
+    - uv run twine check dist/*
+     # Upload to PyPI using OIDC token
+    - TWINE_USERNAME=__token__ TWINE_PASSWORD="$PYPI_ID_TOKEN" uv run twine upload dist/*
+  rules:
+    # Only deploy when we have a tag on main branch
+    - if: '$CI_COMMIT_TAG && $CI_COMMIT_REF_NAME == "main"'
+  environment:
+    name: pypi
+    url: https://pypi.org/project/tpgUtils/
+
+# Optional: Deploy to Test PyPI for testing (manual trigger)
+deploy_test_pypi:
+  stage: deploy
+  dependencies:
+    - build
+  id_tokens:
+    TEST_PYPI_ID_TOKEN:
+      aud: testpypi
+  script:
+    # Install twine for uploading
+    - uv add twine
+    - echo "Deploying version $CI_COMMIT_TAG to Test PyPI"
+    # set version
+    - VERSION=$(cat .version)
+    - echo "Deploying version $VERSION to Test PyPI"
+    # Check the built packages
+    - uv run twine check dist/*
+    # Upload to Test PyPI using OIDC token
+    - TWINE_USERNAME=__token__ TWINE_PASSWORD="$TEST_PYPI_ID_TOKEN" uv run twine upload --repository testpypi dist/*
+  rules:
+    # Only available when we have a tag on main branch
+    # - if: '$CI_COMMIT_TAG && $CI_COMMIT_REF_NAME == "main"'
+    - when: manual  # Requires manual trigger
+  environment:
+    name: test-pypi
+    url: https://test.pypi.org/project/tpgUtils/
+
+
+# pages:
+#   script:
+#     - pip install sphinx sphinx-rtd-theme
+#     - cd doc
+#     - make html
+#     - mv build/html/ ../public/
+#   artifacts:
+#     paths:
+#       - public
+#   rules:
+#     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+

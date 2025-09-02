@@ -1,0 +1,152 @@
+image: python:latest
+
+stages:
+  - test
+  - build
+  - deploy
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths:
+    - .cache/pip
+    - .venv/
+
+before_script:
+  - python --version ; pip --version
+  - curl -LsSf https://astral.sh/uv/install.sh | sh
+  - export PATH="$HOME/.local/bin:$PATH"
+  - uv venv
+  - source .venv/bin/activate
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH         # run on any branch
+    - if: $CI_COMMIT_TAG            # run on tags
+
+# ---- Test job ----
+test:
+  stage: test
+  script:
+    # Install project with all dependencies from pyproject.toml
+    - uv sync --dev
+    # Add test dependencies if not in pyproject.toml
+    - uv add --dev pytest coverage
+    #- uv run pytest --maxfail=1 --disable-warnings -q
+    # Run tests with coverage
+    #- cd tests/
+    - uv run coverage run -m pytest --maxfail=1 --disable-warnings -q
+    - uv run coverage report
+    - uv run coverage xml -o ../coverage.xml
+
+  # Generate coverage report for GitLab
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  # Store coverage artifacts
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    paths:
+      - coverage.xml
+    expire_in: 1 week
+
+
+# ---- Build job ----
+build:
+  stage: build
+  script:
+    - uv add --dev build
+    # Adjust version if NOT a tag (for TestPyPI builds)
+    # - uv run python -m build
+    - uv build
+    - ls -la dist/
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1h
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: '$CI_COMMIT_BRANCH == "ci"'   # run build on every push to ci
+    - when: manual  # allow manual build anytime
+
+# ---- Deploy to TestPyPI (manual) ----
+deploy_test_pypi:
+  stage: deploy
+  dependencies: [build]
+  id_tokens:
+    TEST_PYPI_ID_TOKEN:
+      aud: test-pypi
+  script:
+    - echo "Deploying to TestPyPI (debug version)..."
+
+    # Check the built packages
+    - uv add twine
+    - uv run twine check dist/*
+    # - if [ -n "$TEST_PYPI_ID_TOKEN" ]; then echo "OIDC token is set"; else echo "OIDC token is EMPTY"; fi
+    # - TWINE_USERNAME=__token__ TWINE_PASSWORD="$TEST_PYPI_ID_TOKEN" uv run python -m twine upload --verbose --repository testpypi dist/*
+    - uv publish --token ${tpgutils_testpypi} --publish-url https://test.pypi.org/legacy/
+
+  rules:
+    #- if: '$CI_COMMIT_BRANCH == "ci"'   # run build on every push to ci
+    - when: manual
+  environment:
+    name: test-pypi
+    url: https://test.pypi.org/project/${CI_PROJECT_NAME}/
+
+# ---- Deploy to real PyPI (only tags on main) ----
+deploy_pypi:
+  stage: deploy
+  dependencies: [build]
+  id_tokens:
+    PYPI_ID_TOKEN:
+      aud: pypi
+  script:
+    - echo "Deploying version $CI_COMMIT_TAG to PyPI"
+
+    # Check the built packages
+    - uv add twine
+    - uv run twine check dist/*
+
+    #- TWINE_USERNAME=__token__ TWINE_PASSWORD="$PYPI_ID_TOKEN" uv run twine upload --repository pypi dist/*
+    - uv publish --token ${tpgutils_pypi}
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == "main"
+    - when: manual
+  environment:
+    name: pypi
+    url: https://pypi.org/project/${CI_PROJECT_NAME}/
+
+
+deploy_test_pypi_debug:
+  stage: deploy
+  dependencies: [build]
+  id_tokens:
+    TEST_PYPI_ID_TOKEN:
+      aud: test-pypi
+  script:
+    # Install twine inside uv venv (optional, you can also use system python)
+    - echo "Deploying to TestPyPI (debug version)..."
+
+    # Check the built packages
+    - uv add twine
+    - uv run twine check dist/*
+
+    # Upload using a static TestPyPI API token stored in GitLab CI/CD
+    - if [ -n "$TEST_PYPI_ID_TOKEN" ]; then echo "OIDC token is set"; else echo "OIDC token is EMPTY"; fi
+
+    # debug
+    - echo "https://test.pypi.org/project/${CI_PROJECT_NAME}/"
+    - echo "proj var-- ${testpypi_token}"
+
+    #- uv publish --token $TEST_PYPI_ID_TOKEN --publish-url https://test.pypi.org/legacy/
+    - uv publish --token ${tpgutils_testpypi} --publish-url https://test.pypi.org/legacy/
+
+    #- TWINE_USERNAME=__token__ TWINE_PASSWORD="$TEST_PYPI_ID_TOKEN" uv run python -m twine upload --verbose --repository testpypi dist/*
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "ci"'   # run on every push to ci branch
+  environment:
+    name: test-pypi
+    url: https://test.pypi.org/project/${CI_PROJECT_NAME}
