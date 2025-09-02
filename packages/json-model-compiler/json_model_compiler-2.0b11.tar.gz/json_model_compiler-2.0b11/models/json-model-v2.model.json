@@ -1,0 +1,72 @@
+{
+  "#": "Self-Validating JSON Model v2",
+  "#.doc": "see [JSON Model](https://json-model.org)",
+  "~": "https://json-model.org/models/json-model",
+  "$": {
+    "#": "use minimal predefs",
+    "": "https://json-model.org/models/json-model",
+    "Url": "/^((file|https?)://.+|\\./.*|\\.\\./.*)$/",
+    "PreDef": {
+      "|": [
+        "_$DATE", "_$TIME", "_$DATETIME", "_$URL", "_$URI",
+        "_$UUID", "_$EMAIL", "_$REGEX", "_$EXREG",
+        "_$NULL", "_$BOOL", "_$FLOAT", "_$F16", "_$F32", "_$F64", "_$NUMBER",
+        "_$INT", "_$INTEGER", "_$I8", "_$I16", "_$I32", "_$I64", "_$U8", "_$U16", "_$U32", "_$U64",
+        "_$STRING",
+        "_$NONE", "_$ANY"
+      ]
+    },
+    "Identifier": { "&": [ "/^\\w+$/", "/[^A-Z0-9]/" ] },
+    "ArrayComment": "/^#/",
+    "ObjectComment": { "?#": "", "/^#/": "$ANY" },
+    "Ref": "/^\\$./",
+    "ValConst": "/^=(null|true|false|[-+]?\\d+(\\.\\d+)?([Ee][-+]?\\d+)?)$/",
+    "StrConst": "/^[A-Za-z0-9_]/",
+    "Regex": { "|": [ "/^/($EXREG)/[a-z]*X[a-z]*$/X", "/^/($REGEX)/[a-z]*$/X" ] },
+    "Name": "/^\\..+$/",
+    "CmpValue": { "|": [ -1, -1.0, "" ] },
+    "EqValue": { "|":  [ null, true, "$CmpValue" ] },
+    "ValModel": { "|": [ "=null", "=true", "=0", "=1", "=-1", "=0.0", "=1.0", "=-1.0" ] },
+    "StrModel": { "|": [ "$StrConst", "$ValConst", "$Regex", "$PreDef", "$Ref", "_" ] },
+    "Any": { "&": [ ] },
+    "None": { "|": [ ] },
+    "Array": [ { "|": ["$Model", "$ArrayComment"] } ],
+    "Common": "$ObjectComment",
+    "Constraint": {
+      "_@": "$Model",
+      "/^(<=|>=|<|>)$/": "$CmpValue",
+      "/^(=|!=)$/": "$EqValue",
+      "?!": true
+    },
+    "Or": { "_|": [ "$Model" ] },
+    "And": { "_&": [ "$Model" ] },
+    "Xor": { "_^": [ "$Model" ] },
+    "Add": { "_+": [ "$Model" ] },
+    "Prop": { "|": [ "/^[?!]/", "$StrConst", "$Regex", "$Ref", "$Name", "_" ] },
+    "Obj": { "$Prop": "$Model" },
+    "Elem": { "|": [ "$Constraint", "$Or", "$And", "$Xor", "$Add", "$Obj" ] },
+    "Element": { "+": [ "$Common", "$Elem" ] },
+    "Trafo": {
+      "#": "remove, rename or add stuff",
+      "?/": { "|": [ "$EqValue", [ "$Any" ] ] },
+      "?~": { "": "" },
+      "?*": { "|": [ [ "$Any" ], { "": "$Model" }, "$Any" ] }
+    },
+    "Transformation": { "|": [ "$Model", { "+": [ "$Common", "$Trafo" ] } ] },
+    "ScalarModel": { "|": [ "$ValModel", "$StrModel" ] },
+    "Model": { "|": [ "$ScalarModel", "$Array", "$Element" ] },
+    "Defs": { "?": "$Url", "$Identifier": "$Model" },
+    "Rename": { "$Name": "/^([#|&^+/*@~=$%]|[<>!]=?)$/" },
+    "Rewrite": { "/^\\$.*$/": "$Transformation" },
+    "Import": { "?<": { "|": [ "$Ref", [ "$Ref" ] ] } },
+    "RootOnly": {
+      "#": "symbols that can only appear at the model's root",
+      "?~": "$Url",
+      "?$": { "+": [ "$Common", "$Defs" ] },
+      "?%": { "+": [ "$Common", "$Rename", "$Rewrite", "$Import" ] }
+    },
+    "Root": { "+": [ "$RootOnly", "$Element" ] },
+    "RootModel": { "|": [ "$ScalarModel", "$Array", "$Root" ] }
+  },
+  "@": "$RootModel"
+}
