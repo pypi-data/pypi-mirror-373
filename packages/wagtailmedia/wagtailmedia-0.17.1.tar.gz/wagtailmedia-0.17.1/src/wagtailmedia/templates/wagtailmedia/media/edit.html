@@ -1,0 +1,65 @@
+{% extends "wagtailadmin/base.html" %}
+{% load i18n media_tags %}
+{% block titletag %}{% blocktrans with title=media.title %}Editing {{ title }}{% endblocktrans %}{% endblock %}
+
+{% block extra_js %}
+    {{ block.super }}
+    {{ form.media.js }}
+
+{% endblock %}
+
+{% block extra_css %}
+    {{ block.super }}
+    {{ form.media.css }}
+{% endblock %}
+
+{% block content %}
+    {% trans "Editing" as editing_str %}
+    {% include "wagtailadmin/shared/header.html" with title=editing_str subtitle=media.title icon=media.icon %}
+    {% include "wagtailadmin/shared/non_field_errors.html" %}
+
+    {% wagtail_version_gte "6.1" as wagtail_gte_61 %}
+
+    {% block form_row %}
+        <div class="row row-flush nice-padding">
+            <div class="col10{% if not wagtail_gte_61 %} divider-after{% endif %}">
+                <form action="{% block action %}{% url 'wagtailmedia:edit' media.pk %}{% endblock %}" method="POST" enctype="multipart/form-data" novalidate>
+                    {% csrf_token %}
+                    {% if next %}<input type="hidden" value="{{ next }}" name="next">{% endif %}
+                    <ul class="fields">
+                        {% for field in form %}
+                            {% if field.name == 'file' %}
+                                {% include "wagtailmedia/media/_file_field_as_li.html" %}
+                            {% elif field.name == 'thumbnail' %}
+                                {% include "wagtailmedia/media/_thumbnail_field_as_li.html" %}
+                            {% else %}
+                                <li>{% include "wagtailadmin/shared/field.html" with field=field %}</li>
+                            {% endif %}
+                        {% endfor %}
+                        <li>
+                            <button type="submit" class="button">{% trans 'Save' %}</button>
+                            {% if user_can_delete %}
+                                <a href="{% url 'wagtailmedia:delete' media.pk %}{% if next %}?next={{ next|urlencode }}{% endif %}" class="button button-secondary no">{% trans "Delete" %}</a>
+                            {% endif %}
+                        </li>
+                    </ul>
+                </form>
+            </div>
+            <div class="col2">
+                <dl>
+                    {% block media_stats %}
+                        {% if media.file %}
+                            <dt>{% trans "Filesize" %}</dt>
+                            <dd>{% if filesize %}{{ filesize|filesizeformat }}{% else %}{% trans "File not found" %}{% endif %}</dd>
+                        {% endif %}
+
+                        <dt>{% trans "Usage" %}</dt>
+                        <dd>
+                            <a href="{{ media.usage_url }}">{% blocktrans count usage_count=media.get_usage.count %}Used {{ usage_count }} time{% plural %}Used {{ usage_count }} times{% endblocktrans %}</a>
+                        </dd>
+                    {% endblock %}
+                </dl>
+            </div>
+        </div>
+    {% endblock %}
+{% endblock %}
