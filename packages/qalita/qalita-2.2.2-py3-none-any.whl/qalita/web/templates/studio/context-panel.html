@@ -1,0 +1,82 @@
+<div id="context_panel_root" style="position:relative;">
+  <div id="backend_status_dot" title="Checking backend..." style="position:absolute; top:10px; right:10px; width:10px; height:10px; border-radius:50%; background:#9ca3af; box-shadow:0 0 0 1px #e5e7eb;"></div>
+  <div class="right" style="display:flex;align-items:center;gap:8px;">
+    <p style="margin: 0px; min-width: 130px;">Platform Context</p>
+    <select id="ctx_select" class="ctx-select" style="margin-top: 0px; cursor:pointer;"></select>
+  </div>
+  <div id="setup_platform_card" class="studio-setup-card" style="display:none;">
+    <div style="display:flex; align-items:flex-start; gap:10px;">
+      <div>
+        <div class="studio-setup-title">Setup platform</div>
+        <div class="studio-setup-text">
+          Your current context doesn't provide Qalita platform credentials.<br><br>
+          To use contextual data quality metadata, configure your Platform endpoint and token.
+        </div>
+        <div class="studio-setup-actions">
+          <a class="studio-setup-doc-btn" href="https://cloud.platform.qalita.io/signup" target="_blank" rel="noopener noreferrer">Create a free account</a>
+        </div>
+        <div class="studio-setup-actions">
+          <a class="studio-setup-doc-btn outlined" href="https://doc.qalita.io/docs/studio" target="_blank" rel="noopener noreferrer">Open documentation</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  (function () {
+    function showSetupCardIfNeeded(status) {
+      try {
+        var card = document.getElementById('setup_platform_card');
+        if (!card) return;
+        var configured = !!(status && status.configured);
+        var endpointPresent = !!(status && status.endpoint_present);
+        var tokenPresent = !!(status && status.token_present);
+        // Show card if either endpoint or token is missing
+        if (!endpointPresent || !tokenPresent) {
+          card.style.display = 'block';
+        } else {
+          card.style.display = 'none';
+        }
+      } catch (e) { /* noop */ }
+    }
+    function checkBackend() {
+      var dot = document.getElementById('backend_status_dot');
+      if (dot) { dot.style.background = '#9ca3af'; dot.title = 'Checking backend...'; }
+      // Use server-side proxy to avoid CORS and rely on current context
+      fetch('/studio/check-backend')
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          var isOk = !!(j && j.ok);
+          var url = (j && j.url) ? String(j.url) : '';
+          var code = (j && j.status != null) ? String(j.status) : 'N/A';
+          if (dot) { dot.style.background = isOk ? '#10b981' : '#ef4444'; dot.title = (isOk ? 'Backend reachable: ' : 'Backend not reachable: ') + (url || '(unknown)') + ' (HTTP ' + code + ')'; }
+          showSetupCardIfNeeded(j || {});
+        })
+        .catch(function () { if (dot) { dot.style.background = '#ef4444'; dot.title = 'Backend check failed'; } });
+    }
+    function loadContexts() {
+      fetch('/contexts').then(r => r.json()).then(j => {
+        var sel = document.getElementById('ctx_select'); if (!sel) return;
+        sel.innerHTML = '';
+        var opt = document.createElement('option');
+        opt.value = ''; opt.textContent = 'Default context'; sel.appendChild(opt);
+        (j.items || []).forEach(function (it) {
+          var o = document.createElement('option');
+          o.value = it.path; o.textContent = it.name; sel.appendChild(o);
+        });
+        if (j.selected) { sel.value = j.selected; }
+      }).catch(() => { });
+    }
+    function onSelect() {
+      var sel = document.getElementById('ctx_select'); if (!sel) return;
+      fetch('/context/select', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: sel.value }) })
+        .then(() => { window.location.reload(); })
+        .catch(() => { window.location.reload(); });
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+      loadContexts();
+      var sel = document.getElementById('ctx_select'); if (sel) sel.addEventListener('change', onSelect);
+      checkBackend();
+    });
+  })();
+</script>

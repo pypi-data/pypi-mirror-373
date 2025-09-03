@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Qalita CLI - {{ title }}</title>
+  <link rel="icon" href="/static/favicon.ico" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+
+<body style="background-repeat: no-repeat;">
+  {% include 'navbar.html' %}
+  <div class="container-form">
+    <h1>{{ title }}</h1>
+    <div class="card">
+      {% if error %}
+      <div class="alert alert-error">{{ error }}</div>
+      {% endif %}
+      <div id="validate_result" class="alert alert-info hidden" style="margin-bottom:12px;"></div>
+      <form method="post">
+        <label style="margin-top: 0px;">Name
+          <input type="text" name="name" value="{{ (source.name if source) or '' }}" required />
+        </label>
+        <input type="hidden" name="original_name" value="{{ (source.name if source) or '' }}" />
+        <label>Description
+          <input type="text" name="description" value="{{ (source.description if source) or '' }}" />
+        </label>
+
+        <label>Type
+          <div class="type-field">
+            <img id="edit_type_icon" class="type-icon" src="/static/sources-logos/folder.svg" alt="type" />
+            <select name="type" id="edit_type" required>
+              {% for t in
+              ['file','csv','excel','folder','postgresql','mysql','oracle','mssql','sqlite','mongodb','s3','gcs','azure_blob','hdfs']
+              %}
+              <option value="{{t}}" {% if (source and source.type==t) or (not source and preselected_type and preselected_type==t) %}selected{% endif %}>{{t}}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </label>
+
+        <!-- Dynamic fields by type -->
+        <div id="edit_fields_file" class="edit-type-fields hidden">
+          <label>File path
+            <div class="row" style="grid-template-columns: 1fr auto; align-items: end;">
+              <input type="text" id="file_path" name="file_path" style="width: 100%;"
+                value="{{ (source.config.path if source and source.config) or '' }}" />
+              <button class="btn secondary" type="button" id="btn_browse_file">Browse…</button>
+            </div>
+          </label>
+        </div>
+
+        <div id="edit_fields_csv" class="edit-type-fields hidden">
+          <label>CSV file path
+            <div class="row" style="grid-template-columns: 1fr auto; align-items: end;">
+              <input type="text" id="csv_path" name="csv_path" style="width: 100%;"
+                value="{{ (source.config.path if source and source.config) or '' }}" />
+              <button class="btn secondary" type="button" id="btn_browse_csv">Browse…</button>
+            </div>
+          </label>
+          <div class="row">
+            <div><label>Delimiter<input type="text" name="csv_delimiter" value="," /></label></div>
+            <div><label>Encoding<input type="text" name="csv_encoding" value="utf-8" /></label></div>
+          </div>
+          <label><input type="checkbox" name="csv_header" checked /> Has header row</label>
+        </div>
+
+        <div id="edit_fields_excel" class="edit-type-fields hidden">
+          <label>Excel file path
+            <div class="row" style="grid-template-columns: 1fr auto; align-items: end;">
+              <input type="text" id="excel_path" name="excel_path" style="width: 100%;"
+                value="{{ (source.config.path if source and source.config) or '' }}" />
+              <button class="btn secondary" type="button" id="btn_browse_excel">Browse…</button>
+            </div>
+          </label>
+          <div class="row">
+            <div><label>Sheet name<input type="text" name="excel_sheet" value="" /></label></div>
+            <div><label>Header row index<input type="number" name="excel_header_row" value="1" /></label></div>
+          </div>
+        </div>
+
+        <div id="edit_fields_folder" class="edit-type-fields hidden">
+          <label>Folder path
+            <div class="row" style="grid-template-columns: 1fr auto; align-items: end;">
+              <input type="text" id="folder_path" name="folder_path"
+                value="{{ (source.config.path if source and source.config) or '' }}" />
+              <button class="btn secondary" type="button" id="btn_browse_folder">Browse…</button>
+            </div>
+          </label>
+        </div>
+
+        <div id="edit_fields_sqlite" class="edit-type-fields hidden">
+          <label>SQLite file path
+            <div class="row" style="grid-template-columns: 1fr auto; align-items: end;">
+              <input type="text" id="sqlite_file_path" name="sqlite_file_path" style="width: 100%;"
+                value="{{ (source.config.file_path if source and source.config) or '' }}" />
+              <button class="btn secondary" type="button" id="btn_browse_sqlite">Browse…</button>
+            </div>
+          </label>
+        </div>
+
+        <div id="edit_fields_db" class="edit-type-fields hidden">
+          <div class="row">
+            <div>
+              <label>Host<input type="text" name="db_host"
+                  value="{{ (source.config.host if source and source.config) or '' }}" /></label>
+            </div>
+            <div>
+              <label>Port<input type="number" name="db_port"
+                  value="{{ (source.config.port if source and source.config) or '' }}" /></label>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Username<input type="text" name="db_username"
+                  value="{{ (source.config.username if source and source.config) or '' }}" /></label>
+            </div>
+            <div>
+              <label>Password<input type="password" name="db_password"
+                  value="{{ (source.config.password if source and source.config) or '' }}" /></label>
+            </div>
+          </div>
+          <label>Database
+            <input type="text" name="db_database"
+              value="{{ (source.config.database if source and source.config) or '' }}" />
+          </label>
+          <label id="db_schema_field" class="hidden">Schema (PostgreSQL/Oracle)
+            <input type="text" name="db_schema"
+              value="{{ (source.config.schema if source and source.config) or '' }}" />
+          </label>
+          <label>Tables or SQL (default '*')
+            <input type="text" name="db_table_or_query"
+              value="{{ (source.config.table_or_query if source and source.config) or '*' }}" />
+          </label>
+        </div>
+
+        <div id="edit_fields_mongodb" class="edit-type-fields hidden">
+          <div class="row">
+            <div>
+              <label>Host<input type="text" name="mongo_host"
+                  value="{{ (source.config.host if source and source.config) or '' }}" /></label>
+            </div>
+            <div>
+              <label>Port<input type="number" name="mongo_port"
+                  value="{{ (source.config.port if source and source.config) or '' }}" /></label>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Username<input type="text" name="mongo_username"
+                  value="{{ (source.config.username if source and source.config) or '' }}" /></label>
+            </div>
+            <div>
+              <label>Password<input type="password" name="mongo_password"
+                  value="{{ (source.config.password if source and source.config) or '' }}" /></label>
+            </div>
+          </div>
+          <label>Database<input type="text" name="mongo_database"
+              value="{{ (source.config.database if source and source.config) or '' }}" /></label>
+        </div>
+
+        <div id="edit_fields_s3" class="edit-type-fields hidden">
+          <label>Bucket<input type="text" name="s3_bucket"
+              value="{{ (source.config.bucket if source and source.config) or '' }}" /></label>
+          <label>Prefix<input type="text" name="s3_prefix"
+              value="{{ (source.config.prefix if source and source.config) or '' }}" /></label>
+          <div class="row">
+            <div><label>Access key<input type="text" name="s3_access_key"
+                  value="{{ (source.config.access_key if source and source.config) or '' }}" /></label></div>
+            <div><label>Secret key<input type="password" name="s3_secret_key"
+                  value="{{ (source.config.secret_key if source and source.config) or '' }}" /></label></div>
+          </div>
+          <label>Region<input type="text" name="s3_region"
+              value="{{ (source.config.region if source and source.config) or '' }}" /></label>
+        </div>
+
+        <div id="edit_fields_gcs" class="edit-type-fields hidden">
+          <label>Bucket<input type="text" name="gcs_bucket"
+              value="{{ (source.config.bucket if source and source.config) or '' }}" /></label>
+          <label>Prefix<input type="text" name="gcs_prefix"
+              value="{{ (source.config.prefix if source and source.config) or '' }}" /></label>
+          <label>Credentials JSON path<input type="text" name="gcs_credentials"
+              value="{{ (source.config.credentials_json if source and source.config) or '' }}" /></label>
+        </div>
+
+        <div id="edit_fields_azure" class="edit-type-fields hidden">
+          <label>Container<input type="text" name="az_container"
+              value="{{ (source.config.container if source and source.config) or '' }}" /></label>
+          <label>Prefix<input type="text" name="az_prefix"
+              value="{{ (source.config.prefix if source and source.config) or '' }}" /></label>
+          <label>Connection string<input type="password" name="az_connection"
+              value="{{ (source.config.connection_string if source and source.config) or '' }}" /></label>
+        </div>
+
+        <div id="edit_fields_hdfs" class="edit-type-fields hidden">
+          <label>Namenode host<input type="text" name="hdfs_namenode"
+              value="{{ (source.config.namenode_host if source and source.config) or '' }}" /></label>
+          <label>Port<input type="number" name="hdfs_port"
+              value="{{ (source.config.port if source and source.config) or '' }}" /></label>
+          <label>User<input type="text" name="hdfs_user"
+              value="{{ (source.config.user if source and source.config) or '' }}" /></label>
+          <label>Path<input type="text" name="hdfs_path"
+              value="{{ (source.config.path if source and source.config) or '' }}" /></label>
+        </div>
+
+
+        <div class="row" style="margin-bottom:12px;">
+          <div>
+            <label>Visibility
+              <div class="vis-field">
+                <span id="vis_icon" class="vis-icon" aria-hidden="true"></span>
+                <select name="visibility" id="edit_visibility">
+                  {% for v in ['private','internal','public'] %}
+                  <option value="{{v}}" {% if source and source.visibility==v %}selected{% endif %}>{{v}}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </label>
+          </div>
+          <div>
+            <label><input type="checkbox" name="reference" {% if source and source.reference %}checked{% endif %} />
+              Reference</label>
+            <label><input type="checkbox" name="sensitive" {% if source and source.sensitive %}checked{% endif %} />
+              Sensitive</label>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn secondary" type="button" id="btn_validate_form">Validate</button>
+          <button class="btn" type="submit">Save</button>
+          <a class="btn secondary" href="/">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const tSel = document.getElementById('edit_type');
+    const vSel = document.getElementById('edit_visibility');
+    const ICONS = {
+      file: 'file.svg', csv: 'csv.svg', excel: 'excel.svg', folder: 'folder.svg', postgresql: 'postgresql.svg', mysql: 'mysql.svg', oracle: 'oracle.svg', mssql: 'mssql.svg', sqlite: 'sqlite.svg', mongodb: 'mongodb.svg', s3: 's3.svg', gcs: 'gcs.png', azure_blob: 'azure_blob.svg', hdfs: 'hdfs.svg'
+    };
+    function show(id, v) { const el = document.getElementById(id); if (el) { el.classList.toggle('hidden', !v); } }
+    function updateTypeIcon() {
+      const t = tSel ? tSel.value : 'folder';
+      const file = ICONS[t] || 'folder.svg';
+      const el = document.getElementById('edit_type_icon');
+      if (el) { el.setAttribute('src', '/static/sources-logos/' + file); el.setAttribute('alt', t); }
+    }
+    function visibilityIconHTML(v) {
+      v = (v || '').toLowerCase();
+      if (v === 'private') return "<svg width='16' height='16' viewBox='0 0 20 20' fill='none' xmlns='http://www.w3.org/2000/svg'><rect x='3' y='9' width='14' height='8' rx='2' stroke='#374151' stroke-width='2'/><path d='M6 9V7a4 4 0 1 1 8 0v2' stroke='#374151' stroke-width='2' fill='none'/></svg>";
+      if (v === 'internal') return "<svg width='16' height='16' viewBox='0 0 20 20' fill='none' xmlns='http://www.w3.org/2000/svg'><rect x='3' y='6' width='14' height='10' rx='2' stroke='#0ea5e9' stroke-width='2'/><path d='M7 6V4h6v2' stroke='#0ea5e9' stroke-width='2'/></svg>";
+      if (v === 'public') return "<svg width='16' height='16' viewBox='0 0 20 20' fill='none' xmlns='http://www.w3.org/2000/svg'><circle cx='10' cy='10' r='8' stroke='#16a34a' stroke-width='2'/><path d='M2 10h16M10 2a12 12 0 0 1 0 16M10 2a12 12 0 0 0 0 16' stroke='#16a34a' stroke-width='2'/></svg>";
+      return '';
+    }
+    function updateVisIcon() {
+      const el = document.getElementById('vis_icon');
+      if (!el) return;
+      el.innerHTML = visibilityIconHTML(vSel ? vSel.value : 'private');
+    }
+    function updateTypeFields() {
+      const t = tSel ? tSel.value : 'file';
+      ['edit_fields_file', 'edit_fields_csv', 'edit_fields_excel', 'edit_fields_folder', 'edit_fields_sqlite', 'edit_fields_db', 'edit_fields_mongodb', 'edit_fields_s3', 'edit_fields_gcs', 'edit_fields_azure', 'edit_fields_hdfs'].forEach(id => show(id, false));
+      if (t === 'file') show('edit_fields_file', true);
+      if (t === 'csv') show('edit_fields_csv', true);
+      if (t === 'excel') show('edit_fields_excel', true);
+      if (t === 'folder') show('edit_fields_folder', true);
+      if (['mysql', 'postgresql', 'oracle', 'mssql'].includes(t)) show('edit_fields_db', true);
+      if (t === 'sqlite') show('edit_fields_sqlite', true);
+      if (t === 'mongodb') show('edit_fields_mongodb', true);
+      if (t === 's3') show('edit_fields_s3', true);
+      if (t === 'gcs') show('edit_fields_gcs', true);
+      if (t === 'azure_blob') show('edit_fields_azure', true);
+      if (t === 'hdfs') show('edit_fields_hdfs', true);
+      // Toggle schema field only for postgres/oracle
+      const schemaField = document.getElementById('db_schema_field');
+      if (schemaField) {
+        schemaField.classList.toggle('hidden', !(t === 'postgresql' || t === 'oracle'));
+      }
+    }
+    if (tSel) {
+      tSel.addEventListener('change', updateTypeIcon);
+      tSel.addEventListener('change', updateTypeFields);
+    }
+    if (vSel) { vSel.addEventListener('change', updateVisIcon); }
+    // Initialize on DOMContentLoaded to ensure elements exist
+    document.addEventListener('DOMContentLoaded', function () {
+      updateTypeIcon();
+      updateVisIcon();
+      updateTypeFields();
+
+      const browseFile = document.getElementById('btn_browse_file');
+      const browseFolder = document.getElementById('btn_browse_folder');
+      if (browseFile) {
+        browseFile.addEventListener('click', async () => {
+          try {
+            const res = await fetch('/sources/pick-file');
+            const data = await res.json();
+            if (data.path) {
+              const fp = document.getElementById('file_path');
+              if (fp) fp.value = data.path;
+            }
+          } catch (e) { /* ignore */ }
+        });
+      }
+      const browseCsv = document.getElementById('btn_browse_csv');
+      if (browseCsv) {
+        browseCsv.addEventListener('click', async () => {
+          try {
+            const res = await fetch('/sources/pick-file');
+            const data = await res.json();
+            if (data.path) {
+              const fp = document.getElementById('csv_path');
+              if (fp) fp.value = data.path;
+            }
+          } catch (e) { /* ignore */ }
+        });
+      }
+      const browseExcel = document.getElementById('btn_browse_excel');
+      if (browseExcel) {
+        browseExcel.addEventListener('click', async () => {
+          try {
+            const res = await fetch('/sources/pick-file');
+            const data = await res.json();
+            if (data.path) {
+              const fp = document.getElementById('excel_path');
+              if (fp) fp.value = data.path;
+            }
+          } catch (e) { /* ignore */ }
+        });
+      }
+      const browseSqlite = document.getElementById('btn_browse_sqlite');
+      if (browseSqlite) {
+        browseSqlite.addEventListener('click', async () => {
+          try {
+            const res = await fetch('/sources/pick-file');
+            const data = await res.json();
+            if (data.path) {
+              const fp = document.getElementById('sqlite_file_path');
+              if (fp) fp.value = data.path;
+            }
+          } catch (e) { /* ignore */ }
+        });
+      }
+      if (browseFolder) {
+        browseFolder.addEventListener('click', async () => {
+          try {
+            const res = await fetch('/sources/pick-folder');
+            const data = await res.json();
+            if (data.path) {
+              const dp = document.getElementById('folder_path');
+              if (dp) dp.value = data.path;
+            }
+          } catch (e) { /* ignore */ }
+        });
+      }
+
+      // Validate current form without saving
+      const btnValidate = document.getElementById('btn_validate_form');
+      if (btnValidate) {
+        btnValidate.addEventListener('click', async () => {
+          const form = btnValidate.closest('form');
+          const box = document.getElementById('validate_result');
+          if (!form || !box) return;
+          try {
+            btnValidate.disabled = true;
+            box.classList.add('hidden');
+            box.textContent = '';
+            const fd = new FormData(form);
+            const res = await fetch('/sources/validate', { method: 'POST', body: fd });
+            const j = await res.json();
+            const ok = !!(j && j.ok);
+            box.classList.remove('alert-error', 'alert-info');
+            box.classList.add(ok ? 'alert-info' : 'alert-error');
+            box.textContent = j && j.message ? j.message : (ok ? 'Valid.' : 'Invalid.');
+            box.classList.remove('hidden');
+          } catch (e) {
+            if (box) {
+              box.classList.remove('hidden');
+              box.classList.remove('alert-info');
+              box.classList.add('alert-error');
+              box.textContent = 'Validation failed due to a network error.';
+            }
+          } finally {
+            btnValidate.disabled = false;
+          }
+        });
+      }
+    });
+  </script>
+  <div class="footer">
+    <div class="inner">
+      <div>
+        <span>&copy; QALITA</span> — Qalita CLI
+      </div>
+      <div>
+        <span id="cli_version"></span>
+    </div>
+  </div>
+  <script>
+    (function () {
+      fetch('/static/version.json').then(r => r.json()).then(v => {
+        const el = document.getElementById('cli_version'); if (el) { el.textContent = (v && v.version) ? `CLI v${v.version}` : ''; }
+      }).catch(() => { });
+    })();
+  </script>
+</body>
+
+</html>
