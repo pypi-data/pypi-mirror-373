@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install build tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine
+        
+    - name: Validate version
+      run: |
+        TAG_VERSION=${GITHUB_REF#refs/tags/v}
+        PACKAGE_VERSION=$(python -c "import sys; sys.path.insert(0, '.'); import yt_info_extract; print(yt_info_extract.__version__)")
+        
+        if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
+          echo "❌ Version mismatch: tag=$TAG_VERSION, package=$PACKAGE_VERSION"
+          exit 1
+        fi
+        
+        echo "✅ Version validated: $TAG_VERSION"
+        
+    - name: Build package
+      run: |
+        python -m build
+        twine check dist/*
+        
+    - name: Test package
+      run: |
+        pip install dist/*.whl
+        python -c "import yt_info_extract; print(f'✓ Package works: v{yt_info_extract.__version__}')"
+        yt-info --help > /dev/null && echo "✓ CLI works"
+        
+    - name: Create GitHub Release
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: "dist/*"
+        generateReleaseNotes: true
+        
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}
