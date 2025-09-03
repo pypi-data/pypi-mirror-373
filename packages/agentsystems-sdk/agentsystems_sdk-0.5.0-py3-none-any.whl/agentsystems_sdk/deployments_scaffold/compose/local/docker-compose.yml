@@ -1,0 +1,110 @@
+
+services:
+  # Initialize artifacts volume with proper permissions
+  init-artifacts:
+    image: alpine:latest
+    volumes:
+      - agentsystems-artifacts:/artifacts
+      - ./init-artifacts-volume.sh:/init-artifacts-volume.sh:ro
+    command: sh /init-artifacts-volume.sh
+    restart: "no"
+
+  gateway:
+    image: ghcr.io/agentsystems/agent-control-plane:${ACP_TAG:-latest}
+    ports: ["18080:8080"]
+    depends_on: [postgres]
+    environment:
+      - PG_HOST=postgres
+      - PG_DB=agent_cp
+      - PG_USER=agent
+      - PG_PASSWORD=agent
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../../agentsystems-config.yml:/etc/agentsystems/agentsystems-config.yml
+      - ../../.env:/etc/agentsystems/.env
+      - agentsystems-artifacts:/artifacts
+    networks:
+      - agents-int
+      - agents-net
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: agent
+      POSTGRES_DB: agent_cp
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - agents-net
+
+  db-backup:
+    build: ./db-backup          # builds local backup image
+    # image: agentsystems/db-backup:latest      # commented to force local build
+    depends_on: [postgres]
+    env_file: ../../.env  # path relative to this compose file
+    environment:
+      - PG_HOST=postgres
+      - PG_DB=agent_cp
+      - PG_USER=agent
+      - PG_PASSWORD=agent
+
+    volumes:
+      - pgdata:/var/lib/postgresql/data:ro    # read-only access to PG data dir
+    networks:
+      - agents-net
+
+  agentsystems-ui:
+    image: ghcr.io/agentsystems/agentsystems-ui:${UI_TAG:-latest}
+    ports:
+      - "3001:80"
+    depends_on:
+      - gateway
+    # Use default environment variables from container (proxy paths)
+    # environment:
+    #   - API_GATEWAY_URL=/api
+    #   - WS_ENDPOINT_URL=ws://localhost:3001/api
+    networks:
+      - agents-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Local Ollama service for credential-free AI inference
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"  # Expose to host for debugging/management
+    volumes:
+      - ollama-models:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_ORIGINS=*  # Allow cross-origin requests
+    networks:
+      - agents-int  # Same network as agents
+      - agents-net  # Same network as gateway/UI
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  pgdata:
+  agentsystems-artifacts:
+  ollama-models:
+
+networks:
+  agents-net:
+    external: true
+  agents-int:
+    name: agents-int
+    internal: true
