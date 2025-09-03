@@ -1,0 +1,2 @@
+export const __webpack_ids__=["76506"];export const __webpack_modules__={51100:function(e,a,t){t.r(a),t.d(a,{MapViewStrategy:()=>o});var _=t(73742),p=t(59048),c=t(26292);class o extends p.fl{static async generate(e,a){return{type:"panel",title:a.localize("panel.map"),icon:"mdi:map",cards:[{type:"map",auto_fit:!0,show_all:!0}]}}}o=(0,_.__decorate)([(0,c.Mo)("map-view-strategy")],o)}};
+//# sourceMappingURL=76506.2d54547ac7217858.js.map
