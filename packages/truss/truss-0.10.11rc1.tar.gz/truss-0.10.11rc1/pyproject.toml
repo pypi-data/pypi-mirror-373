@@ -1,0 +1,185 @@
+[project]
+name = "truss"
+version = "0.10.11rc1"
+description = "A seamless bridge from model development to model delivery"
+authors = [
+    { name = "Pankaj Gupta", email = "no-reply@baseten.co" },
+    { name = "Phil Howes", email = "no-reply@baseten.co" },
+]
+requires-python = ">=3.9,<3.14"
+readme = "README.md"
+license = "MIT"
+keywords = [
+    "MLOps",
+    "AI",
+    "Model Serving",
+    "Model Deployment",
+    "Machine Learning",
+]
+dependencies = [
+    "huggingface_hub>=0.25.0",
+    "pydantic>=2.10.0",
+    "PyYAML>=6.0",
+    "tomlkit>=0.13.2",
+    "Jinja2>=3.1.2,<4",
+    "aiofiles>=24.1.0,<25",
+    "blake3>=1.0.4,<2",
+    "boto3>=1.34.85,<2",
+    "click>=8.0.3,<9",
+    "google-cloud-storage>=2.10.0",
+    "httpx>=0.24.1",
+    "httpx-ws>=0.7.1,<0.8",
+    "inquirerpy>=0.3.4,<0.4",
+    "libcst>=1.1.2",
+    "loguru>=0.7.2",
+    "packaging>=20.9",
+    "pathspec>=0.9.0",
+    "psutil>=5.9.4",
+    "python-json-logger>=2.0.2",
+    "python-on-whales>=0.68.0",
+    "requests>=2.31",
+    "rich>=13.4.2,<14",
+    "rich-click>=1.6.1,<2",
+    "ruff>=0.4.8",
+    "tenacity>=8.0.1",
+    "watchfiles>=0.19.0,<0.20",
+    "truss-transfer==0.0.29",
+]
+
+[project.urls]
+Repository = "https://github.com/basetenlabs/truss"
+Homepage = "https://truss.baseten.co"
+"Bug Reports" = "https://github.com/basetenlabs/truss/issues"
+Documentation = "https://truss.baseten.co"
+Baseten = "https://baseten.co"
+
+[project.scripts]
+truss = "truss.cli.cli:truss_cli"
+truss-docker-build-setup = "truss.contexts.docker_build_setup:docker_build_setup"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9.0,<0.10",
+    "coverage>=6.4.1,<7",
+    "httpx[cli]",
+    "ipdb>=0.13.9,<0.14",
+    "ipykernel>=6.16.0,<7",
+    "ipython~=7.16",
+    "mypy>=1.0.0,<2",
+    "nbconvert>=7.2.1,<8",
+    "pre-commit>=2.18.1,<3",
+    "pytest==7.2.0",
+    "pytest-asyncio>=0.23.6,<0.24",
+    "pytest-check>=2.4.1,<3",
+    "pytest-cov>=3.0.0,<4",
+    "pytest-split>=0.10.0",
+    "requests-mock>=1.11.0",
+    "types-PyYAML>=6.0.12.12,<7",
+    "types-aiofiles>=24.1.0",
+    "types-requests==2.31.0.2",
+    "types-setuptools>=69.0.0.0,<70",
+    "types-python-dateutil>=2.9.0.20250822",
+]
+dev-server = [
+    "aiohttp>3.11.13",
+    "fastapi>0.114",
+    "flask>=2.3.3,<3",
+    "msgpack>=1.0.2",
+    "msgpack-numpy>=0.4.8",
+    "numpy>=1.23.5",
+    "opentelemetry-api>=1.25.0",
+    "opentelemetry-exporter-otlp>=1.25.0",
+    "opentelemetry-sdk>=1.25.0",
+    "prometheus-client>=0.21.1,<0.22",
+    "uvicorn>=0.24.0",
+    "uvloop>=0.17.0",
+    "websockets>=14.0",
+]
+
+[tool.uv]
+default-groups = [
+    "dev",
+    "dev-server",
+]
+
+# Simplified Hatchling configuration - let it auto-discover truss, manually include others
+[tool.hatch.build.targets.sdist]
+include = [
+    "truss/",
+    "truss-chains/truss_chains/",
+    "truss-train/truss_train/",
+    "*.txt",
+    "*.Dockerfile",
+    "*.md"
+]
+
+[tool.hatch.build.targets.wheel]
+only-include = [
+    "truss/",
+    "truss-chains/truss_chains/",
+    "truss-train/truss_train/"
+]
+
+[tool.hatch.build.targets.wheel.sources]
+"truss-chains/truss_chains" = "truss_chains"
+"truss-train/truss_train" = "truss_train"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.mypy]
+ignore_missing_imports = true
+python_version = "3.9"
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests as integration (deselect with '-m \"not integration\"').",
+    "asyncio: marks tests as async.",
+]
+# specify basetemp because the default `/private/var/...` interferes with truss_ignore, which also has a var/ pattern
+addopts = "--ignore=smoketests --ignore=baseten-performance-client --basetemp=/tmp/pytest-temp"
+# NB(nikhil): Ensures our relative imports work for tests, given non-traditional directory structure.
+pythonpath = [".", "truss-chains", "truss-train"]
+
+[tool.ruff]
+src = [".", "truss-chains", "truss-train"]
+# Parenthesized context managers are not supported in 3.8 but appear in the `templates` dir
+# which still supports 3.8. Therefore use 3.8 for formatting.
+target-version = "py38"
+line-length = 88
+lint.extend-select = [
+    "I", # isort
+]
+lint.ignore = [
+    "E402", # module-import-not-at-top
+]
+
+[tool.ruff.format]
+skip-magic-trailing-comma = true
+
+[tool.ruff.lint.isort]
+# Matches the Google Python Style Guide.
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
+split-on-trailing-comma = false
+
+[tool.ruff.lint.extend-per-file-ignores]
+"**tests/samples.py" = [
+    "I", # isort
+    "F", # flake8
+]
+"config.py" = [
+    "I", # isort
+    "F", # flake8
+]
+
+[tool.ruff.lint.pycodestyle]
+# The formatter can go sometimes go over the 88-character limit, so we want to provide some buffer.
+max-line-length = 120
