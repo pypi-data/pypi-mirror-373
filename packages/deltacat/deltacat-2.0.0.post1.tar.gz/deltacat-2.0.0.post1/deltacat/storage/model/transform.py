@@ -1,0 +1,343 @@
+from __future__ import annotations
+
+import base64
+from enum import Enum
+from typing import Dict, Any, Optional
+import pyarrow as pa
+
+from deltacat.constants import METAFILE_FORMAT, METAFILE_FORMAT_JSON
+
+
+class TransformName(str, Enum):
+    IDENTITY = "identity"
+    BUCKET = "bucket"
+    YEAR = "year"
+    MONTH = "month"
+    DAY = "day"
+    HOUR = "hour"
+    TRUNCATE = "truncate"
+    VOID = "void"
+    UNKNOWN = "unknown"
+
+
+class TransformParameters(dict):
+    """
+    This is a parent class that contains properties
+    to be passed to the corresponding transform
+    """
+
+    pass
+
+
+class BucketingStrategy(str, Enum):
+    """
+    A bucketing strategy for the transform
+    """
+
+    # Default DeltaCAT SHA-1 based hash bucketing strategy.
+    DEFAULT = "default"
+
+    # Iceberg-compliant murmur3 based hash bucketing strategy.
+    ICEBERG = "iceberg"
+
+
+class TruncateStrategy(str, Enum):
+    """
+    A truncation strategy for the transform
+    """
+
+    # Default DeltaCAT truncate strategy.
+    DEFAULT = "default"
+
+    # Iceberg-compliant truncate strategy.
+    ICEBERG = "iceberg"
+
+
+class BucketTransformParameters(TransformParameters):
+    """
+    Parameters for the bucket transform.
+    """
+
+    @staticmethod
+    def of(
+        num_buckets: int,
+        bucketing_strategy: BucketingStrategy = BucketingStrategy.DEFAULT,
+    ) -> BucketTransformParameters:
+        bucket_transform_parameters = BucketTransformParameters()
+        bucket_transform_parameters["numBuckets"] = num_buckets
+        bucket_transform_parameters["bucketingStrategy"] = bucketing_strategy
+
+        return bucket_transform_parameters
+
+    @property
+    def num_buckets(self) -> int:
+        """
+        The total number of buckets to create.
+        """
+        return self["numBuckets"]
+
+    @property
+    def bucketing_strategy(self) -> BucketingStrategy:
+        """
+        The bucketing strategy to use.
+        """
+        return BucketingStrategy(self["bucketingStrategy"])
+
+
+class TruncateTransformParameters(TransformParameters):
+    """
+    Parameters for the truncate transform.
+    """
+
+    @staticmethod
+    def of(
+        width: int,
+        truncate_strategy: TruncateStrategy = TruncateStrategy.DEFAULT,
+    ) -> TruncateTransformParameters:
+        truncate_transform_parameters = TruncateTransformParameters()
+        truncate_transform_parameters["width"] = width
+        truncate_transform_parameters["truncateStrategy"] = truncate_strategy
+        return truncate_transform_parameters
+
+    @property
+    def width(self) -> int:
+        """
+        The width to truncate the field to.
+        """
+        return self["width"]
+
+    @property
+    def truncate_strategy(self) -> TruncateStrategy:
+        """
+        The truncate strategy to use.
+        """
+        return TruncateStrategy(self["truncateStrategy"])
+
+
+class Transform(dict):
+    """
+    A transform represents how a particular column value can be
+    transformed into a new value. For example, transforms may be used
+    to determine partition or sort values for table records.
+    """
+
+    @property
+    def name(self) -> TransformName:
+        return TransformName(self["name"])
+
+    @name.setter
+    def name(self, name: TransformName) -> None:
+        self["name"] = name
+
+    @property
+    def parameters(self) -> Optional[TransformParameters]:
+        return NAME_TO_TRANSFORM[self.name].parameters
+
+    @parameters.setter
+    def parameters(
+        self,
+        parameters: Optional[TransformParameters] = None,
+    ) -> None:
+        NAME_TO_TRANSFORM[self.name].parameters = parameters
+
+    @property
+    def return_type(self) -> Optional[pa.DataType]:
+        """
+        The PyArrow data type that this transform returns.
+        A return value of "None" indicates that the return type is the same
+        as the source type. Transforms that always return null return pa.null().
+        """
+        return_type = self.get("return_type")
+        if return_type is not None:
+            schema_bytes = (
+                base64.b64decode(return_type)
+                if METAFILE_FORMAT == METAFILE_FORMAT_JSON
+                else return_type
+            )
+            return_type = pa.ipc.read_schema(
+                pa.py_buffer(schema_bytes),
+            )[0].type
+        return return_type
+
+    @return_type.setter
+    def return_type(self, return_type: pa.Schema) -> None:
+        """
+        Set the PyArrow data type that this transform returns.
+        """
+        self["return_type"] = return_type.serialize().to_pybytes()
+
+    @property
+    def is_multi_field_transform(self) -> bool:
+        """
+        Whether this transform is a multi-field transform.
+        """
+        return False
+
+
+class BucketTransform(Transform):
+    """
+    A transform that hashes field values into a fixed number of buckets.
+    Returns a PyArrow int32() type.
+    """
+
+    @staticmethod
+    def of(parameters: BucketTransformParameters) -> BucketTransform:
+        transform = BucketTransform()
+        transform.name = TransformName.BUCKET
+        transform.parameters = parameters
+        transform.return_type = pa.schema([("return_type", pa.int32())])
+        return transform
+
+    @property
+    def parameters(self) -> BucketTransformParameters:
+        val: Dict[str, Any] = self.get("parameters")
+        if val is not None and not isinstance(val, BucketTransformParameters.__class__):
+            self["parameters"] = val = BucketTransformParameters(val)
+        return val
+
+    @parameters.setter
+    def parameters(
+        self,
+        parameters: Optional[BucketTransformParameters] = None,
+    ) -> None:
+        self["parameters"] = parameters
+
+    @property
+    def is_multi_field_transform(self) -> bool:
+        return True
+
+
+class TruncateTransform(Transform):
+    """
+    A transform that truncates field values to a fixed width.
+    Returns the same type as the input field.
+    """
+
+    @staticmethod
+    def of(parameters: TruncateTransformParameters) -> TruncateTransform:
+        transform = TruncateTransform()
+        transform.name = TransformName.TRUNCATE
+        transform.parameters = parameters
+        return transform
+
+    @property
+    def parameters(self) -> TruncateTransformParameters:
+        val: Dict[str, Any] = self.get("parameters")
+        if val is not None and not isinstance(val, TruncateTransformParameters):
+            self["parameters"] = val = TruncateTransformParameters(val)
+        return val
+
+    @parameters.setter
+    def parameters(
+        self,
+        parameters: Optional[TruncateTransformParameters] = None,
+    ) -> None:
+        self["parameters"] = parameters
+
+
+class IdentityTransform(Transform):
+    """
+    A no-op transform that returns unmodified field values.
+    Returns the same PyArrow type as the input.
+    """
+
+    @staticmethod
+    def of() -> IdentityTransform:
+        transform = IdentityTransform()
+        transform.name = TransformName.IDENTITY
+        return transform
+
+
+class HourTransform(Transform):
+    """
+    A transform that returns the hour of a datetime value.
+    Returns a PyArrow int32 type representing the hour (0-23).
+    """
+
+    @staticmethod
+    def of() -> HourTransform:
+        transform = HourTransform()
+        transform.name = TransformName.HOUR
+        transform.return_type = pa.schema([("return_type", pa.int32())])
+        return transform
+
+
+class DayTransform(Transform):
+    """
+    A transform that returns the day of a datetime value.
+    Returns a PyArrow int32 type representing the day (1-31).
+    """
+
+    @staticmethod
+    def of() -> DayTransform:
+        transform = DayTransform()
+        transform.name = TransformName.DAY
+        transform.return_type = pa.schema([("return_type", pa.int32())])
+        return transform
+
+
+class MonthTransform(Transform):
+    """
+    A transform that returns the month of a datetime value.
+    Returns a PyArrow int32 type representing the month (1-12).
+    """
+
+    @staticmethod
+    def of() -> MonthTransform:
+        transform = MonthTransform()
+        transform.name = TransformName.MONTH
+        transform.return_type = pa.schema([("return_type", pa.int32())])
+        return transform
+
+
+class YearTransform(Transform):
+    """
+    A transform that returns the year of a datetime value.
+    Returns a PyArrow int32 type representing the year.
+    """
+
+    @staticmethod
+    def of() -> YearTransform:
+        transform = YearTransform()
+        transform.name = TransformName.YEAR
+        transform.return_type = pa.schema([("return_type", pa.int32())])
+        return transform
+
+
+class VoidTransform(Transform):
+    """
+    A transform that coerces all field values to None.
+    Returns a PyArrow null type.
+    """
+
+    @staticmethod
+    def of() -> VoidTransform:
+        transform = VoidTransform()
+        transform.name = TransformName.VOID
+        transform.return_type = pa.schema([("return_type", pa.null())])
+        return transform
+
+
+class UnknownTransform(Transform):
+    """
+    An unknown or invalid transform.
+    """
+
+    @staticmethod
+    def of() -> UnknownTransform:
+        transform = UnknownTransform()
+        transform.name = TransformName.UNKNOWN
+        return transform
+
+
+NAME_TO_TRANSFORM: Dict[TransformName, Transform] = {
+    TransformName.IDENTITY: IdentityTransform,
+    TransformName.BUCKET: BucketTransform,
+    TransformName.YEAR: YearTransform,
+    TransformName.MONTH: MonthTransform,
+    TransformName.DAY: DayTransform,
+    TransformName.HOUR: HourTransform,
+    TransformName.TRUNCATE: TruncateTransform,
+    TransformName.VOID: VoidTransform,
+    TransformName.UNKNOWN: UnknownTransform,
+}
