@@ -1,0 +1,2 @@
+class MLOpsDeploymentError(Exception):
+    pass
