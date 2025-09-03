@@ -1,0 +1,24 @@
+from ........Internal.Core import Core
+from ........Internal.CommandsGroup import CommandsGroup
+from ........ import repcap
+
+
+# noinspection PyPep8Naming,PyAttributeOutsideInit,SpellCheckingInspection
+class ValuesCls:
+	"""Values commands group definition. 1 total commands, 0 Subgroups, 1 group commands"""
+
+	def __init__(self, core: Core, parent):
+		self._core = core
+		self._cmd_group = CommandsGroup("values", core, parent)
+
+	def get(self, spectrum=repcap.Spectrum.Default, frame=repcap.Frame.Default) -> bytes:
+		"""CALCulate:SPECtrum<*>:WAVeform:NORMal:DATA:FRAMe<*>[:VALues] \n
+		Snippet: value: bytes = driver.calculate.spectrum.waveform.normal.data.frame.values.get(spectrum = repcap.Spectrum.Default, frame = repcap.Frame.Default) \n
+		No command help available \n
+			:param spectrum: optional repeated capability selector. Default value: Nr1 (settable in the interface 'Spectrum')
+			:param frame: optional repeated capability selector. Default value: Ix1 (settable in the interface 'Frame')
+			:return: data: No help available"""
+		spectrum_cmd_val = self._cmd_group.get_repcap_cmd_value(spectrum, repcap.Spectrum)
+		frame_cmd_val = self._cmd_group.get_repcap_cmd_value(frame, repcap.Frame)
+		response = self._core.io.query_bin_block_ERROR(f'CALCulate:SPECtrum{spectrum_cmd_val}:WAVeform:NORMal:DATA:FRAMe{frame_cmd_val}:VALues?')
+		return response

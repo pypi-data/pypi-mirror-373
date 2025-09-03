@@ -1,0 +1,26 @@
+from typing import List
+
+from .....Internal.Core import Core
+from .....Internal.CommandsGroup import CommandsGroup
+from ..... import repcap
+
+
+# noinspection PyPep8Naming,PyAttributeOutsideInit,SpellCheckingInspection
+class PatternCls:
+	"""Pattern commands group definition. 1 total commands, 0 Subgroups, 1 group commands"""
+
+	def __init__(self, core: Core, parent):
+		self._core = core
+		self._cmd_group = CommandsGroup("pattern", core, parent)
+
+	def get(self, serialBus=repcap.SerialBus.Default, word=repcap.Word.Default) -> List[float]:
+		"""SBUS<*>:ARINc:WORD<*>:PATTern \n
+		Snippet: value: List[float] = driver.sbus.arinc.word.pattern.get(serialBus = repcap.SerialBus.Default, word = repcap.Word.Default) \n
+		Returns all 32 bits of the specified word. \n
+			:param serialBus: optional repeated capability selector. Default value: Nr1 (settable in the interface 'Sbus')
+			:param word: optional repeated capability selector. Default value: Nr1 (settable in the interface 'Word')
+			:return: frm_dat_patt: List of comma separated values."""
+		serialBus_cmd_val = self._cmd_group.get_repcap_cmd_value(serialBus, repcap.SerialBus)
+		word_cmd_val = self._cmd_group.get_repcap_cmd_value(word, repcap.Word)
+		response = self._core.io.query_bin_or_ascii_float_list(f'SBUS{serialBus_cmd_val}:ARINc:WORD{word_cmd_val}:PATTern?')
+		return response
