@@ -1,0 +1,6 @@
+LOCAL = "local"
+DEV = "dev"
+DEV_QA = "dev_qa"
+HLG_QA = "hlg_qa"
+PROD = "prod"
+CUSTOMER_PROD_RO = "customer_prod_ro"
