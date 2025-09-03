@@ -1,0 +1,2 @@
+class InvalidSectionNumberForCourseError(Exception):pass
+class InvalidHoursForSectionError(Exception):pass
