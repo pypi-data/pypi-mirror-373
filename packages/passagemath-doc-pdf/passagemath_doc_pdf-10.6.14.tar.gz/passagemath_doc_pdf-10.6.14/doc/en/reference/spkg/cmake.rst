@@ -1,0 +1,136 @@
+.. _spkg_cmake:
+
+cmake: A cross-platform build system generator
+==============================================
+
+Description
+-----------
+
+The "cmake" executable is the CMake command-line interface. It may be
+used to configure projects in scripts. Project configuration settings
+may be specified on the command line with the -D option. The -i option
+will cause cmake to interactively prompt for such settings.
+
+CMake is a cross-platform build system generator. Projects specify their
+build process with platform-independent CMake listfiles included in each
+directory of a source tree with the name CMakeLists.txt. Users build a
+project by using CMake to generate a build system for a native tool on
+their platform.
+
+License
+-------
+
+CMake is distributed under the OSI-approved BSD 3-clause License.
+
+
+Upstream Contact
+----------------
+
+-  https://cmake.org/
+
+-  cmake-developers@cmake.org
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- :ref:`spkg_bzip2`
+- :ref:`spkg_curl`
+- :ref:`spkg_liblzma`
+- :ref:`spkg_zlib`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    3.31.7
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Alpine:
+
+   .. CODE-BLOCK:: bash
+
+       $ apk add cmake
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S cmake
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install cmake\<4
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install cmake
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install cmake
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install devel/cmake
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-build/cmake
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install cmake
+
+.. tab:: MacPorts:
+
+   No package needed.
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr cmake
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install cmake
+
+.. tab:: Slackware:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo slackpkg install cmake
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install cmake
+
+# See https://repology.org/project/cmake/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

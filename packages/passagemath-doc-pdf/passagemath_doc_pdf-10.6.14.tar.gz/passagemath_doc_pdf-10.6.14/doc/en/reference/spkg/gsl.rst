@@ -1,0 +1,163 @@
+.. _spkg_gsl:
+
+gsl: The GNU Scientific Library
+===============================
+
+Description
+-----------
+
+The GNU Scientific Library
+
+Website: http://www.gnu.org/software/gsl/
+
+From the website above: The GNU Scientific Library (GSL) is a numerical
+library for C and C++ programmers. It is free software under the GNU
+General Public License.
+
+The library provides a wide range of mathematical routines such as
+random number generators, special functions and least-squares fitting.
+There are over 1000 functions in total with an extensive test suite. If
+the variable SAGE_CHECK is exported to the value "yes" when building
+Sage, GSL's test suite is run.
+
+License
+-------
+
+-  GPL V3
+
+
+Upstream Contact
+----------------
+
+-  http://www.gnu.org/software/gsl/
+
+GSL mailing lists:
+
+-  Bug-gsl <bug-gsl@gnu.org> mailing list -- bug reports for the GNU
+   Scientific Library should be sent to bug-gsl@gnu.org
+
+-  Help-gsl <help-gsl@gnu.org> users mailing list -- for questions about
+   installation, how GSL works and how it is used, or general questions
+   concerning GSL.
+
+-  Info-gsl <info-gsl@gnu.org> mailing list -- announcements of new
+   releases
+   are made there.
+
+Special Update/Build Instructions
+---------------------------------
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(BLAS)
+- :ref:`spkg_pkgconf`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    2.8
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Alpine:
+
+   .. CODE-BLOCK:: bash
+
+       $ apk add gsl-dev
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S gsl
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install gsl
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install libgsl-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install gsl gsl-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/gsl
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge sci-libs/gsl
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install gsl
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install gsl
+
+.. tab:: mingw-w64:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S \$\{MINGW_PACKAGE_PREFIX\}-gsl
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr gsl
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install pkgconfig\(gsl\)
+
+.. tab:: pyodide:
+
+   install the following packages: libgsl
+
+.. tab:: Slackware:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo slackpkg install gsl
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install gsl-devel
+
+# See https://repology.org/project/gsl/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

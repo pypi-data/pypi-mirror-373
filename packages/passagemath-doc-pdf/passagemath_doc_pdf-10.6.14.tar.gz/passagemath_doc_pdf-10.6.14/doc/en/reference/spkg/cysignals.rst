@@ -1,0 +1,72 @@
+.. _spkg_cysignals:
+
+cysignals: Interrupt and signal handling for Cython
+===================================================
+
+Description
+-----------
+
+Interrupt and signal handling for Cython
+
+License
+-------
+
+LGPL version 3 or later
+
+
+Upstream Contact
+----------------
+
+https://github.com/sagemath/cysignals
+
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+- :ref:`spkg_cython`
+- :ref:`spkg_meson_python`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    1.12.3
+
+src/pyproject.toml::
+
+    cysignals <1.12.4; sys_platform == 'win32'
+    cysignals >=1.11.2, != 1.12.0
+
+version_requirements.txt::
+
+    cysignals
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install cysignals
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-python/cysignals
+
+# See https://repology.org/project/cysignals/versions, https://repology.org/project/python:cysignals/versions
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

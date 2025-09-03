@@ -1,0 +1,161 @@
+.. _spkg_matplotlib:
+
+matplotlib: Python 2D plotting library
+======================================
+
+Description
+-----------
+
+From the Matplotlib website: matplotlib is a python 2D plotting library
+which produces publication quality figures in a variety of hardcopy
+formats and interactive environments across platforms. matplotlib can be
+used in python scripts, the python and ipython shell (ala matlab or
+mathematica), web application servers, and six graphical user interface
+toolkits.
+
+License
+-------
+
+The Matplotlib license - see
+http://matplotlib.sourceforge.net/users/license.html: Matplotlib only
+uses BSD compatible code, and its license is based on the PSF license.
+See the Open Source Initiative licenses page for details on individual
+licenses. Non-BSD compatible licenses (eg LGPL) are acceptable in
+matplotlib Toolkits. For a discussion of the motivations behind the
+licencing choice, see Licenses.
+
+
+Upstream Contact
+----------------
+
+https://matplotlib.org
+
+The matplotlib mailing lists: see
+http://sourceforge.net/projects/matplotlib
+
+Dependencies
+------------
+
+-  python
+-  numpy
+-  setuptools (>= 0.7)
+-  freetype
+-  patch (used in spkg-install)
+-  dateutil
+-  pyparsing
+-  tornado
+-  kiwisolver
+
+
+Build Instructions/Changes
+--------------------------
+
+-  NOTE: To drastically cut down on spkg size, we delete the internal
+   testing images. To do this, we repackage the tarball by removing
+   the contents of ``lib/matplotlib/tests/baseline_images/*``, this is
+   done by the ``spkg-src`` script.
+
+-  ``setup.py.patch``: disable loading of Tests. Otherwise, ``setup.py``
+   raises an error because it can't find the deleted files
+   from ``src/lib/matplotlib/tests/baseline_images/*``
+
+-  NOTE: as of matplotlib-1.0.0 and Sage 4.6, Sage does not use
+   $HOME/.matplotlib by default. Instead, it sets MPLCONFIGDIR to
+   a subdirectory in $DOT_SAGE, see src/bin/sage-env
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+- :ref:`spkg_certifi`
+- :ref:`spkg_contourpy`
+- :ref:`spkg_cycler`
+- :ref:`spkg_dateutil`
+- :ref:`spkg_fonttools`
+- :ref:`spkg_freetype`
+- :ref:`spkg_kiwisolver`
+- :ref:`spkg_numpy`
+- :ref:`spkg_pillow`
+- :ref:`spkg_pyparsing`
+- :ref:`spkg_qhull`
+- :ref:`spkg_setuptools_scm`
+- :ref:`spkg_tornado`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    3.10.3
+
+src/pyproject.toml::
+
+    matplotlib >=3.5.1
+
+version_requirements.txt::
+
+    matplotlib >=3.10.1
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S python-matplotlib
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install matplotlib\>=3.5.1
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install python3-matplotlib
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python3-matplotlib
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-python/matplotlib
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install py-matplotlib
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install python3\$\{PYTHON_MINOR\}-matplotlib
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install python3-matplotlib
+
+# See https://repology.org/project/python:matplotlib/versions
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

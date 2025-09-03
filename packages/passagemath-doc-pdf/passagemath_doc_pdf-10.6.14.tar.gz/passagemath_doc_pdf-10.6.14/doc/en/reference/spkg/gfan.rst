@@ -1,0 +1,126 @@
+.. _spkg_gfan:
+
+gfan: Groebner fans and tropical varieties
+==========================================
+
+Description
+-----------
+
+Gfan is a software package for computing Groebner fans and tropical
+varieties.
+
+These are polyhedral fans associated to polynomial ideals.
+The maximal cones of a Groebner fan are in bijection with the marked
+reduced Groebner bases of its defining ideal. The software computes all
+marked reduced Groebner bases of an ideal. Their union is a universal
+Groebner basis. The tropical variety of a polynomial ideal is a certain
+subcomplex of the Groebner fan. Gfan contains algorithms for computing
+this complex for general ideals and specialized algorithms for tropical
+curves, tropical hypersurfaces and tropical varieties of prime ideals.
+In addition to the above core functions the package contains many tools
+which are useful in the study of Groebner bases, initial ideals and
+tropical geometry. The full list of commands can be found in Appendix B
+of the manual. For ordinary Groebner basis computations Gfan is not
+competitive in speed compared to programs such as CoCoA, Singular and
+Macaulay2.
+
+License
+-------
+
+-  GPL version 2 or version 3 (according to the gfan website)
+
+
+Upstream Contact
+----------------
+
+Anders Nedergaard Jensen
+
+https://users-math.au.dk/jensen/software/gfan/gfan.html
+
+
+Special Update/Build Instructions
+---------------------------------
+
+Remove the doc, homepage, and examples subdirectories, which take up
+most of the space.
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- $(MP_LIBRARY)
+- :ref:`spkg_cddlib`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    0.6.2.p1
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S gfan
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install gfan
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install gfan
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install gfan
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/gfan
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge sci-mathematics/gfan
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr gfan
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install gfan
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install gfan
+
+# See https://repology.org/project/gfan/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

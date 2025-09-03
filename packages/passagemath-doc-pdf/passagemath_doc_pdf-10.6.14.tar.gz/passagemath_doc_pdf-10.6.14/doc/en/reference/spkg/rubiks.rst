@@ -1,0 +1,93 @@
+.. _spkg_rubiks:
+
+rubiks: Programs for Rubik's cube
+=================================
+
+Description
+-----------
+
+There are several programs for working with Rubik's cubes, by three
+different people. Look inside the directories under /src to see specific
+info and licensing. In summary the three contributers are:
+
+Michael Reid (GPL)
+http://www.cflmath.com/~reid/Rubik/optimal_solver.html
+
+-  optimal - uses many pre-computed tables to find an optimal
+   solution to the 3x3x3 Rubik's cube
+
+Dik T. Winter (MIT License)
+
+-  cube - uses Kociemba's algorithm to iteratively find a short
+   solution to the 3x3x3 Rubik's cube
+-  size222 - solves a 2x2x2 Rubik's cube
+
+Eric Dietz (GPL) https://web.archive.org/web/20121212175710/http://www.wrongway.org/?rubiksource
+
+-  cu2 - A fast, non-optimal 2x2x2 solver
+-  cubex - A fast, non-optimal 3x3x3 solver
+-  mcube - A fast, non-optimal 4x4x4 solver
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    20070912.p21
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S rubiks
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install rubiks
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install rubiks
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install rubiks
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/rubiks
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr rubiks
+
+# See https://repology.org/project/rubiks/versions
+
+However, these system packages will not be used for building Sage
+because ``spkg-configure.m4`` has not been written for this package;
+see :issue:`27330` for more information.

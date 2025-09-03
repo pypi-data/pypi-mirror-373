@@ -1,0 +1,89 @@
+.. _spkg_e_antic:
+
+e_antic: Real embedded number fields
+====================================
+
+Description
+-----------
+
+e-antic is a C library for exact computations with real embedded number
+field maintained by Vincent Delecroix.
+
+Website: https://github.com/videlec/e-antic
+
+License
+-------
+
+e-antic is licensed GPL v3.
+
+
+Upstream Contact
+----------------
+
+-  https://github.com/videlec/e-antic
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- $(MP_LIBRARY)
+- :ref:`spkg_boost_cropped`
+- :ref:`spkg_flint`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    2.0.2
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S e-antic
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install libeantic
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install libeantic-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install e-antic-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/e-antic
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install e-antic-devel
+
+# See https://repology.org/project/e-antic/versions
+
+However, these system packages will not be used for building Sage
+because ``spkg-configure.m4`` has not been written for this package;
+see :issue:`27330` for more information.

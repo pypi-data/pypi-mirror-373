@@ -1,0 +1,54 @@
+.. _spkg_deformation:
+
+deformation: Count points on hypersurfaces using the deformation method
+=======================================================================
+
+Description
+-----------
+
+Deformation is a C library for counting points on hypersurfaces using
+the deformation method, developed by Sebastian Pancratz.
+
+License
+-------
+
+GLPv3
+
+
+Upstream Contact
+----------------
+
+-  Sebastian Pancratz: sebastian.pancratz@gmail.com, sage-devel@googlegroups.com
+
+-  We use the fork at https://github.com/sagemath/deformation
+   the fork uses GMP instead of MPIR, and Flint 2.7+.
+
+
+Type
+----
+
+experimental
+
+
+Dependencies
+------------
+
+- $(MP_LIBRARY)
+- :ref:`spkg_flint`
+- :ref:`spkg_mpfr`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    20210503
+
+Equivalent System Packages
+--------------------------
+
+# See https://repology.org/project/deformation/versions
+
+However, these system packages will not be used for building Sage
+because ``spkg-configure.m4`` has not been written for this package;
+see :issue:`27330` for more information.

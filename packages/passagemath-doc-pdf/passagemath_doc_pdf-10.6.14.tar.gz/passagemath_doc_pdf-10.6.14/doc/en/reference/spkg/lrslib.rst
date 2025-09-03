@@ -1,0 +1,111 @@
+.. _spkg_lrslib:
+
+lrslib: Reverse search algorithm for vertex enumeration and convex hull problems
+================================================================================
+
+Description
+-----------
+
+lrslib implements the linear reverse search algorithm of Avis and
+Fukuda.
+
+See the homepage (http://cgm.cs.mcgill.ca/~avis/C/lrs.html) for details.
+
+We use an autotoolized version from
+https://github.com/passagemath/lrslib/tree/autoconfiscation
+
+License
+-------
+
+lrslib is released under a GPL v2+ license.
+
+
+Upstream Contact
+----------------
+
+David Avis, avis at cs dot mcgill dot edu.
+
+Dependencies
+------------
+
+To build and install the "plrs" binary, a multi-thread version of lrs,
+need to first install the full Boost package ("sage -i boost").
+
+If the package finds an MPI C++ compiler script (mpic++), it also builds
+and installs the "mplrs" binary, a distributed version of lrs using MPI.
+
+(Sage currently does not make use of plrs and mplrs.)
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- $(MP_LIBRARY)
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    071b+autotools-2021-07-13
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S lrs
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install lrslib
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install lrslib
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install lrslib lrslib-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/lrslib
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge sci-libs/lrslib
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr lrs
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install lrslib lrslib-devel
+
+# See https://repology.org/project/lrslib/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

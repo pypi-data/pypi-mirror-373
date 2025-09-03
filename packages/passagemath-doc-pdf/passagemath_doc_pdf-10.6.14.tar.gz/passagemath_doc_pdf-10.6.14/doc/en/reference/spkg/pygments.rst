@@ -1,0 +1,123 @@
+.. _spkg_pygments:
+
+pygments: Generic syntax highlighter
+====================================
+
+Description
+-----------
+
+Pygments is a syntax highlighting package written in Python.
+
+It is a generic syntax highlighter suitable for use in code hosting,
+forums, wikis or other applications that need to prettify source code.
+Highlights are:
+
+-  a wide range of over 300 languages and other text formats is
+   supported
+
+-  special attention is paid to details, increasing quality by a fair
+   amount
+
+-  support for new languages and formats are added easily
+-  a number of output formats, presently HTML, LaTeX, RTF, SVG, all
+   image
+   formats that PIL supports and ANSI sequences
+
+-  it is usable as a command-line tool and as a library
+
+License
+-------
+
+BSD-2-Clause
+
+Upstream Contact
+----------------
+
+https://pypi.org/project/Pygments/
+
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- :ref:`spkg_pip`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    2.18.0
+
+version_requirements.txt::
+
+    pygments >=2.12
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S python-pygments
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install pygments
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install python3-pygments
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python3-pygments
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-python/pygments
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install pygments
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install py-pygments
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install python3\$\{PYTHON_MINOR\}-pygments
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install python3-Pygments
+
+# See https://repology.org/project/pygments/versions, https://repology.org/project/python:pygments/versions
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

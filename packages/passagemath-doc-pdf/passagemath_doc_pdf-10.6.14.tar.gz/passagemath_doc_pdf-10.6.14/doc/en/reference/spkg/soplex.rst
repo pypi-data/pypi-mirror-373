@@ -1,0 +1,76 @@
+.. _spkg_soplex:
+
+soplex: Linear optimization solver using the revised simplex method
+===================================================================
+
+Description
+-----------
+
+SoPlex is an optimization package for solving linear programming
+problems (LPs) based on an advanced implementation of the primal and
+dual revised simplex algorithm. It provides special support for the
+exact solution of LPs with rational input data.
+
+
+License
+-------
+
+Apache License, Version 2.0
+
+
+Upstream Contact
+----------------
+
+https://github.com/scipopt/soplex
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- $(MP_LIBRARY)
+- :ref:`spkg_boost_cropped`
+- :ref:`spkg_cmake`
+- :ref:`spkg_mpfr`
+- :ref:`spkg_ninja_build`
+- :ref:`spkg_papilo`
+- :ref:`spkg_zlib`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    7.1.5
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install soplex
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install soplex
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/SoPlex
+
+# See https://repology.org/project/soplex/versions
+
+However, these system packages will not be used for building Sage
+because ``spkg-configure.m4`` has not been written for this package;
+see :issue:`27330` for more information.

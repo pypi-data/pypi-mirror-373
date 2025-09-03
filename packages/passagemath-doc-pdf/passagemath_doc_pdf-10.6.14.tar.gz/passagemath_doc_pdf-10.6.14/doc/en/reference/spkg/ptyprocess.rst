@@ -1,0 +1,112 @@
+.. _spkg_ptyprocess:
+
+ptyprocess: Python interaction with subprocesses in a pseudoterminal
+====================================================================
+
+Description
+-----------
+
+Launch a subprocess in a pseudo terminal (pty), and interact with both
+the process and its pty.
+
+Sometimes, piping stdin and stdout is not enough. There might be a
+password prompt that doesn't read from stdin, output that changes when
+it's going to a pipe rather than a terminal, or curses-style interfaces
+that rely on a terminal. If you need to automate these things, running
+the process in a pseudo terminal (pty) is the answer.
+
+License
+-------
+
+Ptyprocess is under the ISC license, as code derived from Pexpect.
+
+   http://opensource.org/licenses/ISC
+
+
+Upstream Contact
+----------------
+
+https://github.com/pexpect/ptyprocess
+
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    0.7.0
+
+src/pyproject.toml::
+
+    ptyprocess > 0.5
+
+version_requirements.txt::
+
+    ptyprocess
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S python-ptyprocess
+
+.. tab:: conda-forge:
+
+   No package needed.
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python3-ptyprocess
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install sysutils/py-ptyprocess
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-python/ptyprocess
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install py-ptyprocess
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install python3\$\{PYTHON_MINOR\}-ptyprocess
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install python3-ptyprocess
+
+# See https://repology.org/project/ptyprocess/versions, https://repology.org/project/python:ptyprocess/versions
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

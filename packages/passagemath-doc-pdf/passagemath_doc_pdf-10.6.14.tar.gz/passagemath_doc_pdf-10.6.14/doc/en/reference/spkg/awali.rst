@@ -1,0 +1,66 @@
+.. _spkg_awali:
+
+awali: Computation of/with finite state machines
+================================================
+
+Description
+-----------
+
+Awali is a software platform dedicated to the computation of, and with,
+finite state machines. Here finite state machines is to be understood in
+the broadest possible sense: finite automata with output — often called
+transducers then — or even more generally finite automata with
+multiplicity, that is, automata that not only accept, or recognize,
+sequences of symbols but compute for every such sequence a 'value' that
+is associated with it and which can be taken in any semiring. Hence the
+variety of situations that can thus be modellized.
+
+License
+-------
+
+-  GPL 3.0
+
+
+Upstream Contact
+----------------
+
+-  Website: http://vaucanson-project.org/Awali/index.html
+-  Releases: http://files.vaucanson-project.org/tarballs/
+
+Dependencies
+------------
+
+-  graphviz must be installed from your distro, and available in the
+   path.
+
+
+Type
+----
+
+experimental
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- :ref:`spkg_cmake`
+- :ref:`spkg_cython`
+- :ref:`spkg_nbconvert`
+- :ref:`spkg_ncurses`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    1.0.2-190218
+
+Equivalent System Packages
+--------------------------
+
+# See https://repology.org/project/awali/versions
+
+However, these system packages will not be used for building Sage
+because ``spkg-configure.m4`` has not been written for this package;
+see :issue:`27330` for more information.

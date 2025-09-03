@@ -1,0 +1,64 @@
+.. _spkg_mpfrcx:
+
+mpfrcx: Arithmetic of univariate polynomials over arbitrary precision real or complex numbers
+=============================================================================================
+
+Description
+-----------
+
+Mpfrcx is a library for the arithmetic of univariate polynomials over
+arbitrary precision real (Mpfr) or complex (Mpc) numbers, without
+control on the rounding. For the time being, only the few functions
+needed to implement the floating point approach to complex
+multiplication are implemented. On the other hand, these comprise
+asymptotically fast multiplication routines such as Toom–Cook and the
+FFT.
+
+License
+-------
+
+MPFRCX is distributed under the Gnu Lesser General Public License,
+either version 2.1 of the licence, or (at your option) any later version
+(LGPLv2.1+).
+
+
+Upstream Contact
+----------------
+
+The MPFRCX website is located at http://www.multiprecision.org/mpfrcx .
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- $(MP_LIBRARY)
+- :ref:`spkg_mpc`
+- :ref:`spkg_mpfr`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    0.6.3
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install mpfrcx-devel
+
+# See https://repology.org/project/mpfrcx/versions
+
+However, these system packages will not be used for building Sage
+because ``spkg-configure.m4`` has not been written for this package;
+see :issue:`27330` for more information.

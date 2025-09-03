@@ -1,0 +1,115 @@
+.. _spkg_planarity:
+
+planarity: Planarity-related graph algorithms
+=============================================
+
+Description
+-----------
+
+This code project provides a library for implementing graph algorithms
+as well as implementations of several planarity-related graph
+algorithms. The origin of this project is the reference implementation
+for the Edge Addition Planarity Algorithm [1], which is now the fastest
+and simplest linear-time method for planar graph embedding and planarity
+obstruction isolation (i.e. Kuratowski subgraph isolation).
+
+[1] http://dx.doi.org/10.7155/jgaa.00091
+
+License
+-------
+
+New BSD License
+
+
+Upstream Contact
+----------------
+
+-  https://github.com/graph-algorithms/edge-addition-planarity-suite/
+
+-  John Boyer <John.Boyer.PhD@gmail.com>
+
+Special Update/Build Instructions
+---------------------------------
+
+The tarballs can be found at
+https://github.com/graph-algorithms/edge-addition-planarity-suite/releases
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    4.0.0.0
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S planarity
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install planarity
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install libplanarity-dev planarity
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install planarity planarity-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/planarity
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge sci-mathematics/planarity
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr planarity
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install edge-addition-planarity-suite edge-addition-planarity-suite-devel
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install planarity-devel
+
+# See https://repology.org/project/planarity/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

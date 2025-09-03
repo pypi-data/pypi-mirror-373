@@ -1,0 +1,84 @@
+.. _spkg_pari_galdata:
+
+pari_galdata: PARI data package needed to compute Galois groups in degrees 8 through 11
+=======================================================================================
+
+Description
+-----------
+
+PARI package "galdata": Needed by polgalois to compute Galois group in
+degrees 8 through 11.
+
+License
+-------
+
+GPL version 2+
+
+
+Upstream Contact
+----------------
+
+http://pari.math.u-bordeaux.fr/
+
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    20080411.p0
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S pari-galdata
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install pari-galdata
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install pari-galdata
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install pari_galdata
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install pari-galdata
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install pari-galdata
+
+# See https://repology.org/project/pari-galdata/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

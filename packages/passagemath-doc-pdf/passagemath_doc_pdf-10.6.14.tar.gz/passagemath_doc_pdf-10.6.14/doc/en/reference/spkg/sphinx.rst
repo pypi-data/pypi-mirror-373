@@ -1,0 +1,140 @@
+.. _spkg_sphinx:
+
+sphinx: Python documentation generator
+======================================
+
+Description
+-----------
+
+Sphinx is a tool that makes it easy to create intelligent and beautiful
+documentation for Python projects (or other documents consisting of
+multiple reStructuredText sources), written by Georg Brandl. It was
+originally created to translate the new Python documentation, but has
+now been cleaned up in the hope that it will be useful to many other
+projects.
+
+License
+-------
+
+Modified BSD; see e.g. its egg-info file for other options
+
+
+Upstream Contact
+----------------
+
+https://pypi.org/project/Sphinx/
+
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+- :ref:`spkg_alabaster`
+- :ref:`spkg_babel`
+- :ref:`spkg_docutils`
+- :ref:`spkg_imagesize`
+- :ref:`spkg_importlib_metadata`
+- :ref:`spkg_jinja2`
+- :ref:`spkg_packaging`
+- :ref:`spkg_pip`
+- :ref:`spkg_pygments`
+- :ref:`spkg_requests`
+- :ref:`spkg_snowballstemmer`
+- :ref:`spkg_sphinxcontrib_applehelp`
+- :ref:`spkg_sphinxcontrib_devhelp`
+- :ref:`spkg_sphinxcontrib_htmlhelp`
+- :ref:`spkg_sphinxcontrib_jsmath`
+- :ref:`spkg_sphinxcontrib_qthelp`
+- :ref:`spkg_sphinxcontrib_serializinghtml`
+- :ref:`spkg_sphinxcontrib_websupport`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    8.1.3
+
+src/pyproject.toml::
+
+    sphinx >=5.2, <9
+
+version_requirements.txt::
+
+    sphinx >=7.4.7, <9
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S python-sphinx
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install sphinx\>=5.2
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install sphinx
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python3-sphinx
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install textproc/py-sphinx
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-python/sphinx
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install sphinx-doc
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install py-sphinx
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install python3\$\{PYTHON_MINOR\}-Sphinx
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install python3-Sphinx
+
+# See https://repology.org/project/python:sphinx/versions
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

@@ -1,0 +1,113 @@
+.. _spkg_brial:
+
+brial: Boolean Ring Algebra implementation using binary decision diagrams
+=========================================================================
+
+Description
+-----------
+
+BRiAl ("Boolean Ring Algebra") is the successor to PolyBoRi.
+
+The core of PolyBoRi is a C++ library, which provides high-level data
+types for Boolean polynomials and monomials, exponent vectors, as well
+as for the underlying polynomial rings and subsets of the powerset of
+the Boolean variables. As a unique approach, binary decision diagrams
+are used as internal storage type for polynomial structures. On top of
+this C++-library we provide a Python interface. This allows parsing of
+complex polynomial systems, as well as sophisticated and extendable
+strategies for Gröbner base computation. PolyBoRi features a powerful
+reference implementation for Gröbner basis computation.
+
+License
+-------
+
+GPL version 2 or later
+
+
+Upstream Contact
+----------------
+
+https://github.com/BRiAl/BRiAl
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- :ref:`spkg_boost_cropped`
+- :ref:`spkg_libpng`
+- :ref:`spkg_m4ri`
+- :ref:`spkg_pkgconf`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    1.2.8
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S brial
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install brial
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install libbrial-dev libbrial-groebner-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install brial brial-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/brial
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge sci-libs/brial
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr brial
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install brial-devel
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install brial-devel
+
+# See https://repology.org/project/brial/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

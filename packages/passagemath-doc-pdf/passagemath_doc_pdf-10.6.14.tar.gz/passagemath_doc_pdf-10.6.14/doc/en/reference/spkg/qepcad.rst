@@ -1,0 +1,69 @@
+.. _spkg_qepcad:
+
+qepcad: Quantifier elimination by partial cylindrical algebraic decomposition
+=============================================================================
+
+Description
+-----------
+
+Qepcad is an implementation of quantifier elimination by partial
+cylindrical algebraic decomposition
+
+License
+-------
+
+ICS :wikipedia:`ISC_license`
+
+Upstream Contact
+----------------
+
+- Repository:  https://github.com/chriswestbrown/qepcad
+- Tarballs:   https://www.usna.edu/Users/cs/wcbrown/qepcad/INSTALL/IQ.html
+- Website: (outdated) https://www.usna.edu/Users/cs/wcbrown/qepcad/B/QEPCAD.html
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- :ref:`spkg_readline`
+- :ref:`spkg_saclib`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    1.74
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install qepcad
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install qepcad-B
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install qepcad
+
+# See https://repology.org/project/qepcad-b/versions
+
+However, these system packages will not be used for building Sage
+because ``spkg-configure.m4`` has not been written for this package;
+see :issue:`27330` for more information.

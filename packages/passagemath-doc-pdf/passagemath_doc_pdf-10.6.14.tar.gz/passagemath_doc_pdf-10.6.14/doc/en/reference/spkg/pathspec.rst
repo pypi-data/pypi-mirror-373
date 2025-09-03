@@ -1,0 +1,69 @@
+.. _spkg_pathspec:
+
+pathspec: Utility library for gitignore style pattern matching of file paths
+============================================================================
+
+Description
+-----------
+
+Utility library for gitignore style pattern matching of file paths
+
+License
+-------
+
+MPL 2.0
+
+Upstream Contact
+----------------
+
+https://pypi.org/project/pathspec/
+
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- :ref:`spkg_pip`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    0.12.1
+
+version_requirements.txt::
+
+    pathspec
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install pathspec
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python3-pathspec
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-python/pathspec
+
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

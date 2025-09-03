@@ -1,0 +1,79 @@
+.. _spkg_topcom:
+
+topcom: Compute triangulations of point configurations and oriented matroids
+============================================================================
+
+Description
+-----------
+
+TOPCOM is a collection of clients to compute Triangulations Of Point
+Configurations and Oriented Matroids, resp.
+
+The algorithms use only combinatorial data of the point configuration as
+is given by its oriented matroid. Some basic commands for computing and
+manipulating oriented matroids can also be accessed by the user.
+
+It was very much inspired by the maple program PUNTOS, which was written
+by Jesus de Loera. TOPCOM is entirely written in C++, so there is a
+significant speed up compared to PUNTOS.
+
+License
+-------
+
+GPL v2
+
+
+Upstream Contact
+----------------
+
+https://www.wm.uni-bayreuth.de/de/team/rambau_joerg/TOPCOM/
+
+:: 
+
+    Prof. Dr. Jörg Rambau <Joerg.Rambau@uni-bayreuth.de>
+    Lehrstuhl für Wirtschaftsmathematik
+    Raum FAN-D.1.29 (Sekretariat: FAN-D.1.30)
+    Universität Bayreuth
+    D-95440 Bayreuth
+    Germany
+    Tel: +49-921-55-7350, Fax: +49-921-55-7352
+
+Dependencies
+------------
+
+-  gmp, libcdd
+
+
+Special Update/Build Instructions
+---------------------------------
+
+See spkg-src
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- :ref:`spkg__bootstrap`
+- :ref:`spkg_cddlib`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    1.1.2
+
+Equivalent System Packages
+--------------------------
+
+# See https://repology.org/project/topcom/versions
+
+However, these system packages will not be used for building Sage
+because ``spkg-configure.m4`` has not been written for this package;
+see :issue:`27330` for more information.
