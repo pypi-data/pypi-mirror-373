@@ -1,0 +1,97 @@
+name: Auto PFD Top-Up
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 1 * * *'  # Automatically trigger every day at 1:00 AM UTC
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ensure main branch for scheduled runs
+        if: github.event_name != 'workflow_dispatch' && github.ref != 'refs/heads/main'
+        run: |
+          echo "This workflow is designed to run automatically on main only."
+          exit 0
+
+      - name: Checkout Repository Code
+        uses: actions/checkout@v4
+
+      - name: Scan for committed secrets
+        uses: zricethezav/gitleaks-action@v2
+
+      - name: Mask OpenAI key
+        run: echo "::add-mask::${{ secrets.OPENAI_API_KEY }}"
+
+      - name: Install UV
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Install Project Dependencies via UV
+        run: uv sync
+
+      - name: Run the PFD Top-Up Script securely
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set +x
+          uv run python scripts/update_reports.py
+          set -x
+
+      - name: Upload dataset to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload dataset-latest all_reports.csv --clobber
+
+      - name: Show sample of updated reports
+        run: |
+          uv run python - <<'PYTHON'
+          from pfd_toolkit import load_reports
+          import pandas as pd
+
+          pd.set_option("display.max_colwidth", None)
+          df = load_reports()
+          df_head = df.head()
+
+          print(df_head.to_string(index=False))
+          with open(".github/workflows/update_summary.txt", "a") as f:
+              f.write("\n\n---\n\n")
+              f.write("Head of updated dataset:\n\n")
+              f.write(df_head.to_html(index=False) + "\n\n")
+          PYTHON
+
+      - name: Display Summary in Actions UI
+        if: always()
+        run: |
+          summary_file=".github/workflows/update_summary.txt"
+          echo "**Top-up Summary:**" >> $GITHUB_STEP_SUMMARY
+          if [ -f "$summary_file" ]; then
+            cat "$summary_file" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Summary file ($summary_file) not found." >> $GITHUB_STEP_SUMMARY
+            echo "Python script output (from previous step) should indicate reason." >> $GITHUB_STEP_SUMMARY
+          fi
+
+
+      - name: Commit & Push Changes
+        if: github.ref == 'refs/heads/main'
+        uses: EndBug/add-and-commit@v9
+        with:
+          add: |
+            docs/index.md
+          default_author: github_actions
+          message: "🤖 Auto PFD dataset top-up"
+          pull: '--rebase --autostash'
+          push: true
