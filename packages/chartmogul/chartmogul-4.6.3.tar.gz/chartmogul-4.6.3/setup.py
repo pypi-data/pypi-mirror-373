@@ -1,0 +1,74 @@
+#!/usr/bin/env python
+import os
+import re
+import sys
+
+from codecs import open
+from setuptools import setup
+
+github_url = "https://github.com/chartmogul/chartmogul-python"
+
+if sys.argv[-1] == "publish":
+    os.system("python setup.py sdist upload")
+    sys.exit()
+
+requires = [
+    "requests>=2.31.0",
+    "uritemplate>=4.1.1",
+    "promise>=2.3.0",
+    "marshmallow>=3.24.0,<5.0.0",
+    "urllib3>=2.2.2",
+]
+test_requirements = [
+    "mock>=5.1.0",
+    "requests-mock>=1.11.0",
+    "PyYAML>=6.0.1",
+    "httpretty>=1.1.4",
+    "wrapt>=1.15.0",
+]
+
+with open("chartmogul/version.py", "r") as fd:
+    version = re.search(
+        r'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]', fd.read(), re.MULTILINE
+    ).group(1)
+
+if not version:
+    raise RuntimeError("Cannot find version information")
+
+setup(
+    name="chartmogul",
+    version=version,
+    description="Python library for ChartMogul API.",
+    long_description="`See documentation on GitHub <" + github_url + ">`_",
+    author="Petr Kopac (ChartMogul Ltd.)",
+    author_email="petr@chartmogul.com",
+    url="https://chartmogul.com",
+    download_url=github_url + "/tarball/v" + version,
+    packages=[
+        "chartmogul",
+        "chartmogul.api",
+        "chartmogul.api.customers",
+    ],
+    package_data={"": ["LICENSE", "NOTICE"], "chartmogul": ["*.pem"]},
+    package_dir={
+        "chartmogul": "chartmogul",
+        "chartmogul.api": "chartmogul/api",
+        "chartmogul.api.customers": "chartmogul/api/customers",
+    },
+    include_package_data=True,
+    install_requires=requires,
+    license="MIT",
+    zip_safe=False,
+    extras_require={
+        "testing": test_requirements
+    },
+    classifiers=[
+        "Programming Language :: Python",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+    ],
+)
