@@ -1,0 +1,130 @@
+[build-system]
+requires = [
+    'meson-python',
+    'nanobind',          # for stubgen
+    'typing_extensions', # for stubgen (should be declared by nanobind)
+    'ruff',              # for stubgen
+]
+build-backend = 'mesonpy'
+
+[project]
+requires-python = ">=3.9"
+name = "pymmcore-nano"
+dynamic = ['version']
+description = "Alternative python bindings for MMCore, Micro-Manager's device control layer"
+readme = "README.md"
+license = { text = "LGPL-2.1-only" }
+authors = [
+    { name = "Micro-Manager Team" },
+    { name = "Mark Tsuchida", email = "marktsuchida@gmail.com" },
+    { name = "Talley Lambert", email = "talley.lambert@gmail.com" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+dependencies = ["numpy>=1.25"]
+
+[project.optional-dependencies]
+test-devices = ["mm-test-adapters~=74.0"]
+
+[dependency-groups]
+build = ["meson-python", "nanobind", "ninja", "ruff", "typing_extensions"]
+test = [
+    "pytest",
+    "pytest-cov",
+    "gcovr",
+    "libclang>=18.1.1",
+    "pymmcore-nano[test-devices]",
+]
+dev = [
+    { include-group = "test" },
+    { include-group = "build" },
+    "clang-format>=19.1.7",
+    "ipython",
+    "mypy",
+    "pdbpp; sys_platform != 'win32'",
+    "pre-commit-uv",
+    "rich",
+    "rust-just",
+]
+docs = [
+    "mkdocs>=1.6.1",
+    "mkdocstrings-python>=1.16.0",
+    "mkdocs-material>=9.6.4",
+    "mkdocs-minify-plugin>=0.8.0",
+]
+
+# https://docs.pytest.org/
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+filterwarnings = ["error"]
+
+# https://coverage.readthedocs.io/
+[tool.coverage.report]
+show_missing = true
+
+[tool.coverage.run]
+omit = ['subprojects/']
+source = ["pymmcore_nano"]
+
+[tool.cibuildwheel]
+build-verbosity = 1
+# Skip 32-bit builds, musllinux, and PyPy wheels on all platforms
+# Note: use of PTHREAD_MUTEX_RECURSIVE_NP in DeviceThreads.h
+# is specific to glibc and not available in musl-libc
+skip = ["*-manylinux_i686", "*-musllinux*", "*-win32", "pp*"]
+build = ["cp39-*", "cp310-*", "cp311-*", "cp312-*", "cp313-*"]
+test-groups = ["test"]
+test-command = 'pytest "{project}/tests" -v'
+
+[tool.cibuildwheel.macos]
+# https://cibuildwheel.readthedocs.io/en/stable/faq/#apple-silicon
+archs = ["x86_64", "arm64"]
+# Needed for full C++17 support on macOS
+environment = { MACOSX_DEPLOYMENT_TARGET = "10.14" }
+
+
+# https://docs.astral.sh/ruff/rules/
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+fix = true
+unsafe-fixes = true
+src = ["tests"]
+exclude = ["src/pymmcore_nano/_pymmcore_nano.pyi"]
+
+[tool.ruff.lint]
+pydocstyle = { convention = "numpy" }
+select = [
+    "E",   # style errors
+    "F",   # flakes
+    "W",   # warnings
+    "I",   # isort
+    "UP",  # pyupgrade
+    "C4",  # flake8-comprehensions
+    "B",   # flake8-bugbear
+    "RUF", # ruff-specific rules
+    "TID", # tidy
+    "TC",  # typecheck
+    "SLF", # private-access
+]
+ignore = [
+    "D100", # Missing docstring in public module
+    "D104", # Missing docstring in public package
+    "D401", # First line should be in imperative mood (remove to opt in)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D", "SLF"]
+"examples/*.py" = ["D"]
+"_cli.py" = ["B008"]
+"docs/*.py" = ["A", "D"]
