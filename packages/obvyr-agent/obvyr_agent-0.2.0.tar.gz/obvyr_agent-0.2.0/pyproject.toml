@@ -1,0 +1,136 @@
+[build-system]
+requires = ["poetry-core>=1.9.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "obvyr-agent"
+version = "0.2.0"
+description = "Command-line wrapper to run Obvyr agents locally or in CI."
+authors = ["Wyrd Technology Ltd"]
+license = "Proprietary"
+readme = "README_PYPI.md"
+homepage = "https://wyrd-technology.com"
+
+exclude = [
+  "README.md",
+  "docs/**",
+  "tests/**",
+  "bin/**",
+  ".mypy_cache/**",
+  ".ruff_cache/**",
+  ".pytest_cache/**",
+  "dist/**",
+]
+
+[[tool.poetry.packages]]
+from = "src"
+include = "obvyr_agent"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+python-dotenv = "^1.0.1"
+click = "^8.1.7"
+boto3 = "^1.35.68"
+pydantic = "^2.10.1"
+pydantic-settings = "^2.6.1"
+httpx = "^0.28.1"
+tenacity = "^9.0.0"
+toml = "^0.10.2"
+orjson = "^3.10.15"
+zstandard = "^0.24.0"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.12.0"
+mypy = "^1.13.0"
+pytest = "^8.3.3"
+pytest-cov = "^6.0.0"
+black = "^25.0.0"
+pyproject-fmt = "^2.5.0"
+pytest-subprocess = "^1.5.2"
+types-toml = "^0.10.8.20240310"
+poethepoet = "^0.37.0"
+
+[tool.poetry.scripts]
+obvyr-agent = "obvyr_agent.cli:cli_run_process"
+
+[tool.black]
+line-length = 80
+
+[tool.ruff]
+line-length = 80
+indent-width = 4
+
+lint.select = ["B", "B9", "E", "F", "I", "S", "W", "PLC"]
+lint.ignore = ["E501", "S101"]
+lint.exclude = [".venv"]
+
+[tool.pytest.ini_options]
+addopts = "-lra --no-header --color=yes --durations=5 --cov -vv -m 'not e2e'"
+testpaths = ["tests/"]
+python_classes = ["Should*", "Test*"]
+python_functions = ["should_*", "test_*"]
+markers = ["e2e: Large end-to-end tests that require external services"]
+
+[tool.coverage.paths]
+source = ["src", "*/site-packages"]
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+files = ["src", "tests"]
+ignore_missing_imports = true
+disallow_untyped_defs = true
+
+[tool.poe.tasks]
+# Run the tests with coverage
+test = "pytest"
+
+# Run mypy for static type checking
+typecheck = "mypy"
+
+# Format code with Black
+srcformat = "black ."
+
+# Format the pyproject.toml file
+pyprojfmt = "pyproject-fmt pyproject.toml"
+
+format = ["srcformat"]
+
+# Lint with Ruff
+lint = "ruff check ."
+
+# Lint and fix
+lintfix = "ruff check --fix ."
+
+# All: Run all checks and tests together
+all = ["lintfix", "format", "typecheck", "test"]
+
+[tool.poe.tasks.publish_test]
+cmd = """
+bash -c '
+set -euo pipefail
+rm -rf dist
+poetry build
+python -m pip install --upgrade twine
+twine check dist/*
+poetry publish -r testpypi --skip-existing
+'
+"""
+
+[tool.poe.tasks.publish_pypi]
+cmd = """
+bash -c '
+set -euo pipefail
+rm -rf dist
+poetry build
+python -m pip install --upgrade twine
+twine check dist/*
+poetry publish --skip-existing
+'
+"""
