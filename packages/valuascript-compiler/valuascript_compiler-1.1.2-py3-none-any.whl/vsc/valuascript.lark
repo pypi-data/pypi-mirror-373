@@ -1,0 +1,51 @@
+// A script is a sequence of directives and assignments in any order.
+start: (directive | assignment)*
+
+directive: "@" CNAME "=" expression -> directive_setting
+assignment: LET CNAME "=" expression -> assignment
+
+// --- HIERARCHY FOR MATHEMATICAL EXPRESSIONS ---
+?expression: term ((ADD|SUB) term)*         -> infix_expression
+?term:       factor ((MUL|DIV) factor)*       -> infix_expression
+?factor:     power
+?power:      atom (POW atom)*            -> infix_expression
+?atom: SIGNED_NUMBER
+     | CNAME
+     | STRING
+     | function_call
+     | element_access
+     | delete_element_vector
+     | vector
+     | "(" expression ")"
+
+// --- Reusable Rule Definitions ---
+vector: "[" [arg ("," arg)*] "]"
+function_call: CNAME "(" [arg ("," arg)*] ")"
+element_access: CNAME "[" expression "]"
+delete_element_vector: CNAME "[" ":" expression "]"
+?arg: expression
+
+// --- Terminal Definitions ---
+LET: "let" /\b/
+ADD: "+"
+SUB: "-"
+MUL: "*"
+DIV: "/"
+POW: "^"
+STRING: /"[^"]*"/
+
+// --- Custom Number Terminal to support separators ---
+// We define our own SIGNED_NUMBER using Lark's EBNF-style terminals for clarity and robustness.
+// This correctly rejects invalid forms like _100, 100_, 1__000.
+SIGNED_NUMBER: ["+"|"-"]? (FLOAT | INT)
+FLOAT: INT "." INT
+// An INT is a sequence of digits, optionally followed by groups of `_` and more digits.
+// This structure makes `1__0` and `1_` impossible.
+INT: DIGIT+ ("_" DIGIT+)*
+
+%import common.CNAME
+%import common.DIGIT
+%ignore COMMENT
+COMMENT: /#.*/
+%import common.WS
+%ignore WS
