@@ -1,0 +1,142 @@
+# Karabo SCADA Framework - Karabo
+![Karabo Badge](https://img.shields.io/badge/Karabo-blue?style=social&logo=data%3Aimage%2Fpng%3Bbase64%2CiVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAIRlWElmTU0AKgAAAAgABQESAAMAAAABAAEAAAEaAAUAAAABAAAASgEbAAUAAAABAAAAUgEoAAMAAAABAAIAAIdpAAQAAAABAAAAWgAAAAAAAABIAAAAAQAAAEgAAAABAAOgAQADAAAAAQABAACgAgAEAAAAAQAAABigAwAEAAAAAQAAABgAAAAAEQ8YrgAAAAlwSFlzAAALEwAACxMBAJqcGAAAAVlpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IlhNUCBDb3JlIDYuMC4wIj4KICAgPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4KICAgICAgPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIKICAgICAgICAgICAgeG1sbnM6dGlmZj0iaHR0cDovL25zLmFkb2JlLmNvbS90aWZmLzEuMC8iPgogICAgICAgICA8dGlmZjpPcmllbnRhdGlvbj4xPC90aWZmOk9yaWVudGF0aW9uPgogICAgICA8L3JkZjpEZXNjcmlwdGlvbj4KICAgPC9yZGY6UkRGPgo8L3g6eG1wbWV0YT4KGV7hBwAAB4lJREFUSA1tVQlwU9cVPX%2FXZmuxZcuSjWyMwQaDsUvLWmo7bEOHLSnETckQBgITWpO2CSmTlqnatEyazNCWpmEZYEpCS7DLpA3FbVPWTAIJ2GZfHNsgL1iWZGuz9S19Sf%2F1fWfSYdpeaeZ96f13l3PPuY%2FZsuWA0CfdZlFWhsDR22pb28EUHrOT2yt2jcrJpWlVcqWUaFEqMcDprTXQm10RNtF%2FNdfQ%2BeLiN0bvPXZk%2FLHW4%2BH1NhvH%2FPeG9vvNG4PGHXd99p3Xji%2FfZn3j93ZrHkZVFhkIAKMDUkGVVSJsJg00%2B585v73i%2BT0vS6PDCYur56mV1YE6hqE7X5gWwFD5zafdtvKaCpImlUl5pJIjqFCM5pLcRMi41%2FV6anIR9W0ATz8cVDDQjsehen1Qfte3WdfElaIkPqSOESZgMFt6ddlZDxgl0clmZXfwjUdOt930DRUakTFF%2FX6M%2BANIyTLUTAZ9LEfez%2FmRUC%2BnhVyavMAQEOpbSbHwj4H9LAHd5VA0Q4LtiFA4IEoOnSA4THbH10IZgqlmmlUKnFU0ZJv0AqvqbHZic5dkFDlOg4wwylic%2B2Uwxey8F4FFL8GpE5EhBB1yAoiNAkYd5hZO5MrLdCqnN6YFSa%2BC40k6EmIu3HnI1q36Bs%2FHlNSVzjPnViS7vCn3E3Ml5%2FQqTjLbkFGSFAuCRckxxKNhhINBDA08wmg4jEpnAXKnToTRagMr6UEYhiWEsDq9Af23buLRgSO00GIms2JhiOd5od9sz8GN0wcYX0cvlr5qRv6kMqR1OgR6e8BxPLLyXLC4iuGunAllNEobTVvHsEiMxDD84C6sBQWw5ORgqNeLwJV2JGFSMd%2FNyWk1wDM879VlmSiyZaS8qhj%2F3H0YmDwFVfWVkD%2B9gs7rXrjnTYO1uAiumhqIhixEB%2FrRc%2FlT9LV7oUS8KJhZDZ%2FMAZ8HqZ8RTDQaSFDgkQIJsYIk9PCShBxE2Ps3OvHK7k349Y4VCN%2FroM79KJnsQs%2Blh7j%2Bp99AHh4Gy%2FNIRKPoPncMlmwB2TnFiJuy8NOty%2FDR1bew81db8SB%2BFVUuO1SWC%2FOEZfoLCp34BEXc6k215OUXnmVyzCY8tWoZdh9sxv6feFA%2Bax7utxKKzBey4UQBkjQXVjaDjuEUDr2yGasXzKTEiOE7y79OHnhfRbfNDYHjo2yByA2yBkMK65exP%2FvBc0SJjyIwOIgiuwVb1i4FapYg2toPkRaf0ZSlGQ2UR1Lo8N7Fih%2BuQVWxAx237%2BDa9Tuwm41YvmgB00ZFIzGIsjkWw7BKyDCsFhj0OlWWxzAYGEZz8wcoddjw7i82w4cgyqAgnc6M%2B%2BdYFn3K55Qo89CweB7I2Ag4UURl1XRkOAnJRBIOWiUYEmW%2FXzszSsXhAysgGhtRbTkWHD58AuXlZcjONmHJnBn49s5G3EE7skQeVAYQqTPAhKcbFqK6rAjuCS44CvIRDkUotQE5HmcHKa15UYyyFFciZFKPcOEmzXxIpWFRUuwET1mgqiosJj1qZ5QCdd9DfukkpKk%2BDDYb8jZvhSNLD53AYcAXxIWLn%2BHGjbuIyQly9szHTFlkCGlWiLJazVQovRp13953nPTSl1etXIre3gGEwxGwHAdWGxB5FjACLZuWQHUFSa8fz1Y7393thd8fRGGhA5%2B03sTfmvaj1JkHJZ2JjQeQVaZ3%2BdxKtPzlIHP67CUUuSdgWsUkdHY%2BBE%2FxNpuzKb3HQOh80pyDqHSuEiRSaToZeOTbbVi5vA7Fk0px7OSHNKQFyaRCURAj4wF4ke%2BP0D%2FMFJ9dLx4ll9pvw1lUiK%2FOqkJfIIQP%2FnERViFDhaMpmLKJBnFLPPZ7jqG55TyKSidCpYrfd%2BQ9nP%2FzvrTZOBWixQomkx6j8qNMXLvJSjuyUVb0fNh7LX300DlIFpYR9Abm5789ivfe8qBQpmp35cFI8U%2FEIuj61zlEHj3Ah6daESWjePfURfX4xfuZKdVzhOr1a%2BDIsb6zcIp5v9Z0eDwetrt4weZ4PL4r1NNTqFHurC%2BQxuG%2FU%2FBjQulXytHddg3T161BWX09Yo96cea1A8iblAcmMAp%2FuVuZv2Sh6HS5wMgjQ26XY9ubDU80a7413jEehqHswUFP68CxLlPWS4qiND43o9ouz6rBpUPvJLrbung6rHmGNlzDX1utJXYEuryqmOVQVjQ8qTMaKaOSoyfqqmq%2Bu2FRxTCwliOkibC0azRLoLGlRfLMcsrHNtS%2FJqrxqnhgcA8RhPi0b63W2adP4JP4OJGKyxqF6JdB%2BGGnwjmd6vzGdTo9q%2FrsJPHMH7Y3NGjOG%2Fe2SPQy1VRJxiHSAmhW6znPw%2B3lL2zcSG8UYP3bf52SFsQdY7K8yd%2FZhajPl6mor1Pl4SDpuXVLnDJ7NnKzjX%2BcnZ%2F%2F0vOr5vixtonzTAPn8axTtPP0jqCp%2FB9b29QkBu%2Fa1QueuvHhs%2BXk5ZpYOPpjJZV%2BkvISybE4DKoSKMrN3bbn2cUnx13s3St5QqEU7acG97hpAb58%2Ft%2BVbm450EqV9R89YcOJj%2BY37DvV%2BsLB90%2B1tHfatUNNTU3cXgrvl8609bFn7t8fxThrSai%2FQAAAAABJRU5ErkJggg%3D%3D)
+![PyPI - Version](https://img.shields.io/pypi/v/karabo)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/karabo)
+![PyPI - License](https://img.shields.io/pypi/l/karabo)
+![PyPI - Wheel](https://img.shields.io/pypi/wheel/karabo)
+![GitHub language count](https://img.shields.io/github/languages/count/European-XFEL/Karabo)
+![GitHub top language](https://img.shields.io/github/languages/top/European-XFEL/Karabo)
+![GitHub contributors](https://img.shields.io/github/contributors/European-XFEL/Karabo)
+![GitHub commit activity](https://img.shields.io/github/commit-activity/m/European-XFEL/Karabo)
+![GitHub Repo stars](https://img.shields.io/github/stars/European-XFEL/Karabo)
+
+Karabo is the [European XFEL](www.xfel.eu)'s SCADA framework. It is a scientific control system
+that supports plugin (device) development in C++ and Python.
+
+You can find an overview of Karabo on [Wikipedia](https://en.wikipedia.org/wiki/Karabo_(software)),
+and in [this publication](https://www.tandfonline.com/doi/pdf/10.1080/08940886.2023.2277650).
+
+The Karabo source repository is on [GitHub](https://github.com/European-XFEL/Karabo) and
+also contains our [Contributing Guidelines](https://github.com/European-XFEL/Karabo/blob/main/CONTRIBUTING.md).
+
+Additional documentation is available on [ReadTheDocs](https://karabo.readthedocs.io/en/latest/)
+
+# Installation
+
+This package facilitates installation of the various Karabo subpackages.
+
+## Standalone and Full
+
+For the installation of Karabo we recommend a fresh python environment.
+If you would like to try Karabo in a standalone fashion on a single machine
+it's easiest to just run:
+
+```bash
+pip install 'karabo[full]'
+```
+
+This will install a complete setup, including all essential service devices.
+Note that pre-compiled binaries will be installed for [supported operating systems](https://github.com/European-XFEL/Karabo?tab=readme-ov-file#available-operating-systems). Otherwise pip will attempt to compile the source, which might require additional dependencies to be installed first.
+If source compilation fails, we recommend you follow the instructions at https://github.com/European-XFEL/Karabo,
+which will result in a self-consistent environment, including a Python interpreter, with
+similar functionality to a `karabo[full]` installation.
+
+After installation you should initialize the environment with either
+
+```bash
+karabo-activate --init-to PATH --standalone
+```
+
+for a standalone system, or 
+
+
+```bash
+karabo-activate --init-to PATH [--backbone] --broker-host amqp://{broker:port} --broker-topic {TOPIC}
+```
+
+for headless full installations. The `--backbone` option sets the core services up, and the `--broker-*`
+parameters are used to configure the installation according to your AMQP broker setup.
+
+
+## Other options
+
+Instead of a full installation, only individual core packages of Karabo can be installed:
+
+- `karabo[karathon]` will install the Karathon Python API
+- `karabo[cpp]` will install the Karabo C++ API
+- `karabo[bound]` will install the Karabo Python bindings to C++
+- `karabo[services]` will install service tools, allowing to manage installations with `karabo.daemontools`
+
+Options can be combined, such as `karabo[karathon,services]`, which will result in a Karathon installation
+with service tools installed.
+
+
+## Karabo GUI
+
+If you require the GUI, please install it into a separate Python environment:
+
+```bash
+pip install karabo.gui
+```
+
+## Starting a Karabo standalone system
+
+If you wish to run Karabo standalone you can do this if you have `podman` or `docker` installed on the system.
+
+First, run
+
+```bash
+karabo-activate --init-to $PATH --standalone
+```
+
+Then run 
+
+```bash
+podman-compose -f $PATH/var/containers/compose.yaml up
+```
+
+or (`docker-compose ...`). This will start containerized version of the services a full 
+Karabo installation requires:
+
+- A RabbitMQ broker (user: xfel, pw: karabo)
+- An Influx database instance for logging (user: infadm, pw: admpwd)
+- An ExistDB database as project database (user: admin, pw: change_me_please)
+- A Grafana installation with the Influx database as a pre-provisioned source (user: admin, pw: admin)
+
+Note that the Grafana provisioning assumes `karabo` as the broker topic in use. If you've
+used `karabo-activate --broker-topic TOPIC` you'll need to edit the data source to refer to
+a database of `TOPIC` from inside Grafana.
+
+Finally, run
+
+```bash
+$PATH/activate
+```
+
+followed by 
+
+```bash
+karabo-start
+```
+
+# Device Development
+
+These packages are not intended to facilitate development of devices for Karabo's C++ API. Please 
+create a self-consistent development environment using the instructions at https://github.com/European-XFEL/Karabo.
+
+Development of devices against these packages using the Bound and Karathon Python APIs should be trivially
+possibly, as long as the device packages define the correct entrypoints.
+
+For the Karathon API, a line similar to this one should exist in your `pyproject.toml`:
+
+```toml
+[project.entry-points."karabo.middlelayer_device"]
+PropertyTestMDL = "karabo.middlelayer_devices.property_test:PropertyTestMDL"
+```
+
+For the Bound API, a line similar to this one should exist in your `pyproject.toml`.
+
+```toml
+[project.entry-points."karabo.bound_device"]
+PropertyTest = "karabo.bound_devices.property_test:PropertyTest"
+```
