@@ -1,0 +1,65 @@
+# akgpt
+
+A simple Python library for interacting with FullAI models via their API.
+
+## Installation
+
+```bash
+pip install akgpt
+```
+
+## Usage
+
+```python
+import os
+from akgpt import AKGPT
+
+# API key is not required for FullAI, but can be passed for other APIs if needed
+# client = AKGPT(api_key="your_secret_api_key")
+
+client = AKGPT()
+
+# Get available models
+print("Available Models:")
+models = client.get_models()
+if models:
+    for model_info in models:
+        print(f"- {model_info["name"]} ({model_info["description"]})")
+
+# Make a text query
+response = client.query("deepseek", "What is the capital of France?")
+print("\nText Query Response:", response)
+
+# Make a query with additional parameters
+response_gpt = client.query("gpt-5-nano", "Write a short story about a robot that learns to paint.", temperature=0.7, max_tokens=150)
+print("\nGPT-5 Nano Query Response:", response_gpt)
+```
+
+## API Key
+
+For the FullAI service, an API key is not required. However, the library is designed to optionally accept an API key, which can be useful if you later adapt it for other services that require authentication.
+
+Your API key can be provided in two ways:
+
+1.  **Environment Variable (Recommended):** Set the `AKGPT_API_KEY` environment variable.
+    ```bash
+    export AKGPT_API_KEY="your_secret_api_key"
+    ```
+2.  **Directly in Code:** Pass the `api_key` argument when initializing the `AKGPT` class.
+    ```python
+    client = AKGPT(api_key="your_secret_api_key")
+    ```
+
+## Models
+
+Use the `get_models()` method to retrieve a list of available models. Specify the model you want to use in the `query` method.
+
+## Parameters
+
+Additional parameters can be passed as keyword arguments to the `query` method. These will be forwarded to the FullAI API. Common parameters include `temperature`, `max_tokens`, etc.
+
+## Contributing
+
+Feel free to contribute to this project by opening issues or pull requests on GitHub.
+
+
