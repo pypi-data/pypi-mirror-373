@@ -1,0 +1,128 @@
+---
+description: System architecture and data flow patterns for the Anyscale CLI - layered design and component interactions
+globs:
+  - frontend/cli/anyscale/**/*.py
+  - frontend/cli/anyscale/_private/**/*.py
+alwaysApply: false
+---
+
+# Architecture
+
+## Layered Design
+
+```
+User → CLI (Click) → SDK → AnyscaleClient → OpenAPI Clients → Backend API
+                       ↓
+                   Telemetry
+```
+
+## Core Components
+
+### CLI Layer (`anyscale/commands/`)
+- Click-based command interface
+- Argument parsing and validation
+- User-friendly error formatting
+
+### SDK Layer (`anyscale/*/commands.py`)
+- Business logic and API orchestration
+- Typed, importable Python functions
+- Used by CLI and external users
+
+### Client Layer (`anyscale/_private/anyscale_client/`)
+- Wraps auto-generated OpenAPI clients
+- Handles auth and error normalization
+- Provides consistent API interface
+
+### Generated Clients
+- Auto-generated from FastAPI specs
+- Located in `anyscale/client/openapi_client/`
+- Regenerate: `cd frontend/web && npm run build-api`
+
+## Directory Structure
+
+```
+frontend/cli/
+├── anyscale/
+│   ├── commands/           # CLI commands (Click)
+│   ├── */commands.py       # SDK functions per module
+│   ├── */models.py         # Pydantic models
+│   ├── _private/
+│   │   └── anyscale_client/  # Client wrapper
+│   └── telemetry.py        # Usage tracking
+├── tests/
+│   └── unit/              # Unit tests
+└── .cursor/               # Dev documentation
+```
+
+## Data Flow
+
+1. **User** → `anyscale service deploy`
+2. **CLI** → Parses args, validates
+3. **SDK** → Business logic, orchestration
+4. **Client** → Auth, API call, error handling
+5. **Response** → Flows back up, formatted for user
+6. **Telemetry** → Records operation in background
+
+## Key Principles
+
+1. **SDK-first**: Business logic in SDK, CLI is thin wrapper
+2. **Type safety**: Full type hints throughout
+3. **Error hierarchy**: API → Client → SDK → CLI
+4. **Never edit generated code**: Regenerate instead
+
+## Dependencies
+
+```
+CLI → SDK → Client → Generated
+        ↓
+     Models
+```
+
+## Common Patterns
+
+### SDK Function
+```python
+@sdk_command(singleton_key, SDKClass)
+def operation(param: str, *, optional: Optional[str] = None) -> Model:
+    """SDK operations are typed and testable."""
+    return _private_sdk.do_operation(param, optional)
+```
+
+### CLI Command
+```python
+@click.command()
+@click.option("--param", required=True)
+def command(param: str):
+    """CLI wraps SDK, handles formatting."""
+    try:
+        result = sdk.operation(param)
+        click.echo(format_output(result))
+    except Exception as e:
+        raise click.ClickException(str(e))
+```
+
+## AnyscaleClient Extension
+
+When adding new API calls:
+
+1. **Add to interface** (`common.py`)
+   ```python
+   @abstractmethod
+   def new_method(self, param: str) -> ResultType:
+       raise NotImplementedError
+   ```
+
+2. **Implement in client** (`anyscale_client.py`)
+   ```python
+   @handle_api_exceptions
+   def new_method(self, param: str) -> ResultType:
+       return self._api.endpoint(param)
+   ```
+
+3. **Add to fake client** (`fake_anyscale_client.py`)
+   ```python
+   def new_method(self, param: str) -> ResultType:
+       return FakeResult()
+   ```
+
+4. **Write tests** - All three must be updated together

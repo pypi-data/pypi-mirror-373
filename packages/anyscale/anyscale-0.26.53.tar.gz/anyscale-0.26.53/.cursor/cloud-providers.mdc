@@ -1,0 +1,206 @@
+---
+description: Cloud provider abstractions and implementations - AWS, GCP, and Azure support patterns
+globs:
+  - frontend/cli/**/cloud*.py
+  - frontend/cli/**/aws*.py
+  - frontend/cli/**/gcp*.py
+  - frontend/cli/**/anyscale-cloud-setup*.yaml
+alwaysApply: false
+---
+
+# Cloud Providers
+
+## Supported Clouds
+
+- **AWS** - Primary, full feature support
+- **GCP** - Secondary, most features supported
+- **Azure** - Limited/experimental
+
+## Cloud Configuration
+
+### Setup Files
+```yaml
+# anyscale-cloud-setup.yaml (AWS)
+# anyscale-cloud-setup-gcp.yaml (GCP)
+
+cloud_name: my-cloud
+provider: aws  # or gcp
+region: us-west-2
+vpc_id: vpc-xxx
+subnet_ids:
+  - subnet-xxx
+security_group_ids:
+  - sg-xxx
+```
+
+### Using Clouds
+```python
+# Specify cloud in SDK
+from anyscale.cloud.commands import get_cloud
+
+cloud = get_cloud("my-aws-cloud")
+print(f"Provider: {cloud.provider}")
+print(f"Region: {cloud.region}")
+
+# CLI commands
+anyscale cloud list
+anyscale cloud verify --name my-cloud
+anyscale service deploy --cloud my-cloud
+```
+
+## Provider Abstraction
+
+```python
+# Common interface for all providers
+class CloudProvider(ABC):
+    @abstractmethod
+    def create_instance(self, config: dict) -> str:
+        pass
+
+    @abstractmethod
+    def get_instance_types(self) -> List[str]:
+        pass
+
+# Provider-specific implementations
+class AWSProvider(CloudProvider):
+    def create_instance(self, config: dict) -> str:
+        # AWS-specific logic using boto3
+        pass
+
+class GCPProvider(CloudProvider):
+    def create_instance(self, config: dict) -> str:
+        # GCP-specific logic using google-cloud
+        pass
+```
+
+## AWS Specifics
+
+### IAM Policies
+```python
+from anyscale.aws_iam_policies import get_required_policies
+
+policies = get_required_policies()
+# Returns list of required AWS IAM policies
+```
+
+### Instance Types
+```python
+# Common AWS instance types used
+INSTANCE_TYPES = {
+    "cpu": ["m5.large", "m5.xlarge", "m5.2xlarge"],
+    "gpu": ["g4dn.xlarge", "p3.2xlarge"],
+    "memory": ["r5.large", "r5.xlarge"]
+}
+```
+
+### Regions
+```python
+AWS_REGIONS = [
+    "us-east-1",
+    "us-west-2",
+    "eu-west-1",
+    "ap-southeast-1"
+]
+```
+
+## GCP Specifics
+
+### Machine Types
+```python
+GCP_MACHINE_TYPES = {
+    "cpu": ["n1-standard-4", "n1-standard-8"],
+    "gpu": ["n1-standard-4 + nvidia-tesla-t4"],
+    "memory": ["n1-highmem-4", "n1-highmem-8"]
+}
+```
+
+### Regions
+```python
+GCP_REGIONS = [
+    "us-central1",
+    "europe-west1",
+    "asia-east1"
+]
+```
+
+### Service Account
+```python
+# GCP requires service account for operations
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = '/path/to/key.json'
+```
+
+## Cloud Detection
+
+```python
+def detect_cloud_provider() -> str:
+    """Auto-detect cloud provider from environment."""
+
+    # Check AWS
+    if os.environ.get('AWS_REGION'):
+        return 'aws'
+
+    # Check GCP
+    if os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'):
+        return 'gcp'
+
+    # Default
+    return 'aws'
+```
+
+## Multi-Cloud Patterns
+
+```python
+def get_provider(cloud_name: str) -> CloudProvider:
+    """Get provider instance for cloud."""
+    cloud = get_cloud(cloud_name)
+
+    if cloud.provider == 'aws':
+        return AWSProvider(region=cloud.region)
+    elif cloud.provider == 'gcp':
+        return GCPProvider(project=cloud.project)
+    else:
+        raise ValueError(f"Unsupported provider: {cloud.provider}")
+
+# Use provider abstraction
+provider = get_provider("my-cloud")
+instances = provider.list_instances()
+```
+
+## Testing with Clouds
+
+```python
+@pytest.fixture
+def mock_aws_cloud():
+    """Mock AWS cloud for testing."""
+    cloud = Mock()
+    cloud.provider = 'aws'
+    cloud.region = 'us-west-2'
+    cloud.vpc_id = 'vpc-test'
+    return cloud
+
+def test_with_cloud(mock_aws_cloud):
+    result = deploy_to_cloud(mock_aws_cloud)
+    assert result.cloud_id == mock_aws_cloud.id
+```
+
+## Common Issues
+
+### AWS
+- Missing IAM permissions
+- VPC/subnet misconfiguration
+- Security group rules
+
+### GCP
+- Service account key issues
+- API not enabled
+- Quota limits
+
+### Debug
+```bash
+# Verify cloud setup
+anyscale cloud verify --name my-cloud
+
+# Check credentials
+aws sts get-caller-identity  # AWS
+gcloud auth list  # GCP
+```

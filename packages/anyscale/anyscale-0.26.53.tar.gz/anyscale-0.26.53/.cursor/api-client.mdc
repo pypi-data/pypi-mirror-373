@@ -1,0 +1,189 @@
+---
+description: OpenAPI client generation and API integration patterns - client wrapper and endpoint extension
+globs:
+  - frontend/cli/**/anyscale_client/**/*.py
+  - frontend/cli/**/openapi_client/**/*.py
+  - frontend/cli/anyscale/client/**/*.py
+alwaysApply: false
+---
+
+# API Client Integration
+
+## Client Generation
+
+### Regenerate After Backend Changes
+```bash
+cd frontend/web
+npm run build-api
+
+# Generates:
+# - anyscale/client/openapi_client/  # Internal API
+# - anyscale/sdk/anyscale_client/    # External API
+```
+
+**Never edit generated code** - Always regenerate.
+
+## Using the Client
+
+### ✅ Correct Usage
+```python
+# Use the wrapper
+from anyscale._private.anyscale_client import get_default_client
+client = get_default_client()
+result = client.create_service(name="my-service")
+```
+
+### ❌ Wrong Usage
+```python
+# Never use generated clients directly
+from anyscale.client.openapi_client.api import DefaultApi
+api = DefaultApi()  # Wrong!
+```
+
+## Adding New Endpoints
+
+### 1. Backend First
+```python
+# backend/server/api/product/routers/my_router.py
+@router.post("/my-endpoint")
+async def my_endpoint(request: MyRequest) -> MyResponse:
+    pass
+```
+
+### 2. Regenerate Clients
+```bash
+cd frontend/web && npm run build-api
+```
+
+### 3. Extend AnyscaleClient
+
+**Step 1: Interface** (`common.py`)
+```python
+@abstractmethod
+def new_method(self, param: str) -> ResultType:
+    raise NotImplementedError
+```
+
+**Step 2: Implementation** (`anyscale_client.py`)
+```python
+@handle_api_exceptions
+def new_method(self, param: str) -> ResultType:
+    # Client decides internally whether to use
+    # _internal_api_client or _external_api_client
+    return self._appropriate_api.endpoint(param)
+```
+
+**Step 3: Fake Client** (`fake_anyscale_client.py`)
+```python
+def new_method(self, param: str) -> ResultType:
+    return FakeResult()
+```
+
+### 4. Use in SDK
+```python
+class PrivateModuleSDK:
+    def __init__(self, client: AnyscaleClientInterface):
+        self.client = client
+
+    def my_method(self, param: str):
+        # ✅ Use interface method
+        return self.client.new_method(param)
+
+        # ❌ Never access internal APIs directly
+        # return self.client._internal_api_client.endpoint()
+```
+
+## Key Principle
+
+**SDK code should NEVER know about internal vs external APIs**. The AnyscaleClient handles this distinction internally.
+
+## Error Handling
+
+```python
+from anyscale._private.anyscale_client import handle_api_exceptions
+
+@handle_api_exceptions  # Handles common API errors
+def api_method(self, **kwargs):
+    return self.api.endpoint(**kwargs)
+
+# Manual handling for specific cases
+try:
+    result = api.create_resource(data)
+except ApiException as e:
+    if e.status == 404:
+        raise ResourceNotFoundError(f"Not found: {e.body}")
+    elif e.status == 409:
+        raise ConflictError(f"Already exists: {e.body}")
+    raise
+```
+
+## Common Patterns
+
+### Pagination
+```python
+def list_all(client):
+    all_items = []
+    next_token = None
+
+    while True:
+        response = client.list_resources(
+            limit=100,
+            next_token=next_token
+        )
+        all_items.extend(response.items)
+
+        if not response.next_token:
+            break
+        next_token = response.next_token
+
+    return all_items
+```
+
+### Status Polling
+```python
+def wait_for_ready(resource_id, client, timeout=300):
+    start = time.time()
+
+    while time.time() - start < timeout:
+        resource = client.get_resource(resource_id)
+
+        if resource.status == "READY":
+            return resource
+
+        if resource.status in ["FAILED", "ERROR"]:
+            raise Exception(f"Failed: {resource.error}")
+
+        time.sleep(5)
+
+    raise TimeoutError(f"Timeout: {resource_id}")
+```
+
+## Testing
+
+```python
+@pytest.fixture
+def mock_client():
+    client = Mock()
+    client.create_service.return_value = {
+        "id": "srv_123",
+        "name": "test-service"
+    }
+    return client
+
+def test_with_mock(mock_client):
+    result = create_service("test", client=mock_client)
+    mock_client.create_service.assert_called_once()
+```
+
+## Troubleshooting
+
+```bash
+# Clean regenerate
+cd frontend/web
+rm -rf ../cli/anyscale/client/openapi_client
+rm -rf ../cli/anyscale/sdk/anyscale_client
+npm run build-api
+
+# Check imports
+python -c "from anyscale.client.openapi_client import __version__; print(__version__)"
+```

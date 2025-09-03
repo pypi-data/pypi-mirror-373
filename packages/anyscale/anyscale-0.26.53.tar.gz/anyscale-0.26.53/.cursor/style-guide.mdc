@@ -1,0 +1,127 @@
+---
+description: Python code style, naming conventions, and documentation standards for CLI development
+globs:
+  - frontend/cli/**/*.py
+alwaysApply: false
+---
+
+# Style Guide
+
+## Naming
+```python
+class ServiceController:     # PascalCase
+def create_service():       # snake_case
+MAX_RETRIES = 3            # UPPER_SNAKE_CASE
+def _internal_helper():     # Leading underscore for private
+```
+
+## Imports
+```python
+# Standard library
+import os
+from typing import Optional, List
+
+# Third party
+import click
+from pydantic import BaseModel
+
+# Local - absolute imports
+from anyscale.service.models import ServiceConfig
+```
+
+## Type Hints (Required)
+```python
+def process(
+    items: List[str],
+    transform: Optional[Callable[[str], str]] = None
+) -> List[str]:
+    """Process items with optional transform."""
+    pass
+```
+
+## CLI Patterns
+```bash
+anyscale <resource> <action> [options]
+anyscale service deploy --name my-app
+```
+
+### Common Options
+```python
+@click.option("--name", required=True, help="Resource name")
+@click.option("--config", type=click.Path(exists=True))
+@click.option("--wait/--no-wait", default=False)
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+@click.option("--format", type=click.Choice(["table", "json", "yaml"]))
+```
+
+## SDK Pattern
+```python
+@sdk_command(
+    singleton_key="service_sdk",
+    sdk_class=PrivateServiceSDK,
+)
+def deploy(
+    config: ServiceConfig,
+    *,  # Force keyword-only
+    wait: bool = False,
+    _private_sdk: Optional[PrivateServiceSDK] = None
+) -> str:
+    """Deploy a service."""
+    return _private_sdk.deploy(config, wait)
+```
+
+## Models
+```python
+from pydantic import BaseModel, Field
+
+class ServiceConfig(BaseModel):
+    name: str = Field(..., description="Service name")
+    replicas: int = Field(1, ge=1, le=100)
+
+    class Config:
+        extra = "forbid"  # Reject unknown fields
+```
+
+## Error Messages
+✅ **Good**: "Service 'my-app' not found. List services: anyscale service list"
+❌ **Bad**: "Error: 404" or "Operation failed"
+
+## Documentation
+```python
+def public_function(param: str) -> Result:
+    """
+    Brief description.
+
+    Args:
+        param: Description
+
+    Returns:
+        What it returns
+
+    Raises:
+        ValueError: When invalid
+
+    Examples:
+        >>> public_function("test")
+        Result(...)
+    """
+    pass
+```
+
+## Comments
+```python
+# ✅ Explains WHY, not WHAT
+# Skip first item - contains headers from legacy format
+items = items[1:]
+
+# ❌ States the obvious
+# Remove first item
+items = items[1:]
+```
+
+## Best Practices
+1. **Type everything** - No untyped functions
+2. **Keyword-only args** - Use `*` separator
+3. **Descriptive names** - Avoid abbreviations
+4. **Early validation** - Check before API calls
+5. **Consistent patterns** - Follow existing code

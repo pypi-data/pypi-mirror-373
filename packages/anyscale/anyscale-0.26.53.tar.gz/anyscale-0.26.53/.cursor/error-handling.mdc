@@ -1,0 +1,201 @@
+---
+description: Error handling patterns and user-friendly messages - exception hierarchy and error flows
+globs:
+  - frontend/cli/anyscale/**/*.py
+alwaysApply: false
+---
+
+# Error Handling
+
+## Error Flow
+
+```
+Backend Error
+    ↓
+ApiException (OpenAPI)
+    ↓
+AnyscaleAPIError (Client)
+    ↓
+Specific SDK Exception
+    ↓
+ClickException (User-facing)
+```
+
+## Exception Types
+
+```python
+from anyscale.api_utils.exceptions import (
+    AnyscaleAPIError,      # Base API error
+    ResourceNotFoundError, # 404
+    ValidationError,       # 400
+    AuthenticationError,   # 401
+    PermissionError,      # 403
+    RateLimitError,       # 429
+    ServerError,          # 500+
+)
+
+from click import (
+    ClickException,    # User-friendly message
+    BadParameter,      # Invalid parameter
+    UsageError,       # Command usage error
+)
+```
+
+## SDK Layer Pattern
+
+```python
+def sdk_function(name: str):
+    """SDK: Validate and add context to errors."""
+
+    # Input validation
+    if not name:
+        raise ValueError("Name cannot be empty")
+
+    try:
+        return client.create_resource(name)
+
+    except ResourceNotFoundError:
+        # Add helpful context
+        raise ResourceNotFoundError(
+            f"Project '{name}' not found. "
+            f"List projects: anyscale project list"
+        )
+
+    except ValidationError as e:
+        # Transform to user-friendly
+        if "duplicate" in str(e).lower():
+            raise ValueError(f"'{name}' already exists")
+        raise
+```
+
+## CLI Layer Pattern
+
+```python
+@click.command()
+def cli_command(name: str):
+    """CLI: Format for users, no stack traces."""
+
+    try:
+        result = sdk_function(name)
+        click.echo(f"Success: {result.id}")
+
+    except ValueError as e:
+        # Parameter errors
+        raise click.BadParameter(str(e))
+
+    except AuthenticationError:
+        # Auth issues
+        raise click.ClickException(
+            "Not authenticated. Run: anyscale auth login"
+        )
+
+    except Exception as e:
+        # Generic fallback
+        raise click.ClickException(str(e))
+```
+
+## Client Layer (@handle_api_exceptions)
+
+```python
+@handle_api_exceptions
+def client_method(self, **kwargs):
+    """Decorator handles common API errors."""
+    return self.api.endpoint(**kwargs)
+
+# Manual handling for specific cases
+def complex_method(self):
+    try:
+        return self.api.call()
+    except ApiException as e:
+        if e.status == 404:
+            raise ResourceNotFoundError(parse_error(e))
+        elif e.status == 409:
+            raise ConflictError(parse_error(e))
+        raise AnyscaleAPIError(f"API error: {e.status}")
+```
+
+## User-Friendly Messages
+
+### Good ✅
+```python
+"Service 'my-app' not found. View services: anyscale service list"
+"Authentication expired. Please run: anyscale auth login"
+"Cannot delete service with active deployments. Stop first: anyscale service stop my-app"
+```
+
+### Bad ❌
+```python
+"HTTPError: 404"
+"KeyError: 'id'"
+"NoneType object has no attribute 'status'"
+```
+
+## Validation
+
+```python
+# SDK validation
+def validate_name(name: str):
+    if not name:
+        raise ValueError("Name is required")
+    if len(name) > 63:
+        raise ValueError(f"Name too long (max 63): {len(name)}")
+    if not name.replace("-", "").isalnum():
+        raise ValueError("Name must be alphanumeric with hyphens only")
+
+# CLI validation
+@click.option("--replicas", type=click.IntRange(1, 100))
+@click.option("--timeout", type=click.IntRange(min=0))
+def command(replicas: int, timeout: int):
+    pass  # Click validates automatically
+```
+
+## Retry Logic
+
+```python
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(min=1, max=10),
+    reraise=True
+)
+def api_call_with_retry():
+    return client.flaky_operation()
+```
+
+## Debug Information
+
+```python
+import os
+from anyscale.cli_logger import BlockLogger
+
+logger = BlockLogger()
+
+try:
+    operation()
+except Exception as e:
+    if os.getenv("ANYSCALE_DEBUG"):
+        logger.debug(f"Full error: {e}", exc_info=True)
+    raise click.ClickException(user_friendly_message(e))
+```
+
+## Testing Errors
+
+```python
+def test_error_handling():
+    with pytest.raises(ValueError, match="Name cannot be empty"):
+        create_resource("")
+
+    # Mock API errors
+    mock_client.create.side_effect = ResourceNotFoundError("Not found")
+    with pytest.raises(ResourceNotFoundError, match="List projects"):
+        create_resource("test")
+```
+
+## Key Principles
+
+1. **No stack traces** in user output (unless ANYSCALE_DEBUG=1)
+2. **Add context** to errors (suggest next steps)
+3. **Validate early** in SDK before API calls
+4. **Transform errors** to user-friendly messages in CLI
+5. **Log details** for debugging, show summary to users

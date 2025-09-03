@@ -1,0 +1,110 @@
+---
+description: Telemetry implementation and privacy guidelines - tracking patterns and custom events
+globs:
+  - frontend/cli/**/telemetry.py
+  - frontend/cli/anyscale/commands/*.py
+alwaysApply: false
+---
+
+# Telemetry
+
+## How It Works
+
+The CLI automatically tracks command usage via Click patching:
+- Captures command path, options, timing, and errors
+- Runs in background threads (3s timeout)
+- Never blocks CLI execution
+- Fire-and-forget pattern
+
+## Data Collected
+
+```json
+{
+  "trace_id": "unique-per-operation",
+  "session_id": "groups-related-ops",
+  "cmd_path": "anyscale service deploy",
+  "options": ["name", "config"],
+  "flags_used": ["wait"],
+  "duration_ms": 1234.56,
+  "exit_code": 0,
+  "exception_type": null,
+  "cli_version": "0.5.123"
+}
+```
+
+## Privacy Rules
+
+### ✅ DO Track
+- Command names and options used
+- Execution time and success/failure
+- CLI/Python versions
+
+### ❌ DON'T Track
+- Parameter values (passwords, tokens, etc.)
+- File contents or API responses
+- User identifiable information
+
+## Custom Events
+
+```python
+from anyscale.telemetry import mark_command_complete, mark_page_fetch_complete
+
+# Mark completion before user interaction
+def interactive_command():
+    data = fetch_data()
+    mark_command_complete()  # Emit before interaction
+    return prompt_user(data)
+
+# Track pagination
+def fetch_page(page_num: int):
+    data = api.get_page(page_num)
+    mark_page_fetch_complete(page_num)
+    return data
+```
+
+## Session Tracking
+
+```python
+from anyscale.telemetry import start_interactive_session
+
+# Group related operations
+def interactive_session():
+    session_id = start_interactive_session()
+    # All subsequent operations share session_id
+    while True:
+        command = get_input()
+        execute(command)
+```
+
+## Configuration
+
+```bash
+# Debug output
+export ANYSCALE_DEBUG=1
+
+# Sampling rate (0.0 to 1.0)
+export ANYSCALE_TELEMETRY_SAMPLE_RATE=0.5
+
+# Disable (for testing)
+export ANYSCALE_DISABLE_TELEMETRY=1
+```
+
+## Testing
+
+```python
+@patch('anyscale.telemetry._emit_telemetry')
+def test_with_telemetry(mock_emit):
+    result = runner.invoke(cli, ['command'])
+
+    mock_emit.assert_called_once()
+    payload = mock_emit.call_args[0][0]
+    assert payload.cmd_path == "anyscale command"
+    assert payload.exit_code == 0
+```
+
+## Key Points
+
+- Telemetry is automatic via Click patching
+- Never blocks or affects performance
+- Errors in telemetry are silently ignored
+- High-frequency commands should be sampled

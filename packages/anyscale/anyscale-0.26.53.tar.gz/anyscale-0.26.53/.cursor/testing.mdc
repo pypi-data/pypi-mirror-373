@@ -1,0 +1,188 @@
+---
+description: Testing patterns and commands for CLI tests - unit test structure and mock patterns
+globs:
+  - frontend/cli/tests/**/*.py
+  - frontend/cli/**/test_*.py
+alwaysApply: false
+---
+
+# Testing
+
+## Running Tests
+
+```bash
+# All unit tests
+bazelisk test //frontend/cli/tests/unit/... --test_output=all
+
+# Specific test
+bazelisk test //frontend/cli/tests/unit:test_service_cli --test_output=all
+
+# Debug specific test function
+bazelisk test //frontend/cli/tests/unit:test_service_cli \
+  --test_output=all --test_arg="-k test_create_service"
+
+# With coverage
+bazelisk coverage //frontend/cli/tests/unit/...
+```
+
+## Test Patterns
+
+### SDK Test
+```python
+import pytest
+from unittest.mock import Mock
+
+def test_sdk_function():
+    # Mock the client
+    mock_client = Mock()
+    mock_client.create_resource.return_value = {"id": "res_123"}
+
+    # Test SDK function
+    from anyscale.module.commands import create_resource
+    result = create_resource("test", client=mock_client)
+
+    # Verify
+    assert result.id == "res_123"
+    mock_client.create_resource.assert_called_once_with("test")
+```
+
+### CLI Test
+```python
+from click.testing import CliRunner
+from anyscale.commands.module_commands import cli
+
+def test_cli_command():
+    runner = CliRunner()
+
+    with patch("anyscale.module.commands.create_resource") as mock_sdk:
+        mock_sdk.return_value = Mock(id="res_123")
+
+        result = runner.invoke(cli, ["create", "--name", "test"])
+
+        assert result.exit_code == 0
+        assert "res_123" in result.output
+        mock_sdk.assert_called_once()
+```
+
+### Error Testing
+```python
+def test_error_handling():
+    # Test validation
+    with pytest.raises(ValueError, match="Name cannot be empty"):
+        create_resource("")
+
+    # Test API errors
+    mock_client.create.side_effect = ResourceNotFoundError("Not found")
+    with pytest.raises(ResourceNotFoundError):
+        create_resource("test", client=mock_client)
+```
+
+## Fixtures
+
+### Common Fixtures
+```python
+@pytest.fixture
+def mock_anyscale_client():
+    """Mock AnyscaleClient for testing."""
+    client = Mock(spec=AnyscaleClientInterface)
+    client.list_resources.return_value = []
+    return client
+
+@pytest.fixture
+def cli_runner():
+    """Click test runner."""
+    return CliRunner()
+
+@pytest.fixture
+def temp_config(tmp_path):
+    """Temporary config file."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("key: value")
+    return str(config_file)
+```
+
+## Mocking Strategies
+
+### Mock at SDK Level
+```python
+# Best for CLI tests
+@patch("anyscale.service.commands.deploy")
+def test_cli_deploy(mock_deploy):
+    mock_deploy.return_value = "srv_123"
+    result = runner.invoke(cli, ["deploy"])
+    assert "srv_123" in result.output
+```
+
+### Mock at Client Level
+```python
+# Best for SDK tests
+@patch("anyscale._private.anyscale_client.get_default_client")
+def test_sdk_with_mock_client(mock_get_client):
+    mock_client = Mock()
+    mock_get_client.return_value = mock_client
+
+    result = sdk_function()
+    mock_client.api_call.assert_called()
+```
+
+### Mock External Dependencies
+```python
+@patch("requests.post")
+def test_with_mock_requests(mock_post):
+    mock_post.return_value.json.return_value = {"status": "ok"}
+    result = function_using_requests()
+    assert result["status"] == "ok"
+```
+
+## Testing Interactive Commands
+
+```python
+def test_interactive_prompt():
+    runner = CliRunner()
+
+    # Simulate user input
+    result = runner.invoke(
+        cli,
+        ["interactive-command"],
+        input="yes\nmy-choice\n"
+    )
+
+    assert "Confirm" in result.output
+    assert result.exit_code == 0
+```
+
+## Testing Async Code
+
+```python
+import asyncio
+from unittest.mock import AsyncMock
+
+@pytest.mark.asyncio
+async def test_async_function():
+    mock_client = AsyncMock()
+    mock_client.async_call.return_value = {"result": "ok"}
+
+    result = await async_function(mock_client)
+    assert result["result"] == "ok"
+```
+
+## Test Organization
+
+```
+tests/
+├── unit/              # Fast, isolated tests
+│   ├── test_*_cli.py  # CLI command tests
+│   └── test_*_sdk.py  # SDK function tests
+├── mocks/             # Shared mock objects
+└── conftest.py        # Shared fixtures
+```
+
+## Best Practices
+
+1. **Test both SDK and CLI** separately
+2. **Mock at appropriate level** (SDK for CLI tests, Client for SDK tests)
+3. **Test error cases** explicitly
+4. **Use fixtures** for common setup
+5. **Keep tests fast** - mock external calls
+6. **Test one thing** per test function
+7. **Clear test names** that describe behavior

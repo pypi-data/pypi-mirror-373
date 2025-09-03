@@ -1,0 +1,152 @@
+---
+description: Authentication flow and credential management for CLI and SDK
+globs:
+  - frontend/cli/**/authenticate.py
+  - frontend/cli/**/auth*.py
+  - frontend/cli/**/controllers/auth_*.py
+alwaysApply: false
+---
+
+# Authentication
+
+## How Auth Works
+
+```
+User Token → CLI → API Client → Backend
+      ↓
+Stored in ~/.anyscale/credentials.json
+or ANYSCALE_CLI_TOKEN env var
+```
+
+## Credential Storage
+
+### File Storage
+- Path: `~/.anyscale/credentials.json`
+- Permissions: `0600` (user only)
+- Format: `{"cli_token": "ast_..."}`
+
+### Environment Variable
+- `ANYSCALE_CLI_TOKEN` - Takes precedence
+- Useful for CI/CD and automation
+
+## Using Authentication
+
+### Get Authenticated Client
+```python
+from anyscale.authenticate import get_auth_api_client
+
+# Get authenticated client
+auth = get_auth_api_client()
+client = auth.api_client
+
+# For SDK
+from anyscale._private.anyscale_client import get_default_client
+client = get_default_client()  # Handles auth automatically
+```
+
+### Check Auth Status
+```python
+from anyscale.util import get_user_info
+
+try:
+    user = get_user_info()
+    print(f"Authenticated as: {user.email}")
+except:
+    print("Not authenticated. Run: anyscale auth login")
+```
+
+### Set Credentials
+```python
+# CLI commands
+anyscale auth login    # Interactive browser flow
+anyscale auth set      # Manual token entry
+anyscale auth show     # View current auth
+
+# Programmatic
+from anyscale.controllers.auth_controller import AuthController
+controller = AuthController()
+controller.set(token="ast_...")
+```
+
+## Security Rules
+
+### DO ✅
+- Store tokens in `~/.anyscale/credentials.json` with 0600 perms
+- Use environment variables in CI/CD
+- Validate tokens before use
+- Clear error messages for auth failures
+
+### DON'T ❌
+- Log tokens or include in error messages
+- Commit tokens to version control
+- Share tokens between users
+- Store tokens in code
+
+## Testing Auth
+
+```python
+# Mock authentication
+@patch('anyscale.authenticate.get_auth_api_client')
+def test_with_auth(mock_auth):
+    mock_auth.return_value.api_client = mock_client
+    # Test your code
+
+# Skip auth in tests
+@patch.dict(os.environ, {'ANYSCALE_CLI_TOKEN': 'test_token'})
+def test_with_env_token():
+    # Test with fake token
+```
+
+## Common Patterns
+
+### Auth Required Decorator
+```python
+def auth_required(func):
+    """Decorator to ensure user is authenticated."""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            get_user_info()
+        except:
+            raise click.ClickException(
+                "Not authenticated. Run: anyscale auth login"
+            )
+        return func(*args, **kwargs)
+    return wrapper
+
+@click.command()
+@auth_required
+def protected_command():
+    pass
+```
+
+### Service Account Auth
+```python
+# For automation/CI
+os.environ['ANYSCALE_CLI_TOKEN'] = service_account_token
+
+# Or use config file
+config = {
+    "auth": {
+        "cli_token": service_account_token
+    }
+}
+```
+
+## Troubleshooting
+
+```bash
+# Check current auth
+anyscale auth show
+
+# Clear credentials
+rm ~/.anyscale/credentials.json
+
+# Test token
+curl -H "Authorization: Bearer $ANYSCALE_CLI_TOKEN" \
+  https://console.anyscale.com/api/v2/userinfo
+
+# Debug auth issues
+export ANYSCALE_DEBUG=1
+anyscale auth show
+```

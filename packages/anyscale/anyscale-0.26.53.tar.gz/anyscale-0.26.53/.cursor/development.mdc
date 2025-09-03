@@ -1,0 +1,190 @@
+---
+description: Development workflow and patterns for adding new CLI features - SDK-first approach
+globs:
+  - frontend/cli/anyscale/commands/*.py
+  - frontend/cli/anyscale/*/commands.py
+  - frontend/cli/anyscale/*/_private/*_sdk.py
+  - frontend/cli/**/scripts.py
+  - frontend/cli/anyscale/_private/docgen/__main__.py
+alwaysApply: false
+---
+
+# Development Guide
+
+## Adding a New Feature
+
+### 1. SDK Implementation
+```python
+# anyscale/<module>/commands.py
+from anyscale._private.sdk import sdk_command
+
+@sdk_command(
+    singleton_key="module_sdk",
+    sdk_class=PrivateModuleSDK,
+    doc_py_example=EXAMPLE,
+    arg_docstrings=ARG_DOCS,
+)
+def create_resource(
+    name: str,
+    *,  # Force keyword-only
+    config: Optional[dict] = None,
+    wait: bool = False,
+    _private_sdk: Optional[PrivateModuleSDK] = None
+) -> ResourceModel:
+    """Create a resource."""
+    return _private_sdk.create(name, config, wait)
+```
+
+### 2. CLI Command
+```python
+# anyscale/commands/<module>_commands.py
+@click.command()
+@click.option("--name", required=True)
+@click.option("--config", type=click.Path(exists=True))
+@click.option("--wait/--no-wait", default=False)
+def create(name: str, config: Optional[str], wait: bool):
+    """Create a new resource."""
+    config_dict = None
+    if config:
+        with open(config) as f:
+            config_dict = yaml.safe_load(f)
+
+    try:
+        result = sdk.create_resource(name, config=config_dict, wait=wait)
+        click.echo(f"Created: {result.id}")
+    except Exception as e:
+        raise click.ClickException(str(e))
+```
+
+### 3. Register for Documentation (IMPORTANT!)
+```python
+# anyscale/_private/docgen/__main__.py
+
+# Add your module to ALL_MODULES list:
+ALL_MODULES = [
+    # ... existing modules ...
+    Module(
+        title="Your Feature",
+        filename="your-feature.md",
+        cli_prefix="anyscale your-feature",
+        cli_commands=[
+            your_commands.create,
+            your_commands.get,
+            your_commands.list,
+            your_commands.delete,
+        ],
+        sdk_prefix="anyscale.your_feature",
+        sdk_commands=[
+            anyscale.your_feature.create,
+            anyscale.your_feature.get,
+            anyscale.your_feature.list,
+            anyscale.your_feature.delete,
+        ],
+        models=[
+            YourConfig,
+            YourStatus,
+            YourModel,
+        ],
+        # Optional: legacy command mappings
+        legacy_sdk_commands={
+            "old_create": anyscale.your_feature.create,
+        },
+    ),
+]
+```
+
+### 4. Add Tests
+```python
+# tests/unit/test_<module>_cli.py
+def test_create(runner, mock_sdk):
+    mock_sdk.create_resource.return_value = Mock(id="res_123")
+
+    result = runner.invoke(cli, ["create", "--name", "test"])
+
+    assert result.exit_code == 0
+    assert "res_123" in result.output
+    mock_sdk.create_resource.assert_called_once_with("test", config=None, wait=False)
+```
+
+## AnyscaleClient Extension
+
+When adding new API endpoints:
+
+### 1. Interface Definition
+```python
+# anyscale/_private/anyscale_client/common.py
+from abc import abstractmethod
+
+class AnyscaleClientInterface(ABC):
+    @abstractmethod
+    def new_api_method(self, *, param: str) -> dict:
+        raise NotImplementedError
+```
+
+### 2. Implementation
+```python
+# anyscale/_private/anyscale_client/anyscale_client.py
+@handle_api_exceptions
+def new_api_method(self, *, param: str) -> dict:
+    return self._internal_api.endpoint(param=param)
+```
+
+### 3. Fake Client
+```python
+# anyscale/_private/anyscale_client/fake_anyscale_client.py
+def new_api_method(self, *, param: str) -> dict:
+    return {"id": "fake_123", "status": "success"}
+```
+
+## Model Definition
+```python
+# anyscale/<module>/models.py
+from pydantic import BaseModel, Field
+
+class ResourceConfig(BaseModel):
+    name: str = Field(..., description="Resource name")
+    replicas: int = Field(1, ge=1, le=100, description="Number of replicas")
+
+    class Config:
+        extra = "forbid"  # Reject unknown fields
+```
+
+## Regenerate API Clients
+
+After backend changes:
+```bash
+cd frontend/web
+npm run build-api
+
+# This regenerates:
+# - anyscale/client/openapi_client/  # Internal API
+# - anyscale/sdk/anyscale_client/    # External API
+```
+
+## Testing Workflow
+
+```bash
+# Install locally
+pip install -e frontend/cli
+
+# Test manually
+anyscale your-feature create --name test
+
+# Run unit tests
+bazelisk test //frontend/cli/tests/unit:test_your_feature_cli
+
+# Generate docs
+python -m anyscale._private.docgen ./docs
+```
+
+## Checklist for New Features
+
+- [ ] SDK function in `anyscale/<module>/commands.py`
+- [ ] CLI command in `anyscale/commands/<module>_commands.py`
+- [ ] Models in `anyscale/<module>/models.py`
+- [ ] **Register in `docgen/__main__.py`** ⚠️
+- [ ] Client extension if new API needed
+- [ ] Unit tests for SDK and CLI
+- [ ] Integration tests if complex
+- [ ] Manual testing locally
+- [ ] Documentation generated

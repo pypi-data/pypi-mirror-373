@@ -1,0 +1,187 @@
+---
+description: Practical testing guide for CLI development - local testing, debugging, and test patterns
+globs:
+alwaysApply: false
+---
+
+# Testing Guide
+
+## Local Development
+
+### Setup
+```bash
+# Install CLI in editable mode
+cd frontend/cli
+pip install -e .
+
+# Verify
+anyscale --version
+```
+
+### Manual Testing
+```bash
+# Enable debug mode
+export ANYSCALE_DEBUG=1
+
+# Test commands
+anyscale service list
+anyscale compute-config list --max-items 5
+anyscale job list --created-by-me
+
+# Test SDK directly
+python -c "
+import anyscale
+configs = list(anyscale.compute_config.list(max_items=5))
+print(f'Found {len(configs)} configs')
+"
+```
+
+## Running Tests
+
+### Quick Commands
+```bash
+# All unit tests
+bazelisk test //frontend/cli/tests/unit/...
+
+# Specific test file
+bazelisk test //frontend/cli/tests/unit:test_service_cli
+
+# With output
+bazelisk test //frontend/cli/tests/unit:test_service_cli --test_output=all
+
+# Specific test function
+bazelisk test //frontend/cli/tests/unit:test_service_cli \
+  --test_arg="-k test_deploy"
+```
+
+### Finding Tests
+```bash
+# List all test targets
+bazelisk query '//frontend/cli/tests/...:*'
+
+# Find test files
+find frontend/cli/tests -name "test_*.py"
+
+# Search for specific tests
+bazelisk query '//frontend/cli/tests/...:*service*'
+```
+
+## Writing Tests
+
+### Basic Test Structure
+```python
+# tests/unit/test_myfeature_cli.py
+import pytest
+from click.testing import CliRunner
+from unittest.mock import patch, Mock
+
+class TestMyFeatureCLI:
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    def test_create_command(self, runner):
+        with patch("anyscale.myfeature.commands.create") as mock:
+            mock.return_value = Mock(id="123")
+
+            result = runner.invoke(
+                cli,
+                ["myfeature", "create", "--name", "test"]
+            )
+
+            assert result.exit_code == 0
+            assert "123" in result.output
+            mock.assert_called_once()
+```
+
+### Test with Mock Client
+```python
+@pytest.fixture
+def mock_client():
+    client = Mock(spec=AnyscaleClientInterface)
+    client.create_thing.return_value = {"id": "123"}
+    return client
+
+def test_with_client(mock_client):
+    with patch("anyscale._private.anyscale_client.get_default_client") as mock_get:
+        mock_get.return_value = mock_client
+
+        result = create_thing("test")
+        assert result.id == "123"
+```
+
+## Common Test Patterns
+
+### Test Error Cases
+```python
+def test_validation_error():
+    with pytest.raises(ValueError, match="Name cannot be empty"):
+        create_thing("")
+
+def test_api_error(mock_client):
+    mock_client.create.side_effect = APIError("Server error")
+
+    with pytest.raises(APIError):
+        create_thing("test", client=mock_client)
+```
+
+### Test CLI Output
+```python
+def test_json_output(runner):
+    result = runner.invoke(cli, ["list", "--json"])
+
+    # Parse JSON output
+    data = json.loads(result.output)
+    assert isinstance(data, list)
+```
+
+### Test Interactive Input
+```python
+def test_interactive(runner):
+    result = runner.invoke(
+        cli,
+        ["interactive-command"],
+        input="yes\noption1\n"  # Simulate user input
+    )
+
+    assert "Confirm" in result.output
+    assert result.exit_code == 0
+```
+
+## Debugging Failed Tests
+
+```bash
+# Run with verbose output
+bazelisk test //path/to:test --test_output=all --test_arg="-vv"
+
+# Run with pdb
+bazelisk test //path/to:test --test_arg="--pdb"
+
+# Check test logs
+cat bazel-testlogs/frontend/cli/tests/unit/test_name/test.log
+
+# Run outside Bazel for debugging
+cd frontend/cli
+python -m pytest tests/unit/test_file.py -vv -k test_name
+```
+
+## Test Organization
+
+```
+tests/
+├── unit/                    # Fast, isolated tests
+│   ├── test_*_cli.py       # CLI command tests
+│   ├── test_*_sdk.py       # SDK function tests
+│   └── conftest.py         # Shared fixtures
+├── integration/            # Tests with dependencies
+└── mocks/                  # Shared mock objects
+```
+
+## Tips
+
+1. **Test both SDK and CLI** layers separately
+2. **Mock at the right level** - SDK for CLI tests, Client for SDK tests
+3. **Use fixtures** for common setup
+4. **Keep tests fast** - mock external calls
+5. **Test error cases** not just happy path
+6. **Run locally first** with `pip install -e .`
