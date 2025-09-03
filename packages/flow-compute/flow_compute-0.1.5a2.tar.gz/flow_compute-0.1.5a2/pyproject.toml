@@ -1,0 +1,232 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "flow-compute"
+version = "0.1.5a2"
+description = "Simplified SDK for Mithril - GPU compute made simple"
+authors = [
+    { name = "Foundry Technologies, Inc.", email = "support@mithril.ai" },
+]
+readme = { file = "README.md", content-type = "text/markdown" }
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+keywords = ["gpu", "compute", "cloud", "foundry", "ml", "ai"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "pydantic>=2.0,<3.0",
+    "pyyaml>=6.0,<7.0",
+    "httpx>=0.24.0,<1.0",
+    "jinja2>=3.0,<4.0",
+    "rich>=13.0,<14.0",
+    "cloudpickle>=2.0,<4.0", # Required for function serialization
+    "msgpack>=1.0,<2.0", # Required for binary catalog format
+    "boto3>=1.26,<2.0", # Required for S3 support
+    "keyring>=24.0,<26.0", # Required for secure credential storage
+    "paramiko>=3.0,<4.0", # Required for SSH-based operations (logs, exec, file transfer)
+    "dill>=0.3.6,<1.0", # Required for Colab state persistence
+    "click>=8.1.8",
+    "auto-click-auto>=0.1.5", # Automatic shell completion
+    "prompt-toolkit>=3.0,<4.0", # Required for interactive selectors
+    "nest_asyncio>=1.6,<2.0", # Allow nested asyncio loops for interactive UI
+    "requests>=2.31,<3.0", # Required for GPU health monitoring
+]
+
+[project.optional-dependencies]
+recommended = [
+    "numpy>=1.20",            # Common in scientific computing
+    "click-didyoumean>=0.3,<1.0",  # Suggest similar commands on typos (optional)
+    "trogon>=0.6,<1.0",            # Optional Textual TUI for Click (adds `flow tui`)
+]
+jupyter = [
+    # Optional: only needed for Jupyter/Colab integrations
+    "ipykernel>=6.29,<7",
+    "jupyter-client>=8.6,<9",
+    # pyzmq pulled in by jupyter-client; leave optional to avoid macOS conflicts
+]
+# Adapter-specific dependencies (for modular installation)
+adapters-ssh = [
+    "paramiko>=3.0,<4.0",  # SSH transport adapter
+]
+adapters-http = [
+    "httpx>=0.24.0,<1.0",  # HTTP transport adapter
+]
+adapters-mithril = [
+    "httpx>=0.24.0,<1.0",  # Mithril API client
+    "boto3>=1.26,<2.0",    # S3 support for Mithril
+]
+dev = [
+    "pytest>=7.0,<9.0",
+    "pytest-cov>=4.0,<6.0",
+    "pytest-asyncio>=0.21,<1.0",
+    "pytest-mock>=3.0,<4.0",
+    "pytest-timeout>=2.0,<3.0",
+    "pytest-xdist>=3.0,<4.0", # Parallel test execution
+    "pexpect>=4.8,<5.0",      # For interactive CLI testing
+    "moto>=4.0,<5.0",         # For S3 mocking
+    "responses>=0.20,<1.0",
+    "black>=23.0,<25.0",
+    "ruff>=0.1,<1.0",
+    "mypy>=1.0,<2.0",
+    "types-requests",
+    "types-pyyaml",
+    "cloudpickle>=2.0,<4.0",  # Required for tests
+    "numpy>=1.20",            # Required for tests
+    "hypothesis>=6.0,<7.0",   # Property-based testing
+    "mutmut>=2.0,<3.0",       # Mutation testing
+    "radon>=5.0,<6.0",        # Complexity analysis
+    "import-linter>=2.0,<3.0", # Import boundary enforcement
+]
+
+[project.urls]
+Homepage = "https://github.com/mithrilcompute/flow"
+Documentation = "https://github.com/mithrilcompute/flow"
+Repository = "https://github.com/mithrilcompute/flow"
+Issues = "https://github.com/mithrilcompute/flow/issues"
+
+[project.scripts]
+flow = "flow.cli.app:main"
+"flow-compute" = "flow.cli.app:main"
+
+# Built-in plugin entry points (extensible)
+[project.entry-points."flow.providers"]
+mithril = "flow.adapters.providers.builtin.mithril.provider:MithrilProvider"
+local = "flow.adapters.providers.builtin.local.provider:LocalProvider"
+mock = "flow.adapters.providers.mock.provider:MockProvider"
+
+[project.entry-points."flow.frontends"]
+yaml = "flow.adapters.frontends.yaml.adapter:YamlFrontendAdapter"
+slurm = "flow.adapters.frontends.slurm.adapter:SlurmFrontendAdapter"
+
+# Startup sections are internal to mithril adapter now (deprecated external entry point)
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flow"]
+only-include = ["src/flow"]
+include = [
+  "src/flow/**",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/flow",
+    "pyproject.toml",
+    "README.md",
+    "LICENSE.txt",
+]
+
+# Ensure data files like logging.yaml are included in wheels
+[tool.hatch.build.force-include]
+"src/flow/resources/data/logging.yaml" = "src/flow/resources/data/logging.yaml"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+    "BLE", # flake8-blind-except (ban broad excepts)
+    "TRY", # tryceratops (try/except best practices)
+    "C90", # mccabe (complexity)
+    "TID", # flake8-tidy-imports (ban relative imports)
+    "T201", # flake8-print (no print statements)
+    "RUF", # Ruff-specific rules
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+    "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["flow"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+# Enforce absolute imports across the codebase
+ban-relative-imports = "all"
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+no_implicit_optional = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+# Enforce boundaries via per-module config (advisory; CI gates enforce strictly)
+[[tool.mypy.overrides]]
+module = ["flow.cli.*"]
+disallow_any_generics = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["flow.core.*"]
+disallow_any_unimported = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = ["flow.api.*"]
+no_implicit_optional = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.coverage.run]
+source = ["src/flow"]
+omit = ["*/tests/*", "*/__init__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[dependency-groups]
+dev = [
+    "build>=1.2.2.post1",
+    "hypothesis>=6.113.0",
+    "psutil>=7.0.0",
+    "pytest>=8.3.3",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0",
+    "pytest-mock>=3.14.1",
+    "pytest-timeout>=2.4.0",
+    "twine>=6.1.0",
+]

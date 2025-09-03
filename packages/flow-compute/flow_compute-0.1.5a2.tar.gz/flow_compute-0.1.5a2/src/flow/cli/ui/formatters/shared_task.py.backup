@@ -1,0 +1,164 @@
+"""Shared task formatting utilities for CLI UI.
+
+Single source of truth used by both presentation and components layers.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any
+
+from flow.cli.utils.theme_manager import theme_manager
+from flow.sdk.models import Task
+
+
+class TaskFormatter:
+    """Handles task-related formatting for consistent display across CLI commands."""
+
+    @staticmethod
+    def format_task_display(task: Task) -> str:
+        if task.name:
+            if task.task_id and not task.task_id.startswith("bid_"):
+                return f"{task.name} ({task.task_id})"
+            return task.name
+        return task.task_id
+
+    @staticmethod
+    def format_short_task_id(task_id: str, length: int = 16) -> str:
+        if len(task_id) <= length:
+            return task_id
+        return task_id[:length] + "..."
+
+    @staticmethod
+    def get_status_config(status: str) -> dict[str, str]:
+        status_configs = {
+            "pending": {"symbol": "○", "color": theme_manager.get_color("status.pending"), "style": ""},
+            "starting": {"symbol": "●", "color": theme_manager.get_color("status.starting"), "style": ""},
+            "preparing": {"symbol": "●", "color": theme_manager.get_color("status.preparing"), "style": ""},
+            "running": {"symbol": "●", "color": theme_manager.get_color("status.running"), "style": ""},
+            "paused": {"symbol": "⏸", "color": theme_manager.get_color("status.paused"), "style": ""},
+            "preempting": {"symbol": "●", "color": theme_manager.get_color("status.preempting"), "style": ""},
+            "completed": {"symbol": "●", "color": theme_manager.get_color("status.completed"), "style": ""},
+            "failed": {"symbol": "●", "color": theme_manager.get_color("status.failed"), "style": ""},
+            "cancelled": {"symbol": "○", "color": theme_manager.get_color("status.cancelled"), "style": ""},
+            "unknown": {"symbol": "○", "color": theme_manager.get_color("muted"), "style": ""},
+            # Extra labels used by selection/presentation views
+            "available": {"symbol": "✓", "color": theme_manager.get_color("success"), "style": ""},
+            "unavailable": {"symbol": "✖", "color": theme_manager.get_color("error"), "style": ""},
+            "enabled": {"symbol": "✓", "color": theme_manager.get_color("success"), "style": ""},
+            "disabled": {"symbol": "○", "color": theme_manager.get_color("muted"), "style": ""},
+        }
+        return status_configs.get(status.lower(), {"symbol": "?", "color": theme_manager.get_color("default"), "style": ""})
+
+    @staticmethod
+    def get_status_style(status: str) -> str:
+        return TaskFormatter.get_status_config(status)["color"]
+
+    @staticmethod
+    def format_status_with_color(status: str) -> str:
+        config = TaskFormatter.get_status_config(status)
+        try:
+            if hasattr(theme_manager, "is_color_enabled") and not theme_manager.is_color_enabled():
+                codes = {
+                    "running": "RUN",
+                    "pending": "PEN",
+                    "failed": "ERR",
+                    "completed": "OK",
+                    "starting": "ST",
+                    "preparing": "PRP",
+                    "paused": "PAU",
+                    "preempting": "PRM",
+                    "cancelled": "CAN",
+                    "unknown": "UNK",
+                }
+                code = codes.get(str(status).lower(), str(status).upper()[:3])
+                return f"{config['symbol']} {code}"
+        except Exception:
+            pass
+        style_parts = [config["color"]]
+        if config["style"]:
+            style_parts.append(config["style"])
+        style = " ".join(style_parts)
+        return f"[{style}]{config['symbol']} {status}[/{style}]"
+
+    @staticmethod
+    def format_compact_status(status: str) -> str:
+        config = TaskFormatter.get_status_config(status)
+        try:
+            if hasattr(theme_manager, "is_color_enabled") and not theme_manager.is_color_enabled():
+                codes = {
+                    "running": "RUN",
+                    "pending": "PEN",
+                    "failed": "ERR",
+                    "completed": "OK",
+                    "starting": "ST",
+                    "preparing": "PRP",
+                    "paused": "PAU",
+                    "preempting": "PRM",
+                    "cancelled": "CAN",
+                    "unknown": "UNK",
+                }
+                code = codes.get(str(status).lower(), str(status).upper()[:3])
+                return f"{config['symbol']} {code}"
+        except Exception:
+            pass
+        style_parts = [config["color"]]
+        if config["style"]:
+            style_parts.append(config["style"])
+        style = " ".join(style_parts)
+        return f"[{style}]{config['symbol']}[/{style}]"
+
+    @staticmethod
+    def get_display_status(task: Task) -> str:
+        status_value = getattr(getattr(task, "status", None), "value", str(getattr(task, "status", "unknown")).lower())
+        if status_value in {"completed", "failed", "cancelled"}:
+            return status_value
+        instance_status = getattr(task, "instance_status", None)
+        # Treat early instance lifecycle states as "starting" so we don't
+        # prematurely show RUNNING while the instance is still booting.
+        # This covers provider values normalized by TaskService._normalize_instance_status.
+        if instance_status in {
+            "STATUS_STARTING",
+            "STATUS_INITIALIZING",
+            "STATUS_PENDING",
+            "STATUS_NEW",
+            "STATUS_CONFIRMED",
+        }:
+            return "starting"
+        if instance_status == "STATUS_SCHEDULED":
+            return "pending"
+        return status_value
+
+
+def format_task_duration(task: Task) -> str:
+    """Format task duration or time since creation."""
+    try:
+        if task.started_at:
+            start = task.started_at
+            end = task.completed_at or datetime.now(timezone.utc)
+            prefix = ""
+        else:
+            start = task.created_at
+            end = datetime.now(timezone.utc)
+            prefix = "created "
+        if not isinstance(start, datetime):
+            start = datetime.fromisoformat(str(start).replace("Z", "+00:00"))
+        if not isinstance(end, datetime):
+            end = datetime.fromisoformat(str(end).replace("Z", "+00:00"))
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
+        duration = end - start
+        if duration.days > 0:
+            return f"{prefix}{duration.days}d {duration.seconds // 3600}h ago"
+        hours = duration.seconds // 3600
+        minutes = (duration.seconds % 3600) // 60
+        if hours > 0:
+            return f"{prefix}{hours}h {minutes}m ago"
+        elif minutes > 0:
+            return f"{prefix}{minutes}m ago"
+        else:
+            return f"{prefix}just now"
+    except Exception:
+        return "unknown"
