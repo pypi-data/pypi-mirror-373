@@ -1,0 +1,11 @@
+def includeme(config):
+    config.include(".routes")
+    config.include(".operations")
+    config.include(".balance_sheet_measures")
+    config.include(".treasury_measures")
+    config.include(".income_statement_measures")
+    config.include(".rest_api")
+    config.include(".bank_remittances")
+    config.include("caerp.views.admin.accounting")
+    config.include(".company_general_ledger")
+    config.include(".export")
