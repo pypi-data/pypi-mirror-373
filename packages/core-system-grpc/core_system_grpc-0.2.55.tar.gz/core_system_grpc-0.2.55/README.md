@@ -1,0 +1,125 @@
+# Core System gRPC Package
+
+이 패키지는 Core System의 gRPC 프로토 파일과 생성된 Python 클라이언트 라이브러리를 관리합니다.
+
+## 구조
+
+```
+Core-System-gRPC-Package/
+├── proto/                  # 프로토 파일들
+│   ├── customer.proto
+│   └── ...
+├── generated/              # 생성된 클라이언트 라이브러리
+│   └── python/
+├── scripts/                # 빌드 스크립트들
+└── docs/                  # API 문서
+```
+
+## 사용법
+
+### 1. GitHub Packages에서 설치
+
+#### Python
+```bash
+# PyPI에서 설치
+pip install core-system-grpc
+
+# 또는 requirements.txt에 추가
+core-system-grpc==0.2.44
+```
+
+### 2. 로컬에서 빌드
+
+#### 의존성 설치
+```bash
+# uv를 사용한 의존성 설치
+uv sync --dev
+```
+
+#### 패키지 빌드
+```bash
+# hatch를 사용한 패키지 빌드
+uv run hatch build
+
+# 또는 Makefile 사용
+make build-package
+```
+
+#### Proto 파일 컴파일만
+```bash
+make build-python
+```
+
+## 버전 관리
+
+이 패키지는 시멘틱 버저닝을 따릅니다:
+- Major: Breaking changes
+- Minor: 새로운 서비스/메시지 추가
+- Patch: 버그 수정, 문서 업데이트
+
+## 배포
+
+### 새 버전 배포하기
+
+```bash
+# 1. 의존성 설치
+uv sync --dev
+
+# 2. 패키지 빌드
+uv run hatch build
+
+# 3. PyPI에 배포
+uv run hatch publish
+```
+
+### Makefile 사용
+```bash
+make install-deps      # 의존성 설치
+make build-package     # 패키지 빌드
+make publish-package   # PyPI 배포
+```
+
+## 인증 설정
+
+PyPI 배포를 위한 인증 설정:
+
+### 방법 1: .pypirc 파일 사용
+```bash
+# ~/.pypirc 파일에 PyPI 토큰 설정
+[pypi]
+username = __token__
+password = your_pypi_token
+```
+
+### 방법 2: 환경 변수 사용
+```bash
+export TWINE_PASSWORD=your_pypi_token
+```
+
+### 방법 3: GitHub Actions에서 자동 배포
+```bash
+# v* 태그 푸시 시 자동 배포
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+## 개발 도구
+
+- **uv**: Python 패키지 관리 및 의존성 해결
+- **hatch**: Python 패키지 빌드 및 배포
+- **grpcio-tools**: Proto 파일 컴파일
+
+## 문제 해결
+
+### 빌드 시 인증 오류
+```bash
+# EOFError: EOF when reading a line 오류 해결
+make setup-auth  # .pypirc 설정 가이드 표시
+```
+
+### 의존성 문제
+```bash
+# uv 캐시 정리
+uv cache clean
+uv sync --dev
+```
