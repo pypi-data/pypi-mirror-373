@@ -1,0 +1,11 @@
+def includeme(config):
+    config.include(".routes")
+    config.include(".layout")
+    config.include(".business")
+    config.include(".estimation")
+    config.include(".invoice")
+    config.include(".files")
+    config.include(".expense")
+    config.include(".py3o")
+    config.include(".rest_api")
+    config.include(".lists")
