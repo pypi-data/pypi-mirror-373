@@ -1,0 +1,57 @@
+# POF, a free and open source Python obfuscation framework.
+# Copyright (C) 2022 - 2025  POF Team
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+from tokenize import NEWLINE, OP
+
+from .cpu.cpu_count import CPUCountEvasion
+from .hooks.debugger import DebuggerEvasion
+from .time.expire import ExpireEvasion
+from .time.utc import UTCEvasion
+from pof.evasion.base import BaseEvasion
+
+
+class MultiEvasion(BaseEvasion):
+    def __init__(self, list_evasion=None) -> None:
+        if list_evasion is None:
+            list_evasion = [
+                CPUCountEvasion(),
+                DebuggerEvasion(),
+                ExpireEvasion(),
+                UTCEvasion(),
+            ]
+        self.list_evasion = list_evasion
+
+    def import_tokens(self):
+        tokens = []
+        for evasion in self.list_evasion:
+            if len(tokens) > 0:
+                tokens.append((NEWLINE, "\n"))
+            tokens.extend(evasion.import_tokens())
+        return tokens
+
+    def check_tokens(self):
+        tokens = []
+        for evasion in self.list_evasion:
+            if len(tokens) > 0:
+                tokens.append((OP, "or"))
+            tokens.extend(
+                [
+                    (OP, "("),
+                    *evasion.check_tokens(),
+                    (OP, ")"),
+                ],
+            )
+        return tokens
