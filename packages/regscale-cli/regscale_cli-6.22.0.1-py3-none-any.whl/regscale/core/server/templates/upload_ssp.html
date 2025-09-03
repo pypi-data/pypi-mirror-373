@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block content %}
+    <!--    Handle the buttons and clear them when a user changes the radio button-->
+    <script>
+        function clearInputAndDisable(elementId) {
+            const inputElement = document.getElementById(elementId);
+            inputElement.value = "";
+            inputElement.disabled = true;
+        }
+
+        function handleRadioClick(type) {
+            if (type === 'rev4') {
+                // Show and enable rev4 file input
+                document.getElementById('docxFile').style.display = 'block';
+                document.getElementById('docxFileInput').disabled = false;
+                document.getElementById('appendixALabel').style.display = 'none';
+                document.getElementById('docxFileInputAppendix').style.display = 'none';
+
+                // Hide and disable rev5 input
+                document.getElementById('xmlFile').style.display = 'none';
+                clearInputAndDisable('xmlFileInput');
+            } else if (type === 'rev5docx') {
+                // Show and enable rev4 file input
+                document.getElementById('docxFile').style.display = 'block';
+                document.getElementById('docxFileInput').disabled = false;
+                document.getElementById('appendixALabel').style.display = 'block';
+                document.getElementById('docxFileInputAppendix').style.display = 'inline-block';
+
+                // Hide and disable rev5 input
+                document.getElementById('xmlFile').style.display = 'none';
+                clearInputAndDisable('xmlFileInput');
+            } else {
+                // Show and enable rev5 input
+                document.getElementById('xmlFile').style.display = 'block';
+                document.getElementById('xmlFileInput').disabled = false;
+
+                // Hide and disable rev4 file input
+                document.getElementById('docxFile').style.display = 'none';
+                clearInputAndDisable('docxFileInput');
+            }
+        }
+
+        // Handle key presses, if it is submit, validate the form and execute the command
+        function handleKeyPress(event) {
+        if (event.key === 'Enter') {
+            return validateForm();
+        }
+    }
+
+        function validateForm() {
+            const docxFileInput = document.getElementById('docxFileInput');
+            const xmlFileInput = document.getElementById('xmlFileInput');
+            if ((docxFileInput.files.length > 0 && !docxFileInput.disabled) ||
+                (xmlFileInput.files.length > 0 && !xmlFileInput.disabled)) {
+                return true;
+            } else {
+                alert("Please select Rev 4 .docx, Rev 5 .docx or Rev 5 .xml and upload your documents before submitting.");
+                return false; // this will prevent form submission
+            }
+        }
+
+        // Attach an event listener to the submit button
+        document.getElementById('submitButton').addEventListener('click', function(event) {
+
+          // Prevent the default form submission to allow for validation
+          event.preventDefault();
+
+          // Run the validateForm function
+          if (validateForm()) {
+
+            // If the form is valid, manually submit the form
+            document.getElementById('submitButton').disabled = true;
+            document.getElementById('submitButton').innerHTML = "Uploading...";
+            document.getElementById('sspUpload').submit();
+          } else {
+            // Handle invalid form scenario (this part is optional)
+          }
+        });
+    </script>
+
+    <div class="row">
+        <div class="col-md-12">
+            <h1>Upload FedRAMP SSP File to <a href="{{ site_info.domain }}">{{ site_info.domain }}</a></h1>
+        </div>
+    </div>
+
+    <div class="row" style="margin-top: 12px;">
+        <div class="col-md-12">
+            <form action="{{ url_for('process_file') }}" method="post" enctype="multipart/form-data" id="sspUpload">
+                <div class="file-upload">
+                    <!-- For rev 4 .docx file upload -->
+                    <h3>Select upload type:</h3>
+                    <label>
+                        <input type="radio" name="fedrampVersion" value="Rev4" onclick="handleRadioClick('rev4')" onkeypress="handleKeyPress(event)">
+                        Rev 4 .docx
+                    </label><br/>
+                    <label>
+                        <input type="radio" name="fedrampVersion" value="Rev5docx" onclick="handleRadioClick('rev5docx')" onkeypress="handleKeyPress(event)">
+                        Rev 5 .docx
+                    </label><br/>
+                    <label>
+                        <input type="radio" name="fedrampVersion" value="Rev5" onclick="handleRadioClick('rev5')" onkeypress="handleKeyPress(event)">
+                        Rev 4 or 5 .xml
+                    </label>
+                    <br /><br />
+                    <div id="docxFile" style="display:none;">
+                        <p>SSP .docx File</p>
+                        <input id="docxFileInput" type="file" name="file" accept=".docx">
+                        <br /><br />
+                        <p id="appendixALabel">SSP Appendix A .docx File</p>
+                        <input id="docxFileInputAppendix" type="file" name="fileAppendix" accept=".docx">
+                        <br />
+                        <p>Select a Profile</p>
+                        <select id="regscale_profile_id" name="regscale_profile_id">
+                            <option value="" selected>Select a profile</option>
+                            {% for id, profile_name in regscale_profiles %}
+                                <option value="{{ id }}">{{ profile_name }}</option>
+                            {% endfor %}
+                        </select>
+                        <br /><br />
+                        <label for="load_missing_controls">Load missing controls from Profile:</label>
+                        <select id="load_missing_controls" name="load_missing_controls">
+                            <option value="True" selected>Yes</option>
+                            <option value="False">No</option>
+                        </select>
+                    </div>
+                    <div id="xmlFile" style="display:none;">
+                        <input id="xmlFileInput" type="file" name="file" accept=".xml">
+                        <br /><br />
+                        <label for="regscale_catalogue_id">Select a catalogue:</label>
+                        <select id="regscale_catalogue_id" name="regscale_catalogue_id">
+                            {% for id, catalogue_name in regscale_catalogues %}
+                                <option value="{{ id }}">{{ catalogue_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <br /><br />
+                    <button type="submit" id="submitButton" class="btn btn-primary" onclick="return validateForm();">Upload</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+{% endblock %}
