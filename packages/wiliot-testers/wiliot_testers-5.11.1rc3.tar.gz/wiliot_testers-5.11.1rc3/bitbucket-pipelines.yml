@@ -1,0 +1,173 @@
+image: &wiliot-ci-image
+  name: 142654642153.dkr.ecr.us-east-1.amazonaws.com/aws-ci:latest
+  aws:
+    access-key: $AWS_ACCESS_KEY_ID
+    secret-key: $AWS_SECRET_ACCESS_KEY
+
+
+definitions:
+  services:
+    docker:
+      memory: 3072
+  step:
+    - step: &build_unittests_image
+        name: Building unittests image
+        size: 2x
+        <<: *wiliot-ci-image
+        script:
+          - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 142654642153.dkr.ecr.us-east-1.amazonaws.com
+          - docker build -t 142654642153.dkr.ecr.us-east-1.amazonaws.com/pywiliot:unittests_$BITBUCKET_BUILD_NUMBER . -f unittests.dockerfile
+          - docker push 142654642153.dkr.ecr.us-east-1.amazonaws.com/pywiliot:unittests_$BITBUCKET_BUILD_NUMBER
+        services:
+          - docker
+
+pipelines:
+
+  custom:
+    update-major-version-number:
+      - step: &major_version
+          name: update major version number
+          <<: *wiliot-ci-image
+          script:
+            - pip3 install setuptools~=70.0.0
+            - pip3 install setuptools_scm
+            - pip3 install gitpython
+            - apk add tree
+            #print current version:
+            - python3 wiliot_testers/utils/get_version.py
+            #Update patch version by git tag:
+            - version="`python3 wiliot_testers/utils/get_version.py next_major`" && echo $version && git tag -a -m "[skip ci] build number $BITBUCKET_BUILD_NUMBER set the library major version to $version." $version  && git push origin $version
+            #print new version
+            - python3 wiliot_testers/utils/get_version.py
+
+    update-minor-version-number:
+      - step: &minor_version
+          name: update minor version number
+          <<: *wiliot-ci-image
+          script:
+            - pip3 install setuptools~=70.0.0
+            - pip3 install setuptools_scm
+            - pip3 install gitpython
+            - apk add tree
+            #print current version:
+            - python3 wiliot_testers/utils/get_version.py
+            #Update patch version by git tag:
+            - version="`python3 wiliot_testers/utils/get_version.py next_minor`" && echo $version && git tag -a -m "[skip ci] build number $BITBUCKET_BUILD_NUMBER set the library minor version to $version." $version  && git push origin $version
+            #print new version
+            - python3 wiliot_testers/utils/get_version.py
+
+    update-patch-version-number:
+      - step: &patch_version
+          name: update patch version number
+          <<: *wiliot-ci-image
+          script:
+            - pip3 install setuptools~=70.0.0
+            - pip3 install setuptools_scm
+            - pip3 install gitpython
+            - apk add tree
+            #print current version:
+            - python3 wiliot_testers/utils/get_version.py
+            #Update patch version by git tag:
+            - version="`python3 wiliot_testers/utils/get_version.py next_patch`" && echo $version && git tag -a -m "[skip ci] build number $BITBUCKET_BUILD_NUMBER set the library patch version to $version." $version  && git push origin $version
+            #print new version
+            - python3 wiliot_testers/utils/get_version.py
+
+    publish-full-version-into-new-codearfact:
+      - step: &full_version_codeartifact
+          name: Build and publish full version py-wilot into codeartifact
+          image:
+            name: 096303741971.dkr.ecr.us-east-2.amazonaws.com/ci:0.0.1-alpine
+            aws:
+              access-key: $CLOUD_AWS_ACCESS_KEY_ID
+              secret-key: $CLOUD_AWS_SECRET_ACCESS_KEY
+          script:
+            - pip3 install setuptools~=70.0.0
+            - pip3 install setuptools_scm wheel twine
+            - pip3 install gitpython
+            # get updated version number:
+            - version="`python3 wiliot_testers/utils/get_version.py`"
+            # update minor version:
+            - python3 setup.py sdist bdist_wheel
+            #update version.py with new minor version and build number (first step is done by setup as well- but we want to add build number as well):
+            - echo "__version__ = '$version'" > wiliot_testers/version.py
+            - echo "build_number = '$BITBUCKET_BUILD_NUMBER'" >> wiliot_testers/version.py
+            - export AWS_ACCESS_KEY_ID=$CLOUD_AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY=$CLOUD_AWS_SECRET_ACCESS_KEY
+            - aws codeartifact login --region us-east-2 --tool twine --domain wiliot-cloud --domain-owner 096303741971 --repository pypi
+            - twine upload --verbose --repository codeartifact dist/*
+
+    publish-slim-version-into-pypi:
+      - step: &pypi_slim_version
+          name: Build and publish slim version py-wilot into pypi
+          <<: *wiliot-ci-image
+          script:
+            - pip3 install setuptools~=70.0.0
+            - pip3 install setuptools_scm
+            - pip3 install gitpython
+            - apk add tree
+            #Get current version (was already updated by prev steps) before cleaning internal files:
+            - version="`python3 wiliot_testers/utils/get_version.py`"
+            #update version.py with new patch version and build number:
+            - echo "__version__ = '$version'" > wiliot_testers/version.py
+            - echo "build_number = '$BITBUCKET_BUILD_NUMBER'" >> wiliot_testers/version.py
+            # configure testpypi and pypi access
+            - echo "[pypi]" > ~/.pypirc && echo "username = __token__" >> ~/.pypirc && echo "password = $PYPI_KEY" >> ~/.pypirc && echo "[testpypi]" >> ~/.pypirc && echo "username = __token__" >> ~/.pypirc && echo "password = $TEST_PYPI_KEY" >> ~/.pypirc
+            # cleanup all the "internal" folders
+            - tree && find ./ -name "extended" && find ./ -name "extended" -type d -prune -exec rm -rf {} \; && tree
+            - tree && find ./ -name "internal" && find ./ -name "internal" -type d -prune -exec rm -rf {} \; && tree
+            - python3 setup.py sdist bdist_wheel
+            #Logging(?):
+            - ls -al dist/ && ls -al build/
+            # push into pypi
+            - python3 -m twine upload --repository pypi dist/* #python3 -m twine upload --repository testpypi dist/*
+
+    publish-slim-version-into-test-pypi:
+      - step: &test_pypi_slim_version
+          name: Build and publish slim version py-wilot into test-pypi
+          <<: *wiliot-ci-image
+          script:
+            - pip3 install setuptools~=70.0.0
+            - pip3 install setuptools_scm
+            - pip3 install gitpython
+            - apk add tree
+            # configure testpypi and pypi access
+            - echo "[testpypi]" >> ~/.pypirc && echo "username = __token__" >> ~/.pypirc && echo "password = $TEST_PYPI_KEY" >> ~/.pypirc
+            # get updated version- before cleaning internal trees:
+            - version="`python3 wiliot_testers/utils/get_version.py`"
+            #update version.py with new patch version and build number:
+            - echo "__version__ = '$version'" > wiliot_testers/version.py
+            - echo "build_number = '$BITBUCKET_BUILD_NUMBER'" >> wiliot_testers/version.py
+            #Print version to log:
+            - cat wiliot_testers/version.py
+            # cleanup all the "internal" folders
+            - tree && find ./ -name "extended" && find ./ -name "extended" -type d -prune -exec rm -rf {} \; && tree
+            - tree && find ./ -name "internal" && find ./ -name "internal" -type d -prune -exec rm -rf {} \; && tree
+            - python3 setup.py sdist bdist_wheel
+            - ls -al dist/ && ls -al build/
+            # push into test-pypi
+            - python3 -m twine upload --repository testpypi dist/*
+
+    run-unit-tests:
+      - step:
+          name: Run unit tests
+          <<: *wiliot-ci-image
+          script:
+            - apk add tree
+            - pip3 install pytest
+            - tree
+            - cd wiliot_testers
+            - pytest wiliot_testers/internal/tests
+
+    Build unittests image:
+      - step: *build_unittests_image
+    
+    COMBINED-RELEASE-TESTING-VERSION:
+      - step: *full_version_codeartifact
+      - step: *pypi_slim_version
+    
+    COMBINED-PUBLISH-OFFICIAL-VERSION:
+      - step: *full_version_codeartifact
+      - step: *pypi_slim_version
+
+
+options:
+  docker: true
