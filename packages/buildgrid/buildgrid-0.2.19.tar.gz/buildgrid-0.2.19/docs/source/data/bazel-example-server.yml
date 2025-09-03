@@ -1,0 +1,43 @@
+server:
+  - !channel
+    address: localhost:50051
+    insecure-mode: true
+
+connections:
+  - !sql-connection &sql
+    connection-string: sqlite:///./example.db
+    connection-timeout: 15
+
+storages:
+  - !lru-storage &main-storage
+    size: 512MB
+
+caches:
+  - !lru-action-cache &main-action
+    storage: *main-storage
+    max-cached-refs: 256
+    allow-updates: true
+
+schedulers:
+  - !sql-scheduler &scheduler
+    sql: *sql
+    storage: *main-storage
+    action-cache: *main-action
+    poll-interval: 0.5
+    max-execution-timeout: 7200
+
+instances:
+  - name: ''
+
+    services:
+      - !action-cache
+        cache: *main-action
+
+      - !execution
+        scheduler: *scheduler
+
+      - !cas
+        storage: *main-storage
+
+      - !bytestream
+        storage: *main-storage

@@ -1,0 +1,57 @@
+server:
+  - !channel
+    address: "[::]:50052"
+    insecure-mode: true
+
+description: >
+  Docker Compose storage configuration:
+    - Unauthenticated plain HTTP at :50052
+    - Single instance: [unnamed]
+    - On-disk data stored in /var
+    - Hosted services:
+       - ContentAddressableStorage
+       - ByteStream
+
+authorization:
+  method: none
+
+monitoring:
+  enabled: true
+  endpoint-type: udp
+  endpoint-location: statsd:8125
+  serialization-format: statsd
+  metric-prefix: buildgrid
+
+connections:
+  - !sql-connection &sql
+    connection-string: postgresql://bgd:insecure@database/bgd
+
+storages:
+  - !disk-storage &fallback-storage
+    path: /cas
+
+  - !lru-storage &cache-storage
+    size: 512MB
+
+  - !with-cache-storage &data-store
+    cache: *cache-storage
+    fallback: *fallback-storage
+
+  - !sql-index &my-index
+    sql: *sql
+    storage: *data-store
+
+instances:
+  - name: ''
+    description: |
+      The unique unnamed instance.
+
+    services:
+      - !cas
+        storage: *my-index
+
+      - !bytestream
+        storage: *my-index
+
+thread-pool-size: 100
+        

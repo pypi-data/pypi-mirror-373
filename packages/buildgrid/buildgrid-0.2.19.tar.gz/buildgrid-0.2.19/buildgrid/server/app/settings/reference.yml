@@ -1,0 +1,228 @@
+# Server's configuration desciption.
+description: |
+  BuildGrid's server reference configuration.
+
+# Server's network configuration.
+server:
+  - !channel
+    # TCP port number.
+    address: "[::]:50051"
+    # Whether or not to activate SSL/TLS encryption.
+    insecure-mode: true
+    # SSL/TLS credentials.
+    credentials:
+      tls-server-key: !expand-path ~/.config/buildgrid/server.key
+      tls-server-cert: !expand-path ~/.config/buildgrid/server.cert
+      tls-client-certs: !expand-path ~/.config/buildgrid/client.cert
+
+# gRPC tunables to pass to the gRPC server.
+# See https://grpc.github.io/grpc/core/group__grpc__arg__keys.html for the full list
+grpc-server-options:
+  grpc.so_reuseport: 0
+  grpc.max_connection_age_ms: 300000
+
+# Server's authorization configuration.
+authorization:
+  # Type of authorization method.
+  #  none  - Bypass the authorization mechanism
+  #  jwt   - OAuth 2.0 bearer with JWT tokens
+  method: jwt
+  # Location for the file containing the secret, pass
+  # or key needed by 'method' to authorize requests.
+  secret: !expand-path ~/.config/buildgrid/auth.secret
+  # The url to fetch the JWKs.
+  # Either secret or this field must be specified. Defaults to ``None``.
+  jwks-url: https://test.dev/.well-known/jwks.json
+  # Audience used to validate the JWT.
+  # This field must be specified if jwks-url is specified.
+  # This field is case sensitive!
+  audience: BuildGrid
+  # The amount of time between fetching of the JWKs.
+  # Defaults to 60 minutes.
+  jwks-fetch-minutes: 30
+  # Encryption algorithm to be used together with 'secret'
+  # by 'method' to authorize requests (optinal).
+  #  hs256  - HMAC+SHA-256 for JWT method
+  #  rs256  - RSASSA-PKCS1-v1_5+SHA-256 for JWT method
+  algorithm: rs256
+
+# List of connections to use for items like sql and redis
+connections:
+  - !sql-connection &sql
+    # URI for connecting to a PostgreSQL database:
+    connection-string: postgresql://bgd:insecure@database/bgd
+    # URI for connecting to an SQLite database:
+    #connection-string: sqlite:///./example.db
+
+    # SQLAlchemy Pool Options
+    pool-size: 5
+    pool-timeout: 30
+    pool-recycle: 3600
+    max-overflow: 10
+
+# List of storage backends for the instance.
+storages:
+  - !disk-storage &main-storage
+    # Path to the local storage folder.
+    path: !expand-path $HOME/cas
+
+# List of action cache stores
+caches:
+  - !lru-action-cache &main-action
+    # Alias to a storage backend, see 'storages'.
+    storage: *main-storage
+    # Maximum number of entires kept in cache.
+    max-cached-refs: 256
+    # Whether writing to the cache is allowed.
+    allow-updates: true
+    # Whether failed actions (non-zero exit code) are stored.
+    cache-failed-actions: true
+
+# List of schedulers to use in Execution and Bots services
+schedulers:
+  - !sql-scheduler &state-database
+    sql: *sql
+    action-cache: *main-action
+    storage: *main-storage
+
+    property-set:
+      !dynamic-property-set
+      # Non-standard keys which BuildGrid will allow jobs to set and use in the
+      # scheduling algorithm when matching a job to an appropriate worker
+      #
+      # Jobs with keys which aren't defined in either this list or
+      # `wildcard-property-keys` will be rejected.
+      match-property-keys:
+        # BuildGrid will match worker and jobs on foo, if set by job
+        - foo
+        # Can specify multiple keys.
+        - bar
+
+      # Non-standard keys which BuildGrid will allow jobs to set. These keys
+      # won't be considered when matching jobs to workers.
+      #
+      # Jobs with keys which aren't defined in either this list or
+      # `match-property-keys` will be rejected.
+      wildcard-property-keys:
+        # BuildGrid won't use the `chrootRootDigest` property to match jobs to workers,
+        # but workers will still be able to use the value of the key to determine
+        # what environment the job needs
+        - chrootRootDigest
+
+      # A static property set can be used instead of a dynamic property set using
+      # !static-property-set
+      # Static property sets require the value of keys to be pre-defined.
+      # This decreases the scheduling cost to linear in comparison to the dynamic set but
+      # requires the definition of all valid property sets.
+
+      # property-labels: define a set of property combinations which are allowed by the schedular.
+        # - { label: linuxGreen, properties: [[platform, linux], [colour, green]] }
+        # - { label: linuxBlue, properties: [[platform, linux], [colour, blue]] }
+
+    # Base URL for external build action (web) browser service.
+    action-browser-url: http://localhost:8080
+
+    # BotSession Keepalive Timeout: The maximum time (in seconds)
+    # to wait to hear back from a bot before assuming they're unhealthy.
+    bot-session-keepalive-timeout: 120
+
+    # Max Execution Timeout: Specify the maximum amount of time (in seconds) a job
+    # can remain in executing state. If it exceeds the maximum execution timeout,
+    # it will be marked as cancelled.
+    # (Default: 7200)
+    max-execution-timeout: 7200
+
+    # Max number of locality hints to be associated with each bot.
+    bot-locality-hint-limit: 10
+
+    assigners:
+      - !priority-age-assigner
+        # Number of assigner threads to run.
+        count: 5
+        # Interval (in seconds) between each assignment attempt.
+        interval: 1.0
+        # Percentage of jobs that will be assigned by priority
+        priority-assignment-percentage: 95
+        # Bot assignment strategy to use for finding a bot to assign the job to.
+        bot-assignment-strategy: !assign-by-locality
+          sampling: !sampling-config
+            # Sample size: The number of bots to sample when assigning a job.
+            sample-size: 5
+            # Max attempts: The maximum number of times to attempt to sample bots
+            max-attempts: 3
+          fallback: !assign-by-capacity
+
+# Server's instances configuration.
+instances:
+  - name: main
+    description: |
+      The 'main' server instance.
+
+    # List of services for the instance.
+    #  action-cache     - REAPI ActionCache service.
+    #  bytestream       - Google APIs ByteStream service.
+    #  cas              - REAPI ContentAddressableStorage service.
+    #  execution        - REAPI Execution + RWAPI Bots services.
+    services:
+      - !action-cache
+        cache: *main-action
+
+      - !execution
+        scheduler: *state-database
+
+        # Operation Stream Keepalive Timeout: The maximum time (in seconds)
+        # to wait before sending the current status in an Operation response
+        # stream of an `Execute` or `WaitExecution` request.
+        operation-stream-keepalive-timeout: 120
+
+        # Max List Operations Page Size: Specify the maximum number of results that can
+        # be returned from a ListOperations request. BuildGrid will provide a page_token
+        # with the response that the client can specify to get the next page of results.
+        # (Default: 1000)
+        max-list-operations-page-size: 1000
+
+      - !cas
+        # Alias to a storage backend, see 'storages'.
+        storage: *main-storage
+
+      - !bytestream
+        # Alias to a storage backend, see 'storages'.
+        storage: *main-storage
+
+# Server's internal monitoring configuration.
+monitoring:
+  # Whether or not to activate the monitoring subsytem.
+  enabled: false
+
+  # Type of the monitoring bus endpoint.
+  #  stdout  - Standard output stream.
+  #  file    - On-disk file.
+  #  socket  - UNIX domain socket.
+  #  udp     - Port listening for UDP packets
+  endpoint-type: socket
+
+  # Location for the monitoring bus endpoint. Only
+  # necessary for 'file', 'socket', and 'udp' `endpoint-type`.
+  # Full path is expected for 'file', name
+  # only for 'socket', and `hostname:port` for 'udp'.
+  endpoint-location: monitoring_bus_socket
+
+  # Messages serialisation format.
+  #  binary  - Protobuf binary format.
+  #  json    - JSON format.
+  #  statsd  - StatsD format. Only metrics are kept - logs are dropped.
+  serialization-format: binary
+
+  # Prefix to prepend to the metric name before writing
+  # to the configured endpoint.
+  metric-prefix: buildgrid
+
+# Maximum number of gRPC threads. Defaults to 5 times
+# the CPU count if not specifed. A minimum of 5 is
+# enforced, whatever the configuration is.
+thread-pool-size: 30
+
+# Set unavailability lower than thread-pool-size to customize error responses.
+limiter:
+  !limiter
+  concurrent-request-limit: 25

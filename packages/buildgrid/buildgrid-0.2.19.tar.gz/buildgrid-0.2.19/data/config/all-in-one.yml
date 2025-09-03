@@ -1,0 +1,83 @@
+server:
+  - !channel
+    address: "[::]:50051"
+    insecure-mode: true
+
+description: >
+  Docker Compose all-in-one configuration:
+    - Unauthenticated plain HTTP at :50051
+    - Single instance: [unnamed]
+    - Hosted services:
+       - Execution
+       - Operations
+       - Bots
+       - CAS
+       - ByteStream
+       - ActionCache
+
+authorization:
+  method: none
+
+monitoring:
+  enabled: false
+
+connections:
+  - !sql-connection &sql
+    connection-string: postgresql://bgd:insecure@database/bgd
+    pool-size: 5
+    pool-timeout: 30
+    max-overflow: 10
+
+storages:
+  - !disk-storage &cas-storage
+    path: /var/lib/buildgrid/store
+
+  - !sql-index &cas-index
+    storage: *cas-storage
+    sql: *sql
+
+caches:
+  - !lru-action-cache &build-cache
+    storage: *cas-index
+    max-cached-refs: 256
+    cache-failed-actions: true
+    allow-updates: true
+
+schedulers:
+  - !sql-scheduler &state-database
+    storage: *cas-storage
+    sql: *sql
+    queue-timeout-job-max-age:
+      days: 1
+    queue-timeout-period:
+      minutes: 1
+    queue-timeout-max-window: 100
+    action-cache: *build-cache
+    action-browser-url: http://localhost:8080
+
+instances:
+  - name: ''
+    description: |
+      The unique unnamed instance.
+
+    services:
+      - !cas
+        storage: *cas-index
+        tree-cache-size: 100
+        tree-cache-ttl-minutes: 30
+
+      - !bytestream
+        storage: *cas-index
+
+      - !action-cache
+        cache: *build-cache
+
+      - !execution
+        scheduler: *state-database
+
+      - !introspection
+        scheduler: *state-database
+
+      - !memory-build-events
+
+thread-pool-size: 100

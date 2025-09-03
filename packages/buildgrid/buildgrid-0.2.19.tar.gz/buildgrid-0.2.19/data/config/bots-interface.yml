@@ -1,0 +1,55 @@
+server:
+  - !channel
+    address: "[::]:50054"
+    insecure-mode: true
+
+description: >
+  Docker Compose bots interface configuration:
+    - Unauthenticated plain HTTP at :50054
+    - Single instance: [unnamed]
+    - Expects a remote CAS at :50052
+    - Hosted services:
+       - Bots
+
+authorization:
+  method: none
+
+monitoring:
+  enabled: false
+
+connections:
+  - !sql-connection &sql
+    connection-string: postgresql://bgd:insecure@database/bgd
+    pool-size: 5
+    pool-timeout: 30
+    max-overflow: 10
+
+storages:
+  - !remote-storage &cas-storage
+    url: http://storage:50052
+    instance-name: ''
+
+caches:
+  - !remote-action-cache &build-cache
+    url: http://cache:50053
+    instance-name: ''
+
+schedulers:
+  - !sql-scheduler &state-database
+    sql: *sql
+    storage: *cas-storage
+    action-cache: *build-cache
+    logstream:
+      url: http://logstream:50055
+      instance-name: ''
+
+instances:
+  - name: ''
+    description: |
+      The unique unnamed instance.
+
+    services:
+      - !bots
+        scheduler: *state-database
+
+thread-pool-size: 100

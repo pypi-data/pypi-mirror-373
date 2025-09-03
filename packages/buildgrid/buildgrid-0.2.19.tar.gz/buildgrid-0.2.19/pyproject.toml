@@ -1,0 +1,205 @@
+# Copyright (C) 2023 Bloomberg LP
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  <http://www.apache.org/licenses/LICENSE-2.0>
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[build-system]
+requires = [
+    "setuptools >= 44",
+    "wheel >= 0.35",
+]
+build-backend = 'setuptools.build_meta'
+
+[project]
+name = "buildgrid"
+version = "0.2.19"
+requires-python = ">=3.11"
+description = "A remote execution service"
+readme = "README.rst"
+license = {text = "Apache License, Version 2.0"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "boto3",
+    "botocore",
+    "dnspython",
+    "grpcio-reflection >= 1.62.0",
+    "grpcio-health-checking >= 1.62.0",
+    "grpcio >= 1.62.0",
+    "importlib-resources",
+    "janus >= 0.6.2",
+    "jinja2",
+    "protobuf",
+    "alembic",
+    "Click",
+    "SQLAlchemy[mypy] >= 2.0",
+    "pydantic > 2.0", # required by new models in metering-client
+    "PyYAML >= 6.0.1", # https://github.com/yaml/pyyaml/issues/724 cython issue in 6.0.0
+    "jsonschema >= 3.0.0",
+    "lark-parser",
+    "pycurl >= 7.45.3",
+    "buildgrid-metering-client >= 0.0.4",
+    "mmh3",
+    "cryptography",  # Required by pyjwt for RSA
+    "PyJWT",
+    "requests",
+    "sentry-sdk",
+]
+
+[project.optional-dependencies]
+database = [
+    "psycopg2-binary",
+]
+redis = [
+    "fakeredis >= 2.10.1",
+    "redis >= 4.5.1",
+    "hiredis",  # Faster parsing of redis response.
+]
+docs = [
+    "Sphinx",
+    "sphinx-click",
+    "sphinx-rtd-theme",
+    "sphinxcontrib-apidoc",
+]
+tests = [
+    "coverage",
+    "cryptography >= 38.0.0",  # For compatibility with pyopenssl>=22.0.0 https://github.com/pyca/pyopenssl/issues/1143
+    "flaky",  # until we pin down why the bots tests are so painful.
+    "flask",
+    "flask-cors",
+    "jwcrypto",
+    # 4.1.12 breaks tests using S3 with 400/403. No obvious reasons can be found from the CHANGELOG / open issues yet.
+    # TODO: investigate the root cause and unpin moto
+    # NOTE: unpinning this will also require some code change, as `mock_s3` is removed in favour of `mock_aws` in modern moto
+    "moto < 4.1.12",
+    "psutil",
+    "pycodestyle",
+    "pyopenssl >= 22.0.0",  # For compatibility with cryptography>=38.0.0 https://github.com/pyca/pyopenssl/issues/1143
+    "pytest",
+    "pytest-cov",
+    "pytest-forked",
+    "pytest-pycodestyle",
+    "pytest-xdist",
+    "fakeredis >= 2.10.1",
+    "redis >= 4.5.1",
+    "testing.postgresql",
+    "psycopg2-binary",
+]
+dev = [
+    # Style
+    "flake8",
+    "pycodestyle",
+
+    # Testing
+    "pytest",
+    "pytest-cov",
+    "pytest-forked",
+    "pytest-pycodestyle",
+    "pytest-xdist",
+
+    # Dependency management
+    "pip-tools",
+
+    # Memory profiling
+    "memray",
+]
+mypy = [
+    "mypy",
+    "grpc-stubs >= 1.53",  # Stub only package, should be compatible with CI.
+    "boto3-stubs",
+    "mypy-boto3-s3",
+    "types-aiofiles",
+    "types-cachetools",
+    "types-docutils",
+    "types-jsonschema",
+    "types-protobuf",
+    "types-psycopg2",
+    "types-pycurl >= 7.45.3.20240421",
+    "types-Pygments",
+    "types-pyOpenSSL",
+    "types-python-dateutil",
+    "types-pyyaml",
+    "types-redis",
+    "types-requests",
+    "types-setuptools",
+    "types-urllib3",
+]
+all = [
+    # Use recursive dependencies to group other setups.
+    "buildgrid[database,redis,docs,tests,mypy,dev]"
+]
+
+[tool.setuptools]
+# See https://stackoverflow.com/questions/72294299/multiple-top-level-packages-discovered-in-a-flat-layout
+py-modules = []
+
+[project.scripts]
+bgd = "buildgrid.server.app:cli"
+
+[project.urls]
+Homepage = "https://buildgrid.build"
+Documentation = "https://buildgrid.build"
+Repository = "https://gitlab.com/BuildGrid/buildgrid"
+
+[tool.black]
+line-length = 119
+extend-exclude = "(buildgrid/_protos)"
+
+[tool.isort]
+line_length = 119
+multi_line_output = 3
+include_trailing_comma = true
+use_parentheses = true
+extend_skip_glob = ["buildgrid/_protos/*"]
+ensure_newline_before_comments = true
+
+sections = "FUTURE,STDLIB,THIRDPARTY,FIRSTPARTY,LOCALFOLDER"
+
+[tool.mypy]
+plugins = "sqlalchemy.ext.mypy.plugin"
+python_version = "3.11"
+strict = true
+
+# mypy errors from 3rd party libs
+# https://github.com/python/mypy/issues/12299
+[[tool.mypy.overrides]]
+module = "referencing.*"
+follow_imports = "skip"
+
+[tool.coverage.run]
+concurrency = [
+    "multiprocessing",
+    "thread"
+]
+source = [
+    "buildgrid/*"
+]
+omit = [
+    "buildgrid/server/app/*",
+    "buildgrid/_protos/*",
+    "*_pb2.py",
+    "*_pb2_grpc.py"
+]
+
+[tool.coverage.report]
+show_missing = true
+precision = 2
+
+[tool.pytest.ini_options]
+addopts = "--verbose --pycodestyle --cov=buildgrid --cov-config=pyproject.toml -n auto --no-success-flaky-report"
+python_files = "tests/*.py"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+    "ignore::sqlalchemy.exc.SAWarning"
+]

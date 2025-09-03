@@ -1,0 +1,71 @@
+server:
+  - !channel
+    address: "[::]:50051"
+    insecure-mode: true
+
+description: >
+  A BuildGrid configuration using a CAS indexed with SQLite:
+    - Unauthenticated plain HTTP at :50051
+    - Single instance: [unnamed]
+    - In-memory data, max. 2Gio
+    - DataStore: sqlite:///./example.db
+    - Index: sqlite:///./index.example.db
+    - Hosted services:
+       - ActionCache
+       - Execute
+       - ContentAddressableStorage
+       - ByteStream
+
+authorization:
+  method: none
+
+monitoring:
+  enabled: false
+
+connections:
+  - !sql-connection &scheduler-sql
+    connection-string: sqlite:///./example.db
+    connection-timeout: 15
+
+  - !sql-connection &index-sql
+    connection-string: sqlite:///./index.example.db
+
+storages:
+  - !disk-storage &disk-store
+    path: example-cas/
+
+  - !sql-index &my-index
+    sql: *index-sql
+    storage: *disk-store
+
+caches:
+  - !lru-action-cache &build-cache
+    storage: *my-index
+    max-cached-refs: 256
+    cache-failed-actions: true
+    allow-updates: true
+
+schedulers:
+  - !sql-scheduler &state-database
+    sql: *scheduler-sql
+    storage: *my-index
+    action-cache: *build-cache
+    poll-interval: 0.5
+
+instances:
+  - name: ''
+    description: |
+      The unique '' instance.
+
+    services:
+      - !action-cache
+        cache: *build-cache
+
+      - !execution
+        scheduler: *state-database
+
+      - !cas
+        storage: *my-index
+
+      - !bytestream
+        storage: *my-index

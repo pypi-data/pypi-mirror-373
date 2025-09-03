@@ -1,0 +1,85 @@
+server:
+  - !channel
+    address: "[::]:50051"
+    insecure-mode: true
+
+description: >
+  Docker Compose all-in-one configuration:
+    - Unauthenticated plain HTTP at :50051
+    - Single instance: [unnamed]
+    - Hosted services:
+       - Execution
+       - Operations
+       - Bots
+       - CAS
+       - ByteStream
+       - ActionCache
+
+authorization:
+  method: none
+
+monitoring:
+  enabled: false
+
+connections:
+  - !sql-connection &sql
+    connection-string: postgresql://bgd:insecure@database/bgd
+    pool-size: 5
+    pool-timeout: 30
+    max-overflow: 10
+
+storages:
+  - !disk-storage &cas-storage
+    path: /var/lib/buildgrid/store
+
+  - !sql-index &cas-index
+    storage: *cas-storage
+    sql: *sql
+
+caches:
+  - !lru-action-cache &build-cache
+    storage: *cas-storage
+    max-cached-refs: 256
+    cache-failed-actions: true
+    allow-updates: true
+
+clients:
+  - !metering-service-client &metering-client
+    base-url: http://metering-service:8000
+    # token-path: /tmp/path/to/token
+    retry_max_attempts: 3
+    retry_exp_base: 2
+    retry_max_wait: 15
+    retry_exceptions: ["metering-service-client-error"]
+
+schedulers:
+  - !sql-scheduler &state-database
+    sql: *sql
+    storage: *cas-index
+    action-cache: *build-cache
+    action-browser-url: http://localhost:8080
+    metering-service-client: *metering-client
+    metering-throttle-action: "reject"
+    bot-session-keepalive-timeout: 240
+
+instances:
+  - name: ""
+    description: |
+      The unique unnamed instance.
+
+    services:
+      - !cas
+        storage: *cas-index
+
+      - !bytestream
+        storage: *cas-index
+
+      - !action-cache
+        cache: *build-cache
+
+      - !execution
+        scheduler: *state-database
+
+      - !memory-build-events
+
+thread-pool-size: 100

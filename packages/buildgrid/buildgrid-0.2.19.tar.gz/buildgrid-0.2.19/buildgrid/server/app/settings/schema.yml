@@ -1,0 +1,751 @@
+"$schema": https://json-schema.org/draft/2020-12/schema
+title: buildgrid-config
+description: Buildgrid Server Configuration file
+
+type: object
+propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+properties:
+  description:         { type: string }
+  authorization:       { "$ref": "#/definitions/authorization" }
+  monitoring:          { "$ref": "#/definitions/monitoring" }
+  thread-pool-size:    { type: integer, minimum: 5 }
+  server-reflection:   { type: boolean }
+  grpc-compression:    { type: string, enum: [NoCompression, Deflate, Gzip] }
+  grpc-server-options: { "$ref": "#/definitions/grpc-server-options"}
+  server:              { type: array, items: { "$ref": "#/definitions/channel" } }
+  connections:         { type: array, items: { "$ref": "#/definitions/connection" } }
+  storages:            { type: array, items: { "$ref": "#/definitions/storage" } }
+  caches:              { type: array, items: { "$ref": "#/definitions/cache" } }
+  schedulers:          { type: array, items: { "$ref": "#/definitions/scheduler" } }
+  clients:             { type: array, items: { "$ref": "#/definitions/client" } }
+  instances:           { type: array, items: { "$ref": "#/definitions/instance" } }
+  cleanup:             { type: array, items: { "$ref": "#/definitions/cleanup" } }
+  sentry:              { "$ref": "#/definitions/sentry" }
+  limiter:             { "$ref": "#/definitions/limiter" }
+anyOf:
+  - required: [server, instances]
+  - required: [cleanup]
+
+definitions:
+  authorization:
+    type: object
+    oneOf:
+      - "$ref": "#/definitions/no-authorization"
+      - "$ref": "#/definitions/header-authorization"
+      - "$ref": "#/definitions/jwt-authorization"
+
+  grpc-server-options:
+    type: object
+    patternProperties: {
+      "^grpc.[a-z0-9_\\.]+$": { type: ["string", "number"]}
+    }
+    additionalProperties: false
+
+  no-authorization:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      method: { type: string, enum: [none] }
+    required: [method]
+
+  header-authorization:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      method:                       { type: string, enum: [ headers ] }
+      acl-config:                   { type: string }
+      allow-unauthorized-instances: { type: array, items: { type: string } }
+      allow-unauthenticated-instances: { type: array, items: { type: string } }
+    required: [method]
+
+  jwt-authorization:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      method:                       { type: string, enum: [ jwt ] }
+      secret:                       { type: string }
+      algorithm:                    { type: string, enum: [hs256, rs256] }
+      jwks-url:                     { oneOf: [ { type: string }, { type: array, items: { type : string } } ] }
+      audience:                     { oneOf: [ { type: string }, { type: array, items: { type : string } } ] }
+      jwks-fetch-minutes:           { type: integer }
+      acl-config:                   { type: string }
+      allow-unauthorized-instances: { type: array, items: { type: string } }
+      allow-unauthenticated-instances: { type: array, items: { type: string } }
+    required: [method, algorithm]
+    anyOf:
+      - required: [secret]
+      - required: [jwks-url, audience]
+
+  monitoring:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      enabled:              { type: boolean }
+      endpoint-type:        { type: string, enum: [stdout, file, socket, udp] }
+      endpoint-location:    { type: string }
+      serialization-format: { type: string, enum: [binary, json, statsd] }
+      metric-prefix:        { type: string }
+      additional-tags:      { type: object, additionalProperties: { type: string } }
+
+  channel:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:          { type: string, enum: ["!channel"] }
+      address:       { type: string }
+      insecure-mode: { type: boolean }
+      credentials:
+        type: object
+        properties:
+          tls-server-key:   { type: string }
+          tls-server-cert:  { type: string }
+          tls-client-certs: { type: string }
+        required: [tls-server-key, tls-server-cert]
+    required: [kind, address, insecure-mode]
+
+  instance:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      name:        { oneOf: [ { type: string }, { type: array, items: { type : string } } ] }
+      description: { type: string }
+      connections: { type: array, items: { "$ref": "#/definitions/connection" } }
+      storages:    { type: array, items: { "$ref": "#/definitions/storage" } }
+      caches:      { type: array, items: { "$ref": "#/definitions/cache" } }
+      schedulers:  { type: array, items: { "$ref": "#/definitions/scheduler" } }
+      clients:     { type: array, items: { "$ref": "#/definitions/client" } }
+      services:    { type: array, items: { "$ref": "#/definitions/service" } }
+    required: [name, services]
+
+  connection:
+    type: object
+    oneOf:
+      - "$ref": "#/definitions/sql-connection"
+      - "$ref": "#/definitions/redis-connection"
+
+  sql-connection:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:               { type: string, enum: ["!sql-connection"] }
+      connection-string:  { type: string }
+      connection-timeout: { type: number, minimum: 0 }
+      lock-timeout:       { type: number, minimum: 0 }
+      pool-size:          { type: integer, minimum: 0 }
+      max-overflow:       { type: integer, minimum: 0 }
+      pool-timeout:       { type: number, minimum: 0 }
+      pool-pre-ping:      { type: boolean }
+      pool-recycle:       { type: number, minimum: 0 }
+      connect-args:       { type: object }
+      name:               { type: string }
+    required: [kind, connection-string]
+
+  redis-connection:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:                 { type: string, enum: ["!redis-connection"] }
+      host:                 { type: string }
+      port:                 { type: integer }
+      password:             { type: string }
+      db:                   { type: integer }
+      dns-srv-record:       { type: string }
+      sentinel-master-name: { type: string }
+      retries:              { type: integer, minimum: 0 }
+    oneOf:
+      - required: [kind, host, port]
+      - required: [kind, dns-srv-record]
+
+  storage:
+    type: object
+    oneOf:
+      - "$ref": "#/definitions/disk-storage"
+      - "$ref": "#/definitions/lru-storage"
+      - "$ref": "#/definitions/redis-storage"
+      - "$ref": "#/definitions/remote-storage"
+      - "$ref": "#/definitions/replicated-storage"
+      - "$ref": "#/definitions/s3-storage"
+      - "$ref": "#/definitions/sharded-storage"
+      - "$ref": "#/definitions/size-differentiated-storage"
+      - "$ref": "#/definitions/sql-storage"
+      - "$ref": "#/definitions/with-cache-storage"
+      - "$ref": "#/definitions/index"
+
+  index:
+    type: object
+    oneOf:
+      - "$ref": "#/definitions/redis-index"
+      - "$ref": "#/definitions/sql-index"
+
+  disk-storage:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind: { type: string, enum: ["!disk-storage"] }
+      path: { type: string }
+    required: [kind, path]
+
+  lru-storage:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind: { type: string, enum: ["!lru-storage"] }
+      size: { type: string, pattern: "^[ 0-9 ]*[ kKmMgGtTbB ]?[ bB ]?$" }
+    required: [kind, size]
+
+  redis-storage:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:  { type: string, enum: ["!redis-storage"] }
+      redis: { "$ref": "#/definitions/redis-connection" }
+    required: [kind, redis]
+
+  remote-storage:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind: { type: string, enum: [ "!remote-storage" ] }
+      url: { type: string }
+      instance-name: { type: string }
+      channel-options: { type: object, propertyNames: { pattern: "^[a-z0-9-]+$" } }
+      request-timeout: { type: number }
+      credentials: { "$ref": "#/definitions/grpc-credentials" }
+    required: [kind, url]
+
+  replicated-storage:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:     { type: string, enum: ["!replicated-storage"] }
+      storages: { type: array, items: { "$ref": "#/definitions/storage" }, minItems: 2 }
+      replication-queue-size: { type: number, min: 0 }
+      replication-threads: { type: number, min: 0 }
+      read-replication: { type: boolean }
+    required: [kind, storages]
+
+  s3-storage:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:                               { type: string, enum: ["!s3-storage"] }
+      bucket:                             { type: string }
+      endpoint:                           { type: string }
+      access-key:                         { type: string }
+      secret-key:                         { type: string }
+      read-timeout-seconds-per-kilobyte:  { type: number }
+      write-timeout-seconds-per-kilobyte: { type: number }
+      read-timeout-min-seconds:           { type: number }
+      write-timeout-min-seconds:          { type: number }
+      hash-prefix-size:                   { type: number }
+      path-prefix-string:                 { type: string }
+      versioned-deletes:                  { type: boolean }
+    required: [kind, bucket, endpoint, access-key, secret-key]
+
+  sharded-storage:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:             { type: string, enum: ["!sharded-storage"] }
+      thread-pool-size: { type: integer, minimum: 0 }
+      shards:
+        type: array
+        minItems: 1
+        items:
+          type: object
+          properties:
+            name:     { type: string, pattern: "^[A-Za-z0-9-]*$" }
+            storage:  { "$ref": "#/definitions/storage" }
+          required: [name, storage]
+    required: [kind, shards]
+
+  size-differentiated-storage:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind: { type: string, enum: ["!size-differentiated-storage"] }
+      size-limited-storages:
+        type: array
+        minItems: 1
+        items:
+          type: object
+          properties:
+            max-size: { type: string, pattern: "^[ 0-9 ]*[ kKmMgGtTbB ]?[ bB ]?$" }
+            storage:  { "$ref": "#/definitions/storage" }
+          required: [max-size, storage]
+      fallback:         { "$ref": "#/definitions/storage" }
+      thread-pool-size: { type: integer, minimum: 0 }
+    required: [kind, size-limited-storages, fallback]
+
+  sql-storage:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:   { type: string, enum: ["!sql-storage"] }
+      sql:    { "$ref": "#/definitions/sql-connection" }
+      sql-ro: { "$ref": "#/definitions/sql-connection" }
+    required: [kind, sql]
+
+  with-cache-storage:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:                     { type: string, enum: ["!with-cache-storage"] }
+      cache:                    { "$ref": "#/definitions/storage" }
+      fallback:                 { "$ref": "#/definitions/storage" }
+      defer-fallback-writes:    { type: boolean }
+      fallback-writer-threads:  { type: integer }
+    required: [kind, cache, fallback]
+
+  cache:
+    type: object
+    oneOf:
+      - "$ref": "#/definitions/lru-action-cache"
+      - "$ref": "#/definitions/mirrored-action-cache"
+      - "$ref": "#/definitions/redis-action-cache"
+      - "$ref": "#/definitions/remote-action-cache"
+      - "$ref": "#/definitions/s3action-cache"
+      - "$ref": "#/definitions/sharded-action-cache"
+      - "$ref": "#/definitions/with-cache-action-cache"
+      - "$ref": "#/definitions/write-once-action-cache"
+
+  lru-action-cache:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:                 { type: string, enum: ["!lru-action-cache"] }
+      storage:              { "$ref": "#/definitions/storage" }
+      max-cached-refs:      { type: integer, minimum: 1 }
+      allow-updates:        { type: boolean }
+      cache-failed-actions: { type: boolean }
+    required: [kind, storage, max-cached-refs]
+
+  mirrored-action-cache:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:   { type: string, enum: ["!mirrored-action-cache"] }
+      first:  { "$ref": "#/definitions/cache" }
+      second: { "$ref": "#/definitions/cache" }
+    required: [kind, first, second]
+
+  redis-action-cache:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:                 { type: string, enum: ["!redis-action-cache"] }
+      redis:                { "$ref": "#/definitions/redis-connection" }
+      storage:              { "$ref": "#/definitions/storage" }
+      allow-updates:        { type: boolean }
+      cache-failed-actions: { type: boolean }
+      entry-type:           { type: string }
+      migrate-entries:      { type: boolean }
+      cache-key-salt:       { type: string }
+    required: [kind, redis, storage]
+
+  remote-action-cache:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind: { type: string, enum: [ "!remote-action-cache" ] }
+      url: { type: string }
+      instance-name: { type: string }
+      channel-options: { type: object, propertyNames: { pattern: "^[a-z0-9-]+$" } }
+      request-timeout: { type: number }
+      credentials: { "$ref": "#/definitions/grpc-credentials" }
+    required: [kind, url]
+
+  s3action-cache:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:                 { type: string, enum: [ "!s3action-cache" ] }
+      storage:              { "$ref": "#/definitions/storage" }
+      allow-updates:        { type: boolean }
+      cache-failed-actions: { type: boolean }
+      entry-type:           { type: string }
+      migrate-entries:      { type: boolean }
+      bucket:               { type: string }
+      endpoint:             { type: string }
+      access-key:           { type: string }
+      secret-key:           { type: string }
+      cache-key-salt:       { type: string }
+    required: [kind, storage, bucket, endpoint, access-key, secret-key]
+
+  sharded-action-cache:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind: { type: string, enum: [ "!sharded-action-cache" ] }
+      allow-updates:        { type: boolean }
+      cache-failed-actions: { type: boolean }
+      cache-key-salt:       { type: string }
+      shards:
+        type: array
+        minItems: 1
+        items:
+          type: object
+          properties:
+            name:     { type: string, pattern: "^[A-Za-z0-9-]*$" }
+            cache:  { "$ref": "#/definitions/cache" }
+          required: [name, cache]
+    required: [kind, shards]
+
+  with-cache-action-cache:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:         { type: string, enum: [ "!with-cache-action-cache" ] }
+      cache: { "$ref": "#/definitions/cache" }
+      fallback: { "$ref": "#/definitions/cache" }
+      cache-failed-actions: { type: boolean }
+      allow-updates: { type: boolean }
+    required: [kind, cache, fallback]
+
+  write-once-action-cache:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:         { type: string, enum: [ "!write-once-action-cache" ] }
+      action-cache: { "$ref": "#/definitions/cache" }
+    required: [kind, action-cache]
+
+  redis-index:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:     { type: string, enum: ["!redis-index"] }
+      storage:  { "$ref": "#/definitions/storage" }
+      redis:    { "$ref": "#/definitions/redis-connection" }
+      prefix:   { type: string }
+    required: [kind, storage, redis]
+
+  sql-index:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:                           { type: string, enum: ["!sql-index"] }
+      sql:                            { "$ref": "#/definitions/sql-connection" }
+      storage:                        { "$ref": "#/definitions/storage" }
+      window-size:                    { type: integer, minimum: 1 }
+      inclause-limit:                 { type: integer, minimum: 1 }
+      fallback-on-get:                { type: boolean }
+      max-inline-blob-size:           { type: integer, minimum: 0, maximum: 1000000000 }
+      refresh-accesstime-older-than:  { type: integer, minimum: 0 }
+    required: [kind, sql, storage]
+
+  scheduler:
+    type: object
+    oneOf:
+      - "$ref": "#/definitions/sql-scheduler"
+
+  sql-scheduler:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:                             { type: string, enum: [ "!sql-scheduler" ] }
+      storage:                          { "$ref": "#/definitions/storage" }
+      sql:                              { "$ref": "#/definitions/sql-connection" }
+      sql-ro:                           { "$ref": "#/definitions/sql-connection" }
+      sql-notifier:                     { "$ref": "#/definitions/sql-connection" }
+      action-cache:                     { "$ref": "#/definitions/cache" }
+      property-set:                     { "$ref": "#/definitions/property-set" }
+      property-keys:                    { type: array, items: { type: string } }
+      wildcard-property-keys:           { type: array, items: { type: string } }
+      pruner-job-max-age:               { "$ref": "#/definitions/period" }
+      pruner-period:                    { "$ref": "#/definitions/period" }
+      queue-timeout-job-max-age:        { "$ref": "#/definitions/period" }
+      queue-timeout-period:             { "$ref": "#/definitions/period" }
+      pruner-max-delete-window:         { type: integer, minimum: 1 }
+      queue-timeout-max-window:         { type: integer, minimum: 1 }
+      max-execution-timeout:            { type: number, minimum: 1 }
+      bot-session-keepalive-timeout:    { type: number, minimum: 1 }
+      queued-action-retention-hours:    { type: number }
+      completed-action-retention-hours: { type: number }
+      action-result-retention-hours:    { type: number }
+      max-job-attempts:                 { type: number, minimum: 1 }
+      assigners:                        { type: array, items: { "$ref": "#/definitions/job-assigner-config" } }
+      priority-assignment-percentage:   { type: number, minimum: 0 }
+      metering-service-client:          { "$ref": "#/definitions/metering-service-client" }
+      metering-throttle-action:         { type: string, enum: [deprioritize, reject] }
+      logstream:                        { "$ref": "#/definitions/grpc-connection-options" }
+      asset-client:                     { "$ref": "#/definitions/asset-client" }
+      action-browser-url:               { type: string }
+      poll-interval:                    { type: number, minimum: 0 }
+      job-assignment-interval:          { type: number, minimum: 0 }
+      max-queue-size:                   { type: integer, minimum: 1 }
+      execution-timer-interval:         { type: number, minimum: 0 }
+      session-expiry-timer-interval:    { type: number, minimum: 0 }
+      instance-pools:                   { type: array, items: { type: array, items: { type: string } } }
+      bot-locality-hint-limit:          { type: integer, minimum: 0 }
+      bot-poll-interval:                { type: number, minimum: 0 }
+    required: [kind, storage, sql]
+
+  job-assigner-config:
+    type: object
+    oneOf:
+      - "$ref": "#/definitions/priority-age-assigner"
+
+  priority-age-assigner:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:                           { type: string, enum: [ "!priority-age-assigner" ] }
+      name:                           { type: string }
+      count:                          { type: number, minimum: 0 }
+      interval:                       { type: number, minimum: 0 }
+      priority-assignment-percentage: { type: number, minimum: 0 }
+      fallback-backoff:               { type: number, minimum: 0 }
+      jitter-factor:                  { type: number, minimum: 0 }
+      busy-sleep-factor:              { type: number, minimum: 0 }
+      instance-names:                 { type: array, items: { type : string } }
+      bot-assignment-strategy:        { "$ref": "#/definitions/bot-assignment-strategy" }
+    required: [ kind ]
+
+  assign-by-capacity:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind: { type: string, enum: [ "!assign-by-capacity" ] }
+      sampling: { "$ref": "#/definitions/sampling-config" }
+    required: [kind]
+
+  assign-by-locality:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind: { type: string, enum: [ "!assign-by-locality" ] }
+      sampling: { "$ref": "#/definitions/sampling-config" }
+      fallback: { "$ref": "#/definitions/bot-assignment-strategy" }
+    required: [kind]
+
+
+  bot-assignment-strategy:
+    type: object
+    oneOf:
+      - "$ref": "#/definitions/assign-by-capacity"
+      - "$ref": "#/definitions/assign-by-locality"
+
+  sampling-config:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind: { type: string, enum: [ "!sampling-config" ] }
+      sample-size: { type: integer, minimum: 1 }
+      max-attempts: { type: integer, minimum: 1 }
+
+  property-set:
+    type: object
+    oneOf:
+      - "$ref": "#/definitions/static-property-set"
+      - "$ref": "#/definitions/dynamic-property-set"
+
+  static-property-set:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-_]*$" }
+    properties:
+      kind: { type: string, enum: [ "!static-property-set" ] }
+      property-labels:
+        type: array
+        items:
+          type: object
+          propertyNames: { pattern: "^[A-Za-z0-9-_]*$" }
+          properties:
+            label: { type: string }
+            properties:
+              # Array of 2 item tuples: [[A, B], [C, D]]
+              type: array
+              items:
+                # 2 item tuples: [A, B]
+                type: array
+                items: { type: string }
+                minItems: 2
+                maxItems: 2
+          required: [label, properties]
+      wildcard-property-keys: { type: array, items: { type: string } }
+    required: [kind, property-labels]
+
+  dynamic-property-set:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-_]*$" }
+    properties:
+      kind:                   { type: string, enum: [ "!dynamic-property-set" ] }
+      label-key:              { type: string }
+      unique-property-keys:   { type: array, items: { type: string } }
+      match-property-keys:    { type: array, items: { type: string } }
+      wildcard-property-keys: { type: array, items: { type: string } }
+    required: [kind]
+
+  client:
+    type: object
+    oneOf:
+      - "$ref": "#/definitions/asset-client"
+      - "$ref": "#/definitions/metering-service-client"
+
+  asset-client:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:            { type: string, enum: [ "!asset-client" ] }
+      url:             { type: string }
+      instance-name:   { type: string }
+      channel-options: { type: object, propertyNames: { pattern: "^[a-z0-9-]+$" } }
+      request-timeout: { type: number }
+      credentials:     { "$ref": "#/definitions/grpc-credentials" }
+      retries:         { type: number }
+    required: [kind, url, instance-name]
+
+  metering-service-client:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-_]*$" }
+    properties:
+      kind:                   { type: string, enum: [ "!metering-service-client" ] }
+      base-url:               { type: string }
+      token-path:             { type: string }
+      retry_max_attempts:     { type: number, minimum: 0 }
+      retry_exp_base:         { type: number, minimum: 0 }
+      retry_multiplier:       { type: number, minimum: 0 }
+      retry_max_wait:         { type: number, minimum: 0 }
+      retry_http_statuses:    { type: array, items: { type: number } }
+      retry_exceptions:       { type: array, items: { type: string } }
+      retry_cause_exceptions: { type: array, items: { type: string } }
+    required: [kind, base-url]
+
+  service:
+    type: object
+    anyOf:
+      - "$ref": "#/definitions/action-cache"
+      - "$ref": "#/definitions/bots"
+      - "$ref": "#/definitions/bytestream"
+      - "$ref": "#/definitions/cas"
+      - "$ref": "#/definitions/execution"
+      - "$ref": "#/definitions/memory-build-events"
+      - "$ref": "#/definitions/introspection"
+
+  action-cache:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:   { type: string, enum: [ "!action-cache" ] }
+      cache:  { "$ref": "#/definitions/cache" }
+    required: [kind, cache]
+
+  bots:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:       { type: string, enum: [ "!bots" ] }
+      scheduler:  { "$ref": "#/definitions/scheduler" }
+    required: [kind, scheduler]
+
+  bytestream:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:                           { type: string, enum: [ "!bytestream" ] }
+      storage:                        { "$ref": "#/definitions/storage" }
+      read-only:                      { type: boolean }
+      disable-overwrite-early-return: { type: boolean }
+      stream-blob:                    { type: boolean }
+    required: [kind, storage]
+
+  cas:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:                   { type: string, enum: [ "!cas" ] }
+      storage:                { "$ref": "#/definitions/storage" }
+      read-only:              { type: boolean }
+      tree-cache-size:        { type: number }
+      tree-cache-ttl-minutes: { type: number }
+    required: [kind, storage]
+
+  execution:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:                               { type: string, enum: [ "!execution" ] }
+      scheduler:                          { "$ref": "#/definitions/scheduler" }
+      operation-stream-keepalive-timeout: { type: number, minimum: 1 }
+      endpoints:                          { type: array, items: { type: string, enum: [execution, operations, bots] } }
+      max-list-operations-page-size:      { type: number, minimum: 1 }
+    required: [kind, scheduler]
+
+  memory-build-events:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind: { type: string, enum: [ "!memory-build-events" ] }
+    required: [kind]
+
+  introspection:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind: { type: string, enum: [ "!introspection" ] }
+      scheduler:  { "$ref": "#/definitions/scheduler" }
+    required: [kind, scheduler]
+
+  cleanup:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      instance-name:             { type: string }
+      index:                     { "$ref": "#/definitions/index" }
+      high-watermark:            { type: integer, min: 0 }
+      low-watermark:             { type: integer, min: 0 }
+      high-blob-count-watermark: { type: integer, min: 0 }
+      low-blob-count-watermark:  { type: integer, min: 0 }
+      batch-size:                { type: integer, min: 0 }
+      only-if-unused-for:        { "$ref": "#/definitions/period" }
+      large-blob-threshold:      { type: integer, min: 1 }
+      large-blob-lifetime:       { "$ref": "#/definitions/period" }
+      retry-limit:               { type: integer, min: 0 }
+    required: [instance-name, index, high-watermark, low-watermark, batch-size]
+
+  grpc-connection-options:
+    type: object
+    propertyNames: { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      url:              { type: string }
+      instance-name:    { type: string }
+      channel-options:  { type: object, propertyNames: { pattern: "^[a-z0-9-]+$" } }
+      request-timeout:  { type: number }
+      credentials:      { "$ref": "#/definitions/grpc-credentials" }
+    required: [url, instance-name]
+
+  grpc-credentials:
+    type: object
+    properties:
+      tls-client-key:         { type: string }
+      tls-client-cert:        { type: string }
+      tls-server-cert:        { type: string }
+      auth-token:             { type: string }
+      token-refresh-seconds:  { type: number, minimum: 0 }
+
+  period:
+    type: object
+    properties:
+      weeks:    { type: number, format: float, minimum: 0 }
+      days:     { type: number, format: float, minimum: 0 }
+      hours:    { type: number, format: float, minimum: 0 }
+      minutes:  { type: number, format: float, minimum: 0 }
+      seconds:  { type: number, format: float, minimum: 0 }
+
+  sentry:
+    type: object
+    propertyNames:  { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:         { type: string, enum: ["!sentry"] }
+      dsn:          { type: string }
+      sample-rate:  { type: number, format: float, minimum: 0, maximum: 1}
+      proxy:        { type: string }
+    required: [kind, dsn, sample-rate]
+
+  limiter:
+    type: object
+    propertyNames:  { pattern: "^[A-Za-z0-9-]*$" }
+    properties:
+      kind:                     { type: string, enum: ["!limiter"] }
+      concurrent-request-limit: { type: number, minimum: 0 }
+    required: [kind, concurrent-request-limit]

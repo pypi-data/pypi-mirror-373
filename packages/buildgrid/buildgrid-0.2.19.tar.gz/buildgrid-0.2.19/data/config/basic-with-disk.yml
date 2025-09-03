@@ -1,0 +1,63 @@
+server:
+- !channel
+  address: "[::]:50051"
+  insecure-mode: true
+
+description: >
+    BuildGrid's default configuration:
+    - Unauthenticated plain HTTP at :50051
+    - Single instance: [unnamed]
+    - In-memory data, max. 2Gio
+    - DataStore: sqlite:///./example.db
+    - Hosted services:
+    - ActionCache
+    - Execute
+    - ContentAddressableStorage
+    - ByteStream
+
+authorization:
+    method: none
+
+monitoring:
+    enabled: false
+
+connections:
+  - !sql-connection &sql
+    connection-string: sqlite:///./example.db
+    connection-timeout: 15
+
+storages:
+  - !disk-storage &cas-storage
+    path: /path/to/cas/
+
+caches:
+  - !lru-action-cache &build-cache
+    storage: *cas-storage
+    max-cached-refs: 256
+    cache-failed-actions: true
+    allow-updates: true
+
+schedulers:
+  - !sql-scheduler &state-database
+    sql: *sql
+    storage: *cas-storage
+    action-cache: *build-cache
+    poll-interval: 0.5
+
+instances:
+  - name: ''
+    description: |
+      The unique '' instance.
+
+    services:
+      - !action-cache
+        cache: *build-cache
+
+      - !execution
+        scheduler: *state-database
+
+      - !cas
+        storage: *cas-storage
+
+      - !bytestream
+        storage: *cas-storage

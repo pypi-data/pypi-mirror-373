@@ -1,0 +1,59 @@
+server:
+  - !channel
+    address: "[::]:50052"
+    insecure-mode: true
+
+description: >
+  - Unauthenticated plain HTTP at :50052
+  - Single instance: [unnamed]
+    - Redis data store for action-cache, cas, bytestream.
+    - SQLLite for execution: sqlite:///./example.db
+  - Hosted services:
+     - ActionCache
+     - Execute
+     - ContentAddressableStorage
+     - ByteStream
+
+connections:
+  - !sql-connection &sql
+    connection-string: sqlite:///./example.db
+
+storages:
+  - !redis-storage &cas-storage
+    redis: !redis-connection
+      host: 127.0.0.1
+      port: 6379
+
+caches:
+  - !lru-action-cache &build-cache
+    storage: *cas-storage
+    max-cached-refs: 256
+    cache-failed-actions: true
+    allow-updates: true
+
+schedulers:
+  - !sql-scheduler &state-database
+    sql: *sql
+    storage: *cas-storage
+    action-cache: *build-cache
+    poll-interval: 0.5
+
+instances:
+  - name: ''
+    description: |
+      The unique '' instance.
+
+    services:
+      - !action-cache
+        cache: *build-cache
+
+      - !execution
+        scheduler: *state-database
+
+      - !cas
+        storage: *cas-storage
+
+      - !bytestream
+        storage: *cas-storage
+
+thread-pool-size: 100

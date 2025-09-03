@@ -1,0 +1,45 @@
+server:
+  - !channel
+    address: "[::]:50052"
+    insecure-mode: true
+
+description: >
+  Docker Compose S3 storage configuration:
+    - Unauthenticated plain HTTP at :50052
+    - Single instance: [unnamed]
+    - S3 data stored in bgd-bucket at 127.0.0.1:50055
+       - Looks for keys at /var/bgd/s3-access-key and /var/bgd/s3-secret-key
+    - Hosted services:
+       - ContentAddressableStorage
+       - ByteStream
+
+authorization:
+  method: none
+
+monitoring:
+  enabled: false
+
+storages:
+  - !s3-storage &data-store
+    bucket: bgd-bucket
+    # You can also use python str.format expressions
+    # to tell buildgrid to use different buckets
+    # based on the digest SHA of the object to read/write, like:
+    # bucket: bgd-bucket-{digest[0]}{digest[1]}
+    endpoint: http://127.0.0.1:50055
+    access-key: !read-file /var/bgd/s3-access-key
+    secret-key: !read-file /var/bgd/s3-secret-key
+
+instances:
+  - name: ''
+    description: |
+      The unique unnamed instance.
+
+    services:
+      - !cas
+        storage: *data-store
+
+      - !bytestream
+        storage: *data-store
+
+thread-pool-size: 100
