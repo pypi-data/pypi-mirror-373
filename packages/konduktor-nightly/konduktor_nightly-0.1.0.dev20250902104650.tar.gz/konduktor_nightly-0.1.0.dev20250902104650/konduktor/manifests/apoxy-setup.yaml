@@ -1,0 +1,151 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: trainy-kubeconfig
+  namespace: default
+type: Opaque
+data:
+  # this gets replaced by buildkite CI secret APOXY_AUTH
+  kubeconfig.yaml: |
+    APOXY_AUTH
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-controller
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kube-controller-role
+rules:
+- apiGroups: ["apiregistration.k8s.io"]
+  resources: ["apiservices"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-controller-role-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-controller-role
+subjects:
+- kind: ServiceAccount
+  name: kube-controller
+  namespace: default
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-controller
+  namespace: default
+  labels:
+    app: kube-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kube-controller
+  template:
+    metadata:
+      labels:
+        app: kube-controller
+    spec:
+      containers:
+      - name: kube-controller
+        image: apoxy/kube-controller:v0.11.6
+        args:
+        - --dev
+        - --project_id=7ce458d7-e20c-443c-aeeb-dbc5663c1240
+        - --kubeconfig_path=/data/kubeconfig.yaml
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: kubeconfig-volume
+          mountPath: /data
+          readOnly: true
+      volumes:
+      - name: kubeconfig-volume
+        secret:
+          secretName: trainy-kubeconfig
+          items:
+          - key: kubeconfig.yaml
+            path: kubeconfig.yaml
+            mode: 0600
+      serviceAccountName: kube-controller
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-controller
+  namespace: default
+  labels:
+    app: kube-controller
+spec:
+  selector:
+    app: kube-controller
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8443
+    targetPort: 8443
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apoxy-config
+  namespace: default
+data:
+  config.yaml: |
+    apiVersion: config.apoxy.dev/v1alpha1
+    kind: Config
+    currentProject: 7ce458d7-e20c-443c-aeeb-dbc5663c1240
+    projects:
+    - id: 7ce458d7-e20c-443c-aeeb-dbc5663c1240
+      kubernetesConfig:
+        kubeconfigPath: /root/kubeconfig.yaml
+    tunnel:
+      mode: userspace
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apoxy
+  namespace: default
+  labels:
+    app: apoxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apoxy
+  template:
+    metadata:
+      labels:
+        app: apoxy
+    spec:
+      containers:
+      - name: apoxy
+        image: apoxy/apoxy:v0.11.10
+        command: ["apoxy", "tunnel", "run", "UNIQUE-TEMPNAME", "--insecure-skip-verify"]
+        volumeMounts:
+        - name: kubeconfig-volume
+          mountPath: /root/kubeconfig.yaml
+          subPath: kubeconfig.yaml
+        - name: apoxy-config-volume
+          mountPath: /root/.apoxy/config.yaml
+          subPath: config.yaml
+      volumes:
+      - name: kubeconfig-volume
+        secret:
+          secretName: trainy-kubeconfig
+      - name: apoxy-config-volume
+        configMap:
+          name: apoxy-config
