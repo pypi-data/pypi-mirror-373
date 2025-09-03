@@ -1,0 +1,5 @@
+"""
+# QALITA (c) COPYRIGHT 2025 - ALL RIGHTS RESERVED -
+"""
+
+

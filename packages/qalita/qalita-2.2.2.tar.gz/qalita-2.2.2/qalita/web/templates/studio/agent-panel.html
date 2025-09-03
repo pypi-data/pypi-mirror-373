@@ -1,0 +1,271 @@
+<div id="agent_panel_root" style="display:flex; flex-direction:column; flex:1; min-height:0; position:relative;">
+  <div id="ollama_status_dot" title="Checking Ollama..."
+    style="position:absolute; top:8px; right:8px; width:10px; height:10px; border-radius:50%; background:#9ca3af; box-shadow:0 0 0 1px #e5e7eb;">
+  </div>
+  <div id="provider_selector" style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+    <p for="agent_provider" style="min-width: 70px; margin: 0px;">Agent Provider</p>
+    <select id="agent_provider" class="studio-input" style="max-width:260px; margin-top: 0px;">
+      <option value="local">Ollama</option>
+      <option value="openai">ChatGPT</option>
+      <option value="mistral">Mistral</option>
+      <option value="claude">Claude</option>
+      <option value="gemini">Gemini</option>
+    </select>
+    <img id="provider_logo_inline" src="/static/ollama.png" alt="Provider Logo"
+      style="width: 24px; height: 24px; object-fit: contain; margin-left: 4px;" />
+  </div>
+  <div id="agent_onboarding" class="studio-setup-card" style="display:none;">
+    <div style="display: flex; justify-content: space-between; align-items: start; gap: 10px;">
+      <div>
+        <div class="studio-setup-title">Setup local provider</div>
+        <p class="studio-setup-text" style="margin-top: 0;">Let's setup your local AI environment.</p>
+      </div>
+      <img src="/static/ollama.png" alt="Ollama Logo" style="width: 30px; height: auto;" />
+    </div>
+    <ol style="margin-top:3px;">
+      <li>Install Ollama: <a href="https://ollama.com" target="_blank" rel="noreferrer">https://ollama.com</a></li>
+      <li>Start the service locally, then verify below.</li>
+      <li>Pick a default model (ex: <code>gpt-oss:20b</code>).</li>
+      <li>Save your Studio configuration.</li>
+    </ol>
+    <div class="studio-setup-actions">
+      <button id="btn_check_ollama" class="btn outlined">Check Ollama</button>
+      <input id="inp_model" class="studio-input" type="text" placeholder="gpt-oss:20b" style="max-width:260px; margin-top: 0px;" />
+      <button id="btn_save_studio" class="btn">Save</button>
+    </div>
+    <div id="onboarding_status" class="muted" style="margin-top:8px;"></div>
+  </div>
+
+  <div id="agent_chat" style="display:flex; flex-direction:column; min-height:0;">
+    <h2>Agent Panel</h2>
+    <div id="chat_log"
+      style="flex:1; overflow:auto; border:1px solid #e5e7eb; border-radius:8px; padding:12px; background:#fff; min-height:0; height: calc(100vh - 220px);">
+    </div>
+    <div class="actions" style="margin-top:12px;">
+      <input id="chat_input" type="text" placeholder="Ask something..." style="flex:1; width:100%;" />
+      <button id="chat_send" class="btn" style="margin-top:5px;">Send</button>
+      <button id="chat_stop" class="btn secondary" style="margin-top:5px; display:none;">Stop</button>
+    </div>
+  </div>
+  <div id="agent_remote_setup" class="studio-setup-card" style="display:none;">
+    <div style="display: flex; justify-content: space-between; align-items: start; gap: 10px;">
+      <div>
+        <div class="studio-setup-title">Setup remote provider</div>
+        <p class="studio-setup-text" style="margin-top: 0;">Configure your API provider credentials.</p>
+      </div>
+      <img id="provider_logo_remote" src="/static/chatgpt.svg" alt="Provider Logo" style="width: 30px; height: auto;" />
+    </div>
+    <ol id="remote_help" style="margin-top:10px;">
+      <li id="help_openai_1" style="display:none;">Create an API key in your OpenAI dashboard.</li>
+      <li id="help_openai_2" style="display:none;">Paste the API key above and choose a model (e.g.,
+        <code>gpt-4o</code>).</li>
+      <li id="help_mistral_1" style="display:none;">Create an API key in your Mistral dashboard.</li>
+      <li id="help_mistral_2" style="display:none;">Paste the API key above and choose a model (e.g.,
+        <code>mistral-large</code>).</li>
+    </ol>
+    <div class="studio-setup-actions">
+      <input id="inp_remote_api_key" class="studio-input" type="password" placeholder="API Key"
+        style="min-width:260px;" />
+      <input id="inp_remote_model" class="studio-input" type="text" placeholder="Model (e.g., gpt-4o, mistral-large)"
+        style="min-width:260px;" />
+      <button id="btn_check_remote" class="btn outlined">Check</button>
+      <button id="btn_save_remote" class="btn">Save</button>
+    </div>
+    <div id="remote_status" class="muted" style="margin-top:8px;"></div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const providerSelect = document.getElementById('agent_provider');
+    const providerLogoInline = document.getElementById('provider_logo_inline');
+    const providerLogoRemote = document.getElementById('provider_logo_remote');
+    const elOnboarding = document.getElementById('agent_onboarding');
+    const elChat = document.getElementById('agent_chat');
+    const elRemote = document.getElementById('agent_remote_setup');
+    const status = document.getElementById('onboarding_status');
+    const modelInp = document.getElementById('inp_model');
+    const btnCheck = document.getElementById('btn_check_ollama');
+    const btnSave = document.getElementById('btn_save_studio');
+    const log = document.getElementById('chat_log');
+    const input = document.getElementById('chat_input');
+    const send = document.getElementById('chat_send');
+    const stop = document.getElementById('chat_stop');
+    const statusDot = document.getElementById('ollama_status_dot');
+    let lastStatus = null;
+    let streamingController = null;
+    let isStreaming = false;
+
+    function append(role, text) {
+      const item = document.createElement('div');
+      item.style.marginBottom = '10px';
+      item.innerHTML = '<b>' + role + ':</b> ' + (text || '').replace(/</g, '&lt;');
+      log.appendChild(item);
+      log.scrollTop = log.scrollHeight;
+      return item;
+    }
+
+    async function refreshStatus() {
+      try {
+        const r = await fetch('/studio/status');
+        const j = await r.json();
+        lastStatus = j;
+        const current = j.current_provider || 'local';
+        if (providerSelect) providerSelect.value = current;
+        updateProviderUI(current, j);
+      } catch (e) { /* ignore */ }
+    }
+
+    async function checkOllama() {
+      status.textContent = 'Checking Ollama...';
+      if (statusDot) { statusDot.style.background = '#9ca3af'; statusDot.title = 'Checking Ollama...'; }
+      try {
+        const r = await fetch('/studio/check-ollama');
+        const j = await r.json();
+        status.textContent = j.ok ? 'Ollama is reachable on http://127.0.0.1:11434' : 'Ollama is not reachable';
+        if (statusDot) { statusDot.style.background = j.ok ? '#10b981' : '#ef4444'; statusDot.title = j.ok ? 'Ollama reachable' : 'Ollama not reachable'; }
+      } catch (e) {
+        status.textContent = 'Ollama check failed';
+        if (statusDot) { statusDot.style.background = '#ef4444'; statusDot.title = 'Ollama check failed'; }
+      }
+    }
+
+    async function saveStudio() {
+      const payload = { model: modelInp.value || 'deepseek-r1:8b' };
+      try {
+        const r = await fetch('/studio/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: 'local', config: payload, set_current: true }) });
+        const j = await r.json();
+        status.textContent = j.ok ? 'Saved. You can now use the chat.' : (j.message || 'Save failed');
+        await refreshStatus();
+      } catch (e) { status.textContent = 'Save failed'; }
+    }
+
+    async function saveRemote() {
+      const keyEl = document.getElementById('inp_remote_api_key');
+      const modelEl = document.getElementById('inp_remote_model');
+      const key = keyEl && keyEl.value ? keyEl.value : '';
+      const model = modelEl && modelEl.value ? modelEl.value : '';
+      const provider = providerSelect ? providerSelect.value : 'openai';
+      const cfg = { api_key: key, model: model };
+      const msg = document.getElementById('remote_status');
+      if (msg) msg.textContent = 'Saving...';
+      try {
+        const r = await fetch('/studio/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: provider, config: cfg, set_current: true }) });
+        const j = await r.json();
+        if (msg) msg.textContent = j.ok ? 'Saved.' : (j.message || 'Save failed');
+      } catch (e) { if (msg) msg.textContent = 'Save failed'; }
+    }
+
+    async function checkRemote() {
+      const keyEl = document.getElementById('inp_remote_api_key');
+      const modelEl = document.getElementById('inp_remote_model');
+      const key = keyEl && keyEl.value ? keyEl.value : '';
+      const model = modelEl && modelEl.value ? modelEl.value : '';
+      const provider = providerSelect ? providerSelect.value : 'openai';
+      const msg = document.getElementById('remote_status');
+      if (msg) msg.textContent = 'Checking...';
+      try {
+        const r = await fetch('/studio/check-remote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider, api_key: key, model }) });
+        const j = await r.json();
+        if (msg) msg.textContent = j.ok ? 'Connectivity OK' : (j.message || (j.error && (j.error.detail || j.error.message || j.error.error)) || 'Connectivity failed');
+      } catch (e) { if (msg) msg.textContent = 'Connectivity failed'; }
+    }
+
+    function updateProviderUI(provider, statusObj) {
+      // Update logo
+      let src = '/static/ollama.png';
+      let alt = 'Ollama Logo';
+      if (provider === 'openai') { src = '/static/chatgpt.svg'; alt = 'ChatGPT Logo'; }
+      else if (provider === 'mistral') { src = '/static/mistral.svg'; alt = 'Mistral Logo'; }
+      else if (provider === 'claude') { src = '/static/claude.png'; alt = 'Claude Logo'; }
+      else if (provider === 'gemini') { src = '/static/gemini.png'; alt = 'Gemini Logo'; }
+      if (providerLogoInline) { providerLogoInline.src = src; providerLogoInline.alt = alt; }
+      if (providerLogoRemote) { providerLogoRemote.src = src; providerLogoRemote.alt = alt; }
+      // Toggle setup cards
+      if (provider === 'local') {
+        const isConfigured = !!(statusObj && statusObj.configured);
+        elOnboarding.style.display = isConfigured ? 'none' : 'block';
+        elRemote.style.display = 'none';
+        elChat.style.display = isConfigured ? 'block' : 'none';
+      } else {
+        elOnboarding.style.display = 'none';
+        elRemote.style.display = 'block';
+        elChat.style.display = 'none';
+      }
+      // Toggle provider-specific help
+      const h11 = document.getElementById('help_openai_1');
+      const h12 = document.getElementById('help_openai_2');
+      const h21 = document.getElementById('help_mistral_1');
+      const h22 = document.getElementById('help_mistral_2');
+      if (h11) h11.style.display = provider === 'openai' ? '' : 'none';
+      if (h12) h12.style.display = provider === 'openai' ? '' : 'none';
+      if (h21) h21.style.display = provider === 'mistral' ? '' : 'none';
+      if (h22) h22.style.display = provider === 'mistral' ? '' : 'none';
+    }
+
+    async function sendMessage() {
+      const text = input.value.trim();
+      if (!text) return;
+      append('You', text);
+      input.value = '';
+      if (isStreaming) return;
+      isStreaming = true;
+      send.disabled = true; if (stop) stop.style.display = 'inline-block';
+      const agentDiv = append('Agent', '');
+      const decoder = new TextDecoder();
+      streamingController = new AbortController();
+      let accumulated = '';
+      function render(text) {
+        agentDiv.innerHTML = '<b>Agent:</b> ' + (text || '').replace(/</g, '&lt;');
+        log.scrollTop = log.scrollHeight;
+      }
+      try {
+        const r = await fetch('/studio/chat?stream=1', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: text }), signal: streamingController.signal });
+        if (!r.ok) {
+          // Non-streaming error response
+          try {
+            const j = await r.json();
+            let show = j.response || (j.error && (typeof j.error === 'string' ? j.error : (j.error.detail || j.error.message || j.error.error))) || j.message || ('HTTP ' + r.status);
+            render(show);
+          } catch (_) {
+            const t = await r.text();
+            render(t || ('HTTP ' + r.status));
+          }
+        } else if (r.body) {
+          const reader = r.body.getReader();
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            accumulated += chunk;
+            render(accumulated);
+          }
+        } else {
+          render('(no response)');
+        }
+      } catch (e) {
+        if (e && e.name === 'AbortError') {
+          render(accumulated || '(stopped)');
+        } else {
+          render('Request failed');
+        }
+      } finally {
+        isStreaming = false;
+        send.disabled = false; if (stop) stop.style.display = 'none';
+        streamingController = null;
+      }
+    }
+
+    btnCheck && btnCheck.addEventListener('click', checkOllama);
+    btnSave && btnSave.addEventListener('click', saveStudio);
+    (document.getElementById('btn_save_remote')) && document.getElementById('btn_save_remote').addEventListener('click', saveRemote);
+    (document.getElementById('btn_check_remote')) && document.getElementById('btn_check_remote').addEventListener('click', checkRemote);
+    providerSelect && providerSelect.addEventListener('change', function () { updateProviderUI(providerSelect.value, lastStatus); });
+    send && send.addEventListener('click', sendMessage);
+    stop && stop.addEventListener('click', function () { if (streamingController) { try { streamingController.abort(); } catch (e) { } } });
+    input && input.addEventListener('keydown', function (e) { if (e.key === 'Enter') sendMessage(); });
+
+    refreshStatus();
+    checkOllama();
+  })();
+</script>
