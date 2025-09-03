@@ -1,0 +1,1 @@
+from .gen_assignment_groups_table import GenMiscTable
