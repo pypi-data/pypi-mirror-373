@@ -1,0 +1,187 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: ["Prepare Release"]
+    types:
+      - completed
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  guard:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.set.outputs.proceed }}
+    steps:
+      - id: set
+        run: echo "proceed=true" >> $GITHUB_OUTPUT
+  build:
+    name: Build Package
+    needs: [guard]
+    if: needs.guard.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      is-prerelease: ${{ steps.version.outputs.is-prerelease }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version info
+        id: version
+        run: |
+          VERSION=v$(python -c "import kubeflow; print(kubeflow.__version__)" )
+          TAG=$VERSION
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+          if [[ "$VERSION" =~ -rc\.|alpha|beta ]]; then
+            echo "is-prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is-prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout release branch
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          MAJOR_MINOR=$(echo "$VERSION" | sed 's/^v//' | cut -d. -f1,2)
+          BRANCH="release-$MAJOR_MINOR"
+          echo "Switching to $BRANCH"
+          git fetch origin "$BRANCH":"$BRANCH" || true
+          git checkout "$BRANCH"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup build environment
+        run: |
+          make verify
+
+      - name: Verify version
+        run: |
+          TAG_VERSION="${{ steps.version.outputs.version }}"
+          CODE_VERSION="v$(python -c "import kubeflow; print(kubeflow.__version__)")"
+
+          echo "Tag version: $TAG_VERSION"
+          echo "Code version: $CODE_VERSION"
+
+          if [[ "$TAG_VERSION" != "$CODE_VERSION" ]]; then
+            echo "Version mismatch"
+            exit 1
+          fi
+
+          echo "Version verified: $TAG_VERSION"
+
+      - name: Build package
+        run: |
+          uv build
+
+      - name: Validate package
+        run: |
+          uvx twine check dist/*
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ steps.version.outputs.version }}
+          path: dist/
+
+  create-tag:
+    name: Create and Push Tag
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create tag
+        run: |
+          VERSION="${{ needs.build.outputs.version }}"
+          if git ls-remote --tags origin "$VERSION" | grep -q "refs/tags/$VERSION"; then
+            echo "Tag $VERSION already exists. Skipping."; exit 0; fi
+          # Ensure we're tagging the release branch commit
+          MAJOR_MINOR=$(echo "$VERSION" | sed 's/^v//' | cut -d. -f1,2)
+          BRANCH="release-$MAJOR_MINOR"
+          git fetch origin "$BRANCH":"$BRANCH"
+          git checkout "$BRANCH"
+          git tag "$VERSION"
+          git push origin "$VERSION"
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [build, create-tag]
+    runs-on: ubuntu-latest
+    environment:
+      name: release
+      url: https://pypi.org/project/kubeflow-test/
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ needs.build.outputs.version }}
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          verbose: true
+
+  github-release:
+    name: Create GitHub Release
+    needs: [build, create-tag, publish-pypi]
+    runs-on: ubuntu-latest
+    environment:
+      name: release
+      url: https://github.com/kramaranya/sdk/releases
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract changelog
+        id: changelog
+        run: |
+          VERSION="${{ needs.build.outputs.version }}"
+
+          if [[ -f CHANGELOG.md ]]; then
+            NEXT_VERSION=$(sed -n "/^# \[v$VERSION\]/,\$p" CHANGELOG.md | tail -n +2 | grep -m1 "^# \[v[0-9]" || echo "")
+            if [[ -n "$NEXT_VERSION" ]]; then
+              CHANGELOG=$(sed -n "/^# \[v$VERSION\]/,/^# \[v[0-9]/p" CHANGELOG.md | sed '$d' | tail -n +2)
+            else
+              CHANGELOG=$(sed -n "/^# \[v$VERSION\]/,\$p" CHANGELOG.md | tail -n +2)
+            fi
+            if [[ -n "$CHANGELOG" ]]; then
+              {
+                echo "changelog<<EOF"
+                echo "$CHANGELOG"
+                echo "EOF"
+              } >> $GITHUB_OUTPUT
+            else
+              echo "changelog=**Note:** CHANGELOG.md was not updated for this release" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "changelog=**Note:** CHANGELOG.md not found" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.build.outputs.tag }}
+          name: Kubeflow SDK ${{ needs.build.outputs.tag }}
+          body: |
+            ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: ${{ needs.build.outputs.is-prerelease == 'true' }}
+          generate_release_notes: true
