@@ -1,0 +1,47 @@
+# flake8: noqa
+
+# import apis into api package
+from qanswer_sdk.api.admin_api import AdminApi
+from qanswer_sdk.api.ai_assistant_api import AiAssistantApi
+from qanswer_sdk.api.ai_assistant_access_rights_api import AiAssistantAccessRightsApi
+from qanswer_sdk.api.bot_slack_api import BotSlackApi
+from qanswer_sdk.api.chat_completion_api import ChatCompletionApi
+from qanswer_sdk.api.chatbot_api import ChatbotApi
+from qanswer_sdk.api.connector_document_api import ConnectorDocumentApi
+from qanswer_sdk.api.connector_e_consilium_api import ConnectorEConsiliumApi
+from qanswer_sdk.api.connector_google_drive_api import ConnectorGoogleDriveApi
+from qanswer_sdk.api.connector_one_drive_api import ConnectorOneDriveApi
+from qanswer_sdk.api.connector_onenote_api import ConnectorOnenoteApi
+from qanswer_sdk.api.connector_pinecone_api import ConnectorPineconeApi
+from qanswer_sdk.api.connector_qn_a_api import ConnectorQnAApi
+from qanswer_sdk.api.connector_rdf_api import ConnectorRDFApi
+from qanswer_sdk.api.connector_rdf_answer_api import ConnectorRDFAnswerApi
+from qanswer_sdk.api.connector_sharepoint_api import ConnectorSharepointApi
+from qanswer_sdk.api.connector_websearch_api import ConnectorWebsearchApi
+from qanswer_sdk.api.connector_website_api import ConnectorWebsiteApi
+from qanswer_sdk.api.connectors_api import ConnectorsApi
+from qanswer_sdk.api.connectors_data_api import ConnectorsDataApi
+from qanswer_sdk.api.conversation_logs_api import ConversationLogsApi
+from qanswer_sdk.api.dataset_config_api import DatasetConfigApi
+from qanswer_sdk.api.debug_api import DebugApi
+from qanswer_sdk.api.llm_api import LlmApi
+from qanswer_sdk.api.organizations_teams_api import OrganizationsTeamsApi
+from qanswer_sdk.api.payment_api import PaymentApi
+from qanswer_sdk.api.socket_api import SocketApi
+from qanswer_sdk.api.speech_to_text_api import SpeechToTextApi
+from qanswer_sdk.api.tag_api import TagApi
+from qanswer_sdk.api.task_chat_api import TaskChatApi
+from qanswer_sdk.api.task_rdf_linker_api import TaskRDFLinkerApi
+from qanswer_sdk.api.task_rdf_sparql_endpoint_api import TaskRDFSparqlEndpointApi
+from qanswer_sdk.api.task_rdf_text_linker_api import TaskRDFTextLinkerApi
+from qanswer_sdk.api.task_relation_extraction_api import TaskRelationExtractionApi
+from qanswer_sdk.api.task_report_copilot_api import TaskReportCopilotApi
+from qanswer_sdk.api.task_search_api import TaskSearchApi
+from qanswer_sdk.api.task_text2sparql_api import TaskText2sparqlApi
+from qanswer_sdk.api.task_text_classification_api import TaskTextClassificationApi
+from qanswer_sdk.api.task_sparql2text_api import TaskSparql2textApi
+from qanswer_sdk.api.user_api import UserApi
+from qanswer_sdk.api.connector_e_consilium_search_index_connector_api import ConnectorEConsiliumSearchIndexConnectorApi
+from qanswer_sdk.api.connector_publication_office_controller_api import ConnectorPublicationOfficeControllerApi
+from qanswer_sdk.api.llm_consumption_controller_api import LlmConsumptionControllerApi
+
