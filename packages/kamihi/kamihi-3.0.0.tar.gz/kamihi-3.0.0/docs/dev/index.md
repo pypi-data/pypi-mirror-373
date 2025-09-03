@@ -1,0 +1,1 @@
+This section of the documentation is aimed at developers contributing to the Kamihi project. It provides guidelines for understanding the architecture, setting up a development environment, and contributing effectively to the code and the documentation.
