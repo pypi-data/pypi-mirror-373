@@ -1,0 +1,207 @@
+# Test code for the MSO modules
+# Copyright: (c) 2018, Dag Wieers (@dagwieers) <dag@wieers.com> (based on mso_site test case)
+# Copyright: (c) 2020, Lionel Hercot (@lhercot) <lhercot@cisco.com>
+# Copyright: (c) 2020, Shreyas Srish (@shrsr) <ssrish@cisco.com>
+
+# GNU General Public License v3.0+ (see LICENSE or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+- name: Test that we have an ACI MultiSite host, username and password
+  ansible.builtin.fail:
+    msg: 'Please define the following variables: mso_hostname, mso_username and mso_password.'
+  when: mso_hostname is not defined or mso_username is not defined or mso_password is not defined
+
+
+# CLEAN ENVIRONMENT
+- name: Set vars
+  ansible.builtin.set_fact:
+    mso_info: &mso_info
+      host: '{{ mso_hostname }}'
+      username: '{{ mso_username }}'
+      password: '{{ mso_password }}'
+      validate_certs: '{{ mso_validate_certs | default(false) }}'
+      use_ssl: '{{ mso_use_ssl | default(true) }}'
+      use_proxy: '{{ mso_use_proxy | default(true) }}'
+      output_level: '{{ mso_output_level | default("info") }}'
+
+- name: Query MSO version
+  cisco.mso.mso_version:
+    <<: *mso_info
+    state: query
+  register: version
+
+- name: Remove schemas
+  cisco.mso.mso_schema:
+    <<: *mso_info
+    schema: '{{ item }}'
+    state: absent
+  loop:
+  - '{{ mso_schema | default("ansible_test") }}_2'
+  - '{{ mso_schema | default("ansible_test") }}'
+
+- name: Ensure tenant ansible_test exists to validate the invalid_site_mso_site
+  cisco.mso.mso_tenant:
+    <<: *mso_info
+    tenant: ansible_test
+    users:
+      - '{{ mso_username }}'
+    state: present
+  register: ansible_test_tenant_present
+
+- name: Dissociate sites that are associated with ansible_tenant
+  cisco.mso.mso_tenant_site:
+    <<: *mso_info
+    tenant: ansible_test
+    site: '{{ item }}'
+    state: absent
+  loop:
+  - 'invalid_site_{{ mso_site | default("ansible_test") }}'
+  - '{{ mso_site | default("ansible_test") }}'
+  register: tenant_site_absent_check
+  when: ansible_test_tenant_present.current != {}
+
+- name: Assertion check for the tenant site dissociation
+  ansible.builtin.assert:
+    that:
+    - tenant_site_absent_check.results.0.current == {}
+    - tenant_site_absent_check.warnings.0 == "Site 'invalid_site_ansible_test' is not a valid site name."
+    - tenant_site_absent_check.results.1.current == {}
+  when: ansible_test_tenant_present.current != {}
+
+- name: Remove tenant ansible_test
+  cisco.mso.mso_tenant:
+    <<: *mso_info
+    tenant: ansible_test
+    users:
+      - '{{ mso_username }}'
+    state: absent
+
+- name: Ensure site exists
+  cisco.mso.mso_site:
+    <<: *mso_info
+    site: '{{ mso_site | default("ansible_test") }}'
+    apic_username: '{{ apic_username }}'
+    apic_password: '{{ apic_password }}'
+    apic_site_id: '{{ apic_site_id }}'
+    urls:
+    - https://{{ apic_hostname }}
+    state: present
+
+- name: Ensure tenant ansible_test exists
+  cisco.mso.mso_tenant:
+    <<: *mso_info
+    tenant: ansible_test
+    users:
+      - '{{ mso_username }}'
+    state: present
+
+- name: Associate site with ansible_test in check mode
+  cisco.mso.mso_tenant_site:
+    <<: *mso_info
+    tenant: ansible_test
+    site: '{{ mso_site | default("ansible_test") }}'
+    state: present
+  check_mode: true
+  register: ncs_cm
+
+- name: Verify ncs_cm
+  ansible.builtin.assert:
+    that:
+    - ncs_cm is changed
+
+- name: Associate site with ansible_test in normal mode
+  cisco.mso.mso_tenant_site:
+    <<: *mso_info
+    tenant: ansible_test
+    site: '{{ mso_site | default("ansible_test") }}'
+    state: present
+  register: ncs_nm
+
+- name: Verify ncs_nm
+  ansible.builtin.assert:
+    that:
+    - ncs_nm is changed
+
+- name: Associate site with ansible_test again in normal mode
+  cisco.mso.mso_tenant_site:
+    <<: *mso_info
+    tenant: ansible_test
+    site: '{{ mso_site | default("ansible_test") }}'
+    state: present
+  register: ncs_nm_again
+
+- name: Verify ncs_nm_again
+  ansible.builtin.assert:
+    that:
+    - ncs_nm_again is not changed
+
+- name: Query associated site of a tenant
+  cisco.mso.mso_tenant_site:
+    <<: *mso_info
+    tenant: ansible_test
+    site: '{{ mso_site | default("ansible_test") }}'
+    state: query
+  register: anc_query
+
+- name: Verify anc_query
+  ansible.builtin.assert:
+    that:
+    - anc_query is not changed
+
+- name: Query all associated sites of a tenant
+  cisco.mso.mso_tenant_site:
+    <<: *mso_info
+    tenant: ansible_test
+    state: query
+  register: all_sites_query
+
+- name: Verify all_sites_query
+  ansible.builtin.assert:
+    that:
+    - all_sites_query is not changed
+
+- name: Dissociate site with ansible_test
+  cisco.mso.mso_tenant_site:
+    <<: *mso_info
+    tenant: ansible_test
+    site: '{{ mso_site | default("ansible_test") }}'
+    state: absent
+  register: dnc
+
+- name: Verify dnc
+  ansible.builtin.assert:
+    that:
+    - dnc is changed
+
+- name: Query dissociated site of a tenant
+  cisco.mso.mso_tenant_site:
+    <<: *mso_info
+    tenant: ansible_test
+    site: '{{ mso_site | default("ansible_test") }}'
+    state: query
+  ignore_errors: true
+  register: dnc_query
+
+- name: Verify dnc_query for MSO version >= 3.7
+  ansible.builtin.assert:
+    that:
+    - dnc_query.msg is match ("No site associated with tenant Id [0-9a-zA-Z]*")
+  when: version.current.version is version('3.7', '>=')
+
+- name: Verify dnc_query MSO version <= 3.7
+  ansible.builtin.assert:
+    that:
+    - dnc_query.msg is match ("Site Id [0-9a-zA-Z]* not associated with tenant Id [0-9a-zA-Z]*")
+  when: version.current.version is version('3.7', '<=')
+
+- name: Query all
+  cisco.mso.mso_tenant_site:
+    <<: *mso_info
+    tenant: ansible_test
+    state: query
+  ignore_errors: true
+  register: query_all
+
+- name: Verify query_all
+  ansible.builtin.assert:
+    that:
+    - query_all.msg is match ("No site associated with tenant Id [0-9a-zA-Z]*")

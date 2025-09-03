@@ -1,0 +1,56 @@
+name: CI
+on:
+  pull_request:
+  push:
+  # Run CI once per day (at 06:00 UTC)
+  # This ensures that even if there haven't been commits that we are still testing against latest version of ansible-test for each ansible-base version
+  schedule:
+    - cron: '0 6 * * *'
+
+jobs:
+  sanity:
+    name: Sanity (${{ matrix.ansible }})
+    strategy:
+      matrix:
+        ansible:    
+        - stable-2.14
+        - stable-2.15
+        - stable-2.16
+        - stable-2.17
+        - devel
+        python-version:
+        - '3.9'
+        - '3.10'
+        - '3.11'
+        - '3.12'
+        exclude:
+          - ansible: stable-2.14
+            python-version: '3.12'
+          - ansible: stable-2.15
+            python-version: '3.12'
+          - ansible: stable-2.16
+            python-version: '3.9'
+          - ansible: stable-2.17
+            python-version: '3.9'
+          - ansible: devel
+            python-version: '3.9'
+          - ansible: devel
+            python-version: '3.10'
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Check out code
+        uses: actions/checkout@v1
+        with:
+          path: ansible_collections/kaytus/ksmanage
+
+      - name: Set up Python (${{ matrix.python-version }})
+        uses: actions/setup-python@v1
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install ansible-base (${{ matrix.ansible }})
+        run: pip install https://github.com/ansible/ansible/archive/${{ matrix.ansible }}.tar.gz --disable-pip-version-check
+
+      - name: Run sanity tests
+        run: ansible-test sanity --docker -v --color

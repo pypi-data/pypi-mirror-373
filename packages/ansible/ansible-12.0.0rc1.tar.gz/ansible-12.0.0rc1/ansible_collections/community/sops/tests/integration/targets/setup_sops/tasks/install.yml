@@ -1,0 +1,80 @@
+---
+# Copyright (c) Ansible Project
+# GNU General Public License v3.0+ (see LICENSES/GPL-3.0-or-later.txt or https://www.gnu.org/licenses/gpl-3.0.txt)
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+- name: Show some basic system info
+  debug:
+    msg: |
+      Architecture: {{ ansible_architecture }}
+      OS family: {{ ansible_os_family }}
+      Distribution: {{ ansible_distribution }}
+      Distribution version: {{ ansible_distribution_version }}
+
+- name: Install SOPS on localhost
+  include_role:
+    name: community.sops.install
+  vars:
+    sops_install_on_localhost: true
+    sops_version: '{{ override_sops_version | default("latest") }}'
+    sops_github_token: "{{ github_token | default('') | string }}"
+
+- name: Install age on localhost
+  include_role:
+    name: community.sops._install_age
+  vars:
+    sops_install_on_localhost: true
+
+- name: Get temporary filename for SOPS test GPG key
+  ansible.builtin.tempfile:
+    prefix: sops-functional-tests-key.
+    suffix: .asc
+  register: _tempfile
+  delegate_to: localhost
+
+- name: Download SOPS test GPG key on localhost
+  get_url:
+    headers:
+      Accept: application/vnd.github+json
+      Authorization: "{{ ('Bearer ' ~ github_token) if github_token is defined and github_token else '' }}"
+    url: https://raw.githubusercontent.com/getsops/sops/master/pgp/sops_functional_tests_key.asc
+    dest: "{{ _tempfile.path }}"
+    force: true
+  delegate_to: localhost
+
+- name: Import SOPS test GPG key on localhost
+  command: gpg --import {{ _tempfile.path | ansible.builtin.quote }}
+  failed_when: false
+  delegate_to: localhost
+
+# ---------------------------------------------------------------------------
+
+- name: Install SOPS on remote
+  include_role:
+    name: community.sops.install
+  vars:
+    sops_version: '{{ override_sops_version | default("latest") }}'
+    sops_github_token: "{{ github_token | default('') | string }}"
+
+- name: Install age on remote
+  include_role:
+    name: community.sops._install_age
+
+- name: Get temporary filename for SOPS test GPG key
+  ansible.builtin.tempfile:
+    prefix: sops-functional-tests-key.
+    suffix: .asc
+  register: _tempfile
+
+- name: Download SOPS test GPG key on remote
+  get_url:
+    headers:
+      Accept: application/vnd.github+json
+      Authorization: "{{ ('Bearer ' ~ github_token) if github_token is defined and github_token else '' }}"
+    url: https://raw.githubusercontent.com/getsops/sops/master/pgp/sops_functional_tests_key.asc
+    dest: "{{ _tempfile.path }}"
+    force: true
+
+- name: Import SOPS test GPG key on remote
+  command: gpg --import {{ _tempfile.path | ansible.builtin.quote }}
+  failed_when: false

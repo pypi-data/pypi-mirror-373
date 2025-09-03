@@ -1,0 +1,182 @@
+# Test code for the ACI modules
+# Copyright: (c) 2021, Tim Cragg (@timcragg)
+# Copyright: (c) 2024, Akini Ross (@akinross)
+
+# GNU General Public License v3.0+ (see LICENSE or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+- name: Test that we have an ACI APIC host, ACI username and ACI password
+  ansible.builtin.fail:
+    msg: 'Please define the following variables: aci_hostname, aci_username and aci_password.'
+  when: aci_hostname is not defined or aci_username is not defined or aci_password is not defined
+
+# GET Credentials from the inventory
+- name: Set vars
+  ansible.builtin.set_fact:
+    aci_info: &aci_info
+      host: "{{ aci_hostname }}"
+      username: "{{ aci_username }}"
+      password: "{{ aci_password }}"
+      validate_certs: '{{ aci_validate_certs | default(false) }}'
+      use_ssl: '{{ aci_use_ssl | default(true) }}'
+      use_proxy: '{{ aci_use_proxy | default(true) }}'
+      output_level: debug
+
+# CLEAN DNS PROFILES
+- name: Remove DNS profiles before testing
+  cisco.aci.aci_dns_profile:
+    <<: *aci_info
+    profile_name: "{{ item }}"
+    state: absent
+  loop:
+    - ansible_dns_profile
+    - ansible_dns_profile_mamagement_epg
+
+# ADD DNS PROFILE
+- name: Add DNS profile
+  cisco.aci.aci_dns_profile:
+    <<: *aci_info
+    profile_name: ansible_dns_profile
+    state: present
+  register: add_dns_profile
+
+- name: Verify that DNS profile has been created with correct attributes
+  ansible.builtin.assert:
+    that:
+    - add_dns_profile is changed
+    - add_dns_profile.current.0.dnsProfile.attributes.annotation == 'orchestrator:ansible'
+    - add_dns_profile.current.0.dnsProfile.attributes.dn == "uni/fabric/dnsp-ansible_dns_profile"
+    - add_dns_profile.current.0.dnsProfile.attributes.name == "ansible_dns_profile"
+
+# ADD DNS PROFILE AGAIN TO TEST IDEMPOTENCE
+- name: Add DNS profile again
+  cisco.aci.aci_dns_profile:
+    <<: *aci_info
+    profile_name: ansible_dns_profile
+    state: present
+  register: add_dns_profile_again
+
+- name: Verify that DNS profile creation idempotence
+  ansible.builtin.assert:
+    that:
+    - add_dns_profile_again is not changed
+    - add_dns_profile_again.current.0.dnsProfile.attributes.dn == "uni/fabric/dnsp-ansible_dns_profile"
+    - add_dns_profile_again.current.0.dnsProfile.attributes.name == "ansible_dns_profile"
+
+# ADD MGMT EPG TO DNS PROFILE
+
+- name: Add ooband management EPG to DNS profile (check-mode)
+  cisco.aci.aci_dns_profile: &aci_dns_profile_ooband
+    <<: *aci_info
+    profile_name: ansible_dns_profile_mamagement_epg
+    management_epg: ansible_mgmt_epg_ooband
+    state: present
+  check_mode: yes
+  register: cm_add_ooband_mgmt_epg_to_dns_profile
+
+- name: Add ooband management EPG to DNS profile
+  cisco.aci.aci_dns_profile:
+    <<: *aci_dns_profile_ooband
+    state: present
+  register: nm_add_ooband_mgmt_epg_to_dns_profile
+
+- name: Add ooband management EPG to DNS profile again to test idempotence
+  cisco.aci.aci_dns_profile:
+    <<: *aci_dns_profile_ooband
+    state: present
+  register: nm_add_ooband_mgmt_epg_to_dns_profile_again
+
+- name: Update ooband management EPG to inband management EPG
+  cisco.aci.aci_dns_profile:
+    <<: *aci_dns_profile_ooband
+    management_epg: ansible_mgmt_epg_inband
+    management_epg_type: inband
+    state: present
+  register: nm_update_ooband_mgmt_epg_to_inband_mgmt_epg
+
+- name: Remove management EPG from DNS profile
+  cisco.aci.aci_dns_profile:
+    <<: *aci_dns_profile_ooband
+    management_epg: ""
+    state: present
+  register: nm_remove_inband_mgmt_epg_from_dns_profile
+
+- name: Verify DNS profile with management EPGs
+  ansible.builtin.assert:
+    that:
+    - cm_add_ooband_mgmt_epg_to_dns_profile is changed
+    - cm_add_ooband_mgmt_epg_to_dns_profile.previous == []
+    - cm_add_ooband_mgmt_epg_to_dns_profile.proposed.dnsProfile.attributes.name == "ansible_dns_profile_mamagement_epg"
+    - cm_add_ooband_mgmt_epg_to_dns_profile.proposed.dnsProfile.children.0.dnsRsProfileToEpg.attributes.tDn == "uni/tn-mgmt/mgmtp-default/oob-ansible_mgmt_epg_ooband"
+    - nm_add_ooband_mgmt_epg_to_dns_profile is changed
+    - nm_add_ooband_mgmt_epg_to_dns_profile.previous == []
+    - nm_add_ooband_mgmt_epg_to_dns_profile.current.0.dnsProfile.attributes.name == "ansible_dns_profile_mamagement_epg"
+    - nm_add_ooband_mgmt_epg_to_dns_profile.current.0.dnsProfile.children.0.dnsRsProfileToEpg.attributes.tDn == "uni/tn-mgmt/mgmtp-default/oob-ansible_mgmt_epg_ooband"
+    - nm_add_ooband_mgmt_epg_to_dns_profile_again is not changed
+    - nm_add_ooband_mgmt_epg_to_dns_profile_again.previous.0.dnsProfile.attributes.name == "ansible_dns_profile_mamagement_epg"
+    - nm_add_ooband_mgmt_epg_to_dns_profile_again.previous.0.dnsProfile.children.0.dnsRsProfileToEpg.attributes.tDn == "uni/tn-mgmt/mgmtp-default/oob-ansible_mgmt_epg_ooband"
+    - nm_add_ooband_mgmt_epg_to_dns_profile_again.current.0.dnsProfile.attributes.name == "ansible_dns_profile_mamagement_epg"
+    - nm_add_ooband_mgmt_epg_to_dns_profile_again.current.0.dnsProfile.children.0.dnsRsProfileToEpg.attributes.tDn == "uni/tn-mgmt/mgmtp-default/oob-ansible_mgmt_epg_ooband"
+    - nm_update_ooband_mgmt_epg_to_inband_mgmt_epg is changed
+    - nm_update_ooband_mgmt_epg_to_inband_mgmt_epg.previous.0.dnsProfile.attributes.name == "ansible_dns_profile_mamagement_epg"
+    - nm_update_ooband_mgmt_epg_to_inband_mgmt_epg.previous.0.dnsProfile.children.0.dnsRsProfileToEpg.attributes.tDn == "uni/tn-mgmt/mgmtp-default/oob-ansible_mgmt_epg_ooband"
+    - nm_update_ooband_mgmt_epg_to_inband_mgmt_epg.current.0.dnsProfile.attributes.name == "ansible_dns_profile_mamagement_epg"
+    - nm_update_ooband_mgmt_epg_to_inband_mgmt_epg.current.0.dnsProfile.children.0.dnsRsProfileToEpg.attributes.tDn == "uni/tn-mgmt/mgmtp-default/inb-ansible_mgmt_epg_inband"
+    - nm_remove_inband_mgmt_epg_from_dns_profile is changed
+    - nm_remove_inband_mgmt_epg_from_dns_profile.previous.0.dnsProfile.attributes.name == "ansible_dns_profile_mamagement_epg"
+    - nm_remove_inband_mgmt_epg_from_dns_profile.previous.0.dnsProfile.children.0.dnsRsProfileToEpg.attributes.tDn == "uni/tn-mgmt/mgmtp-default/inb-ansible_mgmt_epg_inband"
+    - nm_remove_inband_mgmt_epg_from_dns_profile.current.0.dnsProfile.children.0.dnsRsProfileToEpg is not defined
+
+# QUERY DNS PROFILE
+- name: Query the DNS profile
+  cisco.aci.aci_dns_profile:
+    <<: *aci_info
+    profile_name: ansible_dns_profile
+    state: query
+  register: query_dns_profile
+
+- name: Verify DNS profile
+  ansible.builtin.assert:
+    that:
+    - query_dns_profile is not changed
+    - query_dns_profile.current.0.dnsProfile.attributes.dn == "uni/fabric/dnsp-ansible_dns_profile"
+    - query_dns_profile.current.0.dnsProfile.attributes.name == "ansible_dns_profile"
+
+- name: Query all DNS profiles
+  cisco.aci.aci_dns_profile:
+    <<: *aci_info
+    state: query
+  register: query_dns_profile_all
+
+- name: Verify query idempotence
+  ansible.builtin.assert:
+    that:
+    - query_dns_profile_all is not changed
+
+# DELETE DNS PROFILE
+- name: Remove the DNS profile
+  cisco.aci.aci_dns_profile:
+    <<: *aci_info
+    name: ansible_dns_profile
+    state: absent
+  register: remove_dns_profile
+
+- name: Verify DNS profile removal
+  ansible.builtin.assert:
+    that:
+    - remove_dns_profile is changed
+    - remove_dns_profile.current == []
+    - remove_dns_profile.previous.0.dnsProfile.attributes.dn == "uni/fabric/dnsp-ansible_dns_profile"
+    - remove_dns_profile.previous.0.dnsProfile.attributes.name == "ansible_dns_profile"
+
+# DELETE DNS PROFILE AGAIN TO TEST IDEMPOTENCE
+- name: Remove the DNS profile again
+  cisco.aci.aci_dns_profile:
+    <<: *aci_info
+    name: ansible_dns_profile
+    state: absent
+  register: remove_dns_profile_again
+
+- name: Verify DNS profile removal idempotence
+  ansible.builtin.assert:
+    that:
+    - remove_dns_profile_again is not changed

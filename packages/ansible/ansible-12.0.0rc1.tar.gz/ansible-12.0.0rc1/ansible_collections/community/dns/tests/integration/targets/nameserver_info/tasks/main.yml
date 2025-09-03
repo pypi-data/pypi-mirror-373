@@ -1,0 +1,78 @@
+---
+# Copyright (c) Ansible Project
+# GNU General Public License v3.0+ (see LICENSES/GPL-3.0-or-later.txt or https://www.gnu.org/licenses/gpl-3.0.txt)
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+- name: Retrieve name servers of two DNS names
+  community.dns.nameserver_info:
+    name:
+      - www.example.com
+      - example.org
+  register: result
+
+- name: Show all results
+  ansible.builtin.debug:
+    msg: '{{ result }}'
+
+- name: Validate results
+  ansible.builtin.assert:
+    that:
+      - result.results[0].nameservers[0] in ['n0cn.akamaitech.net.', 'n0dscr.akamai.net.', 'a.iana-servers.net.']
+      - result.results[0].nameservers[1] in ['n1cn.akamaitech.net.', 'n1dscr.akamai.net.', 'b.iana-servers.net.']
+      - result.results[1].nameservers[0] in ['n0cn.akamaitech.net.', 'n0dscr.akamai.net.', 'a.iana-servers.net.']
+      - result.results[1].nameservers[1] in ['n1cn.akamaitech.net.', 'n1dscr.akamai.net.', 'b.iana-servers.net.']
+
+- name: Retrieve name servers of two DNS names using custom DNS servers
+  community.dns.nameserver_info:
+    name:
+      - www.example.com
+      - example.org
+    server:
+      # Quad9 servers (https://en.wikipedia.org/wiki/Quad9#Service)
+      - 9.9.9.9
+      - 149.112.112.112
+      - 2620:fe::9
+      - 2620:fe::fe
+  register: result
+
+- name: Show all results
+  ansible.builtin.debug:
+    msg: '{{ result }}'
+
+- name: Validate results
+  ansible.builtin.assert:
+    that:
+      - result.results[0].nameservers[0] in ['n0cn.akamaitech.net.', 'n0dscr.akamai.net.', 'a.iana-servers.net.']
+      - result.results[0].nameservers[1] in ['n1cn.akamaitech.net.', 'n1dscr.akamai.net.', 'b.iana-servers.net.']
+
+- name: Retrieve name servers of a DNS name that do not exist
+  community.dns.nameserver_info:
+    name:
+      - foo.bar.example.com
+  register: result
+
+- name: Show all results
+  ansible.builtin.debug:
+    msg: '{{ result }}'
+
+- name: Validate results
+  ansible.builtin.assert:
+    that:
+      - result.results[0].nameservers[0] in ['n0cn.akamaitech.net.', 'n0dscr.akamai.net.', 'a.iana-servers.net.']
+      - result.results[0].nameservers[1] in ['n1cn.akamaitech.net.', 'n1dscr.akamai.net.', 'b.iana-servers.net.']
+
+- name: Test with invalid nameserver IP
+  community.dns.nameserver_info:
+    name:
+      - example.com
+    server:
+      - 999.999.999.999
+  register: result
+  ignore_errors: true
+
+- name: Validate results
+  ansible.builtin.assert:
+    that:
+      - result is failed
+      - >-
+        result.msg == "Invalid input: Invalid nameserver IP address 999.999.999.999"

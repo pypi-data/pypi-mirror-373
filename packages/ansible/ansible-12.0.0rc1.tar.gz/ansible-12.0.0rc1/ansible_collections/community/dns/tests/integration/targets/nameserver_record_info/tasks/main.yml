@@ -1,0 +1,65 @@
+---
+# Copyright (c) Ansible Project
+# GNU General Public License v3.0+ (see LICENSES/GPL-3.0-or-later.txt or https://www.gnu.org/licenses/gpl-3.0.txt)
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+- name: Retrieve TXT values from all nameservers for two DNS names
+  community.dns.nameserver_record_info:
+    name:
+      - www.example.com
+      - example.org
+    type: TXT
+  register: result
+
+- name: Show all results
+  ansible.builtin.debug:
+    msg: '{{ result }}'
+
+- name: Validate results
+  ansible.builtin.assert:
+    that:
+      - result.results[0].result[0].nameserver in ['n0cn.akamaitech.net.', 'n0dscr.akamai.net.', 'a.iana-servers.net.']
+      - result.results[0].result[1].nameserver in ['n1cn.akamaitech.net.', 'n1dscr.akamai.net.', 'b.iana-servers.net.']
+      - result.results[1].result[0].nameserver in ['n0cn.akamaitech.net.', 'n0dscr.akamai.net.', 'a.iana-servers.net.']
+      - result.results[1].result[1].nameserver in ['n1cn.akamaitech.net.', 'n1dscr.akamai.net.', 'b.iana-servers.net.']
+
+- name: Retrieve TXT values from all nameservers for two DNS names using custom DNS servers
+  community.dns.nameserver_record_info:
+    name:
+      - www.example.com
+      - example.org
+    type: TXT
+    server:
+      # Quad9 servers (https://en.wikipedia.org/wiki/Quad9#Service)
+      - 9.9.9.9
+      - 149.112.112.112
+      - 2620:fe::9
+      - 2620:fe::fe
+  register: result
+
+- name: Show all results
+  ansible.builtin.debug:
+    msg: '{{ result }}'
+
+- name: Validate results
+  ansible.builtin.assert:
+    that:
+      - result.results[0].result[0].nameserver in ['n0cn.akamaitech.net.', 'n0dscr.akamai.net.', 'a.iana-servers.net.']
+      - result.results[0].result[1].nameserver in ['n1cn.akamaitech.net.', 'n1dscr.akamai.net.', 'b.iana-servers.net.']
+
+- name: Test with invalid nameserver IP
+  community.dns.nameserver_record_info:
+    name:
+      - example.com
+    type: A
+    server:
+      - 999.999.999.999
+  register: result
+  ignore_errors: true
+
+- name: Validate results
+  ansible.builtin.assert:
+    that:
+      - result is failed
+      - >-
+        result.msg == "Invalid input: Invalid nameserver IP address 999.999.999.999"

@@ -1,0 +1,81 @@
+---
+name: Publish Ansible Collection
+
+on:
+  push:
+    tags:
+      - "*" # Triggers when a tag like v1.0.0 is pushed
+
+permissions:
+  contents: write
+  actions: read # Ensure workflow status can be read
+
+jobs:
+  verify_tests:
+    name: Verify Test Results
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Last CI Workflow Status
+        id: check-tests
+        run: |
+          # Fetch the latest CI workflow status for the ansible-test job
+          response=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                           -H "Accept: application/vnd.github.v3+json" \
+                           "https://api.github.com/repos/${{ github.repository }}/actions/workflows/ansible-test.yml/runs?branch=main&status=completed")
+
+          # Extract the latest workflow status
+          latest_status=$(echo "$response" | jq -r '.workflow_runs[0].conclusion')
+
+          if [[ -z "$latest_status" || "$latest_status" == "null" ]]; then
+            echo "⚠️ No previous test runs found or invalid response."
+            exit 1
+          fi
+
+          echo "✅ Latest test run status: $latest_status"
+
+          # If tests failed, fail the job
+          if [[ "$latest_status" != "success" ]]; then
+            echo "❌ Tests failed or not completed. Skipping publish."
+            exit 1
+          fi
+
+  publish:
+    name: Publish Collection
+    needs: verify_tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set Up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install Ansible
+        run: pip install ansible-core --disable-pip-version-check
+
+      - name: Build Ansible Collection
+        run: |
+          ansible-galaxy collection build --force
+          echo "✅ Collection build completed."
+
+      - name: Find Collection File
+        id: find-collection
+        run: |
+          COLLECTION_FILE=$(ls *.tar.gz | head -n 1)
+          if [[ -z "$COLLECTION_FILE" ]]; then
+            echo "❌ No collection file found! Exiting."
+            exit 1
+          fi
+          echo "✅ Found collection file: $COLLECTION_FILE"
+          echo "COLLECTION_FILE=$COLLECTION_FILE" >> $GITHUB_ENV
+
+      - name: Publish to Ansible Galaxy
+        env:
+          ANSIBLE_GALAXY_TOKEN: ${{ secrets.ANSIBLE_COLLECTIONS_TOKEN }}
+        run: |
+          echo "🚀 Publishing to Ansible Galaxy..."
+          ansible-galaxy collection publish "$COLLECTION_FILE" --token "$ANSIBLE_GALAXY_TOKEN"
+          echo "✅ Successfully published to Ansible Galaxy."

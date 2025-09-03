@@ -1,0 +1,252 @@
+# Test code for the MSO modules
+# Copyright: (c) 2020, Cindy Zhao (@cizhao) <cizhao@cisco.com>
+# Copyright: (c) 2023, Akini Ross (@akinross) <akinross@cisco.com>
+
+# GNU General Public License v3.0+ (see LICENSE or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+- name: Test that we have an ACI MultiSite host, username and password
+  ansible.builtin.fail:
+    msg: 'Please define the following variables: mso_hostname, mso_username and mso_password.'
+  when: mso_hostname is not defined or mso_username is not defined or mso_password is not defined
+
+# CLEAN ENVIRONMENT
+- name: Set vars
+  ansible.builtin.set_fact:
+    mso_info: &mso_info
+      host: '{{ mso_hostname }}'
+      username: '{{ mso_username }}'
+      password: '{{ mso_password }}'
+      validate_certs: '{{ mso_validate_certs | default(false) }}'
+      use_ssl: '{{ mso_use_ssl | default(true) }}'
+      use_proxy: '{{ mso_use_proxy | default(true) }}'
+      output_level: '{{ mso_output_level | default("info") }}'
+
+- name: Query MSO version
+  cisco.mso.mso_version:
+    <<: *mso_info
+    state: query
+  register: version
+  
+- name: Remove schemas
+  cisco.mso.mso_schema:
+    <<: *mso_info
+    schema: '{{ item }}'
+    state: absent
+  loop:
+  - '{{ mso_schema | default("ansible_test") }}_2'
+  - '{{ mso_schema | default("ansible_test") }}'
+
+- name: Ensure tenant ansible_test exists
+  cisco.mso.mso_tenant: 
+    <<: *mso_info
+    tenant: ansible_test
+    users:
+      - '{{ mso_username }}'
+    state: present
+
+- name: Create schema 1 with Template 1, and Template 2, Template 3 exist
+  cisco.mso.mso_schema_template:
+    <<: *mso_info
+    schema: '{{ mso_schema | default("ansible_test") }}'
+    tenant: ansible_test
+    template: '{{item.template}}'
+    state: present
+  loop:
+  - { template: Template 1}
+  - { template: Template 2}
+  - { template: Template 3}
+
+- name: Create schema 2 with Template 4
+  cisco.mso.mso_schema_template:
+    <<: *mso_info
+    schema: '{{ mso_schema | default("ansible_test") }}_2'
+    tenant: ansible_test
+    template: Template 4
+    state: present
+
+- name: Query for all schemas
+  cisco.mso.mso_schema:
+    <<: *mso_info
+    state: query
+  register: query_all
+
+- name: Query a schema
+  cisco.mso.mso_schema:
+    <<: *mso_info
+    schema: ansible_test
+    state: query
+  register: query_one
+
+- name: Verify query_all and query_one
+  ansible.builtin.assert:
+    that:
+    - query_all is not changed
+    - query_one is not changed
+    - query_all.current | length >= 2
+    - query_one.current.displayName == "ansible_test"
+
+- name: Remove schema (check_mode)
+  cisco.mso.mso_schema:
+    <<: *mso_info
+    schema: ansible_test
+    state: absent
+  check_mode: true
+  register: cm_rm_schema
+
+- name: Remove schema (normal_mode)
+  cisco.mso.mso_schema:
+    <<: *mso_info
+    schema: ansible_test
+    state: absent
+  register: nm_rm_schema
+
+- name: Verify rm_schema
+  ansible.builtin.assert:
+    that:
+    - cm_rm_schema is changed
+    - cm_rm_schema.previous.displayName == "ansible_test"
+    - cm_rm_schema.current == {}
+    - nm_rm_schema is changed
+    - nm_rm_schema.current == {}
+    - nm_rm_schema.previous.displayName == "ansible_test"
+
+- name: Query non_existing schema
+  cisco.mso.mso_schema:
+    <<: *mso_info
+    schema: non_existing
+    state: query
+  register: query_non_existing
+
+- name: Verify query_non_existing
+  ansible.builtin.assert:
+    that:
+    - query_non_existing is not changed
+    - query_non_existing.current == {}
+
+# TEST BLOCK FOR MSO VERSION >= 4.1 WHICH ALLOW FOR SCHEMA WITHOUT TEMPLATES
+- name: Execute tasks only for MSO version >= 4.1
+  when: version.current.version is version('4.1', '>=')
+  block:
+
+    - name: Ensure schema without templatess are not present
+      cisco.mso.mso_schema:
+        <<: *mso_info
+        schema: '{{ item }}'
+        state: absent
+      loop:
+      - "ansible_test"
+      - "ansible_test_2"
+
+    - name: Create a schema without templates (check_mode)
+      cisco.mso.mso_schema: &ansible_test
+        <<: *mso_info
+        schema: ansible_test
+        description: ansible_test_descr
+        state: present
+      check_mode: true
+      register: cm_create_ansible_test
+
+    - name: Create a schema without templates
+      cisco.mso.mso_schema:
+        <<: *ansible_test
+      register: nm_create_ansible_test
+
+    - name: Create a schema without templates again
+      cisco.mso.mso_schema:
+        <<: *ansible_test
+      register: nm_create_ansible_test_again
+
+    - name: Verify schema without templates creation
+      ansible.builtin.assert:
+        that:
+          - cm_create_ansible_test is changed
+          - cm_create_ansible_test.current.displayName == 'ansible_test'
+          - cm_create_ansible_test.current.description == 'ansible_test_descr'
+          - cm_create_ansible_test.proposed.displayName == 'ansible_test'
+          - cm_create_ansible_test.proposed.description == 'ansible_test_descr'
+          - cm_create_ansible_test.previous == {}
+          - nm_create_ansible_test is changed
+          - nm_create_ansible_test.current.displayName == 'ansible_test'
+          - nm_create_ansible_test.current.description == 'ansible_test_descr'
+          - nm_create_ansible_test.proposed.displayName == 'ansible_test'
+          - nm_create_ansible_test.proposed.description == 'ansible_test_descr'
+          # Commented due to description bug in schema where description is set on id specific but not schemas endpoint
+          # - nm_create_ansible_test_again is not changed 
+          - nm_create_ansible_test_again.current.displayName == 'ansible_test'
+          - nm_create_ansible_test_again.current.description == 'ansible_test_descr'
+          - nm_create_ansible_test_again.previous.displayName == 'ansible_test'
+          # - nm_create_ansible_test_again.previous.description == 'ansible_test_descr'
+
+    - name: Change a schema without templates display name (check_mode)
+      cisco.mso.mso_schema: &ansible_test_2
+        <<: *mso_info
+        schema: ansible_test_2
+        id: "{{ nm_create_ansible_test_again.current.id }}"
+        description: ansible_test_descr_changed
+        state: present
+      check_mode: true
+      register: cm_change_ansible_test
+
+    - name: Change a schema without templates display name
+      cisco.mso.mso_schema:
+        <<: *ansible_test_2
+      register: nm_change_ansible_test
+
+    - name: Change a schema without templates display name again
+      cisco.mso.mso_schema:
+        <<: *ansible_test_2
+      register: nm_change_ansible_test_again
+
+    - name: Verify schema without templates change
+      ansible.builtin.assert:
+        that:
+          - cm_change_ansible_test is changed
+          - cm_change_ansible_test.current.displayName == 'ansible_test_2'
+          - cm_change_ansible_test.current.description == 'ansible_test_descr_changed'
+          - cm_change_ansible_test.proposed.displayName == 'ansible_test_2'
+          - cm_change_ansible_test.proposed.description == 'ansible_test_descr_changed'
+          - cm_change_ansible_test.previous.displayName == 'ansible_test'
+          # - cm_change_ansible_test.previous.description == 'ansible_test_descr'
+          - nm_change_ansible_test is changed
+          - nm_change_ansible_test.current.displayName == 'ansible_test_2'
+          - nm_change_ansible_test.current.description == 'ansible_test_descr_changed'
+          - nm_change_ansible_test.previous.displayName == 'ansible_test'
+          # - nm_change_ansible_test.previous.description == 'ansible_test_descr'
+          - nm_change_ansible_test_again is not changed
+          - nm_change_ansible_test_again.current.displayName == 'ansible_test_2'
+          - nm_change_ansible_test_again.current.description == 'ansible_test_descr_changed'
+          - nm_change_ansible_test_again.previous.displayName == 'ansible_test_2'
+          # - nm_change_ansible_test_again.previous.description == 'ansible_test_descr_changed'
+
+    - name: Remove a schema without templates (check_mode)
+      cisco.mso.mso_schema: &ansible_test_remove
+        <<: *mso_info
+        schema: ansible_test_2
+        state: absent
+      check_mode: true
+      register: cm_remove_ansible_test
+
+    - name: Remove a schema without templates
+      cisco.mso.mso_schema:
+        <<: *ansible_test_remove
+      register: nm_remove_ansible_test
+
+    - name: Remove a schema without templates again
+      cisco.mso.mso_schema:
+        <<: *ansible_test_remove
+      register: nm_remove_ansible_test_again
+
+    - name: Verify schema without templates removal
+      ansible.builtin.assert:
+        that:
+          - cm_remove_ansible_test is changed
+          - cm_remove_ansible_test.current == {}
+          - cm_remove_ansible_test.previous.displayName == 'ansible_test_2'
+          # - cm_remove_ansible_test.previous.description == 'ansible_test_descr_changed'
+          - nm_remove_ansible_test is changed
+          - nm_remove_ansible_test.current == {}
+          - nm_remove_ansible_test.previous.displayName == 'ansible_test_2'
+          # - nm_remove_ansible_test.previous.description == 'ansible_test_descr_changed'
+          - nm_remove_ansible_test_again is not changed
+          - nm_remove_ansible_test_again.current == {}
+          - nm_remove_ansible_test_again.previous == {}

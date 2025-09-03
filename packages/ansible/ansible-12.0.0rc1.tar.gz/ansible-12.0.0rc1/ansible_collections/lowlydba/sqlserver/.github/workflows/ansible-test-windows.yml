@@ -1,0 +1,191 @@
+name: CI (Windows)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - stable-*
+    paths-ignore:
+      - .github/workflows/docs*.yml
+      - .github/workflows/github-release.yml
+      - changelogs/fragments/*.yml
+      - .vscode/*
+  pull_request:
+    paths-ignore:
+      - .github/workflows/docs*.yml
+      - .github/workflows/github-release.yml
+      - changelogs/fragments/*.yml
+      - .vscode/*
+
+  # Run CI once per day (at 06:00 UTC)
+  # This ensures that even if there haven't been commits that we are still testing against latest version of ansible-test for each ansible-base version
+  schedule:
+    - cron: "0 8 * * *"
+
+# Cancel existing runs on new commits to a branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NAMESPACE: lowlydba
+  COLLECTION_NAME: sqlserver
+  DBATOOLS_VERSION: "2.0.0"
+
+jobs:
+  ###
+  # Integration tests (RECOMMENDED)
+  #
+  # https://docs.ansible.com/ansible/latest/dev_guide/testing_integration.html
+
+  integration:
+    runs-on: ${{ matrix.os }}
+    name: I (Ⓐ${{ matrix.ansible }}+win-2022|grp${{ matrix.group }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-2022
+        wsl:
+          - Ubuntu-24.04
+        ansible:
+          - stable-2.17 # November 2025 EOL
+          - stable-2.18 # May 2026 EOL
+          - stable-2.19
+          - devel
+        python:
+          - python3
+        group: # windows/group/#/
+          - "1"
+          - "2"
+          #- '3'
+    defaults:
+      run:
+        shell: wsl-bash {0}
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          path: ansible_collections/${{env.NAMESPACE}}/${{env.COLLECTION_NAME}}
+
+      - name: Create an admin user
+        shell: cmd
+        run: |
+          net user admin pass123@ /add /y
+          net localgroup Administrators admin /add
+
+      - name: Set up the runner for PowerShell remoting
+        shell: powershell
+        run: |
+          $sb = [ScriptBlock]::Create((New-Object System.Net.Webclient).DownloadString('https://raw.githubusercontent.com/ansible/ansible/38e50c9f819a045ea4d40068f83e78adbfaf2e68/examples/scripts/ConfigureRemotingForAnsible.ps1'))
+          & $sb -Verbose -ForceNewSSLCert 4>&1
+
+      - name: Enable winrm
+        shell: powershell
+        run: |
+          winrm quickconfig -force
+
+      - name: Why is MongoDB running? Disable it.
+        shell: powershell
+        run: |
+          Get-Service -Name MongoDB | Where-Object Status -eq 'Running' | Stop-Service -Force
+
+      - name: Add a hosts entry
+        shell: cmd
+        run: echo 127.0.0.1 sqlserver >> "%WinDir%\System32\Drivers\etc\hosts"
+
+      - uses: Vampire/setup-wsl@v4.1.0
+        with:
+          distribution: ${{ matrix.wsl }}
+          update: "false"
+          use-cache: "true"
+          wsl-version: 1
+          additional-packages: |
+            git
+            ${{ matrix.python }}
+            python3-pip
+            openssh-client
+
+      - name: Get Linux workspace path
+        shell: pwsh
+        run: |
+          # $ws = & wslpath --% -u -a "${{ github.workspace }}""
+          # seems wslpath is not available on server 2019
+
+          function ConvertTo-LinuxPathCrappy {
+              [CmdletBinding()]
+              param(
+                  [Parameter(Mandatory)]
+                  [ValidateNotNullOrEmpty()]
+                  [string]
+                  $LiteralPath
+              )
+
+              End {
+                  $resolved = Resolve-Path -LiteralPath $LiteralPath
+                  $drive = ($resolved | Split-Path -Qualifier).TrimEnd(':').ToLower()
+                  $rooted = ($resolved | Split-Path -NoQualifier).Replace('\', '/').TrimStart('/')
+
+                  '/mnt/{0}/{1}' -f $drive, $rooted
+              }
+          }
+          $ws = ConvertTo-LinuxPathCrappy -LiteralPath "${{ github.workspace }}"
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "GHWS=$ws"
+
+      # Override break-sys-pkg defaults, because we don't need to bother with python venv for CI
+      - name: Install ansible-base (${{ matrix.ansible }})
+        run: |
+          ${{ matrix.python }} -m pip config set global.break-system-packages true
+          ${{ matrix.python }} -m pip install --upgrade setuptools pypsrp --disable-pip-version-check --retries 10
+          ${{ matrix.python }} -m pip install https://github.com/ansible/ansible/archive/${{ matrix.ansible }}.tar.gz --disable-pip-version-check --retries 10
+
+      - name: Install collection dependencies
+        id: collection-dependency
+        run: ansible-galaxy collection install ansible.windows -p "${{ env.GHWS }}"
+        continue-on-error: true
+
+      - name: Retry install collection dependencies
+        if: steps.collection-dependency.outcome == 'failure'
+        run: ansible-galaxy collection install ansible.windows -p "${{ env.GHWS }}"
+
+      - name: Set integration test options
+        working-directory: ./ansible_collections/${{env.NAMESPACE}}/${{env.COLLECTION_NAME}}/tests/integration
+        run: |
+          cp integration_config.sample.yml integration_config.yml
+          cp inventory.winrm.ci inventory.winrm
+
+      - name: Install SQL Server
+        continue-on-error: true
+        id: mssqlsuite
+        uses: potatoqualitee/mssqlsuite@v1.11
+        with:
+          install: sqlengine
+          sa-password: L0wlydb4
+          version: 2022
+
+      - name: Retry SQL Server install
+        id: retry1
+        if: steps.mssqlsuite.outcome == 'failure'
+        uses: potatoqualitee/mssqlsuite@v1.11
+        with:
+          install: sqlengine
+          sa-password: L0wlydb4
+          version: 2022
+
+      - name: Run integration test
+        run: |
+          pushd "${{ env.GHWS }}/ansible_collections/${{env.NAMESPACE}}/${{env.COLLECTION_NAME}}"
+          ansible-test windows-integration -v --color --retry-on-error --continue-on-error --diff --coverage --requirements windows/group/${{ matrix.group }}/
+
+      - name: Generate coverage report
+        run: |
+          pushd "${{ env.GHWS }}/ansible_collections/${{env.NAMESPACE}}/${{env.COLLECTION_NAME}}"
+          ansible-test coverage xml -v --requirements
+
+      # See the reports at https://codecov.io/gh/lowlydba/lowlydba.sqlserver
+      - uses: codecov/codecov-action@v5.4.3
+        with:
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

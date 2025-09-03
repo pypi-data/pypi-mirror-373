@@ -1,0 +1,179 @@
+# Test code for the ACI modules
+# Copyright: (c) 2017, Jacob McGill (@jmcgill298)
+
+# GNU General Public License v3.0+ (see LICENSE or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+- name: Test that we have an ACI APIC host, ACI username and ACI password
+  ansible.builtin.fail:
+    msg: 'Please define the following variables: aci_hostname, aci_username and aci_password.'
+  when: aci_hostname is not defined or aci_username is not defined or aci_password is not defined
+
+- name: ensure tenant does not exist for tests to kick off
+  cisco.aci.aci_tenant: &aci_tenant_absent
+    host: "{{ aci_hostname }}"
+    username: "{{ aci_username }}"
+    password: "{{ aci_password }}"
+    validate_certs: '{{ aci_validate_certs | default(false) }}'
+    use_ssl: '{{ aci_use_ssl | default(true) }}'
+    use_proxy: '{{ aci_use_proxy | default(true) }}'
+    output_level: debug
+    state: absent
+    tenant: ansible_test
+
+- name: Verify Cloud and Non-Cloud Sites in use.
+  ansible.builtin.include_tasks: ../../../../../../integration/targets/aci_cloud_provider/tasks/main.yml
+
+- name: create a snapshot
+  cisco.aci.aci_config_snapshot: &create_snapshot
+    <<: *aci_tenant_absent
+    state: present
+    tenant: "{{ fakevar | default(omit) }}"
+    export_policy: anstest
+
+- name: create a tenant - use for rollback
+  cisco.aci.aci_tenant: &aci_tenant
+    <<: *create_snapshot
+    export_policy: "{{ fakevar | default(omit) }}"
+    tenant: ansible_test
+  register: tenant_present
+
+- name: create a new snapshot
+  cisco.aci.aci_config_snapshot:
+    <<: *create_snapshot
+  register: create_snapshot_annotation_check
+
+- name: waiting for snapshot to be finished before querying
+  ansible.builtin.pause:
+    seconds: 10
+
+- name: get snapshots
+  cisco.aci.aci_config_snapshot:
+    <<: *create_snapshot
+    state: query
+  register: snapshots
+
+- name: Execute tasks only for non-cloud sites
+  when: query_cloud.current != []  # This condition will execute only non-cloud sites
+  block:  # block specifies execution of tasks within, based on conditions
+  #  Snapshot compare does not work for cloud site since only 1 item is returned in configSnapshotCont
+  #  TODO further investigate why cloud sites behave differently in saving snapshots
+  - name: verify only one snapshot is returned
+    ansible.builtin.assert:
+      that:
+        - snapshots.current.0.configSnapshotCont.children | length == 1 
+
+- name: Execute tasks only for non-cloud sites
+  when: query_cloud.current == []  # This condition will execute only non-cloud sites
+  block:  # block specifies execution of tasks within, based on conditions
+  #  Snapshot compare does not work for cloud site since only 1 item is returned in configSnapshotCont
+  - name: sort snapshot list
+    ansible.builtin.set_fact:
+      sorted_snapshots: '{{ snapshots.current.0.configSnapshotCont.children | sort(attribute="configSnapshot.attributes.createTime", reverse=True) }}'
+
+  - name: Uninstall lxml for error checking
+    ansible.builtin.pip: &lxml
+      name: lxml
+      state: absent
+    ignore_errors: true # ignore errors to because of multiple executions for hosts at the same time
+
+  - name: Uninstall xmljson for error checking
+    ansible.builtin.pip: &xmljson
+      name: xmljson
+      state: absent
+    ignore_errors: true # ignore errors to because of multiple executions for hosts at the same time
+
+  - name: compare snapshots
+    cisco.aci.aci_config_rollback: &preview_rollback
+      <<: *create_snapshot
+      state: preview
+      compare_export_policy: anstest
+      compare_snapshot: "{{ sorted_snapshots[0].configSnapshot.attributes.name }}"
+      snapshot: "{{ sorted_snapshots[1].configSnapshot.attributes.name }}"
+    register: rollback_preview_xml
+
+  - name: Install lxml
+    ansible.builtin.pip:
+      <<: *lxml
+      state: present
+    ignore_errors: true # ignore errors to because of multiple executions for hosts at the same time
+
+  - name: Install xmljson
+    ansible.builtin.pip:
+      <<: *xmljson
+      state: present
+    ignore_errors: true # ignore errors to because of multiple executions for hosts at the same time
+
+  - name: compare snapshots
+    cisco.aci.aci_config_rollback:
+      <<: *preview_rollback
+    register: rollback_preview_json
+
+  - name: compare snapshots with wrong compare_snapshot (error)
+    cisco.aci.aci_config_rollback:
+      <<: *preview_rollback
+      compare_snapshot: wrong_snap
+    ignore_errors: true
+    register: err_rollback_preview_json
+
+  - name: rollback to snapshot with missing parameters
+    cisco.aci.aci_config_rollback: &aci_rollback
+      <<: *create_snapshot
+      state: rollback
+      snapshot: "{{ sorted_snapshots[1].configSnapshot.attributes.name }}"
+    ignore_errors: true
+    register: rollback_missing_param
+
+  - name: rollback to not existing snapshot for "tar.gz" append and "run-" removal testing
+    cisco.aci.aci_config_rollback:
+      <<: *aci_rollback
+      snapshot: "not-existing-snapshot.tar.gz"
+      import_policy: anstest
+      import_type: replace
+      import_mode: atomic
+    register: not_existing_rollback
+    ignore_errors: true
+
+  - name: rollback to snapshot
+    cisco.aci.aci_config_rollback:
+      <<: *aci_rollback
+      import_policy: anstest
+      import_type: replace
+      import_mode: atomic
+    register: rollback_rollback
+
+  - name: pause execution to let rollback take effect
+    ansible.builtin.pause:
+      seconds: 15
+
+  - name: ensure tenant doesn't exist after rollback
+    cisco.aci.aci_tenant:
+      <<: *aci_tenant_absent
+    register: tenant_removed
+
+  - debug:
+      msg: '{{ rollback_preview_json }}'
+
+  - name: rollback assertions
+    ansible.builtin.assert:
+      that:
+        - rollback_preview_xml is not changed
+        - '"ansible_test" in rollback_preview_xml.preview'
+        - '"created" in rollback_preview_xml.preview'
+        - '"snapshots.diff.xml" in rollback_preview_xml.url'
+        - err_rollback_preview_json.status == 400
+        - err_rollback_preview_json.response == "HTTP Error 400{{":"}} Bad Request"
+        - rollback_preview_json is not changed
+        - rollback_preview_json.preview.polUni.children[0].fvTenant.attributes.name == 'ansible_test'
+        - rollback_preview_json.preview.polUni.children[0].fvTenant.attributes.status == 'created'
+        - '"snapshots.diff.xml" in rollback_preview_json.url'
+        - rollback_missing_param is failed
+        - 'rollback_missing_param.msg == "state is rollback but all of the following are missing: import_policy"'
+        - rollback_rollback is changed
+        - '"ce2_" in rollback_rollback.sent.configImportP.attributes.fileName'
+        - '".tar.gz" in rollback_rollback.sent.configImportP.attributes.fileName'
+        - '"ce2_" in rollback_rollback.proposed.configImportP.attributes.fileName'
+        - '".tar.gz" in rollback_rollback.proposed.configImportP.attributes.fileName'
+        - '"fabric/configimp-anstest.json" in rollback_rollback.url'
+        - tenant_removed is not changed
+        - tenant_removed.previous == []
+        - create_snapshot_annotation_check.current.0.configExportP.attributes.annotation == 'orchestrator:ansible'

@@ -1,0 +1,273 @@
+# Test code for the ACI modules
+# Copyright: (c) 2018, Dag Wieers (@dagwieers) <dag@wieers.com>
+
+# GNU General Public License v3.0+ (see LICENSE or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+- name: Test that we have an ACI APIC host, ACI username and ACI password
+  ansible.builtin.fail:
+    msg: 'Please define the following variables: aci_hostname, aci_username and aci_password.'
+  when: aci_hostname is not defined or aci_username is not defined or aci_password is not defined
+
+- name: Set vars
+  ansible.builtin.set_fact:
+    aci_info: &aci_info
+      host: '{{ aci_hostname }}'
+      username: '{{ aci_username }}'
+      password: '{{ aci_password }}'
+      validate_certs: '{{ aci_validate_certs | default(false) }}'
+      use_ssl: '{{ aci_use_ssl | default(true) }}'
+      use_proxy: '{{ aci_use_proxy | default(true) }}'
+      output_level: debug # required debug due to asserts done on url which are only present in debug mode
+
+
+- name: Verify Cloud and Non-Cloud Sites in use.
+  ansible.builtin.include_tasks: ../../../../../../integration/targets/aci_cloud_provider/tasks/main.yml
+
+- name: Execute tasks only for non-cloud sites
+  when: query_cloud.current == []  # This condition will execute only non-cloud sites
+  block:  # block specifies execution of tasks within, based on conditions
+  # CLEAN ENVIRONMENT
+  - name: Remove AEP to domain binding
+    cisco.aci.aci_aep_to_domain: &binding_absent
+      <<: *aci_info
+      aep: test_aep
+      domain: phys_dom
+      domain_type: phys
+      state: absent
+
+  - name: Delete AEP
+    cisco.aci.aci_aep:
+      <<: *aci_info
+      aep: test_aep
+      description: Test AEP
+      state: absent
+
+  - name: Create AEP
+    cisco.aci.aci_aep:
+      <<: *aci_info
+      aep: test_aep
+      description: Test AEP
+      state: present
+
+  - name: Create physical domain
+    cisco.aci.aci_domain:
+      <<: *aci_info
+      domain: phys_dom
+      domain_type: phys
+      state: present
+
+  - name: Ensure vmm domain exist
+    cisco.aci.aci_rest:
+      <<: *aci_info
+      path: api/mo/uni/vmmp-VMware/dom-anstest.json
+      content: {"vmmDomP": {"attributes": {}}}
+
+  # ADD BINDING
+  - name: Add AEP to domain binding (check_mode)
+    cisco.aci.aci_aep_to_domain: &binding_present
+      <<: *aci_info
+      aep: test_aep
+      domain: phys_dom
+      domain_type: phys
+      state: present
+    check_mode: true
+    register: cm_add_binding
+
+  - name: Add AEP to domain binding (normal mode)
+    cisco.aci.aci_aep_to_domain: *binding_present
+    register: nm_add_binding
+
+  - name: Verify add_binding
+    ansible.builtin.assert:
+      that:
+      - cm_add_binding is changed
+      - nm_add_binding is changed
+      - nm_add_binding.current.0.infraRsDomP.attributes.annotation == 'orchestrator:ansible'
+      - cm_add_binding.sent.infraRsDomP.attributes.tDn == nm_add_binding.sent.infraRsDomP.attributes.tDn == 'uni/phys-phys_dom'
+      - cm_add_binding.proposed.infraRsDomP.attributes.tDn == nm_add_binding.proposed.infraRsDomP.attributes.tDn == 'uni/phys-phys_dom'
+      - cm_add_binding.current == cm_add_binding.previous == nm_add_binding.previous == []
+      - nm_add_binding.current[0].infraRsDomP.attributes.dn == 'uni/infra/attentp-test_aep/rsdomP-[uni/phys-phys_dom]'
+      - nm_add_binding.current[0].infraRsDomP.attributes.tDn == 'uni/phys-phys_dom'
+
+  - name: Add AEP to domain binding again (check_mode)
+    cisco.aci.aci_aep_to_domain: *binding_present
+    check_mode: true
+    register: cm_add_binding_again
+
+  - name: Add AEP to domain binding again (normal mode)
+    cisco.aci.aci_aep_to_domain: *binding_present
+    register: nm_add_binding_again
+
+  - name: Verify add_binding_again
+    ansible.builtin.assert:
+      that:
+      - cm_add_binding_again is not changed
+      - nm_add_binding_again is not changed
+
+  - name: Add AEP to domain type not vmm with vm provider (error)
+    cisco.aci.aci_aep_to_domain:
+      <<: *aci_info
+      aep: test_aep
+      domain: phys_dom
+      domain_type: phys
+      vm_provider: vmware
+    ignore_errors: true
+    register: err_not_vmm_with_vm_provider
+
+  - name: Add AEP to domain with type fc
+    cisco.aci.aci_aep_to_domain:
+      <<: *aci_info
+      aep: test_aep
+      domain: fc_dom
+      domain_type: fc
+    register: nm_fc_type
+
+  - name: Add AEP to domain with type l2dom
+    cisco.aci.aci_aep_to_domain:
+      <<: *aci_info
+      aep: test_aep
+      domain: l2dom_dom
+      domain_type: l2dom
+    register: nm_l2dom_type
+
+  - name: Add AEP to domain with type l3dom
+    cisco.aci.aci_aep_to_domain:
+      <<: *aci_info
+      aep: test_aep
+      domain: l3dom_dom
+      domain_type: l3dom
+    register: nm_l3dom_type
+
+  - name: Add AEP to domain with type vmm
+    cisco.aci.aci_aep_to_domain:
+      <<: *aci_info
+      aep: test_aep
+      domain: anstest
+      domain_type: vmm
+      vm_provider: vmware
+    register: nm_vmm_type
+
+  - name: Verify bindings with domain types
+    ansible.builtin.assert:
+      that:
+      - err_not_vmm_with_vm_provider is not changed
+      - err_not_vmm_with_vm_provider.msg == "Domain type 'phys' cannot have a 'vm_provider'"
+      - nm_fc_type is changed
+      - nm_fc_type.current.0.infraRsDomP.attributes.tDn == "uni/fc-fc_dom"
+      - nm_l2dom_type is changed
+      - nm_l2dom_type.current.0.infraRsDomP.attributes.tDn == "uni/l2dom-l2dom_dom"
+      - nm_l3dom_type is changed
+      - nm_l3dom_type.current.0.infraRsDomP.attributes.tDn == "uni/l3dom-l3dom_dom"
+      - nm_vmm_type is changed
+      - nm_vmm_type.current.0.infraRsDomP.attributes.tDn == "uni/vmmp-VMware/dom-anstest"
+
+  # QUERY ALL BINDINGS
+  - name: Query all AEP to domain bindings (check_mode)
+    cisco.aci.aci_aep_to_domain: &binding_query
+      <<: *aci_info
+      state: query
+    check_mode: true
+    register: cm_query_all_bindings
+
+  - name: Query all AEP to domain bindings (normal mode)
+    cisco.aci.aci_aep_to_domain: *binding_query
+    register: nm_query_all_bindings
+
+  - name: Verify query_all_bindings
+    ansible.builtin.assert:
+      that:
+      - cm_query_all_bindings is not changed
+      - nm_query_all_bindings is not changed
+      - cm_query_all_bindings == nm_query_all_bindings
+      - nm_query_all_bindings.current|length >= 1
+
+
+  # QUERY A BINDING
+  - name: Query our AEP to domain binding (check_mode)
+    cisco.aci.aci_aep_to_domain:
+      <<: *binding_query
+      aep: test_aep
+      domain: phys_dom
+      domain_type: phys
+    check_mode: true
+    register: cm_query_binding
+
+  - name: Query our AEP to domain binding (normal mode)
+    cisco.aci.aci_aep_to_domain:
+      <<: *binding_query
+      aep: test_aep
+      domain: phys_dom
+      domain_type: phys
+    register: nm_query_binding
+
+  - name: Verify query_binding
+    ansible.builtin.assert:
+      that:
+      - cm_query_binding is not changed
+      - nm_query_binding is not changed
+      - cm_query_binding == nm_query_binding
+      - nm_query_binding.current.0.infraRsDomP.attributes.dn == 'uni/infra/attentp-test_aep/rsdomP-[uni/phys-phys_dom]'
+      - nm_query_binding.current.0.infraRsDomP.attributes.tCl == 'physDomP'
+      - nm_query_binding.current.0.infraRsDomP.attributes.tDn == 'uni/phys-phys_dom'
+
+
+  # REMOVE BINDING
+  - name: Remove AEP to domain binding (check_mode)
+    cisco.aci.aci_aep_to_domain: *binding_absent
+    check_mode: true
+    register: cm_remove_binding
+
+  - name: Remove AEP to domain binding (normal mode)
+    cisco.aci.aci_aep_to_domain: *binding_absent
+    register: nm_remove_binding
+
+  - name: Verify remove_binding
+    ansible.builtin.assert:
+      that:
+      - cm_remove_binding is changed
+      - nm_remove_binding is changed
+      - cm_remove_binding.current.0.infraRsDomP.attributes.dn == cm_remove_binding.previous.0.infraRsDomP.attributes.dn == nm_remove_binding.previous.0.infraRsDomP.attributes.dn == 'uni/infra/attentp-test_aep/rsdomP-[uni/phys-phys_dom]'
+      - cm_remove_binding.current.0.infraRsDomP.attributes.tDn == cm_remove_binding.previous.0.infraRsDomP.attributes.tDn == nm_remove_binding.previous.0.infraRsDomP.attributes.tDn == 'uni/phys-phys_dom'
+      - nm_remove_binding.current == []
+
+  - name: Remove AEP to domain binding again (check_mode)
+    cisco.aci.aci_aep_to_domain: *binding_absent
+    check_mode: true
+    register: cm_remove_binding_again
+
+  - name: Remove AEP to domain binding again (normal mode)
+    cisco.aci.aci_aep_to_domain: *binding_absent
+    register: nm_remove_binding_again
+
+  - name: Verify remove_binding_again
+    ansible.builtin.assert:
+      that:
+      - cm_remove_binding_again is not changed
+      - nm_remove_binding_again is not changed
+
+
+  # QUERY NON-EXISTING BINDING
+  - name: Query non-existing AEP to domain binding (check_mode)
+    cisco.aci.aci_aep_to_domain:
+      <<: *binding_query
+      aep: test_aep
+      domain: phys_dom
+      domain_type: phys
+    check_mode: true
+    register: cm_query_non_binding
+
+  - name: Query non-existing AEP to domain binding (normal mode)
+    cisco.aci.aci_aep_to_domain:
+      <<: *binding_query
+      aep: test_aep
+      domain: phys_dom
+      domain_type: phys
+    register: nm_query_non_binding
+
+  - name: Verify query_non_binding
+    ansible.builtin.assert:
+      that:
+      - cm_query_non_binding is not changed
+      - nm_query_non_binding is not changed
+      - cm_query_non_binding == nm_query_non_binding
+      - nm_query_non_binding.current == []

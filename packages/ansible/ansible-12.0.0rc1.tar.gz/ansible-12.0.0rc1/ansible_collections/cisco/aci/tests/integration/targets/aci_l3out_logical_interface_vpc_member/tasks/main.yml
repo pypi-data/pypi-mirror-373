@@ -1,0 +1,312 @@
+# Test code for the ACI modules
+# Copyright: (c) 2020, Anvitha Jain (@anvitha-jain)
+
+# GNU General Public License v3.0+ (see LICENSE or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+- name: Test that we have an ACI APIC host, ACI username and ACI password
+  ansible.builtin.fail:
+    msg: 'Please define the following variables: aci_hostname, aci_username and aci_password.'
+  when: aci_hostname is not defined or aci_username is not defined or aci_password is not defined
+
+- name: Set vars
+  ansible.builtin.set_fact:
+    aci_info: &aci_info
+      host: "{{ aci_hostname }}"
+      username: "{{ aci_username }}"
+      password: "{{ aci_password }}"
+      validate_certs: '{{ aci_validate_certs | default(false) }}'
+      use_ssl: '{{ aci_use_ssl | default(true) }}'
+      use_proxy: '{{ aci_use_proxy | default(true) }}'
+      output_level: debug
+    
+# CLEAN ENVIRONMENT
+- name: Remove the ansible_tenant
+  cisco.aci.aci_tenant:
+    <<: *aci_info 
+    tenant: ansible_tenant
+    state: absent
+
+- name: Verify Cloud and Non-Cloud Sites in use.
+  ansible.builtin.include_tasks: ../../../../../../integration/targets/aci_cloud_provider/tasks/main.yml
+
+- name: Execute tasks only for non-cloud sites
+  when: query_cloud.current == []  # This condition will execute only non-cloud sites
+  block:  # block specifies execution of tasks within, based on conditions
+  - name: Add a new tenant
+    cisco.aci.aci_tenant:
+      <<: *aci_info 
+      tenant: ansible_tenant
+      description: Ansible tenant
+      state: present
+
+  - name: Add a new L3Out
+    cisco.aci.aci_l3out:
+      <<: *aci_info
+      tenant: ansible_tenant
+      name: ansible_l3out
+      description: L3Out for ansible_tenant tenant
+      domain: ansible_dom
+      vrf: ansible_vrf
+      l3protocol: ospf
+      route_control: export
+      state: present
+
+  - name: Add a new logical node profile
+    cisco.aci.aci_l3out_logical_node_profile: 
+      <<: *aci_info
+      tenant: ansible_tenant
+      l3out: ansible_l3out
+      node_profile: ansible_LNode
+      state: present
+
+  - name: Add a interface profile
+    cisco.aci.aci_l3out_logical_interface_profile: 
+      <<: *aci_info
+      tenant: ansible_tenant
+      l3out: ansible_l3out
+      node_profile: ansible_LNode
+      interface_profile: ansible_LInterface
+      state: present
+
+  - name: Add two vPC-interfaces
+    cisco.aci.aci_l3out_interface:
+      <<: *aci_info
+      tenant: ansible_tenant
+      l3out: ansible_l3out
+      node_profile: ansible_LNode
+      interface_profile: ansible_LInterface
+      pod_id: 1
+      node_id: 101-102
+      path_ep: "{{ item }}"
+      interface_type: ext-svi
+      state: present
+    loop:
+      - policy_group_one
+      - policy_group_two
+
+  - name: Add a VPC member based on path_dn (check-mode)
+    cisco.aci.aci_l3out_logical_interface_vpc_member: &l3out_logical_interface_vpc_member_dn
+      <<: *aci_info
+      tenant: ansible_tenant
+      l3out: ansible_l3out
+      logical_node: ansible_LNode
+      logical_interface: ansible_LInterface
+      path_dn: topology/pod-1/protpaths-101-102/pathep-[policy_group_one]
+      side: A
+      state: present
+    check_mode: true
+    register: cm_l3out_logical_interface_vpc_member_present_path_dn
+
+  - name: Add a VPC member based on path_dn
+    cisco.aci.aci_l3out_logical_interface_vpc_member:
+      <<: *l3out_logical_interface_vpc_member_dn
+    register: nm_l3out_logical_interface_vpc_member_present_path_dn
+
+  - name: Add a VPC member based on path_dn again
+    cisco.aci.aci_l3out_logical_interface_vpc_member:
+      <<: *l3out_logical_interface_vpc_member_dn
+    register: nm_l3out_logical_interface_vpc_member_present_path_dn_again
+
+  - name: Assertions check for add a VPC member based on path_dn
+    ansible.builtin.assert:
+      that:
+      - cm_l3out_logical_interface_vpc_member_present_path_dn is changed
+      - cm_l3out_logical_interface_vpc_member_present_path_dn.previous == []
+      - cm_l3out_logical_interface_vpc_member_present_path_dn.proposed.l3extMember.attributes.dn == "uni/tn-ansible_tenant/out-ansible_l3out/lnodep-ansible_LNode/lifp-ansible_LInterface/rspathL3OutAtt-[topology/pod-1/protpaths-101-102/pathep-[policy_group_one]]/mem-A"
+      - cm_l3out_logical_interface_vpc_member_present_path_dn.proposed.l3extMember.attributes.side == "A"
+      - nm_l3out_logical_interface_vpc_member_present_path_dn is changed
+      - nm_l3out_logical_interface_vpc_member_present_path_dn.previous == []
+      - nm_l3out_logical_interface_vpc_member_present_path_dn.current.0.l3extMember.attributes.dn == "uni/tn-ansible_tenant/out-ansible_l3out/lnodep-ansible_LNode/lifp-ansible_LInterface/rspathL3OutAtt-[topology/pod-1/protpaths-101-102/pathep-[policy_group_one]]/mem-A"
+      - nm_l3out_logical_interface_vpc_member_present_path_dn.current.0.l3extMember.attributes.side == "A"
+      - nm_l3out_logical_interface_vpc_member_present_path_dn.current.0.l3extMember.attributes.addr == "0.0.0.0"
+      - nm_l3out_logical_interface_vpc_member_present_path_dn.current.0.l3extMember.attributes.ipv6Dad == "enabled"
+      - nm_l3out_logical_interface_vpc_member_present_path_dn.current.0.l3extMember.attributes.descr == ""
+      - nm_l3out_logical_interface_vpc_member_present_path_dn_again is not changed
+      - nm_l3out_logical_interface_vpc_member_present_path_dn_again.previous.0.l3extMember.attributes.dn == "uni/tn-ansible_tenant/out-ansible_l3out/lnodep-ansible_LNode/lifp-ansible_LInterface/rspathL3OutAtt-[topology/pod-1/protpaths-101-102/pathep-[policy_group_one]]/mem-A"
+      - nm_l3out_logical_interface_vpc_member_present_path_dn_again.previous.0.l3extMember.attributes.side == "A"
+      - nm_l3out_logical_interface_vpc_member_present_path_dn_again.previous.0.l3extMember.attributes.addr == "0.0.0.0"
+      - nm_l3out_logical_interface_vpc_member_present_path_dn_again.previous.0.l3extMember.attributes.ipv6Dad == "enabled"
+      - nm_l3out_logical_interface_vpc_member_present_path_dn_again.previous.0.l3extMember.attributes.descr == ""
+      - nm_l3out_logical_interface_vpc_member_present_path_dn_again.current.0.l3extMember.attributes.dn == "uni/tn-ansible_tenant/out-ansible_l3out/lnodep-ansible_LNode/lifp-ansible_LInterface/rspathL3OutAtt-[topology/pod-1/protpaths-101-102/pathep-[policy_group_one]]/mem-A"
+      - nm_l3out_logical_interface_vpc_member_present_path_dn_again.current.0.l3extMember.attributes.side == "A"
+      - nm_l3out_logical_interface_vpc_member_present_path_dn_again.current.0.l3extMember.attributes.addr == "0.0.0.0"
+      - nm_l3out_logical_interface_vpc_member_present_path_dn_again.current.0.l3extMember.attributes.ipv6Dad == "enabled"
+      - nm_l3out_logical_interface_vpc_member_present_path_dn_again.current.0.l3extMember.attributes.descr == ""
+
+  - name: Add a VPC member based on pod_id, node_id, path_ep (check-mode)
+    cisco.aci.aci_l3out_logical_interface_vpc_member: &l3out_logical_interface_vpc_member
+      <<: *aci_info
+      tenant: ansible_tenant
+      l3out: ansible_l3out
+      node_profile: ansible_LNode
+      interface_profile: ansible_LInterface
+      pod_id: 1
+      node_id: 101-102
+      path_ep: policy_group_two
+      side: A
+      addr: 192.168.1.254/24
+      ipv6_dad: disabled
+      state: present
+    check_mode: true
+    register: cm_l3out_logical_interface_vpc_member_present
+
+  - name: Add a VPC member based on pod_id, node_id, path_ep
+    cisco.aci.aci_l3out_logical_interface_vpc_member:
+      <<: *l3out_logical_interface_vpc_member
+    register: nm_l3out_logical_interface_vpc_member_present
+
+  - name: Add a VPC member based on pod_id, node_id, path_ep again
+    cisco.aci.aci_l3out_logical_interface_vpc_member:
+      <<: *l3out_logical_interface_vpc_member
+    register: nm_l3out_logical_interface_vpc_member_present_again
+
+  - name: Assertions check for add a VPC member based on pod_id, node_id, path_ep
+    ansible.builtin.assert:
+      that:
+      - cm_l3out_logical_interface_vpc_member_present is changed
+      - cm_l3out_logical_interface_vpc_member_present.previous == []
+      - cm_l3out_logical_interface_vpc_member_present.proposed.l3extMember.attributes.dn == "uni/tn-ansible_tenant/out-ansible_l3out/lnodep-ansible_LNode/lifp-ansible_LInterface/rspathL3OutAtt-[topology/pod-1/protpaths-101-102/pathep-[policy_group_two]]/mem-A"
+      - cm_l3out_logical_interface_vpc_member_present.proposed.l3extMember.attributes.side == "A"
+      - nm_l3out_logical_interface_vpc_member_present.proposed.l3extMember.attributes.addr == "192.168.1.254/24"
+      - nm_l3out_logical_interface_vpc_member_present.proposed.l3extMember.attributes.ipv6Dad == "disabled"
+      - nm_l3out_logical_interface_vpc_member_present is changed
+      - nm_l3out_logical_interface_vpc_member_present.previous == []
+      - nm_l3out_logical_interface_vpc_member_present.current.0.l3extMember.attributes.dn == "uni/tn-ansible_tenant/out-ansible_l3out/lnodep-ansible_LNode/lifp-ansible_LInterface/rspathL3OutAtt-[topology/pod-1/protpaths-101-102/pathep-[policy_group_two]]/mem-A"
+      - nm_l3out_logical_interface_vpc_member_present.current.0.l3extMember.attributes.addr == "192.168.1.254/24"
+      - nm_l3out_logical_interface_vpc_member_present.current.0.l3extMember.attributes.ipv6Dad == "disabled"
+      - nm_l3out_logical_interface_vpc_member_present.current.0.l3extMember.attributes.descr == ""
+      - nm_l3out_logical_interface_vpc_member_present_again is not changed
+      - nm_l3out_logical_interface_vpc_member_present_again.previous.0.l3extMember.attributes.dn == "uni/tn-ansible_tenant/out-ansible_l3out/lnodep-ansible_LNode/lifp-ansible_LInterface/rspathL3OutAtt-[topology/pod-1/protpaths-101-102/pathep-[policy_group_two]]/mem-A"
+      - nm_l3out_logical_interface_vpc_member_present_again.previous.0.l3extMember.attributes.side == "A"
+      - nm_l3out_logical_interface_vpc_member_present_again.previous.0.l3extMember.attributes.addr == "192.168.1.254/24"
+      - nm_l3out_logical_interface_vpc_member_present_again.previous.0.l3extMember.attributes.ipv6Dad == "disabled"
+      - nm_l3out_logical_interface_vpc_member_present_again.previous.0.l3extMember.attributes.descr == ""
+      - nm_l3out_logical_interface_vpc_member_present_again.current.0.l3extMember.attributes.dn == "uni/tn-ansible_tenant/out-ansible_l3out/lnodep-ansible_LNode/lifp-ansible_LInterface/rspathL3OutAtt-[topology/pod-1/protpaths-101-102/pathep-[policy_group_two]]/mem-A"
+      - nm_l3out_logical_interface_vpc_member_present_again.current.0.l3extMember.attributes.side == "A"
+      - nm_l3out_logical_interface_vpc_member_present_again.current.0.l3extMember.attributes.addr == "192.168.1.254/24"
+      - nm_l3out_logical_interface_vpc_member_present_again.current.0.l3extMember.attributes.ipv6Dad == "disabled"
+      - nm_l3out_logical_interface_vpc_member_present_again.current.0.l3extMember.attributes.descr == ""
+
+  - name: Update a VPC member (check-mode)
+    cisco.aci.aci_l3out_logical_interface_vpc_member: &l3out_logical_interface_vpc_member_update
+      <<: *l3out_logical_interface_vpc_member
+      addr: 192.168.2.254/24
+      ipv6_dad: enabled
+      description: Updated VPC member
+    check_mode: true
+    register: cm_l3out_logical_interface_vpc_member_update
+
+  - name: Update a VPC member
+    cisco.aci.aci_l3out_logical_interface_vpc_member:
+      <<: *l3out_logical_interface_vpc_member_update
+    register: nm_l3out_logical_interface_vpc_member_update
+
+  - name: Update a VPC member again
+    cisco.aci.aci_l3out_logical_interface_vpc_member:
+      <<: *l3out_logical_interface_vpc_member_update
+    register: nm_l3out_logical_interface_vpc_member_update_again
+
+  - name: Assertions check for update a VPC member
+    ansible.builtin.assert:
+      that:
+      - cm_l3out_logical_interface_vpc_member_update is changed
+      - cm_l3out_logical_interface_vpc_member_update.previous.0.l3extMember.attributes.dn == "uni/tn-ansible_tenant/out-ansible_l3out/lnodep-ansible_LNode/lifp-ansible_LInterface/rspathL3OutAtt-[topology/pod-1/protpaths-101-102/pathep-[policy_group_two]]/mem-A"
+      - cm_l3out_logical_interface_vpc_member_update.previous.0.l3extMember.attributes.side == "A"
+      - cm_l3out_logical_interface_vpc_member_update.previous.0.l3extMember.attributes.addr == "192.168.1.254/24"
+      - cm_l3out_logical_interface_vpc_member_update.previous.0.l3extMember.attributes.ipv6Dad == "disabled"
+      - cm_l3out_logical_interface_vpc_member_update.previous.0.l3extMember.attributes.descr == ""
+      - cm_l3out_logical_interface_vpc_member_update.proposed.l3extMember.attributes.dn == "uni/tn-ansible_tenant/out-ansible_l3out/lnodep-ansible_LNode/lifp-ansible_LInterface/rspathL3OutAtt-[topology/pod-1/protpaths-101-102/pathep-[policy_group_two]]/mem-A"
+      - cm_l3out_logical_interface_vpc_member_update.proposed.l3extMember.attributes.side == "A"
+      - cm_l3out_logical_interface_vpc_member_update.proposed.l3extMember.attributes.addr == "192.168.2.254/24"
+      - cm_l3out_logical_interface_vpc_member_update.proposed.l3extMember.attributes.ipv6Dad == "enabled"
+      - cm_l3out_logical_interface_vpc_member_update.proposed.l3extMember.attributes.descr == "Updated VPC member"
+      - nm_l3out_logical_interface_vpc_member_update is changed
+      - nm_l3out_logical_interface_vpc_member_update.previous.0.l3extMember.attributes.dn == "uni/tn-ansible_tenant/out-ansible_l3out/lnodep-ansible_LNode/lifp-ansible_LInterface/rspathL3OutAtt-[topology/pod-1/protpaths-101-102/pathep-[policy_group_two]]/mem-A"
+      - nm_l3out_logical_interface_vpc_member_update.previous.0.l3extMember.attributes.side == "A"
+      - nm_l3out_logical_interface_vpc_member_update.previous.0.l3extMember.attributes.addr == "192.168.1.254/24"
+      - nm_l3out_logical_interface_vpc_member_update.previous.0.l3extMember.attributes.ipv6Dad == "disabled"
+      - nm_l3out_logical_interface_vpc_member_update.previous.0.l3extMember.attributes.descr == ""
+      - nm_l3out_logical_interface_vpc_member_update.current.0.l3extMember.attributes.dn == "uni/tn-ansible_tenant/out-ansible_l3out/lnodep-ansible_LNode/lifp-ansible_LInterface/rspathL3OutAtt-[topology/pod-1/protpaths-101-102/pathep-[policy_group_two]]/mem-A"
+      - nm_l3out_logical_interface_vpc_member_update.current.0.l3extMember.attributes.side == "A"
+      - nm_l3out_logical_interface_vpc_member_update.current.0.l3extMember.attributes.addr == "192.168.2.254/24"
+      - nm_l3out_logical_interface_vpc_member_update.current.0.l3extMember.attributes.ipv6Dad == "enabled"
+      - nm_l3out_logical_interface_vpc_member_update.current.0.l3extMember.attributes.descr == "Updated VPC member"
+      - nm_l3out_logical_interface_vpc_member_update_again is not changed
+      - nm_l3out_logical_interface_vpc_member_update_again.previous.0.l3extMember.attributes.dn == "uni/tn-ansible_tenant/out-ansible_l3out/lnodep-ansible_LNode/lifp-ansible_LInterface/rspathL3OutAtt-[topology/pod-1/protpaths-101-102/pathep-[policy_group_two]]/mem-A"
+      - nm_l3out_logical_interface_vpc_member_update_again.previous.0.l3extMember.attributes.side == "A"
+      - nm_l3out_logical_interface_vpc_member_update_again.previous.0.l3extMember.attributes.addr == "192.168.2.254/24"
+      - nm_l3out_logical_interface_vpc_member_update_again.previous.0.l3extMember.attributes.ipv6Dad == "enabled"
+      - nm_l3out_logical_interface_vpc_member_update_again.previous.0.l3extMember.attributes.descr == "Updated VPC member"
+      - nm_l3out_logical_interface_vpc_member_update_again.current.0.l3extMember.attributes.dn == "uni/tn-ansible_tenant/out-ansible_l3out/lnodep-ansible_LNode/lifp-ansible_LInterface/rspathL3OutAtt-[topology/pod-1/protpaths-101-102/pathep-[policy_group_two]]/mem-A"
+      - nm_l3out_logical_interface_vpc_member_update_again.current.0.l3extMember.attributes.side == "A"
+      - nm_l3out_logical_interface_vpc_member_update_again.current.0.l3extMember.attributes.addr == "192.168.2.254/24"
+      - nm_l3out_logical_interface_vpc_member_update_again.current.0.l3extMember.attributes.ipv6Dad == "enabled"
+      - nm_l3out_logical_interface_vpc_member_update_again.current.0.l3extMember.attributes.descr == "Updated VPC member"
+
+  - name: Query a specific VPC member under ansible_l3out
+    cisco.aci.aci_l3out_logical_interface_vpc_member:
+      <<: *l3out_logical_interface_vpc_member_dn
+      state: query
+    register: query_result
+
+  - name: Query all VPC members
+    cisco.aci.aci_l3out_logical_interface_vpc_member:
+      <<: *aci_info
+      state: query
+    register: query_result_all
+
+  - name: Assertions check for querying
+    ansible.builtin.assert:
+      that:
+      - query_result is not changed
+      - query_result.current | length == 1
+      - query_result.current.0.l3extMember.attributes.dn == "uni/tn-ansible_tenant/out-ansible_l3out/lnodep-ansible_LNode/lifp-ansible_LInterface/rspathL3OutAtt-[topology/pod-1/protpaths-101-102/pathep-[policy_group_one]]/mem-A"
+      - query_result.current.0.l3extMember.attributes.side == "A"
+      - query_result.current.0.l3extMember.attributes.addr == "0.0.0.0"
+      - query_result.current.0.l3extMember.attributes.ipv6Dad == "enabled"
+      - query_result.current.0.l3extMember.attributes.descr == ""
+      - query_result_all is not changed
+      - query_result_all.current | length >= 2
+
+  - name: Remove a VPC member (check-mode)
+    cisco.aci.aci_l3out_logical_interface_vpc_member: &l3out_logical_interface_vpc_member_absent
+      <<: *l3out_logical_interface_vpc_member_dn
+      state: absent
+    check_mode: true
+    register: cm_l3out_logical_interface_vpc_member_absent
+
+  - name: Remove a VPC member
+    cisco.aci.aci_l3out_logical_interface_vpc_member:
+      <<: *l3out_logical_interface_vpc_member_absent
+    register: nm_l3out_logical_interface_vpc_member_absent
+
+  - name: Remove a VPC member again
+    cisco.aci.aci_l3out_logical_interface_vpc_member:
+      <<: *l3out_logical_interface_vpc_member_absent
+    register: nm_l3out_logical_interface_vpc_member_absent_again
+
+  - name: Assertions check for remove a VPC member
+    ansible.builtin.assert:
+      that:
+      - cm_l3out_logical_interface_vpc_member_absent is changed
+      - cm_l3out_logical_interface_vpc_member_absent.previous.0.l3extMember.attributes.dn == "uni/tn-ansible_tenant/out-ansible_l3out/lnodep-ansible_LNode/lifp-ansible_LInterface/rspathL3OutAtt-[topology/pod-1/protpaths-101-102/pathep-[policy_group_one]]/mem-A"
+      - cm_l3out_logical_interface_vpc_member_absent.previous.0.l3extMember.attributes.side == "A"
+      - cm_l3out_logical_interface_vpc_member_absent.previous.0.l3extMember.attributes.addr == "0.0.0.0"
+      - cm_l3out_logical_interface_vpc_member_absent.previous.0.l3extMember.attributes.ipv6Dad == "enabled"
+      - cm_l3out_logical_interface_vpc_member_absent.previous.0.l3extMember.attributes.descr == ""
+      - cm_l3out_logical_interface_vpc_member_absent.current.0.l3extMember.attributes.dn == "uni/tn-ansible_tenant/out-ansible_l3out/lnodep-ansible_LNode/lifp-ansible_LInterface/rspathL3OutAtt-[topology/pod-1/protpaths-101-102/pathep-[policy_group_one]]/mem-A"
+      - cm_l3out_logical_interface_vpc_member_absent.current.0.l3extMember.attributes.side == "A"
+      - cm_l3out_logical_interface_vpc_member_absent.current.0.l3extMember.attributes.addr == "0.0.0.0"
+      - cm_l3out_logical_interface_vpc_member_absent.current.0.l3extMember.attributes.ipv6Dad == "enabled"
+      - cm_l3out_logical_interface_vpc_member_absent.current.0.l3extMember.attributes.descr == ""
+      - cm_l3out_logical_interface_vpc_member_absent.proposed == {}
+      - nm_l3out_logical_interface_vpc_member_absent is changed
+      - nm_l3out_logical_interface_vpc_member_absent.previous.0.l3extMember.attributes.dn == "uni/tn-ansible_tenant/out-ansible_l3out/lnodep-ansible_LNode/lifp-ansible_LInterface/rspathL3OutAtt-[topology/pod-1/protpaths-101-102/pathep-[policy_group_one]]/mem-A"
+      - nm_l3out_logical_interface_vpc_member_absent.previous.0.l3extMember.attributes.side == "A"
+      - nm_l3out_logical_interface_vpc_member_absent.previous.0.l3extMember.attributes.addr == "0.0.0.0"
+      - nm_l3out_logical_interface_vpc_member_absent.previous.0.l3extMember.attributes.ipv6Dad == "enabled"
+      - nm_l3out_logical_interface_vpc_member_absent.previous.0.l3extMember.attributes.descr == ""
+      - nm_l3out_logical_interface_vpc_member_absent.current == []
+      - nm_l3out_logical_interface_vpc_member_absent_again is not changed
+      - nm_l3out_logical_interface_vpc_member_absent_again.previous == []
+      - nm_l3out_logical_interface_vpc_member_absent_again.current == []

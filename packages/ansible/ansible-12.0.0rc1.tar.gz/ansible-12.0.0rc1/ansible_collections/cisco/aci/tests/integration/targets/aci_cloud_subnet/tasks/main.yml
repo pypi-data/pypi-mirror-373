@@ -1,0 +1,267 @@
+# Test code for the ACI modules
+# Copyright: (c) 2020, Cindy Zhao (@cizhao) <cizhao@cisco.com>
+# Copyright: (c) 2024, Samita Bhattacharjee (@samitab) <samitab@cisco.com>
+
+# GNU General Public License v3.0+ (see LICENSE or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+- name: Test that we have an ACI APIC host, ACI username and ACI password
+  ansible.builtin.fail:
+    msg: 'Please define the following variables: aci_hostname, aci_username and aci_password.'
+  when: aci_hostname is not defined or aci_username is not defined or aci_password is not defined
+
+# SET VARS
+- name: Set vars
+  ansible.builtin.set_fact:
+    aci_info: &aci_info
+      host: "{{ aci_hostname }}"
+      username: "{{ aci_username }}"
+      password: "{{ aci_password }}"
+      validate_certs: '{{ aci_validate_certs | default(false) }}'
+      use_ssl: '{{ aci_use_ssl | default(true) }}'
+      use_proxy: '{{ aci_use_proxy | default(true) }}'
+      output_level: '{{ aci_output_level | default("info") }}'
+
+- name: Verify Cloud and Non-Cloud Sites in use.
+  ansible.builtin.include_tasks: ../../../../../../integration/targets/aci_cloud_provider/tasks/main.yml
+
+- name: Execute tasks only for cloud sites
+  when: query_cloud.current | length > 0  # This condition will execute only cloud sites
+  block:  # block specifies execution of tasks within, based on conditions
+  - name: Ensure tenant doesn't exist
+    cisco.aci.aci_tenant:
+      <<: *aci_info
+      state: absent
+      tenant: ansible_test
+    register: tenant_absent
+
+  # CLEAN ENVIRONMENT
+
+  - name: Remove aci cloud context profile
+    cisco.aci.aci_cloud_ctx_profile:
+      <<: *aci_info
+      tenant: ansible_test
+      name: ctx_profile_1
+      state: absent
+
+  - name: Remove ansible_test
+    cisco.aci.aci_tenant: &aci_tenant_absent
+      <<: *aci_info
+      tenant: ansible_test
+      state: absent
+  
+  - name: Create ansible_test
+    cisco.aci.aci_tenant: &aci_tenant
+      <<: *aci_tenant_absent
+      state: present
+
+  - name: Create aci cloud context profile
+    cisco.aci.aci_cloud_ctx_profile:
+      <<: *aci_tenant
+      cloud: "{{ cloud_type }}"
+      name: ctx_profile_1
+      vrf: ctx_profile_vrf_1
+      region: "{{ region_2 }}"
+      primary_cidr: '10.50.0.0/16'
+      state: present
+
+  # CREATION TASKS
+
+  - name: Create aci cloud subnet (check_mode)
+    cisco.aci.aci_cloud_subnet: &aci_cloud_subnet
+      <<: *aci_tenant
+      cloud_context_profile: ctx_profile_1
+      cidr: '10.50.0.0/16'
+      availability_zone: "{{ availability_zone | default(omit) }}"
+      azure_region: "{{ az_region | default(omit) }}"
+      vnet_gateway: "{{ vnet_gateway | default(omit) }}"
+      address: 10.50.0.1
+      description: test description
+    check_mode: true
+    register: cm_add_subnet
+
+  - name: Create aci cloud subnet (normal_mode)
+    cisco.aci.aci_cloud_subnet:
+      <<: *aci_cloud_subnet
+    register: nm_add_subnet
+
+  - name: Create aci cloud subnet again (normal_mode)
+    cisco.aci.aci_cloud_subnet:
+      <<: *aci_cloud_subnet
+    register: nm_add_subnet_again
+
+  - name: Create aci cloud subnet with invalid zone/region
+    cisco.aci.aci_cloud_subnet:
+      <<: *aci_cloud_subnet
+      availability_zone: us-west-1a
+      azure_region: westus2
+    ignore_errors: true
+    register: nm_invalid_subnet_zone
+
+  - name: Verify create tasks
+    ansible.builtin.assert:
+      that:
+      - cm_add_subnet is changed
+      - cm_add_subnet.current == []
+      - cm_add_subnet.previous == []
+      - cm_add_subnet.proposed.cloudSubnet.attributes.ip == "10.50.0.1"
+      - cm_add_subnet.proposed.cloudSubnet.attributes.descr == "test description"
+      - cm_add_subnet.proposed.cloudSubnet.attributes.dn == "uni/tn-ansible_test/ctxprofile-ctx_profile_1/cidr-[10.50.0.0/16]/subnet-[10.50.0.1]"
+      - cm_add_subnet.proposed.cloudSubnet.attributes.annotation == "orchestrator:ansible"
+      - cm_add_subnet.proposed.cloudSubnet.attributes.scope == "private"
+      - nm_add_subnet is changed
+      - nm_add_subnet.current.0.cloudSubnet.attributes.ip == "10.50.0.1"
+      - nm_add_subnet.current.0.cloudSubnet.attributes.descr == "test description"
+      - nm_add_subnet.current.0.cloudSubnet.attributes.dn == "uni/tn-ansible_test/ctxprofile-ctx_profile_1/cidr-[10.50.0.0/16]/subnet-[10.50.0.1]"
+      - nm_add_subnet.current.0.cloudSubnet.attributes.annotation == "orchestrator:ansible"
+      - nm_add_subnet.current.0.cloudSubnet.attributes.scope == "private"
+      - nm_add_subnet.previous == []
+      - nm_add_subnet_again is not changed
+      - nm_add_subnet_again.current.0.cloudSubnet.attributes.ip == "10.50.0.1"
+      - nm_add_subnet_again.current.0.cloudSubnet.attributes.descr == "test description"
+      - nm_add_subnet_again.current.0.cloudSubnet.attributes.dn == "uni/tn-ansible_test/ctxprofile-ctx_profile_1/cidr-[10.50.0.0/16]/subnet-[10.50.0.1]"
+      - nm_add_subnet_again.current.0.cloudSubnet.attributes.annotation == "orchestrator:ansible"
+      - nm_add_subnet_again.current.0.cloudSubnet.attributes.scope == "private"
+      - nm_add_subnet_again.previous.0.cloudSubnet.attributes.ip == "10.50.0.1"
+      - nm_add_subnet_again.previous.0.cloudSubnet.attributes.descr == "test description"
+      - nm_add_subnet_again.previous.0.cloudSubnet.attributes.dn == "uni/tn-ansible_test/ctxprofile-ctx_profile_1/cidr-[10.50.0.0/16]/subnet-[10.50.0.1]"
+      - nm_add_subnet_again.previous.0.cloudSubnet.attributes.annotation == "orchestrator:ansible"
+      - nm_add_subnet_again.previous.0.cloudSubnet.attributes.scope == "private"
+      - nm_invalid_subnet_zone.msg == "parameters are mutually exclusive{{":"}} aws_availability_zone|azure_region"
+
+  - name: Verify create tasks for Azure
+    ansible.builtin.assert:
+      that:
+      - cm_add_subnet.proposed.cloudSubnet.attributes.usage == "gateway"
+      - cm_add_subnet.proposed.cloudSubnet.children.0.cloudRsZoneAttach.attributes.tDn == "uni/clouddomp/provp-azure/region-westus2/zone-default"
+      - nm_add_subnet.current.0.cloudSubnet.attributes.usage == "gateway"
+      - nm_add_subnet.current.0.cloudSubnet.children.0.cloudRsZoneAttach.attributes.tDn == "uni/clouddomp/provp-azure/region-westus2/zone-default"
+      - nm_add_subnet_again.current.0.cloudSubnet.attributes.usage == "gateway"
+      - nm_add_subnet_again.current.0.cloudSubnet.children.0.cloudRsZoneAttach.attributes.tDn == "uni/clouddomp/provp-azure/region-westus2/zone-default"
+      - nm_add_subnet_again.previous.0.cloudSubnet.attributes.usage == "gateway"
+      - nm_add_subnet_again.previous.0.cloudSubnet.children.0.cloudRsZoneAttach.attributes.tDn == "uni/clouddomp/provp-azure/region-westus2/zone-default"
+    when: az_region is defined and vnet_gateway is defined
+
+  - name: Verify create tasks for AWS
+    ansible.builtin.assert:
+      that:
+      - cm_add_subnet.proposed.cloudSubnet.attributes.usage == "user"
+      - cm_add_subnet.proposed.cloudSubnet.children.0.cloudRsZoneAttach.attributes.tDn == "uni/clouddomp/provp-aws/region-us-west-1/zone-a"
+      - nm_add_subnet.current.0.cloudSubnet.attributes.usage == "user"
+      - nm_add_subnet.current.0.cloudSubnet.children.0.cloudRsZoneAttach.attributes.tDn == "uni/clouddomp/provp-aws/region-us-west-1/zone-a"
+      - nm_add_subnet_again.current.0.cloudSubnet.attributes.usage == "user"
+      - nm_add_subnet_again.current.0.cloudSubnet.children.0.cloudRsZoneAttach.attributes.tDn == "uni/clouddomp/provp-aws/region-us-west-1/zone-a"
+      - nm_add_subnet_again.previous.0.cloudSubnet.attributes.usage == "user"
+      - nm_add_subnet_again.previous.0.cloudSubnet.children.0.cloudRsZoneAttach.attributes.tDn == "uni/clouddomp/provp-aws/region-us-west-1/zone-a"
+    when: availability_zone is defined
+
+  # UPDATE TASKS
+
+  - name: Update aci cloud subnet
+    cisco.aci.aci_cloud_subnet:
+      <<: *aci_cloud_subnet
+      description: test description 2
+    register: nm_update_subnet
+
+  - name: Verify aci cloud subnet update
+    ansible.builtin.assert:
+      that:
+      - nm_update_subnet is changed
+      - nm_update_subnet.current.0.cloudSubnet.attributes.ip == "10.50.0.1"
+      - nm_update_subnet.current.0.cloudSubnet.attributes.descr == "test description 2"
+      - nm_update_subnet.current.0.cloudSubnet.attributes.dn == "uni/tn-ansible_test/ctxprofile-ctx_profile_1/cidr-[10.50.0.0/16]/subnet-[10.50.0.1]"
+      - nm_update_subnet.current.0.cloudSubnet.attributes.annotation == "orchestrator:ansible"
+      - nm_update_subnet.current.0.cloudSubnet.attributes.scope == "private"
+      - nm_update_subnet.previous.0.cloudSubnet.attributes.ip == "10.50.0.1"
+      - nm_update_subnet.previous.0.cloudSubnet.attributes.descr == "test description"
+      - nm_update_subnet.previous.0.cloudSubnet.attributes.dn == "uni/tn-ansible_test/ctxprofile-ctx_profile_1/cidr-[10.50.0.0/16]/subnet-[10.50.0.1]"
+      - nm_update_subnet.previous.0.cloudSubnet.attributes.annotation == "orchestrator:ansible"
+      - nm_update_subnet.previous.0.cloudSubnet.attributes.scope == "private"
+
+  # QUERY TASKS
+
+  - name: Create extra subnets for query
+    cisco.aci.aci_cloud_subnet:
+      <<: *aci_cloud_subnet
+      cidr: 10.50.0.0/16
+      vnet_gateway: false
+      address: "{{ item }}"
+    loop:
+      - 10.50.0.2
+      - 10.50.0.3
+
+  - name: Query all subnets
+    cisco.aci.aci_cloud_subnet:
+      <<: *aci_tenant
+      cloud_context_profile: ctx_profile_1
+      cidr: '10.50.0.0/16'
+      state: query
+    register: query_all
+
+  - name: Verify query_all
+    ansible.builtin.assert:
+      that:
+      - query_all is not changed
+      - query_all.current.0.cloudCidr.attributes.addr == "10.50.0.0/16"
+      - query_all.current.0.cloudCidr.children | length == 3
+      - query_all.current.0.cloudCidr.children.0.cloudSubnet.attributes.ip == "10.50.0.3"
+      - query_all.current.0.cloudCidr.children.1.cloudSubnet.attributes.ip == "10.50.0.2"
+      - query_all.current.0.cloudCidr.children.2.cloudSubnet.attributes.ip == "10.50.0.1"
+
+  - name: Query a specific subnet
+    cisco.aci.aci_cloud_subnet:
+      <<: *aci_info
+      tenant: ansible_test
+      cloud_context_profile: ctx_profile_1
+      cidr: '10.50.0.0/16'
+      address: 10.50.0.1
+      state: query
+    register: query_subnet_1
+
+  - name: Verify query_subnet_1
+    ansible.builtin.assert:
+      that:
+      - query_subnet_1 is not changed
+      - query_subnet_1.current.0.cloudSubnet.attributes.ip == "10.50.0.1"
+      - query_subnet_1.current.0.cloudSubnet.attributes.scope == "private"
+      - query_subnet_1.current.0.cloudSubnet.attributes.dn == "uni/tn-ansible_test/ctxprofile-ctx_profile_1/cidr-[10.50.0.0/16]/subnet-[10.50.0.1]"
+
+  # DELETE TASKS
+  
+  - name: Remove cloud subnet (check_mode)
+    cisco.aci.aci_cloud_subnet:
+      <<: *aci_cloud_subnet
+      state: absent
+    check_mode: true
+    register: cm_remove_subnet
+
+  - name: Remove cloud subnet (normal_mode)
+    cisco.aci.aci_cloud_subnet:
+      <<: *aci_cloud_subnet
+      state: absent
+    register: nm_remove_subnet
+
+  - name: Remove cloud subnet again (normal_mode)
+    cisco.aci.aci_cloud_subnet:
+      <<: *aci_cloud_subnet
+      state: absent
+    register: nm_remove_subnet_again
+
+  - name: Verify remove cloud subnet
+    ansible.builtin.assert:
+      that:
+      - cm_remove_subnet is changed
+      - cm_remove_subnet.proposed == {}
+      - cm_remove_subnet.previous.0.cloudSubnet.attributes.ip == "10.50.0.1"
+      - cm_remove_subnet.previous.0.cloudSubnet.attributes.dn == "uni/tn-ansible_test/ctxprofile-ctx_profile_1/cidr-[10.50.0.0/16]/subnet-[10.50.0.1]"
+      - nm_remove_subnet is changed
+      - nm_remove_subnet.current == []
+      - nm_remove_subnet.previous.0.cloudSubnet.attributes.ip == "10.50.0.1"
+      - nm_remove_subnet.previous.0.cloudSubnet.attributes.dn == "uni/tn-ansible_test/ctxprofile-ctx_profile_1/cidr-[10.50.0.0/16]/subnet-[10.50.0.1]"
+      - nm_remove_subnet_again is not changed
+      - nm_remove_subnet_again.previous == []
+      - nm_remove_subnet_again.current == []
+
+  # CLEAN ENVIRONMENT
+  - name: Remove ansible_test
+    cisco.aci.aci_tenant:
+      <<: *aci_tenant_absent

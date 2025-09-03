@@ -1,0 +1,43 @@
+---
+- name: run website integration tests 
+  block:  
+  - name: create website directory structure
+    ansible.windows.win_file:
+      path: "{{ item }}"
+      state: directory
+    loop:
+      - "{{ test_phisical_path }}"
+      - "{{ test_alt_phisical_path }}"
+
+  - name: create test application pool
+    microsoft.iis.web_app_pool:
+      name: "{{ test_apppool }}"
+      state: present
+
+  # Tests
+  - include_tasks: tests.yml
+  - include_tasks: bindings.yml
+
+  always:
+  # Cleanup
+  - name: remove test website
+    microsoft.iis.website:
+      name: "{{ test_website_name }}"
+      state: absent
+
+  - name: remove test application pool
+    microsoft.iis.web_app_pool:
+      name: "{{ test_apppool }}"
+      state: absent
+
+  - name: remove website directory structure
+    ansible.windows.win_file:
+      path: "{{ item }}"
+      state: absent
+    loop:
+      - "{{ test_phisical_path }}"
+      - "{{ test_alt_phisical_path }}"
+
+  - name: remove certs
+    raw: "remove-item cert:\\localmachine\\my\\{{ thumbprint1.stdout_lines[0] }} -force -ea silentlycontinue"
+    when: thumbprint1 is defined

@@ -1,0 +1,161 @@
+# README FIRST
+# 1. replace "NAMESPACE" and "COLLECTION_NAME" with the correct name in the env section (e.g. with 'community' and 'mycollection')
+# 2. If you don't have unit tests remove that section
+# 3. If your collection depends on other collections ensure they are installed, see "Install collection dependencies"
+# If you need help please ask in #ansible-community on the Libera.chat IRC network
+
+name: CI
+on:
+  # Manual triggers
+  workflow_dispatch:
+  # Run CI against all pushes (direct commits, also merged PRs), Pull Requests
+  push:
+    branches:
+      - main
+      - stable-*
+    paths-ignore:
+      - .github/workflows/docs*.yml
+      - .github/workflows/github-release.yml
+      - changelogs/fragments/*.yml
+      - .vscode/*
+  pull_request:
+    paths-ignore:
+      - .github/workflows/docs*.yml
+      - .github/workflows/github-release.yml
+      - changelogs/fragments/*.yml
+      - .vscode/*
+
+  # Run CI once per day (at 06:00 UTC)
+  # This ensures that even if there haven't been commits that we are still testing against latest version of ansible-test for each ansible-base version
+  schedule:
+    - cron: "0 6 * * *"
+
+# Cancel existing runs on new commits to a branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NAMESPACE: lowlydba
+  COLLECTION_NAME: sqlserver
+
+jobs:
+  ###
+  # Sanity tests (REQUIRED)
+  #
+  # https://docs.ansible.com/ansible/latest/dev_guide/testing_sanity.html
+
+  sanity:
+    name: Sanity (Ⓐ${{ matrix.ansible }})
+    strategy:
+      matrix:
+        # https://docs.ansible.com/ansible/latest/reference_appendices/release_and_maintenance.html#ansible-core-support-matrix
+        ansible:
+          # It's important that Sanity is tested against all stable-X.Y branches
+          # Testing against `devel` may fail as new tests are added.
+          - stable-2.17 # November 2025 EOL
+          - stable-2.18 # May 2026 EOL
+          - stable-2.19
+          - devel
+    runs-on: ubuntu-latest
+    steps:
+      # ansible-test requires the collection to be in a directory in the form
+      # .../ansible_collections/${{env.NAMESPACE}}/${{env.COLLECTION_NAME}}/
+
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          path: ansible_collections/${{env.NAMESPACE}}/${{env.COLLECTION_NAME}}
+
+      - name: Run confidence tests
+        uses: ansible-community/ansible-test-gh-action@v1.17.0
+        with:
+          ansible-core-version: ${{ matrix.ansible }}
+          testing-type: sanity
+          pull-request-change-detection: false
+
+      - name: Generate coverage report
+        run: ansible-test coverage xml -v --requirements --group-by command --group-by version
+        working-directory: ./ansible_collections/${{env.NAMESPACE}}/${{env.COLLECTION_NAME}}
+
+      # See the reports at https://codecov.io/gh/lowlydba/lowlydba.sqlserver
+      - uses: codecov/codecov-action@v5.4.3
+        with:
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  ###
+  # Integration tests (RECOMMENDED)
+  #
+  # https://docs.ansible.com/ansible/latest/dev_guide/testing_integration.html
+
+  # If the application you are testing is available as a docker container and you want to test
+  # multiple versions see the following for an example:
+  # https://github.com/ansible-collections/community.zabbix/tree/master/.github/workflows
+
+  integration:
+    runs-on: ubuntu-latest
+    name: I (Ⓐ${{ matrix.ansible }}+py${{ matrix.python }})
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        ports:
+          - 1433:1433
+        env:
+          ACCEPT_EULA: "Y"
+          SA_PASSWORD: L0wlydb4
+    strategy:
+      fail-fast: false
+      matrix:
+        ansible:
+          - stable-2.17
+          - stable-2.18
+          - stable-2.19
+          - devel
+        python:
+          - 3.10
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          path: ansible_collections/${{env.NAMESPACE}}/${{env.COLLECTION_NAME}}
+
+      - name: Set integration test options
+        working-directory: ./ansible_collections/${{env.NAMESPACE}}/${{env.COLLECTION_NAME}}/tests/integration
+        run: cp integration_config.sample.yml integration_config.yml
+
+      # Prevent dbatools v2+ issues with newer docker image for 2.13
+      - name: Run integration tests - v2.13 workaround
+        if: ${{ matrix.ansible == 'stable-2.13' }}
+        uses: ansible-community/ansible-test-gh-action@v1.17.0
+        with:
+          docker-image: 'quay.io/ansible/default-test-container:6.13.0'
+          ansible-core-version: ${{ matrix.ansible }}
+          target-python-version: 3.9
+          testing-type: integration
+          test-deps: community.general
+          pull-request-change-detection: false
+
+      - name: Run integration tests
+        if: ${{ matrix.ansible != 'stable-2.13'}}
+        uses: ansible-community/ansible-test-gh-action@v1.17.0
+        with:
+          ansible-core-version: ${{ matrix.ansible }}
+          #target-python-version: ${{ matrix.python }}
+          testing-type: integration
+          test-deps: community.general
+          pull-request-change-detection: false
+
+      # ansible-test support producing code coverage date
+      - name: Generate coverage report
+        run: ansible-test coverage xml -v --requirements
+        working-directory: ./ansible_collections/${{env.NAMESPACE}}/${{env.COLLECTION_NAME}}
+
+      # See the reports at https://codecov.io/gh/lowlydba/lowlydba.sqlserver
+      - uses: codecov/codecov-action@v5.4.3
+        with:
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

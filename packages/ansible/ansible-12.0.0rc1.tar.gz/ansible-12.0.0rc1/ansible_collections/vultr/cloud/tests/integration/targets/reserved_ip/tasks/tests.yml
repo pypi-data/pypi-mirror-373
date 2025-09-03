@@ -1,0 +1,238 @@
+# Copyright (c) 2021, René Moser <mail@renemoser.net>
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+---
+- name: setup
+  vultr.cloud.reserved_ip:
+    label: "{{ vultr_reserved_ip_name }}"
+    ip_type: v4
+    region: "{{ vultr_reserved_ip_region }}"
+    state: absent
+  register: result
+- name: verify setup
+  ansible.builtin.assert:
+    that:
+      - result is success
+
+- name: test fail if missing args
+  vultr.cloud.reserved_ip:
+  register: result
+  ignore_errors: true
+- name: verify test fail if missing args
+  ansible.builtin.assert:
+    that:
+      - result is failed
+      - 'result.msg == "missing required arguments: ip_type, label, region"'
+
+- name: setup instance
+  vultr.cloud.instance:
+    label: "{{ vultr_instance.label }}"
+    os: "{{ vultr_instance.os }}"
+    plan: "{{ vultr_instance.plan }}"
+    region: "{{ vultr_instance.region }}"
+
+- name: test create reserved ip in check mode
+  vultr.cloud.reserved_ip:
+    label: "{{ vultr_reserved_ip_name }}"
+    ip_type: v4
+    region: "{{ vultr_reserved_ip_region }}"
+  register: result
+  check_mode: true
+- name: verify test create reserved ip in check mode
+  ansible.builtin.assert:
+    that:
+      - result is changed
+
+- name: test create reserved ip
+  vultr.cloud.reserved_ip:
+    label: "{{ vultr_reserved_ip_name }}"
+    ip_type: v4
+    region: "{{ vultr_reserved_ip_region }}"
+  register: result
+- name: verify test create reserved ip
+  ansible.builtin.assert:
+    that:
+      - result is changed
+      - result.vultr_reserved_ip.label == vultr_reserved_ip_name
+      - not result.vultr_reserved_ip.instance_id
+      - result.vultr_reserved_ip.subnet is defined
+      - result.vultr_reserved_ip.ip_type == 'v4'
+
+- name: test create reserved ip idempotence
+  vultr.cloud.reserved_ip:
+    label: "{{ vultr_reserved_ip_name }}"
+    ip_type: v4
+    region: "{{ vultr_reserved_ip_region }}"
+  register: result
+- name: verify test create reserved ip idempotence
+  ansible.builtin.assert:
+    that:
+      - result is not changed
+      - result.vultr_reserved_ip.label == vultr_reserved_ip_name
+      - not result.vultr_reserved_ip.instance_id
+      - result.vultr_reserved_ip.subnet is defined
+      - result.vultr_reserved_ip.ip_type == 'v4'
+
+- name: test attach instance of reserved ip in check mode
+  vultr.cloud.reserved_ip:
+    label: "{{ vultr_reserved_ip_name }}"
+    ip_type: v4
+    region: "{{ vultr_reserved_ip_region }}"
+    instance_name: "{{ vultr_instance.label }}"
+  register: result
+  check_mode: true
+- name: verify test detach instance of reserved ip in check mode
+  ansible.builtin.assert:
+    that:
+      - result is changed
+      - result.vultr_reserved_ip.label == vultr_reserved_ip_name
+      - not result.vultr_reserved_ip.instance_id
+      - result.vultr_reserved_ip.subnet
+      - result.vultr_reserved_ip.ip_type == 'v4'
+
+- name: test attach instance of reserved ip
+  vultr.cloud.reserved_ip:
+    label: "{{ vultr_reserved_ip_name }}"
+    ip_type: v4
+    region: "{{ vultr_reserved_ip_region }}"
+    instance_name: "{{ vultr_instance.label }}"
+  register: result
+- name: verify test attach instance of reserved ip
+  ansible.builtin.assert:
+    that:
+      - result is changed
+      - result.vultr_reserved_ip.label == vultr_reserved_ip_name
+      - result.vultr_reserved_ip.instance_id
+      - result.vultr_reserved_ip.subnet
+      - result.vultr_reserved_ip.ip_type == 'v4'
+
+- name: test attach instance of reserved ip idempotence
+  vultr.cloud.reserved_ip:
+    label: "{{ vultr_reserved_ip_name }}"
+    ip_type: v4
+    region: "{{ vultr_reserved_ip_region }}"
+    instance_name: "{{ vultr_instance.label }}"
+  register: result
+- name: verify test attach instance of reserved ip idempotence
+  ansible.builtin.assert:
+    that:
+      - result is not changed
+      - result.vultr_reserved_ip.label == vultr_reserved_ip_name
+      - result.vultr_reserved_ip.instance_id
+      - result.vultr_reserved_ip.subnet
+      - result.vultr_reserved_ip.ip_type == 'v4'
+
+- name: test ignore instance attached reserved ip idempotence
+  vultr.cloud.reserved_ip:
+    label: "{{ vultr_reserved_ip_name }}"
+    ip_type: v4
+    region: "{{ vultr_reserved_ip_region }}"
+  register: result
+- name: verify test test ignore instance attached reserved ip idempotence
+  ansible.builtin.assert:
+    that:
+      - result is not changed
+      - result.vultr_reserved_ip.label == vultr_reserved_ip_name
+      - result.vultr_reserved_ip.instance_id
+      - result.vultr_reserved_ip.subnet
+      - result.vultr_reserved_ip.ip_type == 'v4'
+
+- name: test detach instance of reserved ip in check mode
+  vultr.cloud.reserved_ip:
+    label: "{{ vultr_reserved_ip_name }}"
+    ip_type: v4
+    region: "{{ vultr_reserved_ip_region }}"
+    instance_id: ""
+  register: result
+  check_mode: true
+- name: verify test detach instance of reserved ip in check mode
+  ansible.builtin.assert:
+    that:
+      - result is changed
+      - result.vultr_reserved_ip.label == vultr_reserved_ip_name
+      - result.vultr_reserved_ip.instance_id
+      - result.vultr_reserved_ip.subnet
+      - result.vultr_reserved_ip.ip_type == 'v4'
+
+- name: test detach instance of reserved ip
+  vultr.cloud.reserved_ip:
+    label: "{{ vultr_reserved_ip_name }}"
+    ip_type: v4
+    region: "{{ vultr_reserved_ip_region }}"
+    instance_id: ""
+  register: result
+- name: verify test detach instance of reserved ip
+  ansible.builtin.assert:
+    that:
+      - result is changed
+      - result.vultr_reserved_ip.label == vultr_reserved_ip_name
+      - not result.vultr_reserved_ip.instance_id
+      - result.vultr_reserved_ip.subnet
+      - result.vultr_reserved_ip.ip_type == 'v4'
+
+- name: test detach instance of reserved ip idempotence
+  vultr.cloud.reserved_ip:
+    label: "{{ vultr_reserved_ip_name }}"
+    ip_type: v4
+    region: "{{ vultr_reserved_ip_region }}"
+    instance_id: ""
+  register: result
+- name: verify test detach instance of reserved ip idempotence
+  ansible.builtin.assert:
+    that:
+      - result is not changed
+      - result.vultr_reserved_ip.label == vultr_reserved_ip_name
+      - not result.vultr_reserved_ip.instance_id
+      - result.vultr_reserved_ip.subnet
+      - result.vultr_reserved_ip.ip_type == 'v4'
+
+- name: test absent reserved ip in check mode
+  vultr.cloud.reserved_ip:
+    label: "{{ vultr_reserved_ip_name }}"
+    ip_type: v4
+    region: "{{ vultr_reserved_ip_region }}"
+    state: absent
+  register: result
+  check_mode: true
+- name: verify test absent reserved ip in check mode
+  ansible.builtin.assert:
+    that:
+      - result is changed
+      - result.vultr_reserved_ip.label == vultr_reserved_ip_name
+      - not result.vultr_reserved_ip.instance_id
+      - result.vultr_reserved_ip.subnet
+      - result.vultr_reserved_ip.ip_type == 'v4'
+
+- name: test absent reserved ip
+  vultr.cloud.reserved_ip:
+    label: "{{ vultr_reserved_ip_name }}"
+    ip_type: v4
+    region: "{{ vultr_reserved_ip_region }}"
+    state: absent
+  register: result
+- name: verify test absent reserved ip
+  ansible.builtin.assert:
+    that:
+      - result is changed
+      - result.vultr_reserved_ip.label == vultr_reserved_ip_name
+      - result.vultr_reserved_ip.label == vultr_reserved_ip_name
+      - not result.vultr_reserved_ip.instance_id
+      - result.vultr_reserved_ip.subnet
+      - result.vultr_reserved_ip.ip_type == 'v4'
+
+- name: test absent reserved ip idempotence
+  vultr.cloud.reserved_ip:
+    label: "{{ vultr_reserved_ip_name }}"
+    ip_type: v4
+    region: "{{ vultr_reserved_ip_region }}"
+    state: absent
+  register: result
+- name: verify test absent reserved ip idempotence
+  ansible.builtin.assert:
+    that:
+      - result is not changed
+
+- name: cleanup instance
+  vultr.cloud.instance:
+    label: "{{ vultr_instance.label }}"
+    region: "{{ vultr_instance.region }}"
+    state: absent

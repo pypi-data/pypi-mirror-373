@@ -1,0 +1,272 @@
+# Test code for the ACI modules
+# Copyright: (c) 2017, Jacob McGill (@jmcgill298)
+# Copyright: (c) 2020, Shreyas Srish (@shrsr)
+# Copyright: (c) 2024, Samita Bhattacharjee (@samiib) <samitab@cisco.com>
+
+# GNU General Public License v3.0+ (see LICENSE or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+- name: Test that we have an ACI APIC host, ACI username and ACI password
+  ansible.builtin.fail:
+    msg: 'Please define the following variables: aci_hostname, aci_username and aci_password.'
+  when: aci_hostname is not defined or aci_username is not defined or aci_password is not defined
+
+- name: Verify Cloud and Non-Cloud Sites in use.
+  ansible.builtin.include_tasks: ../../../../../../integration/targets/aci_cloud_provider/tasks/main.yml
+
+- name: ensure tenant does not exists
+  cisco.aci.aci_tenant: &aci_tenant_absent
+    host: "{{ aci_hostname }}"
+    username: "{{ aci_username }}"
+    password: "{{ aci_password }}"
+    validate_certs: '{{ aci_validate_certs | default(false) }}'
+    use_ssl: '{{ aci_use_ssl | default(true) }}'
+    use_proxy: '{{ aci_use_proxy | default(true) }}'
+    output_level: debug
+    state: absent
+    tenant: ansible_test
+
+- name: Execute tasks only for non-cloud sites
+  when: query_cloud.current == []  # This condition will execute only non-cloud sites
+  block:  # block specifies execution of tasks within, based on conditions
+  - name: ensure tenant exists for tests to kick off
+    cisco.aci.aci_tenant: &aci_tenant_present
+      <<: *aci_tenant_absent
+      state: present
+    register: tenant_present
+
+  - name: ensure monitoring policy exists
+    cisco.aci.aci_epg_monitoring_policy:
+      host: "{{ aci_hostname }}"
+      username: "{{ aci_username }}"
+      password: "{{ aci_password }}"
+      validate_certs: '{{ aci_validate_certs | default(false) }}'
+      use_ssl: '{{ aci_use_ssl | default(true) }}'
+      use_proxy: '{{ aci_use_proxy | default(true) }}'
+      output_level: debug
+      monitoring_policy: check
+      tenant: ansible_test
+
+  - name: ensure ap does not exist initially
+    cisco.aci.aci_ap:
+      <<: *aci_tenant_present
+      ap: anstest
+      state: absent
+
+  - name: create ap - check mode works
+    cisco.aci.aci_ap: &aci_ap_present
+      <<: *aci_tenant_present
+      ap: anstest
+      description: Ansible Test
+      monitoring_policy: check
+    check_mode: true
+    register: ap_present_check_mode
+
+  - name: create ap - creation works
+    cisco.aci.aci_ap:
+      <<: *aci_ap_present
+    register: ap_present
+
+  - name: create ap - extra for query
+    cisco.aci.aci_ap:
+      <<: *aci_tenant_present
+      ap: anstest2
+  
+  - name: create ap - idempotency works
+    cisco.aci.aci_ap:
+      <<: *aci_ap_present
+    register: ap_present_idempotent
+
+  - name: update ap - update works
+    cisco.aci.aci_ap:
+      <<: *aci_ap_present
+      description: Ansible Test Update
+    register: ap_present_update
+
+  - name: create ap - creation works
+    cisco.aci.aci_ap:
+      <<: *aci_tenant_present
+    ignore_errors: true
+    register: ap_present_missing_param
+
+  - name: present asserts
+    ansible.builtin.assert:
+      that:
+        - ap_present_check_mode is changed
+        - ap_present is changed
+        - ap_present.previous == []
+        - ap_present.current.0.fvAp.children.0.fvRsApMonPol.attributes.tnMonEPGPolName == 'check'
+        - ap_present.current.0.fvAp.attributes.annotation == 'orchestrator:ansible'
+        - ap_present.sent == ap_present_check_mode.sent
+        - ap_present.sent.fvAp.attributes.descr == 'Ansible Test'
+        - ap_present.sent.fvAp.attributes.name == 'anstest'
+        - ap_present_idempotent is not changed
+        - ap_present_idempotent.previous != []
+        - ap_present_idempotent.sent == {}
+        - ap_present_update is changed
+        - ap_present_update.sent.fvAp.attributes.descr == 'Ansible Test Update'
+        - ap_present_missing_param is failed
+        - 'ap_present_missing_param.msg == "state is present but all of the following are missing: ap"'
+
+  # TEST NO VERIFICATION
+  - name: create ap with no verification (check mode)
+    cisco.aci.aci_ap: &aci_ap_no_verify
+      <<: *aci_ap_present
+      ap: anstest-no-verify
+      no_verification: true
+    check_mode: true
+    register: ap_present_no_verify_cm
+
+  - name: create ap with no verification
+    cisco.aci.aci_ap:
+      <<: *aci_ap_no_verify
+    register: ap_present_no_verify
+
+  - name: create ap with no verification again
+    cisco.aci.aci_ap:
+      <<: *aci_ap_no_verify
+    register: ap_present_no_verify_again
+
+  - name: update ap with no verification
+    cisco.aci.aci_ap:
+      <<: *aci_ap_no_verify
+      description: Ansible Test No Verify
+    register: update_ap_present_no_verify
+
+  - name: delete ap with no verification
+    cisco.aci.aci_ap:
+      <<: *aci_ap_no_verify
+      state: absent
+    register: delete_ap_present_no_verify
+
+  - name: delete ap with no verification again
+    cisco.aci.aci_ap:
+      <<: *aci_ap_no_verify
+      state: absent
+    register: delete_ap_present_no_verify_again
+
+  - name: no verification asserts
+    ansible.builtin.assert:
+      that:
+        - ap_present_no_verify_cm is changed
+        - ap_present_no_verify_cm.current_verified == false
+        - ap_present_no_verify_cm.current.0 == ap_present_no_verify_cm.proposed
+        - ap_present_no_verify is changed
+        - ap_present_no_verify.current_verified == false
+        - ap_present_no_verify.current.0 == ap_present_no_verify.proposed
+        - ap_present_no_verify.previous == []
+        - ap_present_no_verify_again is not changed
+        - ap_present_no_verify_again.current_verified == true
+        - ap_present_no_verify_again.current.0.fvAp.attributes.name == "anstest-no-verify"
+        - ap_present_no_verify_again.current.0.fvAp.attributes.descr == "Ansible Test"
+        - ap_present_no_verify_again.previous.0.fvAp.attributes.name == "anstest-no-verify"
+        - ap_present_no_verify_again.previous.0.fvAp.attributes.descr == "Ansible Test"
+        - update_ap_present_no_verify is changed
+        - update_ap_present_no_verify.current_verified == false
+        - update_ap_present_no_verify.current.0 == update_ap_present_no_verify.proposed
+        - update_ap_present_no_verify.previous.0.fvAp.attributes.name == "anstest-no-verify"
+        - update_ap_present_no_verify.previous.0.fvAp.attributes.descr == "Ansible Test"
+        - delete_ap_present_no_verify is changed
+        - delete_ap_present_no_verify.current_verified == false
+        - delete_ap_present_no_verify.current.0 == delete_ap_present_no_verify.proposed
+        - delete_ap_present_no_verify.previous.0.fvAp.attributes.name == "anstest-no-verify"
+        - delete_ap_present_no_verify.previous.0.fvAp.attributes.descr == "Ansible Test No Verify"
+        - delete_ap_present_no_verify_again is not changed
+        - delete_ap_present_no_verify_again.current_verified == true
+        - delete_ap_present_no_verify_again.current == []
+        - delete_ap_present_no_verify_again.previous == []
+        - delete_ap_present_no_verify_again.proposed == {}
+
+  - name: get ap - query specific ap
+    cisco.aci.aci_ap: &aci_ap_query
+      <<: *aci_ap_present
+      state: query
+    register: query_ap
+
+  - name: get all ap for tenant - query tenant aps
+    cisco.aci.aci_ap:
+      <<: *aci_ap_query
+      ap: "{{ fakevar | default(omit) }}"
+    register: query_ap_tenant
+
+  - name: get all ap by name - query ap name
+    cisco.aci.aci_ap:
+      <<: *aci_ap_query
+      tenant: "{{ fakevar | default(omit) }}"
+    register: query_ap_ap
+
+  - name: get all aps - query general
+    cisco.aci.aci_ap:
+      <<: *aci_ap_query
+      tenant: "{{ fakevar | default(omit) }}"
+      ap: "{{ fakevar | default(omit) }}"
+    register: query_all
+
+  - name: query assertions
+    ansible.builtin.assert:
+      that:
+        - query_ap is not changed
+        - query_ap.current | length == 1
+        - query_ap.current.0.fvAp.attributes.name == "anstest"
+        - query_ap.current.0.fvAp.children.0.fvRsApMonPol.attributes.tnMonEPGPolName == 'check'
+        - '"tn-ansible_test/ap-anstest.json" in query_ap.url'
+        - query_ap_tenant is not changed
+        - query_ap_tenant.current | length == 1
+        - query_ap_tenant.current.0.fvTenant.children | length == 2
+        - '"rsp-subtree-class=fvAp" in query_ap_tenant.filter_string'
+        - '"tn-ansible_test.json" in query_ap_tenant.url'
+        - query_ap_ap is not changed
+        - query_ap_ap.current != []
+        - query_ap_ap.current.0.fvAp is defined
+        - '"query-target-filter=eq(fvAp.name,\"anstest\")" in query_ap_ap.filter_string'
+        - '"class/fvAp.json" in query_ap_ap.url'
+        - query_all is not changed
+        - query_all.current | length > 1
+        - '"class/fvAp.json" in query_all.url'
+
+  - name: delete ap - check_mode works
+    cisco.aci.aci_ap: &aci_ap_absent
+      <<: *aci_ap_present
+      state: absent
+    check_mode: true
+    register: ap_delete_check_mode
+
+  - name: delete ap - delete works
+    cisco.aci.aci_ap:
+      <<: *aci_ap_absent
+    register: ap_delete
+
+  - name: delete ap - delete idempotency works
+    cisco.aci.aci_ap:
+      <<: *aci_ap_absent
+    register: ap_delete_idempotent
+
+  - name: delete ap - missing param error
+    cisco.aci.aci_ap:
+      <<: *aci_ap_absent
+      tenant: "{{ fakevar | default(omit) }}"
+    ignore_errors: true
+    register: ap_delete_missing_param
+
+  - name: delete ap remove ap used for query
+    cisco.aci.aci_ap:
+      <<: *aci_ap_absent
+      ap: anstest2
+
+  - name: absent assertions
+    ansible.builtin.assert:
+      that:
+        - ap_delete_check_mode is changed
+        - ap_delete_check_mode.previous != []
+        - '"tn-ansible_test/ap-anstest.json" in ap_delete_check_mode.url'
+        - ap_delete is changed
+        - ap_delete.previous == ap_delete_check_mode.previous
+        - ap_delete_idempotent is not changed
+        - ap_delete_idempotent.previous == []
+        - ap_delete_missing_param is failed
+        - 'ap_delete_missing_param.msg == "state is absent but all of the following are missing: tenant"'
+
+  - name: delete tenant - cleanup before ending tests
+    cisco.aci.aci_tenant:
+      <<: *aci_tenant_present
+      state: absent
+    when: tenant_present is changed

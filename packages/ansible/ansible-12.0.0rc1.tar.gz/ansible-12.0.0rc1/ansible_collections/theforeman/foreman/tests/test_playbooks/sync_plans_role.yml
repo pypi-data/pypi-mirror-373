@@ -1,0 +1,54 @@
+---
+- hosts: localhost
+  collections:
+    - theforeman.foreman
+  gather_facts: false
+  vars_files:
+    - vars/server.yml
+  tasks:
+    - name: ensure test organization
+      include_tasks: tasks/organization.yml
+      vars:
+        organization_name: "Test Organization"
+        organization_state: "present"
+    - name: create products and repos
+      include_role:
+        name: repositories
+      vars:
+        foreman_organization: "Test Organization"
+        foreman_products:
+          - name: CentOS Stream 9
+            repositories:
+              - name: BaseOS x86_64
+                content_type: yum
+                url: https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/
+
+- hosts: tests
+  collections:
+    - theforeman.foreman
+  gather_facts: false
+  vars_files:
+    - vars/server.yml
+  roles:
+    - role: sync_plans
+      vars:
+        foreman_organization: "Test Organization"
+        foreman_sync_plans:
+          - name: Weekly Sync
+            interval: weekly
+            sync_date: 2020-11-19 00:00:00 UTC
+            products:
+              - CentOS Stream 9
+
+- hosts: localhost
+  collections:
+    - theforeman.foreman
+  gather_facts: false
+  vars_files:
+    - vars/server.yml
+  tasks:
+    - name: delete test organization
+      include_tasks: tasks/organization.yml
+      vars:
+        organization_name: "Test Organization"
+        organization_state: "absent"

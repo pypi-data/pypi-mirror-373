@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 2 * * *'
+
+jobs:
+  build:
+    name: Build collection
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ansible-version: [stable-2.18]
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.12
+
+      - name: Install ansible (${{ matrix.ansible-version }})
+        run: pip install https://github.com/ansible/ansible/archive/${{ matrix.ansible-version }}.tar.gz --disable-pip-version-check
+
+      - name: Build a collection tarball
+        run: ansible-galaxy collection build --output-path "${GITHUB_WORKSPACE}/.cache/collection-tarballs"
+
+      - name: Store migrated collection artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: collection
+          path: .cache/collection-tarballs
+
+  ###
+  # Unit tests (OPTIONAL)
+  #
+  # https://docs.ansible.com/ansible/latest/dev_guide/testing_units.html
+
+  unit:
+    name: Unit Tests (Ⓐ${{ matrix.ansible }} with ${{ matrix.python }} python)
+    needs: [build]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.11', '3.12']
+        ansible:
+          - stable-2.16
+          - stable-2.17
+          - stable-2.18
+          - devel
+        exclude:
+          - ansible: stable-2.18
+            python: '3.10'
+          - ansible: devel
+            python: '3.10'
+
+    steps:
+      - name: Perform unit testing with ansible-test
+        uses: ansible-community/ansible-test-gh-action@release/v1
+        with:
+          testing-type: units
+          coverage: ${{ (matrix.python == '3.11' && matrix.ansible == 'stable-2.18') && 'always' ||  'never' }}
+          ansible-core-version: ${{ matrix.ansible }}
+          target-python-version: ${{ matrix.python }}
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  ###
+  # Sanity tests (REQUIRED)
+  #
+  # https://docs.ansible.com/ansible/latest/dev_guide/testing_sanity.html
+
+  sanity:
+    name: Sanity (Ⓐ${{ matrix.ansible }} with ${{ matrix.python }} python)
+    needs: [build]
+    strategy:
+      matrix:
+        python: ['3.10', '3.11', '3.12']
+        ansible:
+          - stable-2.16
+          - stable-2.17
+          - stable-2.18
+          - devel
+        exclude:
+          - ansible: stable-2.18
+            python: '3.10'
+          - ansible: devel
+            python: '3.10'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Perform sanity testing
+        uses: ansible-community/ansible-test-gh-action@release/v1
+        with:
+          ansible-core-version: ${{ matrix.ansible }}
+          target-python-version: ${{ matrix.python }}
+          testing-type: sanity
+          pull-request-change-detection: true
+          coverage: never
+
+  ansible-lint:
+    needs: [build]
+    uses: ansible/ansible-content-actions/.github/workflows/ansible_lint.yaml@main

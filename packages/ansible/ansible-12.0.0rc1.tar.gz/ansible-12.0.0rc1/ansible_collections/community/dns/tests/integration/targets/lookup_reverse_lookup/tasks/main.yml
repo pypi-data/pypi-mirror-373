@@ -1,0 +1,37 @@
+---
+# Copyright (c) Ansible Project
+# GNU General Public License v3.0+ (see LICENSES/GPL-3.0-or-later.txt or https://www.gnu.org/licenses/gpl-3.0.txt)
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+- name: Look up some records
+  ansible.builtin.set_fact:
+    ansible_a: >-
+      {{ query('community.dns.reverse_lookup', '9.9.9.9') }}
+    ansible_aaaa: >-
+      {{ query('community.dns.reverse_lookup', '2620:fe::fe') }}
+    ansible_both: >-
+      {{ query('community.dns.reverse_lookup', '9.9.9.9', '2620:fe::fe') }}
+    ansible_via_other: >-
+      {{ query('community.dns.reverse_lookup', '9.9.9.9', server=['one.one.one.one.', '8.8.8.8']) }}
+
+- name: Check results
+  assert:
+    that:
+      - ansible_a == ['dns9.quad9.net.']
+      - ansible_aaaa == ['dns.quad9.net.']
+      - ansible_both == ['dns9.quad9.net.', 'dns.quad9.net.']
+      - ansible_via_other == ['dns9.quad9.net.']
+
+- name: Test with invalid nameserver IP
+  ansible.builtin.set_fact:
+    broken: >-
+      {{ query('community.dns.reverse_lookup', '9.9.9.9', server='999.999.999.999') }}
+  register: result
+  ignore_errors: true
+
+- name: Check results
+  assert:
+    that:
+      - result is failed
+      - >-
+        "Nameserver 999.999.999.999 does not exist" in result.msg

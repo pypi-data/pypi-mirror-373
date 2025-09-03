@@ -1,0 +1,83 @@
+---
+- hosts: localhost
+  collections:
+    - theforeman.foreman
+  gather_facts: false
+  vars_files:
+    - vars/server.yml
+  tasks:
+    - include_tasks: tasks/location.yml
+      vars:
+        location_state: "present"
+    - include_tasks: tasks/organization.yml
+      vars:
+        organization_state: "present"
+    - include_tasks: tasks/usergroup.yml
+      vars:
+        usergroup_name: "internal_group"
+        usergroup_state: present
+    - include_tasks: tasks/auth_source_ldap.yml
+      vars:
+        auth_source_ldap_state: present
+        auth_source_ldap_tls: false
+        auth_source_ldap_account_password: "{{ default_auth_source_ldap_account_password }}"
+    - include_tasks: tasks/external_usergroup.yml
+      vars:
+        external_usergroup_state: absent
+        auth_source_ldap: "Example LDAP"
+        usergroup: "internal_group"
+
+- hosts: tests
+  collections:
+    - theforeman.foreman
+  gather_facts: false
+  vars_files:
+    - vars/server.yml
+  tasks:
+    - include_tasks: tasks/external_usergroup.yml
+      vars:
+        external_usergroup_state: present
+        auth_source_ldap: "Example LDAP"
+        usergroup: "internal_group"
+        expected_change: true
+    - include_tasks: tasks/external_usergroup.yml
+      vars:
+        external_usergroup_state: present
+        auth_source_ldap: "Example LDAP"
+        usergroup: "internal_group"
+        expected_change: false
+    - include_tasks: tasks/external_usergroup.yml
+      vars:
+        external_usergroup_state: absent
+        auth_source_ldap: "Example LDAP"
+        usergroup: "internal_group"
+        expected_change: true
+    - include_tasks: tasks/external_usergroup.yml
+      vars:
+        external_usergroup_state: absent
+        auth_source_ldap: "Example LDAP"
+        usergroup: "internal_group"
+        expected_change: false
+
+- hosts: localhost
+  collections:
+    - theforeman.foreman
+  tags:
+    - teardown
+  gather_facts: false
+  vars_files:
+    - vars/server.yml
+  tasks:
+    - include_tasks: tasks/usergroup.yml
+      vars:
+        usergroup_name: "internal_group"
+        usergroup_state: "absent"
+    - include_tasks: tasks/auth_source_ldap.yml
+      vars:
+        auth_source_ldap_state: absent
+    - include_tasks: tasks/location.yml
+      vars:
+        location_state: "absent"
+    - include_tasks: tasks/organization.yml
+      vars:
+        organization_state: "absent"
