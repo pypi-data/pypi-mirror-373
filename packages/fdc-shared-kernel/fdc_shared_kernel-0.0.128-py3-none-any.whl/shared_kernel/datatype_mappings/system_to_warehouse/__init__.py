@@ -1,0 +1,1 @@
+from shared_kernel.datatype_mappings.system_to_warehouse.redshift import system_to_redshift
