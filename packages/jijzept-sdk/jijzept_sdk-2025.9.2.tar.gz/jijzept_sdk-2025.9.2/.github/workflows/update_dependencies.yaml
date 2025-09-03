@@ -1,0 +1,44 @@
+name: Update Dependencies
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 23 * * 2"  # 毎週水曜日の日本時間8:00に実行（火曜日UTC 23:00）
+jobs:
+  update_dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install required dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install httpx
+      - name: Update Dependencies
+        run: python gen_pyproject_toml.py
+      - name: Check Diffenrences
+        run: git diff
+      - name: Commit and Push
+        run: |
+          git config --global user.name "${USERNAME}"
+          git config --global user.email "${EMAIL}"
+          git add .
+          git commit --allow-empty -m "Update dependencies: $(date +'%Y-%m-%d %H:%M:%S')"
+          git push origin HEAD:main
+        env:
+          USERNAME: github-actions[bot]
+          EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GITHUB_TOKEN: ${{ github.token }}
+  notify:
+    needs: [update_dependencies]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    steps:
+      - uses: slackapi/slack-github-action@v1.23.0
+        with:
+          payload: '{"text": "JijZeptSDKの依存関係の更新に失敗しました: <https://github.com/Jij-Inc/JijZeptSDK|JijZeptSDK> "}'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

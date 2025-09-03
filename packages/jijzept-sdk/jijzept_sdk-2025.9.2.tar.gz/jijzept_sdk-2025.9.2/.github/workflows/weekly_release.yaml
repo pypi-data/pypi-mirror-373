@@ -1,0 +1,72 @@
+name: Weekly Release
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 23 * * 2"  # 毎週水曜日の日本時間8:30に実行（火曜日UTC 23:30）
+jobs:
+  check_dependencies:
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      # pip 25.1系で依存関係が解決できなくなったため、pipのバージョンを抑えている
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip==25.0
+          python -m pip install ".[all]"
+  notify:
+    needs: [check_dependencies]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    steps:
+      - uses: slackapi/slack-github-action@v1.23.0
+        with:
+          payload: '{"text": "JijZeptSDKの依存関係が壊れています: <https://github.com/Jij-Inc/JijZeptSDK|JijZeptSDK> "}'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+  # 理想を言えば、リリース作成とアップロードのGitHubActionsは分けたいところだが、
+  # gh release createでリリースした際には、リリースやタグでトリガーするワークフローが動かず、
+  # workflow_runを使ってトリガーしてもリリースで付与したタグが反映されなかったため、断念した。
+  build_and_release:
+    needs: [check_dependencies]
+    if: ${{ success() }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Generate Version
+        id: generate_version
+        run: |
+          echo "VERSION=v$(date +'%Y.%m.%d')" >> "${GITHUB_OUTPUT}"
+      # Generate Release Noteはリリースに含まれるパッケージのバージョンを調べやすくするために実装している。
+      # pyproject.tomlにはJijが提供する無償パッケージのバージョンが明記されているため、これで十分という考えである。
+      - name: Generate Release Note
+        run: |
+          echo "<details><summary>pyproject.toml</summary>$(cat pyproject.toml)</details>" > release_note.txt
+      - name: Create Release
+        env:
+          VERSION: ${{ steps.generate_version.outputs.VERSION }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${VERSION}" --title "Release: ${VERSION}" --notes-file release_note.txt
+      # git tagで日付バージョンを付与し、setuptools-scmでバージョン取得する方針を採用している
+      - name: Build Wheel
+        env:
+          VERSION: ${{ steps.generate_version.outputs.VERSION }}
+        run: |
+          git tag "${VERSION}"
+          python -m pip install --upgrade pip build
+          python -m build --sdist --outdir ./dist .
+      - uses: pypa/gh-action-pypi-publish@release/v1
