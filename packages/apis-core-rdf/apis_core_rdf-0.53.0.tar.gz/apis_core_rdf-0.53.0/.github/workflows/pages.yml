@@ -1,0 +1,53 @@
+#Github workflow for building documentation
+#
+#SPDX-FileCopyrightText: 2022 Birger Schacht
+#SPDX-License-Identifier: MIT
+
+name: "Build documentation"
+
+on:
+  push:
+    branches: main
+    paths-ignore:
+      - '.github/**'
+  workflow_dispatch:
+
+env:
+  DJANGO_SETTINGS_MODULE: sample_project.settings
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+     - uses: actions/checkout@v5
+     - name: Install uv
+       uses: astral-sh/setup-uv@v6
+     - name: Build docs
+       run: uv run --group docs mkdocs build -f docs/mkdocs.yml -d _build
+     - name: Build coverage
+       run: |
+         uv run --group docs coverage run --source="." manage.py test
+         uv run --group docs coverage html
+     - uses: actions/checkout@v5
+       with:
+         path: apis-core-rdf-pages
+         ref: pages
+     - name: Commit new docs
+       run: |
+         cd apis-core-rdf-pages
+         git rm -rf *
+         cp -r $GITHUB_WORKSPACE/docs/_build/* .
+         cp -r $GITHUB_WORKSPACE/htmlcov .
+         rm -f htmlcov/.gitignore
+         touch .nojekyll
+         git config user.name github-actions
+         git config user.email github-actions@github.com
+         git add .
+         if ! git diff --staged --exit-code .; then
+           git commit -m "Updated documentation"
+           git push --set-upstream origin pages
+         fi
