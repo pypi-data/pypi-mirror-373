@@ -1,0 +1,115 @@
+<link rel="stylesheet" href="https://pyscript.net/releases/2024.11.1/core.css">
+<script type="module" src="https://pyscript.net/releases/2024.11.1/core.js"></script>
+<style>
+    #log-container{
+        max-height: 50vh;
+        overflow: scroll;
+        display: flex;
+        flex-direction: column-reverse;
+    }
+</style>
+
+<p>
+    cchdo.hydro version: <span id="hydro_version"></span><br />
+    cchdo.params version: <span id="params_version"></span>
+</p>
+<p>
+<label>Add an exchange file (csv or zip) <input type="file" id="ex_file" name="ex_file" disabled></label>
+<h4>Options</h4>
+<label><input id="checks_flags" type="checkbox" checked> Check Flags</label>
+<p>
+<button class="sd-sphinx-override sd-btn sd-text-wrap sd-btn-primary reference internal" id="process_exchange">Process Exchange</button>
+</p>
+<p>
+<div id='output'>
+    <span id="status">Loading Python Runtime</span>
+    <br />
+</div>
+<h4>Log Console</h4>
+<div>
+<div id="log-container">
+<code id='log'>
+</code>
+</div>
+</div>
+<script type="py" src="./_static/convert_exchange.py" service-worker="./sw.js" worker name="my-worker" config='{"packages": ["xarray", "cchdo.hydro", "netcdf4"], "interpreter": "0.27.0"}'></script>
+<script type="py" src="./_static/derrived_makers.py" service-worker="./sw.js" worker name="derived1" config='{"packages": ["xarray", "cchdo.hydro", "netcdf4" ], "interpreter": "0.27.0"}'></script>
+<script type="py" src="./_static/derrived_makers.py" service-worker="./sw.js" worker name="derived2" config='{"packages": ["xarray", "cchdo.hydro", "netcdf4" ], "interpreter": "0.27.0"}'></script>
+<script type="py" src="./_static/derrived_makers.py" service-worker="./sw.js" worker name="derived3" config='{"packages": ["xarray", "cchdo.hydro", "netcdf4" ], "interpreter": "0.27.0"}'></script>
+<script type="py">
+    from pyscript import workers, display, when
+    from js import document, console, window, Uint8Array, Blob
+    import json
+
+    def logger(msg):
+        display(msg, target="log", append=True)
+
+    logger("Waiting for Python to be ready")
+    my_worker = await workers["my-worker"]
+    my_worker.sync.logger = logger
+    logger("Python ready")
+    status = document.querySelector("#status")
+
+    versions = await my_worker.versions()
+    document.querySelector("#hydro_version").innerText = versions.hydro_version
+    document.querySelector("#params_version").innerText = versions.params_version
+
+    document.querySelector("#process_exchange").disabled = False
+    document.querySelector("#ex_file").disabled = False
+    status.innerText = "Ready..."
+
+    def _handle_success(result):
+        nc_bytes, nc_fname = result
+        nc_blob = Blob.new([Uint8Array.new(nc_bytes)], {type : 'application/octet-stream'})
+        nc_url = window.URL.createObjectURL(nc_blob) 
+        nc_download_link = document.createElement("a")
+        nc_download_link.href = nc_url
+        nc_download_link.download = nc_fname
+        nc_download_link.innerText = f"Download {nc_fname}"
+        output = document.querySelector("#output")
+        output.appendChild(nc_download_link)
+        output.appendChild(document.createElement("br"))
+        document.querySelector("#process_exchange").disabled = False
+
+        status = document.querySelector("#status")
+        status.innerText = f""
+        return nc_bytes
+
+    async def _make_derived(nc_bytes):
+        worker1 = await workers["derived1"]
+        worker2 = await workers["derived2"]
+        worker3 = await workers["derived3"]
+
+        worker1.make_derived(nc_bytes, "to_sum").then(_handle_success)
+        worker2.make_derived(nc_bytes, "to_woce").then(_handle_success)
+        # TODO make this not need scipy
+        #worker3.make_derived(nc_bytes, "to_coards").then(_handle_success)
+
+
+    def _handle_submit(arr_buffer):
+        status = document.querySelector("#status")
+        check_flags = document.querySelector("#checks_flags").checked
+        checks = json.dumps({"flags": check_flags})
+        # cannot actually pass objects it seems, so stringiffy it
+        return my_worker.to_xarray(arr_buffer, checks)
+
+    def _handle_fail(something):
+        status = document.querySelector("#status")
+        status.innerText = f"Failure see traceback... (or JS console log)"
+        document.querySelector("#process_exchange").disabled = False
+
+    @when("click", "#process_exchange")
+    def _process_exchange(*args):
+        document.querySelector("#process_exchange").disabled = True
+        try:
+            status = document.querySelector("#status")
+            status.innerText = "Processing..."
+            file_list = document.querySelector("#ex_file").files
+            first_item = file_list.item(0)
+
+            first_item.arrayBuffer().then(_handle_submit, _handle_fail).then(_handle_success).then(_make_derived).catch(_handle_fail)
+        except:
+            status.innerText = "Error, was a file picked?"
+            document.querySelector("#process_exchange").disabled = False
+
+</script>
