@@ -1,0 +1,1 @@
+DEFAULT_ENDPOINT = "https://api.yourdomain.com/audit/logs"
