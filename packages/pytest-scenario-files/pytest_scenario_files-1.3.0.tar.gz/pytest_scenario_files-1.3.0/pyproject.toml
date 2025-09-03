@@ -1,0 +1,276 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pytest-scenario-files"
+description = 'A pytest plugin that generates unit test scenarios from data files.'
+readme = 'README.md'
+authors = [
+    { name = "Paul Suh", email = "paul@mspex.net" }
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    'Framework :: Pytest',
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    'Topic :: Software Development :: Testing',
+    'Programming Language :: Python',
+    'Programming Language :: Python :: 3',
+    'Programming Language :: Python :: 3.9',
+    'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
+    'Programming Language :: Python :: 3.12',
+    'Programming Language :: Python :: 3.13',
+    'Programming Language :: Python :: 3 :: Only',
+    'Programming Language :: Python :: Implementation :: CPython',
+    'Operating System :: OS Independent',
+]
+dependencies = [
+    "pytest >= 7.4, < 9",
+    "pyyaml < 7"
+]
+requires-python = ">=3.9"
+dynamic = ["version"]
+
+[project.optional-dependencies]
+precommit = [
+    "ruff"
+]
+unittest = [
+    "pytest",
+    "pytest-cov"
+]
+responses = [
+    "responses < 1"
+]
+respx = [
+    "respx < 1"
+]
+
+[project.urls]
+"Documentation" = "https://pytest-scenario-files.mspex.net/"
+"Repository" = "https://github.com/paulsuh/pytest-scenario-files"
+"Issues" = "https://github.com/paulsuh/pytest-scenario-files/issues"
+"Changelog" = "https://github.com/paulsuh/pytest-scenario-files/blob/main/CHANGES.md"
+
+[project.entry-points.pytest11]
+pytest_scenario_files = "pytest_scenario_files"
+
+##############################
+#                            #
+# Hatch config               #
+#                            #
+##############################
+# Building
+[tool.hatch.build.targets.sdist]
+exclude = [
+    ".github",
+    ".idea",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pytest_scenario_files"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "_version.py"
+
+# Default environment
+[tool.hatch.envs.default]
+installer = "uv"
+dependencies = [
+    "hatchling",
+    "hatch-vcs",
+    "coverage[toml]",
+    "pytest",
+    "ruff",
+    "sphinx",
+    "responses",
+    "respx"
+]
+python="3.13"
+
+[tool.hatch.envs.default.scripts]
+test = "pytest {args:tests}"
+test-cov = "coverage run -m pytest {args:tests}"
+cov-report = [
+  "- coverage combine",
+  "coverage report",
+]
+cov = [
+  "test-cov",
+  "cov-report",
+]
+
+# static type-checking environment
+[tool.hatch.envs.types]
+dependencies = [
+    "mypy>=1.0.0",
+    "responses",
+    "respx"
+]
+
+[tool.hatch.envs.types.scripts]
+check = "mypy --install-types --non-interactive {args:src/pytest_scenario_files tests}"
+
+[tool.hatch.envs.test]
+dependencies = [
+    "coverage[toml]>=6.5",
+    "pytest~={matrix:pytest}",
+    "pytest-xdist",
+    "pytest-cov"
+]
+
+# documentation generation environment
+[tool.hatch.envs.docs]
+dependencies = [
+    "sphinx",
+    "responses",
+    "furo"
+]
+
+[tool.hatch.envs.docs.scripts]
+generate = "sphinx-build --builder html --write-all --verbose docs/source docs/build"
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.9", "3.10", "3.11", "3.12", "3.13"]
+pytest = ["7.4", "8.2", "8.3", "8.4"]
+integrations = ["none", "responses", "respx"]
+
+[tool.hatch.envs.test.overrides]
+matrix.integrations.dependencies = [
+    {value = "responses", if = ["responses"]},
+    {value = "respx", if = ["respx"]}
+]
+
+
+##############################
+#                            #
+# Pytest config              #
+#                            #
+##############################
+[tool.pytest.ini_options]
+pytester_example_dir = "tests/pytester_example_files"
+
+##############################
+#                            #
+# Coverage config            #
+#                            #
+##############################
+[tool.coverage.run]
+source = ["src/pytest_scenario_files"]
+branch = true
+#parallel = true
+omit = [
+  "tests/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "no cov",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "def _setup():"
+]
+
+##############################
+#                            #
+# Ruff config                #
+#                            #
+##############################
+[tool.ruff]
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+]
+
+# Same as Black.
+line-length = 120
+indent-width = 4
+
+target-version = "py311"
+
+[tool.ruff.lint]
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
+# Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
+# McCabe complexity (`C901`) by default.
+select = ["D", "E4", "E7", "E9", "F", "I", "UP"]
+ignore = [
+    "D100",     # docstring required in public module
+    "D203",     # one blank line before class
+    "D213",     # multiline summary second line
+    "D400",     # first line should be in imperative mood
+    "D401",     # first line should be in imperative mood
+    "D415"      # first line should end in a period, question mark, or exclamation point
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ruff.lint.extend-per-file-ignores]
+"tests/*" = ["D"]
+# Ignore `E402` (import violations) and `F401` (unused imports) in all
+# `__init__.py` files
+"__init__.py" = ["E402", "F401"]
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
+
+# Enable auto-formatting of code examples in docstrings. Markdown,
+# reStructuredText code/literal blocks and doctests are all supported.
+#
+# This is currently disabled by default, but it is planned for this
+# to be opt-out in the future.
+docstring-code-format = true
+
+# Set the line length limit used when formatting code snippets in
+# docstrings.
+#
+# This only has an effect when the `docstring-code-format` setting is
+# enabled.
+docstring-code-line-length = "dynamic"
