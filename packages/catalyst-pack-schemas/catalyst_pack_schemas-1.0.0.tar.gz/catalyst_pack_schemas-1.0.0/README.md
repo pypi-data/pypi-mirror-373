@@ -1,0 +1,196 @@
+# Catalyst Pack Schemas
+
+Shared schemas and validation utilities for Catalyst Knowledge Packs.
+
+## Overview
+
+This package provides:
+- **Data Models**: Python dataclasses for all pack components
+- **JSON Schemas**: Formal schema definitions for validation
+- **Validators**: Utilities for validating pack configurations
+- **TypeScript Types**: Type definitions for JavaScript/TypeScript projects
+
+## Installation
+
+### Python
+```bash
+pip install catalyst-pack-schemas
+```
+
+### Node.js
+```bash
+npm install @catalyst/pack-schemas
+```
+
+## Usage
+
+### Python
+
+```python
+from catalyst_pack_schemas import Pack, validate_pack_yaml
+
+# Load and validate a pack
+pack = Pack.from_yaml_file("my-pack/pack.yaml")
+
+# Validate a pack file
+result = validate_pack_yaml("my-pack/pack.yaml")
+if not result['valid']:
+    print("Validation errors:", result['errors'])
+```
+
+### Schema Validation
+
+```python
+from catalyst_pack_schemas import PackValidator
+
+validator = PackValidator()
+is_valid = validator.validate_pack(pack)
+
+if not is_valid:
+    print("Errors:", validator.errors)
+    print("Warnings:", validator.warnings)
+```
+
+## Schema Structure
+
+A Catalyst Knowledge Pack consists of:
+
+### Metadata
+- **name**: Unique pack identifier
+- **version**: Semantic version (x.y.z)
+- **description**: Human-readable description
+- **vendor**: Pack author/organization
+- **domain**: Business domain (e.g., "security", "devops")
+- **pricing_tier**: One of "free", "basic", "premium", "enterprise"
+
+### Connection Configuration
+Universal connection settings supporting:
+- **REST APIs**: HTTP/HTTPS endpoints
+- **Databases**: PostgreSQL, MySQL, MongoDB, Redis, etc.
+- **Message Queues**: RabbitMQ, Apache Kafka, etc.
+- **File Systems**: Local, S3, GCS, Azure Blob, etc.
+- **SSH/Shell**: Remote command execution
+
+### Tools
+Individual operations that can be performed:
+- **type**: Operation type (list, details, search, execute, query, command)
+- **parameters**: Input parameters with types and validation
+- **transform**: Response transformation (jq, JavaScript, Python, templates)
+
+### Prompts
+AI prompt templates with suggested tools and parameters.
+
+### Resources
+Documentation and reference materials.
+
+## Pack Types by Connection
+
+### REST API Packs
+```yaml
+connection:
+  type: rest
+  base_url: https://api.example.com
+  auth:
+    method: bearer
+    config:
+      token_env: API_TOKEN
+```
+
+### Database Packs
+```yaml
+connection:
+  type: database
+  engine: postgresql
+  host: localhost
+  port: 5432
+  database: mydb
+  auth:
+    method: basic
+    config:
+      username_env: DB_USER
+      password_env: DB_PASS
+```
+
+### SSH Packs
+```yaml
+connection:
+  type: ssh
+  hostname: server.example.com
+  username: admin
+  auth:
+    method: ssh_key
+    config:
+      key_file: ~/.ssh/id_rsa
+```
+
+## Validation Rules
+
+### Required Fields
+- `metadata.name`, `metadata.version`, `metadata.description`
+- `metadata.vendor`, `metadata.domain`, `metadata.license`
+- `connection.type`
+
+### Connection-Specific Requirements
+- **REST**: `base_url` required
+- **Database**: `engine`, `host` required  
+- **SSH**: `hostname`, `username` required
+
+### Tool Validation
+- `description` and `type` required for all tools
+- `endpoint` required for REST tools (list, details, search, execute)
+- `sql` required for database query tools
+- `command` required for SSH command tools
+
+### Version Constraints
+- Semantic versioning (x.y.z format)
+- Compatible with specified MCP server versions
+
+## Schema Evolution
+
+### Version Compatibility
+- **Major versions**: Breaking changes to schema structure
+- **Minor versions**: New optional fields, backward compatible
+- **Patch versions**: Bug fixes, no schema changes
+
+### Migration Support
+The package includes migration utilities for updating packs between schema versions.
+
+## Development
+
+### Building from Source
+```bash
+git clone https://github.com/your-org/catalyst-pack-schemas
+cd catalyst-pack-schemas
+pip install -e .
+```
+
+### Running Tests
+```bash
+pytest tests/
+```
+
+### Validation Testing
+```bash
+# Validate example packs
+python -m catalyst_pack_schemas.cli validate examples/
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Ensure all tests pass
+5. Submit a pull request
+
+## License
+
+MIT License - see LICENSE file for details.
+
+## Changelog
+
+### v1.0.0
+- Initial release with core schema definitions
+- Support for REST, database, SSH, and file system connections
+- Comprehensive validation framework
+- JSON schema generation
