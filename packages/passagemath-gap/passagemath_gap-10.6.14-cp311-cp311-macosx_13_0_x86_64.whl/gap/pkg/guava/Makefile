@@ -1,0 +1,58 @@
+GAPPATH=/Users/runner/sage-local/lib/gap/
+GAPARCH=x86_64-apple-darwin22-default64-kv9
+CFLAGS  += -O2
+SRCDIR  = ./src/leon
+CJSRCDIR= ./src/ctjhai
+BINDIR = bin/$(GAPARCH)
+#GAP_PATH=../..
+#PKG_PATH=.
+#SRCDISTFILE=guava
+
+targets: default
+
+default: minimum-weight leonconv desauto install
+
+minimum-weight: $(CJSRCDIR)/minimum-weight.o $(CJSRCDIR)/minimum-weight-gf2.o $(CJSRCDIR)/minimum-weight-gf3.o $(CJSRCDIR)/popcount.o
+	$(CC) $(LDFLAGS) -o $(CJSRCDIR)/minimum-weight \
+$(CJSRCDIR)/minimum-weight.o $(CJSRCDIR)/minimum-weight-gf2.o \
+$(CJSRCDIR)/minimum-weight-gf3.o $(CJSRCDIR)/popcount.o -lm
+
+leonconv: desauto
+	cd ./src; $(MAKE) CC="$(CC)" CPPFLAGS="$(CPPFLAGS)" CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)";
+
+desauto: 
+	cd $(SRCDIR); autoreconf --install --force ; ./configure; $(MAKE) CC="$(CC)" CPPFLAGS="$(CPPFLAGS)" CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)";
+
+minimum-weight.o: $(CJSRCDIR)/minimum-weight.c $(CJSRCDIR)/minimum-weight-gf2.h $(CJSRCDIR)/minimum-weight-gf3.h $(CJSRCDIR)/popcount.h $(CJSRCDIR)/config.h $(CJSRCDIR)/types.h
+	$(CC) -c -O3 -Wall -I $(CJSRCDIR) $(CJSRCDIR)/minimum-weight.c
+
+minimum-weight-gf2.o: $(CJSRCDIR)/minimum-weight-gf2.c $(CJSRCDIR)/minimum-weight-gf2.h $(CJSRCDIR)/popcount.h $(CJSRCDIR)/config.h $(CJSRCDIR)/types.h
+	$(CC) -c -O3 -Wall -I $(CJSRCDIR) $(CJSRCDIR)/minimum-weight-gf2.c
+
+minimum-weight-gf3.o: $(CJSRCDIR)/minimum-weight-gf3.c $(CJSRCDIR)/minimum-weight-gf3.h $(CJSRCDIR)/popcount.h $(CJSRCDIR)/config.h $(CJSRCDIR)/types.h
+	$(CC) -c -O3 -Wall -I $(CJSRCDIR) $(CJSRCDIR)/minimum-weight-gf3.c
+
+popcount.o: $(CJSRCDIR)/popcount.c $(CJSRCDIR)/popcount.h $(CJSRCDIR)/config.h $(CJSRCDIR)/types.h
+	$(CC) -c -O3 -Wall -I $(CJSRCDIR) $(CJSRCDIR)/popcount.c
+
+
+install: leonconv minimum-weight
+	mkdir -p $(BINDIR)
+	cp ./src/leonconv $(BINDIR)
+	cp $(SRCDIR)/desauto $(BINDIR)
+	cp $(CJSRCDIR)/minimum-weight $(BINDIR)
+	cp $(SRCDIR)/wtdist $(BINDIR)
+
+clean:
+	-rm -f $(BINDIR)/*.o
+	-( cd src && make clean )
+	-( cd $(CJSRCDIR) && rm -f minimum-weight *.o)
+	-( cd $(SRCDIR) && make clean )
+
+distclean: clean
+	rm -rf bin
+	mkdir bin
+	rm -f Makefile Makefile-*
+	-( cd src && make distclean )
+	-( cd src/leon && make distclean )
+	-( cd doc && rm -f *.aux *.log *.dvi *.ps)
