@@ -1,0 +1,242 @@
+---
+code: |
+  # HACK
+  # Create a placeholder value to avoid playground errors
+  al_sessions_snapshot_results = DAEmpty() 
+---
+initial: True
+code: |
+  ########### Save title and progress to session list ##################
+  if get_config("assembly line",{}).get("update session metadata", True):
+    update_current_session_metadata({
+      "auto_title": str(al_sessions_interview_title),
+      "progress": get_progress(),
+    })
+---
+template: al_sessions_interview_title
+content: |
+  % if defined('users[0].name.first'):
+  ${ comma_and_list(users.complete_elements()) }
+  % if defined('other_parties[0].name.first'):
+  v. ${ comma_and_list(other_parties.complete_elements()) }
+  % endif
+  % else:
+  ${ all_variables(special='titles').get('full') }
+  % if all_variables(special='titles').get('sub'):
+  : ${ all_variables(special='titles').get('sub') }
+  % endif
+  % endif
+---
+modules:
+  - .sessions
+---
+modules:
+  - docassemble.ALToolbox.misc
+---
+features:
+  css: docassemble.ALToolbox:collapse_template.css  
+---
+id: save answer snapshot
+# Save a copy
+decoration: save
+question: |
+  Save an answer set
+subquestion: |
+  % if not user_logged_in():
+  <div class="alert alert-danger fade show d-flex" role="alert">
+  :exclamation-triangle: &nbsp;
+  <div>
+  You need to be signed in to save an answer set.
+  </div>
+  </div>
+  
+  The "answer set" feature lets you make a copy of your answers to
+  use again and again. You can load this answer set in a new interview 
+  later.
+  
+  ${ action_button_html(url_of('login'), label="Sign in", icon="sign-in-alt", size="md", color="primary") }
+  % else:
+
+  <div class="alert alert-info alert-dismissible fade show d-flex" role="alert">
+  :info-circle: &nbsp;
+  <div>
+  You do not need to use this feature to save your progress. Your progress is saved
+  automatically as you answer questions on this site.
+  </div>
+  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+  
+  
+  <a class="collapsed" data-bs-toggle="collapse" href="#al_sessions_explain_answer_set_template" role="button" aria-expanded="false" aria-controls="collapseExample"><span class="pdcaretopen"><i class="fas fa-caret-down"></i></span><span class="pdcaretclosed"><i class="fas fa-caret-right"></i></span>What is this?</a>
+  <div class="collapse" id="al_sessions_explain_answer_set_template"><div class="card card-body pb-1">
+  <p>
+  The "answer set" feature lets you make a copy of your answers to
+  use again and again. You can load this answer set in a new interview later.
+  </p>
+  <p>
+  This feature is designed to help people who work on multiple forms that have
+  shared questions, such as names, addresses, and information about 
+  family members.
+  </p>
+  <p>
+  You will only be able to copy some of your answers:
+  </p>
+  <ul>
+  <li>Copying answers depends on the way each form was designed. The author may
+    not have written both forms in a way that is compatible with this feature.
+    </li>
+    <li>Images, file uploads, and signatures are never copied by this feature. You
+    will need to sign the document again and upload any exhibits again.
+    </li>
+    </ul>
+  <p>    
+  It may not be possible to edit some answers:
+  </p>
+  <ul>
+  <li>
+  Editing depends on features in each form. Some forms may not have edit
+    features that cover all of your answers.
+  </li>
+  </ul>
+
+  </div></div>
+  
+  
+  #### Your progress
+  You visited ${ all_variables(include_internal=True).get('_internal',{}).get('steps',1) }
+  screens in "${ all_variables(special='titles').get('full') }" so far.
+  
+  % endif
+fields:
+  - Name your answer set: al_sessions_snapshot_label
+    default: |      
+      ${ al_sessions_interview_title }
+    help: |
+      Give this answer set a name you can remember later
+continue button label: |
+  :save: Save answer set
+script: |
+  <script>
+  % if not user_logged_in():
+    $(".da-field-buttons .btn-primary").attr("disabled", true);
+    $(".da-form-group input").attr("disabled", true);
+  % endif
+  </script>  
+---
+event: al_sessions_delete_session
+code: |
+  interview_list(action="delete", filename=action_argument("filename"), session=action_argument("session"))
+  log("Answer set deleted", "success")
+---
+id: load answer
+decoration: folder-open
+question: |
+  Load answer set
+subquestion: |
+  % if not user_logged_in():
+  <div class="alert alert-danger fade show d-flex" role="alert">
+  :exclamation-triangle: &nbsp;
+  <div>
+  You need to be signed in to load an answer set.
+  </div>
+  </div>
+  
+  The "answer set" feature lets you make a copy of your answers to
+  use again and again. You can load the answer set in a new interview later.
+  
+  ${ action_button_html(url_of('login'), label="Sign in", icon="sign-in-alt", size="md", color="primary") }
+  % else:
+  % if not interview_list_html():
+  You haven't created any answer sets yet. 
+  
+  You can
+  <a href="${ url_of('interviews') }" class="alert-link">visit in-progress forms</a>
+  to keep working on a form that you started earlier. To create an answer set, use the
+  "Save answer set" link in the main menu.
+  % else:
+  Tap the name of an answer set below to re-use the answers in the form you are working
+  on now. You can
+  <a href="${ url_of('interviews') }" class="alert-link">visit in-progress forms</a>
+  to keep working on a form that you started earlier.
+
+  ${ interview_list_html() }
+  % endif
+  % endif
+event:  al_load_saved_session_screen
+back button label: Back
+---
+#reconsider:
+#  - al_load_saved_session_screen
+event: al_load_saved_session
+code: |
+  # Using this code block that then loads a screen is critical to get this to work
+  # without taking people back to the screen after they load the answers
+  # set_save_status('ignore')
+  al_load_saved_session_screen
+---
+event: al_sessions_fast_forward_session
+code: |
+  # set_save_status('ignore')
+  al_sessions_snapshot_results = load_interview_answers(
+        action_argument("i"), 
+        action_argument("session"), 
+        new_session=False, 
+        additional_variables_to_filter=al_sessions_additional_variables_to_filter)
+  force_ask('al_sessions_load_status')
+---
+code: |
+  if user_logged_in():
+    new_session_id = save_interview_answers(
+          metadata = { "title": al_sessions_snapshot_label },
+          additional_variables_to_filter=al_sessions_additional_variables_to_filter,
+        )
+    log(f"Saved interview {al_sessions_snapshot_label} with id {new_session_id}")
+  else:
+    log(f"Anonymous user tried to save session snapshot, ignoring.")
+  al_sessions_save_session_snapshot = True
+---
+id: al sessions save status
+continue button field: al_sessions_save_status
+question: |
+  % if showifdef('new_session_id'):
+  Your answer set was successfully saved
+  % else:
+  Something went wrong when we tried to save your answer set.
+  You can try again.
+  % endif
+subquestion: |
+  Tap "next" to keep answering any unanswered questions and finish the interview.
+back button: False  
+---
+id: al sessions load status
+continue button field: al_sessions_load_status
+comment: |
+  #TODO There's no error handling yet so this might be a lie
+question: |
+  % if al_sessions_snapshot_results:
+  Your answer set was loaded
+  % else:
+  Your answer set was not loaded. You can try again.
+  % endif
+subquestion: |
+  Tap "next" to keep answering any unanswered questions and finish the interview.
+back button: False
+---
+question: |
+  Upload a JSON file
+subquestion: |
+  You can upload a file containing an answer set that you exported from this or a different server.
+fields:
+  - Upload a JSON file: al_sessions_json_file
+    datatype: file
+    accept: |
+      "application/json, text/json, text/*, .json"
+validation code: |
+  try:
+    json.loads(al_sessions_json_file.slurp())
+  except:
+    validation_error("Upload a file with valid JSON")
+---
+code: |
+  al_sessions_snapshot_results = load_interview_json(al_sessions_json_file.slurp())
+  al_sessions_import_json = True

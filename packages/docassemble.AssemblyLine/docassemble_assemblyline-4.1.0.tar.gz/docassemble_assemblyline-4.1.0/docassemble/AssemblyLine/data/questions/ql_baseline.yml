@@ -1,0 +1,2596 @@
+###############################################
+# This file holds the default questions for various object
+# types. Things like how to ask for a person's name
+---
+include:
+  - al_terms_of_use.yml
+---
+objects:
+  - interview_metadata: DADict.using(object_type=DADict.using(auto_gather=False, gathered=True), auto_gather=False, gathered=True)
+  - users: ALPeopleList.using(there_are_any=True)
+  - children: ALPeopleList.using(ask_number=True)
+  - plaintiff: ALIndividual
+  - other_parties: ALPeopleList
+  - witnesses: ALPeopleList.using(ask_number=True)
+  - docket_numbers: DAList
+  - case_numbers: DAList
+  - caregivers: ALPeopleList
+  - guardians_ad_litem: ALPeopleList
+  - attorneys: ALPeopleList
+  - translators: ALPeopleList
+  - debt_collectors: ALPeopleList
+  - creditors: ALPeopleList
+  - spouses: ALPeopleList
+  - parents: ALPeopleList
+  - decedents: ALPeopleList.using(ask_number=True, target_number=1)
+  - interested_parties: ALPeopleList
+  - guardians: ALPeopleList
+  - adoptees: ALPeopleList  
+  - allowed_courts: DAEmpty
+  # Support old interviews that use `courts`
+  - courts: DAList.using(auto_gather=False, target_number=1, gathered=True)
+  - trial_court_address: Address
+  - appeals_court_address: Address
+---
+generic object: ALIndividual
+objects:
+  - x.service_address: ALAddress
+---
+id: basic questions intro screen
+question: |
+  ${interview_short_title}: ${ AL_ORGANIZATION_TITLE}
+subquestion: |
+  % if form_approved_for_email_filing:
+  ${ AL_ORGANIZATION_TITLE } can help you complete and file court forms in 3 steps:
+  % else:
+  ${ AL_ORGANIZATION_TITLE } can help you complete and download forms in 3 steps:
+  % endif
+  
+  Step 1. Answer questions that will fill in your form for you.<br>
+  Step 2. Preview the completed form.<br>
+  % if form_approved_for_email_filing:
+  Step 3. Email the form to the court using this secure website and save copies
+  for yourself for later reference.  
+  % elif al_form_type in ['starts_case','existing_case','appeal']:
+  Step 3. Download and print the final form. You will need to deliver it
+  to the court on your own.
+  % else:
+  Step 3. Download and print the final form. You will need to deliver it 
+  on your own.
+  % endif
+  
+  This site is not a lawyer. If you would like a lawyer, find [your local
+  legal aid provider](https://www.lsc.gov/what-legal-aid/find-legal-aid).
+  
+  Tap the {green words} in any screen for a definition or more information.
+  
+  % if chat_partners_available().help:
+  Live help is currently available in this interview. Click the speech bubble
+  (:comment-alt:) in the navigation bar to connect to a live advocate for help.
+  % endif
+fields:
+  - note: |
+      ${ display_template(al_terms_of_use, scrollable=True) }
+      To continue, you must accept our terms of use
+  - I accept the terms of use: acknowledged_information_use
+    datatype: yesnowide
+    grid: 8
+continue button field: al_intro_screen
+terms:
+  green words: |
+    Green words are legal terms or a short way of referring to something that needs more explanation. The definition or explanation pops up when you tap the green words. 
+validation code: |
+  if not acknowledged_information_use:
+    validation_error("You must accept the terms of use to continue.", field="acknowledged_information_use")
+---
+##### Backwards compatibility #####
+code: |
+  al_intro_screen
+  basic_questions_intro_screen = True
+---
+id: is the user the plaintiff or defendant?
+comment: |
+  This question is asked if the interview can be used by both
+  a Plaintiff and a Defendant.
+
+  Directly set the value of user_started_case if you know which role the user
+  plays in the litigation.
+
+  This question doesn't make sense if it's not a court case.
+question: |
+  % if al_form_type in ['starts_case','existing_case']:
+  Did you start this case, or are you responding to a case
+  that someone else started?
+  % elif al_form_type == 'appeal':
+  Did you start the case in the trial court, or did you respond
+  to a case that someone else started?
+  % else:
+  Did you file the first form in this dispute, or did you respond
+  to a form that someone else filed first?
+  % endif
+subquestion: |
+  ${ collapse_template(help_user_ask_role_template) }
+fields: 
+  - no label: user_ask_role
+    datatype: radio
+    choices:
+      - Starting a new case: plaintiff
+      - Responding to a case: defendant
+  - note: |
+      Okay, you are the **Plaintiff** or Petitioner in this case. The other 
+      side is the **Defendant** or Respondent.
+    show if:
+      variable: user_ask_role
+      is: "plaintiff"
+  - note: |
+      Okay, you are the **Defendant** or Respondent in this case. The other 
+      side is the **Plaintiff** or Petitioner.
+    show if:
+      variable: user_ask_role
+      is: "defendant"
+---
+template: help_user_ask_role_template
+subject: |
+  How do I know?
+content: |
+  If you are the first person to file a form in the case, you 
+  started the case. You are the "Plaintiff" or the "Petitioner."
+
+  If you are responding to a case or court papers someone else filed, you
+  are the "Defendant" or the "Respondent."
+---
+depends on:
+  - user_started_case
+code: |
+  if user_started_case:
+    plaintiffs = users
+    petitioners = users
+    defendants = other_parties
+    respondents = other_parties
+  else:
+    defendants = users
+    respondents = users
+    plaintiffs = other_parties
+    petitioners = other_parties
+---
+depends on:
+  - user_ask_role
+code: |
+  # If the interview author didn't specify and it's a "court" or "other" case, we just ask
+  user_started_case = user_ask_role == 'plaintiff'
+---
+id: what is the user's detailed role in this case?
+comment: |
+  This provides a placeholder question to request the user's specific role
+  for very general forms, such as motions, where the parties can be either
+  defendants or respondents.
+question: |
+  % if al_form_type in ['starts_case','existing_case']:
+  Did you start this case, or are you responding to a case
+  that someone else started?
+  % elif al_form_type == 'appeal':
+  Did you start the case in the trial court, or did you respond
+  to a case that someone else started?
+  % else:
+  Did you file the first form in this dispute, or did you respond
+  to a form that someone else filed first?
+  % endif
+subquestion: |
+  ${ collapse_template(help_user_ask_role_template) }
+fields: 
+  - no label: user_detailed_role_started_case
+    datatype: radio
+    choices:
+      - I started this case: started
+      - I responded to this case: responded
+  - Are you the **petitioner** or **plaintiff**?: user_detailed_role
+    datatype: radio
+    choices:
+      - Petitioner: petitioner
+      - Plaintiff: plaintiff
+      - I don't know: unknown
+    show if:
+      variable: user_detailed_role_started_case
+      is: "started"
+  - Are you the **respondent** or **defendant**?: user_detailed_role
+    datatype: radio
+    choices:
+      - Respondent: respondent
+      - Defendant: defendant
+      - I don't know: unknown      
+    show if:
+      variable: user_detailed_role_started_case
+      is: "responded"
+---
+code: |
+  # This will be considered after any code in the parent interview
+  # Most likely, user_started_case should be True for form types "other" and "out_of_court" but 
+  # we will let form author decide
+  if al_form_type in ['letter', 'starts_case']:
+    user_started_case = True 
+---
+id: is there an opposing party?
+question: |
+  % if al_form_type in ['starts_case','existing_case','appeal'] and user_started_case:
+  Is there a **defendant** or respondent in this case? 
+  % elif al_form_type in ['starts_case','existing_case','appeal']:
+  Is there a **plaintiff** or petitioner in this case?
+  % else:
+  Is there someone on the other side of your dispute?
+  % endif
+subquestion: |
+  % if al_form_type in ['starts_case','existing_case','appeal'] and user_started_case:
+  Answer yes if there is a person or organization you are suing or taking to court.
+  % elif al_form_type in ['starts_case','existing_case','appeal']:
+  You should be able to find out from the paperwork that told you to 
+  go to court.
+
+  Answer yes if someone else has sued you or is bringing you to court.
+  % endif
+fields:
+  - no label: other_parties.there_are_any
+    datatype: yesnoradio
+---
+code: |
+  # If the form is a letter, it _always_ is addressed to someone.
+  if al_form_type == 'letter':
+    other_parties.there_are_any = True
+---    
+#######################################################
+# These small templates are used as labels for prompts.
+# This helps us keep questions consistent and translated just once
+---
+generic object: ALIndividual
+template: x.name_title_label
+content: |
+  Title (optional)
+---
+generic object: ALIndividual
+template: x.first_name_label
+content: |
+  First name
+---
+generic object: ALIndividual
+template: x.middle_name_label
+content: |
+  Middle name
+---
+generic object: ALIndividual
+template: x.last_name_label
+content: |
+  Last name
+---
+generic object: ALIndividual
+template: x.suffix_label
+content: |
+  Suffix
+---
+generic object: ALIndividual
+template: x.person_type_label
+content: |
+  Is this a person, or a business?
+---
+generic object: ALIndividual
+template: x.business_name_label
+content: |
+  Name of business or organization
+---
+generic object: ALIndividual
+template: x.individual_choice_label
+content: |
+  Person
+---
+generic object: ALIndividual
+template: x.business_choice_label
+content: |
+  Business or organization
+---
+generic object: ALAddress
+template: x.address_label
+content: |
+  Street address
+---
+generic object: ALAddress
+template: x.unit_label
+content: |
+  Apartment
+---
+generic object: ALAddress
+template: x.city_label
+content: |
+  City
+---
+generic object: ALIndividual
+template: x.gender_label
+content: |
+  Gender
+---
+generic object: ALIndividual
+template: x.gender_female_label
+content: |
+  Female
+---
+generic object: ALIndividual
+template: x.gender_male_label
+content: |
+  Male
+---
+# Arbitrarily selected most common hyphenation as of April 2021.
+# Note that this usage is still evolving.
+# https://nonbinary.wiki/wiki/Nonbinary_Wiki:Style_guide#Nonbinary,_non-binary,_or_non_binary?
+generic object: ALIndividual
+template: x.gender_nonbinary_label
+content: |
+  Nonbinary
+---
+generic object: ALIndividual
+template: x.gender_prefer_not_to_say_label
+content: |
+  Prefer not to say
+---
+generic object: ALIndividual
+template: x.gender_prefer_self_described_label
+content: |
+  Prefer to write something else
+---
+generic object: ALIndividual
+template: x.gender_self_described_label
+content: |
+  Self-described gender
+---
+generic object: ALIndividual
+template: x.gender_unknown_label
+content: |
+  Unknown
+---
+generic object: ALIndividual
+template: x.gender_help_text
+content: |
+  Some forms require you to select either "Male" or "Female". If you do not select
+  "Male" or "Female", your form may include an empty checkbox.
+---
+generic object: ALAddress
+template: x.state_label
+# See https://docassemble.org/docs/functions.html#subdivision_type
+content: |
+  % if safe_subdivision_type(AL_DEFAULT_COUNTRY):
+  ${ safe_subdivision_type(AL_DEFAULT_COUNTRY) }
+  % else:
+  State
+  % endif
+---
+generic object: ALAddress
+template: x.state_or_province_label
+content: |
+  State / Province
+---
+generic object: ALAddress
+template: x.zip_label
+content: |
+  Zip or postal code
+---
+generic object: ALAddress
+template: x.postal_code_label
+content: |
+  Postal code
+---
+generic object: ALAddress
+template: x.country_label
+content: |
+  Country
+---
+generic object: ALAddress
+template: x.impounded_label
+content: |
+  This address is impounded
+---
+generic object: ALAddress
+template: x.impounded_output_label
+content: |
+  **IMPOUNDED**
+---
+generic object: ALIndividual
+template: x.impounded_phone_output_label
+content: |
+  **IMPOUNDED**
+---
+generic object: ALAddress
+template: x.county_label
+content: |
+  County
+# Note: Louisiana uses Parish while Alaska uses Borough. Handle by overriding this template
+---    
+id: any other users
+question: |
+  % if al_form_type in ['starts_case','existing_case','appeal']:
+  Is anyone else on your side of this case?
+  % else:
+  Is anyone else adding their name to this form with you?
+  % endif
+subquestion: |
+  % if len(users.elements) > 1:  
+  So far you have told us about ${comma_and_list(users.complete_elements())}.
+  % endif
+fields:
+  - no label: users.there_is_another
+    datatype: yesnoradio
+---
+sets:
+  - users[i].name.first
+  - users[i].name.last
+  - users[i].name.middle
+  - users[i].name.suffix    
+id: other users names
+question: |
+  % if i == 0 and al_person_answering == "user":
+  What is your name?
+  % else:
+  % if al_form_type in ['starts_case','existing_case','appeal']:
+  Who is the ${ ordinal(i) } person on your side of the case?
+  % else:
+  What is the name of the ${ ordinal_number(i) } person who is adding their name to
+  this form with you?
+  % endif
+  % endif
+fields:
+  - code: |
+      users[i].name_fields()
+---
+id: birthdate question
+generic object: ALIndividual
+question: |
+  When was ${x} born?
+fields:
+  - Birthdate: x.birthdate
+    datatype: BirthDate
+---
+id: user i's address
+question: |
+  % if i == 0 and al_person_answering == "user":
+  What is your address?
+  % else:
+  What is ${ users[i] }'s address?
+  % endif
+fields:
+  - label: |
+      % if i > 0 and al_person_answering == "user":
+      Same as your address
+      % else:
+      Same as ${ users[0] }'s address
+      % endif
+    field: users[i].address
+    datatype: object_radio
+    choices:
+      - users[0].address if defined("users[0].address.address") else None
+    object labeler: |
+      lambda y: y.on_one_line()      
+    none of the above: |
+      Somewhere else
+    disable others: True
+    show if:
+      code: |
+        i > 0 and defined("users[0].address.address")
+  - ${ users[i].address.address_label}: users[i].address.address
+    address autocomplete: True
+  - ${ users[i].address.unit_label}: users[i].address.unit
+    required: False
+  - ${ users[i].address.city_label}: users[i].address.city
+  - ${ users[i].address.state_label}: users[i].address.state
+    code: |
+      states_list(country_code=AL_DEFAULT_COUNTRY)
+    default: ${ AL_DEFAULT_STATE }
+  - ${ users[i].address.zip_label}: users[i].address.zip
+    required: False
+#  - ${ users[i].address.country_label}: users[i].address.country
+#    code: countries_list()
+#    default: ${ AL_DEFAULT_COUNTRY }
+---
+generic object: ALIndividual
+id: any mailing address
+question: |
+  What is ${ x }'s mailing address?
+fields:
+  - ${ x }'s mailing address is: x.mailing_address
+    datatype: object_radio
+    choices:
+      - x.address
+    object labeler: |
+      lambda y: y.on_one_line()      
+    none of the above: |
+      Somewhere else
+    disable others: True      
+  - ${ x.address.address_label }: x.mailing_address.address
+    address autocomplete: True
+  - ${ x.address.unit_label }: x.mailing_address.unit
+    required: False
+  - ${ x.address.city_label }: x.mailing_address.city
+  - ${ x.address.state_label }: x.mailing_address.state
+    code: |
+      states_list(country_code=AL_DEFAULT_COUNTRY)
+    default: ${ AL_DEFAULT_STATE }
+  - ${ x.address.zip_label }: x.mailing_address.zip
+    required: False      
+  - ${ x.address.country_label }: x.mailing_address.country
+    code: countries_list()
+    default: ${ AL_DEFAULT_COUNTRY }
+---
+generic object: ALIndividual
+id: any service address
+question: |
+  At what address will you serve ${ x }?
+fields:
+  - ${ x }'s service address is: x.service_address
+    datatype: object_radio
+    choices:
+      - x.address if defined(x.address.attr_name("address")) else None
+      - x.mailing_address if defined(x.mailing_address.attr_name("address")) else None
+    object labeler: |
+      lambda y: y.on_one_line()      
+    none of the above: |
+      Somewhere else
+    disable others: True      
+  - ${ x.service_address.address_label }: x.service_address.address
+    address autocomplete: True
+  - ${ x.service_address.unit_label }: x.service_address.unit
+    required: False
+  - ${ x.service_address.city_label }: x.service_address.city
+  - ${ x.service_address.state_label }: x.service_address.state
+    code: |
+      states_list(country_code=AL_DEFAULT_COUNTRY)
+    default: ${ AL_DEFAULT_STATE }
+  - ${ x.service_address.zip_label }: x.service_address.zip
+    required: False      
+  - ${ x.service_address.country_label }: x.service_address.country
+    code: countries_list()
+    default: ${ AL_DEFAULT_COUNTRY }
+---
+generic object: ALIndividual
+id: service method
+question: |
+  How will you get a copy of the documents to ${ x }?
+fields:
+  - I will serve ${ x } by: x.service_method
+    input type: radio
+    code: al_service_methods
+---
+comment: |
+  You can customize this block, and also add a translation for it with a language modifier,
+  demonstrated below
+variable name: al_service_methods
+use objects: True
+data:
+  e-filing system: 
+    question: E-filing system
+    document: e-filing system
+  mail:
+    question: Mail
+    document: mail
+  hand:
+    question: Hand delivery
+    document: hand delivery
+  email:
+    question: Email
+    document: email
+---
+language: es
+variable name: al_service_methods
+use objects: True
+data:
+  e-filing system: 
+    question: Presentación electrónica (e-filing)
+    document: presentación electrónica (e-filing)
+  mail:
+    question: Correo
+    document: correo
+  hand:
+    question: Entrega en mano
+    document: entrega en mano
+  email:
+    question: Correo electrónico (email)
+    document: correo electrónico (email)
+---
+id: your contact information
+question: |
+  % if al_person_answering == "user":
+  What is your contact information?
+  % else:
+  What is ${ users[0] }'s contact information?
+  % endif
+subquestion: |
+  % if al_person_answering == "user":
+  Include at least **one** way to reach you other than by mail.
+  % else:
+  Include at least **one** way to reach ${ users[0] } other than by mail.
+  % endif
+
+  ${ collapse_template(why_contact_info_needed_template) }
+fields:  
+  - Mobile number: users[0].mobile_number
+    required: False
+    datatype: al_international_phone
+  - Other phone number: users[0].phone_number
+    required: False
+    datatype: al_international_phone
+  - Email address: users[0].email    
+    datatype: email
+    required: False
+  - label: |
+      % if al_person_answering == "user":
+      Other ways to reach you
+      % else:
+      Other ways to reach ${ users[0] }
+      % endif
+    field: users[0].other_contact_method
+    input type: area
+    required: False
+    help: |
+      If you do not have a phone number or email, provide
+      specific contact instructions. For example, use a friend's phone number.
+      But the friend must be someone you can rely on to give you a
+      message.
+validation code: |
+  if (not showifdef('users[0].phone_number') and \
+      (not showifdef('users[0].mobile_number')) and \
+      (not showifdef('users[0].email')) and \
+      (not showifdef('users[0].other_contact_method'))):
+    validation_error(word("You need to provide at least one contact method."), field="users[0].other_contact_method")
+---
+template: why_contact_info_needed_template
+subject: |
+  Why do I need to give my contact information?
+content: | 
+  % if al_form_type in ['starts_case','existing_case','appeal']:
+  The court **must** be able to reach you. So you have to give them some way to do this.
+  
+  Some forms allow you to tell the court you need to keep your address, phone,
+  and email confidential, so that only court staff can see this information. 
+  % else:
+  It is important that the person or organization you deliver this form to
+  is able to contact you. Make sure to include at least one way to reach you
+  other than mail.
+  % endif
+---
+id: docket number
+question: |
+  What is the case number used to track this case in court?
+fields:
+  - I don't know the case number: dont_know_docket_number
+    datatype: yesno    
+  - Case number: docket_number
+    hide if: dont_know_docket_number
+validation code: |
+  # This should be safe too
+  if dont_know_docket_number:
+    docket_number = ''    
+---
+question: |
+  Do you have a case number used to track this case in court?
+fields:
+  - I have a case number: docket_numbers.there_are_any
+    datatype: yesnoradio
+---
+id: docket numbers
+question: |
+  Case number
+subquestion: |
+  If there are multiple case numbers on this form, you can tap "${word("Add another")}"
+  to add more than one.
+list collect: True
+fields:
+  - Case number: docket_numbers[i]
+    required: False
+---
+id: case number
+question: |
+  What is the case number used to track this case in court?
+fields:
+  - I don't know the case number: dont_know_case_number
+    datatype: yesno    
+  - Case number: case_number
+    hide if: dont_know_case_number
+validation code: |
+  # This should be safe too
+  if dont_know_case_number:
+    case_number = ''    
+---
+question: |
+  Do you have a case number used to track this case in court?
+fields:
+  - I have a case number: case_numbers.there_are_any
+    datatype: yesnoradio
+---
+id: case numbers
+question: |
+  Case number
+subquestion: |
+  If there are multiple case numbers on this form, you can tap "${word("Add another")}"
+  to add more than one.
+list collect: True
+fields:
+  - Case number: case_numbers[i]
+    required: False
+---
+id: who will be on this form
+generic object: ALPeopleList
+question: |
+  Will this form include any ${noun_plural(x.object_name())}?
+fields:
+  - no label: x.there_are_any
+    datatype: yesnoradio
+---
+id: any witnesses
+question: |
+  Do you need to list a witness for this form?
+fields:
+  - no label: witnesses.there_are_any
+    datatype: yesnoradio
+---
+#id: witness name
+#question: |
+#  Name of ${ ordinal(i) } witness
+---
+id: another witness
+question: |
+  Do you need to add another witness?
+fields:
+  - no label: witnesses.there_is_another
+    datatype: yesnoradio
+---
+id: name of ALIndividual
+sets:
+  - x.name.first
+  - x.name.last
+  - x.name.middle
+  - x.name.suffix
+generic object: ALIndividual
+question: |
+  What is ${x.object_possessive('name')}?
+fields:
+  - code: |
+      x.name_fields()
+---
+id: name of decedent
+question: |
+  What is the name of the person who died?
+fields:
+  - code: |
+      decedents[0].name_fields()
+---
+id: how many children
+comment: |
+  This question is not likely to be used as-is, because the user
+  is likely to need to know which children to list on the form.
+  
+  That will be very context-specific.
+question: |
+  % if al_form_type in ['starts_case','existing_case','appeal']:
+  Are any children involved in this case?
+  % else:
+  Are any children involved in this matter?
+  % endif  
+fields:
+  - no label: children.there_are_any
+    datatype: yesnoradio
+  - How many?: children.target_number
+    datatype: integer
+    show if: children.there_are_any
+validation code: |
+  if not children.there_are_any:
+    children.target_number = 0
+---
+# Customize this question if you know whose children they are in your interview!
+# this is just a very generic way to ask.
+id: children names without birthdate
+sets:
+  - children[i].name.first
+  - children[i].name.last
+  - children[i].name.middle
+  - children[i].name.suffix
+question: |
+  % if hasattr(children, 'ask_number') and children.ask_number and children.target_number == 1 and i == 0:
+  Child's name
+  % else:
+  Name of ${ ordinal(i) } child
+  % endif
+fields:
+  - code: |
+      children[i].name_fields()
+---
+id: how many witnesses
+question: |
+  Do you have any witnesses?
+fields:
+  - no label: witnesses.there_are_any
+    datatype: yesnoradio
+  - no label: witnesses.target_number
+    datatype: integer
+    show if: witnesses.there_are_any
+validation code: |
+  if not witnesses.there_are_any:
+    witnesses.target_number = 0
+---
+sets:
+  - witnesses[i].name.first
+  - witnesses[i].name.last
+  - witnesses[i].name.middle
+  - witnesses[i].name.suffix
+id: names of witnesses
+question: |
+  % if hasattr(witnesses, 'ask_number') and witnesses.ask_number and witnesses.target_number == 1:
+  Witness name
+  % else:
+  Name of the ${ ordinal(i) } witness
+  % endif
+fields:
+  - code: |
+      witnesses[i].name_fields()
+---
+generic object: ALPeopleList
+id: any other people
+question: |
+  Do you have any other ${ noun_plural(x.object_name()) } to tell us about?
+fields:
+  - no label: x.there_is_another
+    datatype: yesnoradio
+
+---
+id: names of people
+sets:
+  - x[i].name.first
+  - x[i].name.last
+  - x[i].name.middle
+  - x[i].name.suffix
+generic object: ALPeopleList
+question: |
+  % if hasattr(x, 'ask_number') and x.ask_number and x.target_number == 1:
+  Name of ${ noun_plural(x.object_name(),1) }
+  % else:
+  Name of the ${ ordinal(i) } ${ noun_plural(x.object_name(), 1) }
+  % endif
+fields:
+  - code: |
+      x[i].name_fields()
+---
+id: people list revisit
+generic object: ALPeopleList
+question: |
+  Edit your answers about the ${noun_plural(x.object_name())}?
+subquestion: |
+  ${ x.table }
+
+  ${ x.add_action() }
+continue button field: x.revisit
+---
+id: users revisit
+question: |
+  % if al_person_answering == "user":
+  Edit your answers about people on your side of the case
+  % else:
+  Edit your answers about people on ${ users }'s side of the case
+  % endif
+subquestion: |
+  ${ users.table }
+
+  ${ users.add_action() }
+continue button field: users.revisit
+---
+id: other parties revisit
+question: |
+  Edit your answers about people on the other side of your case
+subquestion: |
+  ${ other_parties.table }
+
+  ${ other_parties.add_action() }
+continue button field: other_parties.revisit
+---
+generic object: ALPeopleList
+table: x.table
+rows: x
+columns:
+  - Name: |
+      row_item.name if defined('row_item.name.first') else ''
+  - Address: |
+      row_item.address if defined('row_item.address.address') else ''
+  - Phone number: |
+      row_item.phone_number if defined('row_item.phone_number') else ''
+edit:
+  - name.first
+  - address.address
+  - phone_number
+---
+id: any other opposing parties
+question: |
+  % if user_started_case:
+  Is there any other **defendant** or respondent in this
+  matter?
+  % else:
+  Is there any other **plaintiff** or petitioner in this matter?
+  % endif
+fields:
+  - no label: other_parties.there_is_another
+    datatype: yesnoradio
+---
+sets:
+  - other_parties[i].name.first
+  - other_parties[i].name.last
+  - other_parties[i].name.middle
+  - other_parties[i].name.suffix
+id: names of opposing parties
+question: |
+  % if user_started_case:
+  Name of ${ ordinal(i) } **defendant** or respondent in this
+  matter
+  % else:
+  Name of ${ ordinal(i) } **plaintiff** or petitioner in this matter
+  % endif
+fields:
+  - code: |
+      other_parties[i].name_fields(person_or_business='unsure')
+---
+id: generic address
+generic object: ALAddress
+sets:
+  - x.address
+  - x.city
+  - x.zip
+  - x.unit
+  - x.state
+  - x.country
+question: |
+  What is the ${ x.object_name() }?
+fields:
+  - code: |
+      x.address_fields(country_code=AL_DEFAULT_COUNTRY, default_state=AL_DEFAULT_STATE)  
+comment: |
+  This is left as just object_name() rather than "address of object_name()" because
+  commonly the word "address" would be included in the variable name.
+
+  You should generally consider overriding this question with one that will be easier
+  to read. This is here just as a placeholder. It will be difficult to translate and
+  the variable name will not always make sense to show the user even with the help
+  of object_name().
+---
+# TODO: consider removing default state
+# BUT: could be helpful to model how to set a default state
+sets:
+  - x.address.address
+  - x.address.city
+  - x.address.zip
+  - x.address.unit
+  - x.address.state
+  - x.address.country
+id: persons address
+generic object: ALIndividual
+question: |
+  What is ${ x.possessive('address') }?
+fields:
+  - code: |
+      x.address_fields(country_code=AL_DEFAULT_COUNTRY, default_state=AL_DEFAULT_STATE)
+---
+generic object: ALIndividual
+id: x has other addresses
+question: |
+  Does ${ x } live at more than one address?
+fields:  
+  - ${ x } lives at more than one address: x.other_addresses.there_are_any
+    datatype: yesnoradio
+---
+generic object: ALIndividual
+sets:
+  - x.other_addresses[i].address
+  - x.other_addresses[i].city
+id: other address where x lives
+question: |
+  Tell us about the ${ordinal(i)} other address where ${ x } lives
+subquestion: |
+  You already told us about ${x.address.on_one_line()}
+  % if len(x.other_addresses.complete_elements()):
+  as well as ${x.other_addresses.complete_elements()}
+  % endif
+fields:
+  - code: |
+      x.other_addresses[i].address_fields(default_state=AL_DEFAULT_STATE)
+---
+generic object: ALIndividual
+id: x has another other address
+question: |
+  Does ${ x } have any other address where they currently live to tell us about?
+subquestion: |
+  You already told us about ${ x.address.on_one_line() }
+  % if len(x.other_addresses.complete_elements()):
+  as well as ${x.other_addresses.complete_elements()}
+  % endif
+fields:
+  - Does ${ x } have another address?: x.other_addresses.there_is_another  
+    datatype: yesnoradio
+---
+generic object: ALIndividual
+id: x has previous addresses
+question: |
+  Does ${ x } have any previous addresses?
+fields:  
+  - ${ x } has a previous address to list: x.previous_addresses.there_are_any
+    datatype: yesnoradio
+---
+generic object: ALIndividual
+sets:
+  - x.previous_addresses[i].address
+  - x.previous_addresses[i].city
+id: other previous address where x lives
+question: |
+  Tell us about the ${ordinal(i)} address where ${ x } used to live
+subquestion: |
+  You already told us about ${x.address.on_one_line()}
+  % if len(x.previous_addresses.complete_elements()):
+  as well as ${x.previous_addresses.complete_elements()}
+  % endif
+fields:
+  - code: |
+      x.previous_addresses[i].address_fields(default_state=AL_DEFAULT_STATE)
+---
+generic object: ALIndividual
+id: has another previous address
+question: |
+  Does ${ x } have any other address where they used to live to tell us about?
+subquestion: |
+  You already told us about ${ x.address.on_one_line() }
+  % if len(x.previous_addresses.complete_elements()):
+  as well as ${x.previous_addresses.complete_elements()}
+  % endif
+fields:
+  - Does ${ x } have another address where they used to live?: x.previous_addresses.there_is_another  
+    datatype: yesnoradio
+---
+id: user has other addresses
+question: |
+  % if i == 0 and al_person_answering == "user":
+  Do you live at more than one address?
+  % else:
+  Does ${ users[i] } live at more than one address?
+  % endif
+fields:  
+  - label: |
+      % if i == 0 and al_person_answering == "user":
+      I live at more than one address
+      % else:
+      ${ users[i] } lives at more than one address
+      % endif
+    field: users[i].other_addresses.there_are_any
+    datatype: yesnoradio
+---
+sets:
+  - users[i].other_addresses[j].address
+  - users[i].other_addresses[j].city
+id: other address where user lives
+question: |
+  % if i == 0 and al_person_answering == "user":
+  Tell us about the ${ordinal(j)} other address where you live
+  % else:
+  Tell us about the ${ordinal(j)} other address where ${ users[i] } lives
+  % endif
+subquestion: |
+  You already told us about ${users[i].address.on_one_line()}
+  % if len(users[i].other_addresses.complete_elements()):
+  as well as ${users[i].other_addresses.complete_elements()}
+  % endif
+fields:
+  - code: |
+      users[i].other_addresses[j].address_fields(default_state=AL_DEFAULT_STATE)
+---
+id: user has another other address
+question: |
+  % if i == 0 and al_person_answering == "user":
+  Do you have any other address where you currently live to tell us about?
+  % else:
+  Does ${ users[i] } have any other address where they currently live to tell us about?
+  % endif
+subquestion: |
+  You already told us about ${ users[i].address.on_one_line() }
+  % if len(users[i].other_addresses.complete_elements()):
+  as well as ${users[i].other_addresses.complete_elements()}
+  % endif
+fields:
+  - label: |
+      % if i == 0 and al_person_answering == "user":
+      I have another address where I currently live
+      % else:
+      ${ users[i] } has another address where they currently live
+      % endif
+    field: users[i].other_addresses.there_is_another  
+    datatype: yesnoradio
+---
+id: user has previous addresses
+question: |
+  % if i == 0 and al_person_answering == "user":
+  Do you have any addresses where you used to live?
+  % else:
+  Does ${ users[i] } have any addresses where they used to live?
+  % endif
+fields:  
+  - label: |
+      % if i == 0 and al_person_answering == "user":
+      I have a previous address to list
+      % else:
+      ${ users[i] } has a previous address to list
+      % endif
+    field: users[i].previous_addresses.there_are_any
+    datatype: yesnoradio
+---
+sets:
+  - users[i].previous_addresses[j].address
+  - users[i].previous_addresses[j].city
+id: other previous address where user lives
+question: |
+  % if i == 0 and al_person_answering == "user":
+  Tell us about the ${ordinal(j)} address where you used to live
+  % else:
+  Tell us about the ${ordinal(j)} address where ${ users[i] } used to live
+  % endif
+subquestion: |
+  You already told us about ${users[i].address.on_one_line()}
+  % if len(users[i].previous_addresses.complete_elements()):
+  as well as ${users[i].previous_addresses.complete_elements()}
+  % endif
+fields:
+  - code: |
+      users[i].previous_addresses[j].address_fields(default_state=AL_DEFAULT_STATE)
+---
+id: has another previous address
+question: |
+  % if i == 0 and al_person_answering == "user":
+  Do you have any other address where you used to live to tell us about?
+  % else:
+  Does ${ users[i] } have any other address where they used to live to tell us about?
+  % endif
+subquestion: |
+  You already told us about ${ users[i].address.on_one_line() }
+  % if len(users[i].previous_addresses.complete_elements()):
+  as well as ${users[i].previous_addresses.complete_elements()}
+  % endif
+fields:
+  - label: |
+      % if i == 0 and al_person_answering == "user":
+      I have another address where I used to live
+      % else:
+      ${ users[i] } has another address where they used to live
+      % endif
+    field: users[i].previous_addresses.there_is_another  
+    datatype: yesnoradio
+---
+id: persons phone number
+generic object: ALIndividual
+question: |
+  What is ${x}'s phone number?
+fields:
+  - Phone: x.phone_number
+    datatype: al_international_phone
+---
+id: persons mobile number
+generic object: ALIndividual
+question: |
+  What is ${x}'s mobile number?
+fields:
+  - Phone: x.mobile_number
+    datatype: al_international_phone
+---
+id: persons home number
+generic object: ALIndividual
+question: |
+  What is ${x}'s home phone number?
+fields:
+  - Phone: x.home_number
+    datatype: al_international_phone
+---
+id: persons work number
+generic object: ALIndividual
+question: |
+  What is ${x}'s work phone number?
+fields:
+  - Phone: x.work_number
+    datatype: al_international_phone
+---
+id: persons other number
+generic object: ALIndividual
+question: |
+  What is ${x}'s other phone number?
+fields:
+  - Phone: x.other_number
+    datatype: al_international_phone
+---
+id: persons fax number
+generic object: ALIndividual
+question: |
+  What is ${x}'s fax number?
+fields:
+  - Fax number: x.fax_number
+    datatype: al_international_phone  
+---
+id: email
+generic object: ALIndividual
+question: |
+  What is ${x}'s email address?
+fields:
+  - Email: x.email
+    datatype: email
+---
+id: attorney id number
+question: |
+  What is ${ attorneys[i] }'s ID or bar number?
+subquestion: |
+  ${ collapse_template(help_what_is_attorney_id_template) }
+fields:
+  - Attorney number: attorneys[i].id_number
+    required: False
+---
+template: help_what_is_attorney_id_template
+subject: |
+  What is an attorney ID?
+content: |
+  In some jurisdictions, attorneys will have an identification number. 
+  For example, in Massachusetts, all attorneys have a BBO (Board of 
+  Bar Overseers) number that is 6 digits long. 
+---
+id: persons signature
+generic object: ALIndividual
+question: |
+  ${x}, please sign below
+signature: x.signature
+under: |
+  ${x}
+---
+id: signature date
+question: |
+  When do you plan to file these forms that we are working on?
+subquestion: |
+  The default filing date is today's date (${ today().format("yyyy-MM-dd") }).
+  Change it if you will file on a different date.
+fields: 
+  - Date: signature_date
+    datatype: date
+    default: ${today().format("yyyy-MM-dd")}
+---
+code: |
+  # It's not really necessary to default to asking the user
+  # what date to list on the form.  
+  signature_date = today()
+---
+sets:
+  - x.gender
+id: gender
+generic object: ALIndividual
+question: |
+  What is ${x.possessive('gender')}?
+fields:
+  - code: |
+      x.gender_fields(show_help=True)
+---
+id: interpreter
+comment: |
+  This question is required for the cover page we send to the court,
+  even if the form does not use it.
+question: |
+  Do you need an interpreter?
+subquestion: |
+  You have the right to an interpreter.
+
+  If there is a chance you may not understand everything that is said in 
+  English, or if other people may not be able to understand you, ask for an 
+  interpreter.
+
+  You do not have to speak only through the interpreter, but you may have one 
+  if you need one.
+fields:
+  - I need an interpreter: user_needs_interpreter
+    datatype: yesnoradio
+  - My preferred language is: user_preferred_language 
+    show if: user_needs_interpreter
+---
+id: affirmation and oath of no perjury
+question: |
+  Signing Under Oath
+subquestion: |
+  Your form must be signed under oath.
+  That means everything you say must be true as far as you know.
+  You may be punished by a judge if you intentionally
+  say something that is not true.
+fields:
+  - no label: users[i].states_above_true
+    datatype: checkboxes
+    minlength: 1
+    choices:
+      - I affirm that the answers I have given are true, under the pains and penalties of perjury: states_true
+    validation messages:
+      minlength: |
+        You cannot keep going unless you did your best to tell the truth.
+---
+id: user marital status
+question: |
+  % if i == 0 and al_person_answering == "user":
+  What is your current marital status?
+  % else:
+  What is ${ users[i] }'s current marital status?
+  % endif
+fields:
+  - I am: users[i].marital_status
+    choices:
+      - Married: married
+      - Widowed: widowed
+      - Divorced: divorced
+      - Separated: separated
+      - Never married: never_married
+---
+generic object: ALIndividual
+id: x marital status
+question: |
+  What is ${ x }'s current marital status
+fields:
+  - ${ x } is: x.marital_status
+    choices:
+      - Married: married
+      - Widowed: widowed
+      - Divorced: divorced
+      - Separated: separated
+      - Never married: never_married
+---
+id: user is married
+question: |
+  % if i == 0 and al_person_answering == "user":
+  Are you currently married?
+  % else:
+  Is ${ users[i] } currently married?
+  % endif
+fields:
+  - label: |
+      % if i == 0 and al_person_answering == "user":
+      I am married
+      % else:
+      ${ users[i] } is married
+      % endif
+    field: users[i].has_spouse
+    datatype: yesnoradio
+---
+generic object: ALIndividual
+id: x is married
+question: |
+  Is ${ x } currently married?
+fields:
+  - ${ x } is married: x.has_spouse
+    datatype: yesnoradio
+---
+########################################################################
+# Court selection
+---
+# Support og interviews that were built with `courts` instead of `trial_court`
+code: |
+  courts[0] = trial_court
+---
+template: how_to_pick_court_help_template
+subject: |
+  How do I pick a court?
+content: |
+  For some cases, you can choose your court.
+  % if al_form_type == 'starts_case':  
+  How do you know which court to choose?
+  
+  Think about:
+  
+  1. A court that has the resources and specialization to hear your case.
+  1. Choosing a court you can get to. You may need to appear in court several times.
+  
+  % else:
+  If you are responding to a case someone else filed, you may not
+  get to choose your court. Select the court that is already
+  listed on your court paperwork.
+  % endif
+---
+id: choose a court
+question: |
+  % if al_form_type == 'starts_case':
+  What court do you want to file in?
+  % elif al_form_type == 'appeal':
+  What is the name of the trial court your case was originally filed in?
+  % else:
+  What court is your case in?
+  % endif
+subquestion: |
+  % if not al_form_type == 'starts_case':
+  Look at your court paperwork. Match the name listed there.
+  % endif
+
+  ${ collapse_template(how_to_pick_court_help_template) }
+fields:
+  - Name: trial_court_name
+  - Address: trial_court_address.address
+    address autocomplete: True
+    required: False
+  - Suite: trial_court_address.unit
+    required: False
+  - City: trial_court_address.city
+    required: False
+  - State: trial_court_address.state
+    required: False
+  - Postal code: trial_court_address.zip    
+    required: False
+---
+depends on:
+  - trial_court_name
+  - trial_court_address.address
+need:
+  - trial_court_name
+  - trial_court_address.address
+code: |
+  # We do this in a code block so referencing just `trial_court` in interview
+  # order block is good enough to trigger the question `id: choose a court`
+  trial_court = ALCourt('trial_court')
+  trial_court.name = trial_court_name
+  trial_court.address = trial_court_address
+---
+id: choose a court
+question: |
+  What is the name of the appeals court your case is in?
+subquestion: |
+  % if not al_form_type == 'starts_case':
+  Look at your court paperwork. Match the name listed there.
+  % endif
+fields:
+  - Name: appeals_court_name
+  - Address: appeals_court_address.address
+    address autocomplete: True
+    required: False
+  - Suite: appeals_court_address.unit
+    required: False
+  - City: appeals_court_address.city
+    required: False
+  - State: appeals_court_address.state
+    required: False
+  - Postal code: appeals_court_address.zip    
+    required: False
+---
+depends on:
+  - appeals_court_name
+  - appeals_court_address.address
+need:
+  - appeals_court_name
+  - appeals_court_address.address
+code: |
+  appeals_court = ALCourt('appeals_court')
+  appeals_court.name = appeals_court_name
+  appeals_court.address = appeals_court_address
+---  
+#######################################################################
+# Signature stuff
+#######################################################################
+---
+code: |
+  signature_fields = ['users[0].signature']
+---
+code: |
+  if len(signature_fields):    
+    if next(iter(signature_fields)).endswith(".signature"):
+      # the id: signature choice question has to assume the object exists, so we don't guard against that here
+      # note: this does not need to be an ALIndividual, so just use str() instead of .full_name()
+      slash_s_example_name = str(value( next(iter(signature_fields))[:-len(".signature")] ))
+    else:
+      slash_s_example_name = "Signer's Name"
+  else:
+    slash_s_example_name = "Signer's Name"
+---
+id: signature choice
+decoration: file-signature
+question: |
+  Your documents are almost ready
+subquestion: |
+  How do you want to sign them?
+fields: 
+  - I will sign: signature_choice
+    input type: radio
+    choices:
+      - On a phone with my finger: phone
+        help: |
+          % if is_sms_enabled():
+          We can text or share a link with your phone on the next screen
+          % else:
+          We can share a link with your phone on the next screen
+          % endif
+      - On this device: this_device
+      - With a typed signature, like "${ al_typed_signature_prefix }${ slash_s_example_name }": typed_signature
+    show if:
+      code: |
+        al_form_requires_digital_signature and not (device() and (device().is_mobile or device().is_touch_capable))
+
+  - I will sign: signature_choice
+    input type: radio
+    choices:
+      - On this device: this_device
+      - With a typed signature, like "${ al_typed_signature_prefix }${ slash_s_example_name }": typed_signature
+    show if:
+      code: |
+        al_form_requires_digital_signature and (device() and (device().is_mobile or device().is_touch_capable))
+
+  - I will sign: signature_choice
+    input type: radio
+    choices:
+      - On a phone with my finger: phone
+        help: |
+          % if is_sms_enabled():
+          We can text or share a link with your phone on the next screen
+          % else:
+          We can share a link with your phone on the next screen
+          % endif
+      - On this device: this_device
+      - With a typed signature, like "${ al_typed_signature_prefix }${ slash_s_example_name }": typed_signature
+      - On the paper with a pen after I print the documents: sign_after_printing
+    show if:
+      code: |
+        not al_form_requires_digital_signature and not (device() and (device().is_mobile or device().is_touch_capable))
+
+  - I will sign: signature_choice
+    input type: radio
+    choices:
+      - On this device: this_device
+      - With a typed signature, like "${ al_typed_signature_prefix }${ slash_s_example_name }": typed_signature
+      - On the paper with a pen after I print the documents: sign_after_printing
+    show if:
+      code: |
+        not al_form_requires_digital_signature and (device() and (device().is_mobile or device().is_touch_capable))
+continue button field: saw_signature_choice
+---
+generic object: ALIndividual
+id: typed signature question
+question: |
+  ${x}, sign by typing your name below
+fields:
+  - ${al_typed_signature_prefix}: x.typed_signature
+    default: ${ x }
+---
+comment: |
+  This block is shown when the user texts a link to sign a form
+id: signature wait screen
+question: |
+  % if defined('users[0].signature'):
+  Thank you for signing.
+  % else:
+  Sign on your phone
+  % endif
+subquestion: |
+  % if device() and device().is_pc:
+  % if defined('tenant.signature'):
+  Click ${word("next")}.
+  % else:
+  Click ${word("next")} on this screen once you have finished signing on your phone.
+  % endif
+  % else:
+  You have been asked to sign this PDF. Click to review it.    
+  ${al_court_bundle.as_pdf('preview')}  
+  [Make changes](${url_action('review_all_sections')})
+
+  Click ${word("next")} on this screen when you're ready to sign.
+  % endif  
+field: signature_wait_screen
+decoration: file-signature
+---
+id: signature-phone
+question: |
+  Sign your forms  
+subquestion: |
+  % if device() and device().is_pc:
+  1. Open the camera app or barcode reader app on your phone.
+  2. Point it at the screen.
+  3. Click the link icon that appears on the camera screen.
+  4. Click ${word("next")} on your phone.
+  
+  <center>
+  ${interview_url_as_qr(style="short")}
+  </center>
+
+  ${ collapse_template(help_using_qr_code_template) }
+  % else:
+  Click ${word("next")} to add your signature.
+  % endif
+fields:
+  - Text me a link instead: text_link
+    datatype: yesnowide
+    show if: 
+      code: |
+        device() and device().is_pc and is_sms_enabled()
+  - label: Cell phone number
+    field: link_cell
+    default: ${showifdef('users[0].phone_number')}
+    show if: 
+      variable: text_link
+      is: True
+      code: |
+        device() and device().is_pc and is_sms_enabled()
+continue button field: saw_signature_qrcode
+---
+template: help_using_qr_code_template
+subject: |
+  How do I use this screen?
+content: |
+  Many smartphones will automatically find the link on this screen when you use
+  the camera app. The link
+  may "float" up from the screen into a small icon you can tap.
+  % if is_sms_enabled():
+  If your phone does not do this, use the text option instead, or
+  % else:
+  If your phone does not do this
+  % endif
+  you can enter this link manually into your phone's browser:
+
+  [${ interview_url(style="short") }](${ interview_url(style="short") })
+---
+id: signature phone followup
+question: |
+  Continue on the device you started the interview on
+subquestion: |
+  Thank you for signing. You can close this browser on your phone.
+  Keep going on the computer you started the interview on.
+field: signature_phone_followup  
+---
+template: interview_link
+content: |
+  Hi, ${ users[0] }  sent you a form from ${ al_app_name }. To sign the form,
+  tap the link below:  
+  ${interview_url()}
+#############################################################
+# Email to court
+---
+id: cover page instructions
+question: |
+  Special instructions for the cover page
+subquestion: |
+  Before we deliver your form, you can include instructions on the cover
+  page that will be sent to the clerk at ${trial_court}.
+  
+  For example, you may have special instructions about how and when to reach
+  you that you did not already include in the contact information section.
+  
+  The clerk _may_ print the cover page and include it in the public file.
+
+  Are there any instructions that you would like to give to the clerk that will
+  receive your forms?
+
+  ${ collapse_template(help_comments_to_clerk_template) }
+fields:
+  - Information for clerk: comments_to_clerk
+    datatype: area
+    rows: 4
+    required: False
+---
+template: help_comments_to_clerk_template    
+subject: |
+  What to include?
+content: |
+  Include information that you want the clerk to know. The clerk is the person
+  who will receive your paperwork and put it in an official court file. The
+  clerk is not a decision maker on your case.
+
+  Do not include information that is meant for the judge or the other party.
+  Do not include information that is meant to be part of your official case.
+
+  There is a chance this information may end up in the public court file, so
+  do not include sensitive or private information.
+---
+code: |
+  all_final_forms_combined = al_final_form_to_file.as_pdf(key='final')
+---
+need:
+  - comments_to_clerk
+  - package_version_number
+id: ready to email
+question: |
+  Final Review With Cover Page
+subquestion: |
+  
+  Below is your ${comma_and_list(al_download_titles)} document with the 
+  cover page that we will deliver to ${trial_court}.
+  
+  Click "Back" if you need to make any changes.  
+  Click "Send to court" to deliver it.
+  
+  Here is what the clerk at ${trial_court} will get:
+
+  ${ all_final_forms_combined }  
+  [:file-download: Download this form with cover page](${all_final_forms_combined.url_for(attachment=True)})
+
+  % if found_email:
+  We will deliver it securely. Please allow up to 15 minutes for the email to
+  arrive.
+  % else:
+  There was a problem delivering this to the ${trial_court}. We couldn't
+  locate the contact information for this court.
+  % endif
+ 
+  Press below to deliver the form.
+fields:
+  - Send me a copy: should_cc_user
+    datatype: yesno
+  - Email address: cc_email
+    datatype: email
+    show if: should_cc_user
+    default: ${users[0].email if defined('users[0].email') else ''}
+continue button field: ready_to_email
+continue button label: Send to court
+---
+need: sent_email_to_court
+id: email status
+question: |
+  % if email_success:
+  Your form will be sent momentarily.
+  % else:
+  Something went wrong delivering your form
+  % endif
+subquestion: |
+  % if email_success:
+  If you do not hear from the court in 1 business day, call the Trial Court’s
+  Emergency HelpLine 833-91-COURT (833-912-6878). 
+  
+  The Emergency HelpLine is open:  
+  8:30am - 4:30pm,   
+  Monday - Friday.  
+  % else:
+  Something went wrong delivering your form to the ${trial_court}.  
+  Try again later or call the Trial Court’s Emergency HelpLine 833-91-COURT (833-912-6878). 
+  
+  The Emergency HelpLine is open:  
+  8:30am - 4:30pm,  
+  Monday - Friday.  
+  % endif
+continue button field: email_status
+continue button label: Back to download screen
+---
+id: email to court
+template: email_to_court_template
+subject: |
+  MassAccess submission from ${users} intended for ${trial_court}
+content: |
+  At ${current_datetime().format_datetime()},
+  ${users} submitted the attached ${al_court_bundle.title} form(s).
+
+  &nbsp;        | &nbsp;
+  --------------|-----------
+  Date of email | ${current_datetime().format_datetime()}
+  Pages | ${al_num_package_pages }  
+  Preferred language | ${ user_preferred_language if user_needs_interpreter else 'English' }
+  Mobile phone | ${showifdef('users[0].mobile_number')}
+  Other phone | ${showifdef('users[0].phone_number')}
+  Email | ${showifdef('users[0].email')}
+  Contact details/other | ${showifdef('users[0].other_contact_method')}
+  
+  Comments for clerk: 
+  
+  ${ showifdef('comments_to_clerk')}
+  
+  Please contact ${users} in the next business day to
+  confirm that you received this message.
+---
+event: review_all_sections
+question: |
+  Review of your answers
+subquestion: |
+  
+  ${showifdef('al_court_bundle')}
+
+  % if defined('form_delivery_complete'):
+  **Warning: your form has already been delivered.** Any changes you make
+  will _not_ be sent to the court.
+
+  % endif
+  Click a section to revisit the answers from that section.
+
+  % for section in section_links(nav):
+  * ${section}
+  % endfor
+  
+  Press "${word("Resume")}" to resume the
+  interview.
+buttons:
+  ${word("Resume")}: continue
+---
+id: is the user the plaintiff or defendant?
+comment: |
+  This question is asked if the interview can be used by both
+  a Plaintiff and a Defendant. It sets the value of `user_role`, `user_started_case`,
+  `plaintiffs`, `defendants`, `petitioners` and `respondents`.
+  
+  If you know your interview is exclusively
+  used by the Plaintiff or Defendant, set `user_ask_role = 'plaintiff'` or
+  `user_ask_role='defendant'` in your code.
+question: |
+  Did you start this case, or are you responding to a case
+  that someone else started?
+subquestion: |
+  ${ collapse_template(help_user_ask_role_template) }
+fields: 
+  - no label: user_ask_role
+    datatype: radio
+    choices:
+      - Starting a new case: plaintiff
+      - Responding to a case: defendant
+  - note: |
+      Okay, you are the **Plaintiff** or Petitioner in this case. The other 
+      side is the **Defendant** or Respondent.
+    show if:
+      variable: user_ask_role
+      is: "plaintiff"
+  - note: |
+      Okay, you are the **Defendant** or Respondent in this case. The other 
+      side is the **Plaintiff** or Petitioner.
+    show if:
+      variable: user_ask_role
+      is: "defendant"
+---
+code: |
+  # Every form has a user, at least as our default. You can override this
+  # by adding your own question or code later in the file
+  users.there_are_any = True
+---
+generic object: ALDocument
+code: |
+  x.default_overflow_message = "..."
+---
+# You can override this addendum with a custom one
+generic object: ALDocument
+attachment:
+  variable name: x.addendum
+  docx template file: al_basic_addendum.docx
+---
+generic object: ALAddendumField
+code: |
+  x.label = x.field_name.capitalize().replace("_", " ")
+---
+#########################################################
+# ALExhibitDocument questions
+---
+imports:
+  - humanize
+---
+generic object: ALExhibitDocument
+code: |
+  x.enabled = x.exhibits.has_exhibits
+---
+generic object: ALExhibitList
+id: any exhibits
+question: |
+  % if al_form_type in ['starts_case','existing_case','appeal']:
+  Do you have any documents that you want to provide to the court?
+  % else:
+  Do you have any documents that you want to attach to this form?
+  % endif
+fields:
+  - Do you have any documents you want to upload?: x.has_exhibits
+    datatype: yesnoradio
+  - note: |
+      **Okay**. You will have a chance to upload multiple documents. 
+      You can also add additional pages to this document.
+    show if: x.has_exhibits
+  - First document title: x[0].title
+    maxlength: 60 # longer might break TOC
+    show if: x.has_exhibits
+  - Upload the first document: x[0].pages
+    show if: x.has_exhibits
+    datatype: files
+    maximum image size: 1024
+    image upload type: jpeg
+    accept: |
+      "image/png, image/jpeg, .doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,.pdf"   
+validation code: |
+  if x.has_exhibits:
+    full_size = sum(a_page.size_in_bytes() for a_page in x[0].pages)
+    if full_size > (15 * 1024 * 1024):
+      validation_error("Upload a file smaller than 15 MB.")
+    if hasattr(x, 'maximum_size'):
+      if full_size > x.maximum_size:
+        validation_error(f"Upload a file smaller than {humanize.naturalsize(x.maximum_size)}")
+    try:
+      pdf_concatenate(x[0].pages)
+    except:
+      validation_error("Unable to convert this file. Please upload a new one.")
+    x[0].pages.complete_attribute = 'ok'
+    x[0].pages.reset_gathered()  # docassemble sets this attribute but we want to force gathering additional pages
+---
+generic object: ALExhibitList
+code: |
+  x.there_are_any = x.has_exhibits
+---
+generic object: ALExhibitList
+id: exhibit i
+question: |
+  Upload the ${ ordinal(i) } document
+subquestion: |
+  You will have a chance to upload additional pages for this document later.
+fields:
+  - Document title: x[i].title
+    maxlength: 60 # longer might break TOC
+  - Upload the exhibit: x[i].pages
+    datatype: files
+    maximum image size: 1024
+    image upload type: jpeg
+    accept: |
+      "image/png, image/jpeg, .doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,.pdf"   
+validation code: |
+  this_doc_size = sum(a_page.size_in_bytes() for a_page in x[i].pages)
+  if this_doc_size > (15 * 1024 * 1024):
+    validation_error("Upload a file smaller than 15 MB.")
+  if hasattr(x, 'maximum_size'):
+    full_size = x.size_in_bytes()
+    if full_size > x.maximum_size:
+      suggested_size = x.maximum_size - (full_size - this_doc_size)
+      validation_error(f"All exhibits combined must be smaller than {humanize.naturalsize(x.maximum_size)}. Upload a file smaller than {humanize.naturalsize(suggested_size)}.")
+  try:
+    pdf_concatenate(x[i].pages)
+  except:
+    validation_error("Unable to convert this file. Please upload a new one.")
+  x[i].pages.reset_gathered()  # docassemble sets this attribute but we want to force gathering additional pages
+---
+generic object: ALExhibitList
+id: exhibit i has additional pages
+question: |
+  Does "**${ x[i] }**" have any additional pages?
+subquestion: |
+  You have uploaded ${ x[i].pages.num_pages() } pages so far.
+
+  % if hasattr(x, 'maximum_size'):
+  The total size of all exhibits must be less than ${ humanize.naturalsize(x.maximum_size) }.
+  You can upload ${ humanize.naturalsize(x.maximum_size - x.size_in_bytes() - sum(ap.size_in_bytes() for ap in x[i].pages.complete_elements()))} more.
+  % endif
+
+  ${ collapse_template(x[i].in_progress_template )}
+  
+field: x[i].pages.there_is_another
+buttons:
+  - Finished adding pages: False
+  - Add another page: True
+---
+generic object: ALExhibitList
+template: x[i].in_progress_template
+subject: |
+  Preview "${ x[i].title }" so far
+content: |
+  Use the buttons to rearrange the pages.
+  
+  ${ x[i].rearrange_pages_table }
+---
+sets:
+  - x[i].pages[j].initialized
+  - x[i].pages[j].mimetype
+  - x[i].pages[j].ok
+generic object: ALExhibitList
+id: exhibit additional page
+question: |
+  Upload the ${ ordinal(j) } part of your ${ x[i].title } document
+fields:
+  - Upload a PDF, Word, or image file: x[i].pages[j]
+    datatype: file
+    maximum image size: 1024
+    image upload type: jpeg
+    accept: |
+      "image/png, image/jpeg, .doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,.pdf"   
+validation code: |
+  page_size = x[i].pages[j].size_in_bytes()
+  if page_size > (15 * 1024 * 1024):
+    validation_error("Upload a file smaller than 15 MB.")
+  if hasattr(x, 'maximum_size'):
+    # this_doc_size already includes `page_size`
+    this_doc_size = sum(a_page.size_in_bytes() for a_page in x[i].pages.complete_elements())
+    full_size = x.size_in_bytes() + this_doc_size
+    if full_size > x.maximum_size:
+      suggested_size = x.maximum_size - (full_size - page_size)
+      validation_error(f"All exhibits combined must be smaller than {humanize.naturalsize(x.maximum_size)}. Upload a file smaller than {humanize.naturalsize(suggested_size)}.")
+  try:
+    pdf_concatenate(x[i].pages[j])
+  except:
+    validation_error("Unable to convert this file. Please upload a new one.")
+
+  x[i].pages[j] = unpack_dafilelist(x[i].pages[j])
+---
+generic object: ALExhibitList
+id: another exhibit
+question: |
+  You have ${ x.number_gathered() } document(s) so far. Do you have another document
+  you want to upload?
+subquestion: |
+  % if hasattr(x, 'maximum_size'):
+  The total size of all exhibits must be less than ${ humanize.naturalsize(x.maximum_size) }.
+  You can upload ${ humanize.naturalsize(x.maximum_size - x.size_in_bytes())} more.
+  % endif
+
+  ${ collapse_template(x.in_progress_exhibits) }
+field: x.there_is_another
+buttons:
+  - Finished adding documents: False
+  - Add another document: True
+---
+generic object: ALExhibitList
+template: x.in_progress_exhibits
+subject: |
+  Preview your documents so far
+content: |
+  ${ x.rearrange_exhibits_table }
+---
+generic object: ALExhibitList
+table: x.rearrange_exhibits_table
+rows: x
+allow reordering: True
+delete buttons: True
+columns:
+  - ${ al_exhibit_title_label }: |
+      row_item.title
+  - ${ al_exhibit_preview_label }: |
+      row_item.pages.show(width="50%")
+  - ${ al_exhibit_total_pages_label }: |
+      row_item.pages.num_pages()
+edit:
+  - rearrange_pages
+---
+generic object: ALExhibit
+table: x.rearrange_pages_table
+rows: x.pages
+allow reordering: True
+delete buttons: True
+columns: 
+  - ${ al_exhibit_preview_label }: |
+      row_item.show(width="50%")
+---  
+template: al_exhibit_preview_label
+content: |
+  Thumbnail
+---
+template: al_exhibit_title_label
+content: |
+  Title
+---
+template: al_exhibit_total_pages_label
+content: |
+  Total pages
+---
+generic object: ALExhibitList
+question: |
+  Review your documents
+subquestion: |
+  % if x.auto_label:
+  Each document will be labeled in the order below, starting at 
+  ${ x.auto_labeler(0) }, and continuing with ${ x.auto_labeler(1) } and so on.
+  
+  % endif
+  ${ x.rearrange_exhibits_table }
+
+  ${ x.add_action() }
+continue button field: x.rearrange_exhibits
+---
+generic object: ALExhibit
+question: |
+  Review your document pages
+subquestion: |
+  ${ x.rearrange_pages_table }
+
+  ${ x.pages.add_action() }
+continue button field: x.rearrange_pages
+---
+generic object: ALExhibit
+attachment:
+  variable name: x.cover_page
+  docx template file: exhibit_cover_sheet.docx
+  field code:
+    exhibit_label: raw(x.label)
+---
+generic object: ALExhibitDocument
+attachment:
+  variable name: x.table_of_contents
+  docx template file: exhibit_table_of_contents.docx
+  field code:
+    exhibits: raw(x.exhibits)
+    include_exhibit_cover_pages: raw(x.include_exhibit_cover_pages)
+---
+generic object: ALDocumentBundle
+code: |
+  x.there_is_another = False
+---
+generic object: ALIndividual
+code: |
+  # Set a default gender of a business to aid in methods like pronoun_possessive
+  if hasattr(x, 'person_type') and x.person_type == "business":
+    x.gender = "other"
+---    
+################################### ALDocumentUpload questions #############################
+---
+generic object: ALDocumentUpload
+id: Upload a document for a bundle that will not be transformed
+question: |
+  ${ x.title.capitalize() }
+fields:
+  - I do not have a ${ x.title }: x.has_no_file
+    datatype: yesno
+  - Upload the ${ x.title } below: x.file
+    datatype: file
+    label above field: True
+    hide if: x.has_no_file
+---
+generic object: ALDocumentUpload
+code: |
+  x.enabled = not x.has_no_file
+---
+##################################### Language helper variables ############################
+---
+comment: |
+  This list of languages represents the list of most commonly spoken languages in
+  Massachusetts. This differs widely across the world.
+variable name: al_language_user_choices
+data:
+  - English: en
+  - Spanish: es
+  - Arabic: ar
+  - Cape Verdean: kea
+  - Chinese (Cantonese): yue
+  - Chinese (Mandarin): cmn
+  - French: fr
+  - Haitian: ht
+  - Portuguese: pt
+  - Other: other
+---
+generic object: ALIndividual
+template: x.language_other_label
+content: |
+  Other
+---  
+generic object: ALIndividual
+template: x.language_label
+content: |
+  Language
+---
+sets:
+  - users[i].language
+id: language of user
+question: |
+  % if i == 0 and al_person_answering == "user":
+  What language do you speak?
+  % else:
+  What language does ${ users[i] } speak?
+  % endif
+fields:
+  - code: |
+      users[i].language_fields(choices=al_language_user_choices)
+---
+generic object: ALIndividual
+sets:
+  - x.language
+id: language of individual
+question: |
+  What language does ${ x } speak?
+fields:
+  - code: |
+      x.language_fields(choices=al_language_user_choices)
+---
+generic object: ALIndividual
+template: x.address.has_no_address_label
+content: |
+  ${ x } does not have an address
+---
+template: users[i].address.has_no_address_label
+content: |
+  % if i == 0 and al_person_answering == "user":
+  I do not have an address
+  % else:
+  ${ users[i] } does not have an address
+  % endif
+---
+generic object: ALAddress
+template: x.has_no_address_explanation_label
+content: |
+  % if i == 0 and al_person_answering == "user":
+  Anything else you want to add about your living situation?
+  % else:
+  Anything else you want to add about ${ x }'s living situation?
+  % endif
+---
+generic object: ALAddress
+template: x.has_no_address_explanation_help
+content: |
+  Example: "I normally sleep at 5th and Main."
+---
+################## Name change questions ######################
+---
+id: What is your new name?
+question: |
+  % if i == 0 and al_person_answering == "user":
+  What name do you want to be called?
+  % else:
+  What name does ${ users[i] } want to be called?
+  % endif
+fields:
+  - First name: users[i].preferred_name.first
+  - Middle name: users[i].preferred_name.middle
+    required: False
+  - Last name: users[i].preferred_name.last
+  - Suffix: users[i].preferred_name.suffix
+    required: False
+    code: name_suffix()
+---
+id: What is minors new name?
+question: |
+  What name does the minor want to be called?
+fields:
+  - First name: children[0].preferred_name.first
+  - Middle name: children[0].preferred_name.middle
+    required: False
+  - Last name: children[0].preferred_name.last
+  - Suffix: children[0].preferred_name.suffix
+    required: False
+    code: name_suffix()
+---
+generic object: ALIndividual
+id: What is x's new name?
+question: |
+  What name does the petitioner want to be called?
+fields:
+  - First name: x.preferred_name.first
+  - Middle name: x.preferred_name.middle
+    required: False
+  - Last name: x.preferred_name.last
+  - Suffix: x.preferred_name.suffix
+    required: False
+    code: name_suffix()
+---
+id: Have you changed your name before?
+question: |
+  % if i == 0 and al_person_answering == "user":
+  Have you changed your name before?
+  % else:
+  Has ${ users[i] } changed their name before?
+  % endif
+fields:
+  - no label: users[i].previous_names.there_are_any
+    datatype: yesnoradio
+---
+id: Has minor changed name before?
+question: |
+  Has the minor changed their name before?
+fields:
+  - no label: children[0].previous_names.there_are_any
+    datatype: yesnoradio
+---
+generic object: ALIndividual
+id: Has x changed their name before?
+question: |
+  Has ${ x.preferred_name } changed their name before?
+fields:
+  - no label: x.previous_names.there_are_any
+    datatype: yesnoradio
+---
+id: have you changed your name again
+question: |
+  % if i == 0 and al_person_answering == "user":
+  Is there another time that you changed your name?
+  % else:
+  Is there another time that ${ users[i] } changed their name?
+  % endif
+fields:
+  - no label: users[i].previous_names.there_is_another
+    datatype: yesnoradio
+---
+id: has minor changed name again
+question: |
+  Is there another time that the minor changed their name?
+fields:
+  - no label: children[0].previous_names.there_is_another
+    datatype: yesnoradio
+---
+generic object: ALIndividual
+id: has x changed their name again
+question: |
+  Is there another time that ${ x.preferred_name } changed their name?
+fields:
+  - no label: x.previous_names.there_is_another
+    datatype: yesnoradio
+---
+id: birth name
+question: |
+  % if i == 0 and al_person_answering == "user":
+  What was your first legal name?
+  % else:
+  What was ${ users[i] }'s first legal name?
+  % endif
+subquestion: |
+  % if i == 0 and al_person_answering == "user":
+  Write the name as it appeared on your first birth certificate.
+  % else:
+  Write the name as it appeared on their first birth certificate.
+  % endif
+fields:
+  - First name: users[i].previous_names[0].first
+  - Middle name: users[i].previous_names[0].middle
+    required: False
+  - Last name: users[i].previous_names[0].last
+  - Suffix: users[i].previous_names[0].suffix
+    required: False
+    code: name_suffix()
+---
+id: minor birth name
+question: |
+  What was the minor's first legal name?
+subquestion: |
+  Write the name as it appeared on their first birth certificate.
+fields:
+  - First name: children[0].previous_names[0].first
+  - Middle name: children[0].previous_names[0].middle
+    required: False
+  - Last name: children[0].previous_names[0].last
+  - Suffix: children[0].previous_names[0].suffix
+    required: False
+    code: name_suffix()
+---
+generic object: ALIndividual
+id: x birth name
+question: |
+  What was ${ x.preferred_name }'s first legal name?
+subquestion: |
+  Write the name as it appeared on their first birth certificate.
+fields:
+  - First name: x.previous_names[0].first
+  - Middle name: x.previous_names[0].middle
+    required: False
+  - Last name: x.previous_names[0].last
+  - Suffix: x.previous_names[0].suffix
+    required: False
+    code: name_suffix()
+---
+id: name i
+question: |
+  % if i == 0 and al_person_answering == "user":
+  What was your ${ ordinal(i) } legal name?
+  % else:
+  What was ${ users[i] }'s ${ ordinal(i) } legal name?
+  % endif
+fields:
+  - First name: users[i].previous_names[j].first
+  - Middle name: users[i].previous_names[j].middle
+    required: False
+  - Last name: users[i].previous_names[j].last
+  - Suffix: users[i].previous_names[j].suffix
+    required: False
+    code: name_suffix()
+---
+id: minor name i
+question: |
+  What was the minor's ${ ordinal(i) } legal name?
+fields:
+  - First name: children[0].previous_names[i].first
+  - Middle name: children[0].previous_names[i].middle
+    required: False
+  - Last name: children[0].previous_names[i].last
+  - Suffix: children[0].previous_names[i].suffix
+    required: False
+    code: name_suffix()
+---
+generic object: ALIndividual
+id: x i name
+question: |
+  What was ${ x.preferred_name }'s ${ ordinal(i) } legal name?
+fields:
+  - First name: x.previous_names[i].first
+  - Middle name: x.previous_names[i].middle
+    required: False
+  - Last name: x.previous_names[i].last
+  - Suffix: x.previous_names[i].suffix
+    required: False
+    code: name_suffix()
+---
+############################# Aliases ########################################
+# Aliases aren't name changes but the questions are similar
+---
+id: Have you been known by a different name before?
+question: |
+  % if i == 0 and al_person_answering == "user":
+  Have you ever been known by a different name or alias?  
+  % else:
+  Has ${ users[i] } ever been known by a different name or alias?
+  % endif
+fields:
+  - label: |
+      % if i == 0 and al_person_answering == "user":
+      I have been known by a different name or alias
+      % else:
+      ${ users[i] } has been known by a different name or alias
+      % endif
+    field: users[i].aliases.there_are_any
+    datatype: yesnoradio
+---
+generic object: ALIndividual
+id: Has x been known by a different name or alias before?
+question: |
+  Has ${ x.preferred_name } ever been known by a different name or alias?
+fields:
+  - no label: x.aliases.there_are_any
+    datatype: yesnoradio
+---
+id: have you been known by a different name again
+question: |
+  % if i == 0 and al_person_answering == "user":
+  Have you been known by any other names?
+  % else:
+  Has ${ users[i] } been known by any other names?
+  % endif
+subquestion: |
+  You have already told us about ${ users[i].aliases.complete_elements() }.
+fields:
+  - label: |
+      % if i == 0 and al_person_answering == "user":
+      I have been known by another name
+      % else:
+      ${ users[i] } has been known by another name
+      % endif
+    field: users[i].aliases.there_is_another
+    datatype: yesnoradio
+---
+generic object: ALIndividual
+id: has x been known by a different name again
+question: |
+  Has ${ x.preferred_name } been known by any other names?
+fields:
+  - no label: x.aliases.there_is_another
+    datatype: yesnoradio
+---
+id: name i
+question: |
+  % if i == 0 and al_person_answering == "user":
+  What was your ${ ordinal(j) } name?
+  % else:
+  What was ${ users[i] }'s ${ ordinal(j) } name?
+  % endif
+fields:
+  - First name: users[i].aliases[j].first
+  - Middle name: users[i].aliases[j].middle
+    required: False
+  - Last name: users[i].aliases[j].last
+  - Suffix: users[i].aliases[j].suffix
+    required: False
+    code: name_suffix()
+---
+generic object: ALIndividual
+id: x i name
+question: |
+  What is the ${ ordinal(i) } name that ${ x.preferred_name } has been known by?
+fields:
+  - First name: x.aliases[i].first
+  - Middle name: x.aliases[i].middle
+    required: False
+  - Last name: x.aliases[i].last
+  - Suffix: x.aliases[i].suffix
+    required: False
+    code: name_suffix()
+---
+################## Pronouns ######################
+---
+sets:
+  - users[i].pronouns
+id: your pronouns
+question: |
+  % if i == 0 and al_person_answering == "user":
+  What are your pronouns?
+  % else:
+  What are ${ users[i] }'s pronouns?
+  % endif
+fields:
+  - code: |
+      users[i].pronoun_fields(show_help=True, required=False)
+---
+generic object: ALIndividual
+sets:
+  - x.pronouns
+id: x's pronouns
+question: |
+  What are ${ x }'s pronouns?
+fields:
+  - code: |
+      x.pronoun_fields(show_help=True, required=False)
+---
+generic object: ALIndividual
+template: x.pronouns_help_text
+content: |
+  A pronoun is a word that can be used in place of your name. For example: he, she, or they.
+  Learn more at [pronouns.org](https://pronouns.org/)
+---
+template: users[0].pronouns_label
+content: |
+  Check one or more pronouns that you want people to use to refer to you
+---
+generic object: ALIndividual
+template: x.pronouns_label
+content: |
+  Choose one or more pronouns
+---
+variable name: al_pronoun_choices
+data:
+  - He/him/his: he/him/his
+  - She/her/hers: she/her/hers
+  - They/them/theirs: they/them/theirs
+  - Ze/zir/zirs: ze/zir/zirs
+---
+generic object: ALIndividual
+template: x.pronoun_prefer_not_to_say_label
+content: |
+  Prefer not to say
+---
+generic object: ALIndividual
+template: x.pronoun_unknown_label
+content: |
+  Unknown
+---
+generic object: ALIndividual
+template: x.pronoun_prefer_self_described_label
+content: |
+  Something else
+---
+generic object: ALIndividual
+template: x.pronoun_self_described_label
+content: |
+  Self described pronouns
+---
+############# Contact method strings ################
+---
+generic object: ALIndividual
+template: x.phone_number_contact_label
+content: >-
+  by phone at
+---
+generic object: ALIndividual
+template: x.email_contact_label
+content: >-
+  by email at
+---
+generic object: ALIndividual
+template: x.other_contact_method_label
+content: >-
+  by
+---
+# Backwards compatible, but you may want to override with Jr., Sr., etc.
+variable name: al_name_suffixes
+data:
+  - Jr
+  - Junior
+  - Sr
+  - Senior
+  - I
+  - II
+  - III
+  - IV
+  - V
+  - VI
+  - Esq.
+  - Ph.D.
+  - M.D.
+  - J.D.
+  - D.D.S.
+  - D.V.M.
+  - Ed.D.
+  - Ret.
+  - OBE
+  - CBE
+  - MBE
+  - QC
+  - KC
+  - Bart.
+  - Bt.
+---
+variable name: al_name_titles
+data:
+  - Mr.
+  - Mrs.
+  - Miss
+  - Ms.
+  - Mx.
+  - Dr.
+  - Prof.
+  - Hon.
+  - Rev.
+  - Sir
+  - Lord
+  - Lady
+  - Dame
+  - Maj.
+  - Gen.
+  - Capt.
+  - Lt.
+  - Sgt.
+  - Fr.
+  - Sr.

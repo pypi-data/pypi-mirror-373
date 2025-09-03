@@ -1,0 +1,178 @@
+---
+features:
+  use catchall: True
+---
+modules:
+  - .custom_jinja_filters
+---
+###################### Catchall questions ###########################################
+---
+code: |
+  # If you intentionally want to use catchall questions, you can set this value to False
+  al_warn_catchall_questions = True
+---
+generic object: DACatchAll
+question: |
+  ${ x.label if hasattr(x, "label") else x.object_name() }?
+fields:
+  - ${ x.label if hasattr(x, "label") else x.object_name() }: x.value
+subquestion: |
+  % if get_config("debug") and al_warn_catchall_questions:
+  ${ collapse_template(x.catchall_question_explanation) }
+  % endif
+validation code: |
+  define(x.instanceName, x.value)
+css: |
+  ${ dacatchall_css_template }
+---
+if: |
+  x.context == 'float' or (x.data_type_guess() == 'float')
+generic object: DACatchAll
+question: |
+  How much is ${ x.label if hasattr(x, "label") else x.object_name() }?
+subquestion: |
+  % if get_config("debug") and al_warn_catchall_questions:
+  ${ collapse_template(x.catchall_question_explanation) }
+  % endif
+fields:
+  - Amount: x.value
+    datatype: currency
+validation code: |
+  define(x.instanceName, x.value)
+css: |
+  ${ dacatchall_css_template }  
+---
+if: |
+  x.data_type_guess() == 'int'
+generic object: DACatchAll
+question: |
+  ${ x.label if hasattr(x, "label") else x.object_name() }?
+subquestion: |
+  % if get_config("debug") and al_warn_catchall_questions:
+  ${ collapse_template(x.catchall_question_explanation) }
+  % endif
+fields:
+  - Number or amount: x.value
+    datatype: integer
+validation code: |
+  define(x.instanceName, x.value)    
+css: |
+  ${ dacatchall_css_template }  
+---
+if: |
+  x.data_type_guess() == 'bool'
+generic object: DACatchAll
+question: |
+  ${ x.label if hasattr(x, "label") else x.object_name() }
+subquestion: |
+  % if get_config("debug") and al_warn_catchall_questions:
+  ${ collapse_template(x.catchall_question_explanation) }
+  % endif
+fields:
+  - ${ x.label if hasattr(x, "label") else x.object_name() }: x.value
+    datatype: yesnoradio
+validation code: |
+  define(x.instanceName, x.value)
+css: |
+  ${ dacatchall_css_template }  
+---
+if: |
+  x.object_name().endswith('date')
+generic object: DACatchAll
+question: |
+  ${ x.label if hasattr(x, "label") else x.object_name() }
+subquestion: |
+  % if get_config("debug") and al_warn_catchall_questions:
+  ${ collapse_template(x.catchall_question_explanation) }
+  % endif
+fields:
+  - Date: x.value
+    datatype: date
+validation code: |
+  define(x.instanceName, x.value)
+css: |
+  ${ dacatchall_css_template }
+---
+generic object: DACatchAll
+template: x.catchall_question_explanation
+subject: |
+  **<i class="fa-solid fa-triangle-exclamation"></i> Developer warning**: missing question for `${ x.instanceName }`
+content: |
+  **This warning only appears in developer mode**
+
+  It looks like you are missing a question to define a variable `${ x.instanceName }`.
+
+  Try adding a question block like:
+
+  % if x.data_type_guess() in ["int", "bool"]:
+  <pre>
+  ---
+  id: amount of ${ x.instanceName }
+  question: |
+    How much is ${ x.label if hasattr(x, "label") else x.object_name() }?
+  fields:
+    - ${ x.label if hasattr(x, "label") else x.object_name() }: ${ x.instanceName }
+      datatype: currency
+  </pre>
+  % else:
+  <pre>
+  ---
+  id: ${ x.instanceName }
+  question: |
+    What is ${ x.label if hasattr(x, "label") else x.object_name() }?
+  fields:
+    - ${ x.label if hasattr(x, "label") else x.object_name() }: ${ x.instanceName }
+  </pre>
+  % endif
+
+  If you do not do anything, your end user may see this question instead
+  of one you have customized.
+
+  This warning message will not appear when this interview is installed on a production
+  server.
+---
+#############
+# Catchall questions for generic objects with custom Jinja2 filters to provide text
+# 1. catchall_options()
+# 2. catchall_label()
+# 3. catchall_datatype()
+# 4. catchall_question()
+# 5. catchall_subquestion()
+#############
+sets:
+  - x.value
+if: |
+  hasattr(x, "_catchall_options") or hasattr(x, "label") or hasattr(x, "datatype") or hasattr(x, "question") or hasattr(x, "subquestion")
+generic object: DACatchAll
+question: |
+  % if hasattr(x, "question"):
+  ${ x.question }
+  % elif hasattr(x, "label"):
+  ${ x.label }
+  % else:
+  ${ x.object_name()}?
+  % endif
+subquestion: |
+  % if hasattr(x, "subquestion"):
+  ${ x.subquestion }
+  % endif
+  % if get_config("debug") and al_warn_catchall_questions:
+  ${ collapse_template(x.catchall_question_explanation) }
+  % endif
+fields:
+  - code: |
+      catchall_fields_code(x)
+validation code: |
+  define(x.instanceName, x.value)
+---
+template: dacatchall_css_template
+content: |
+  % if get_config("debug") and al_warn_catchall_questions:
+  <style>
+  #daquestion {
+    border-style: solid;
+    border-color: red;
+    padding: 4em;
+  }
+  </style>  
+  % endif
