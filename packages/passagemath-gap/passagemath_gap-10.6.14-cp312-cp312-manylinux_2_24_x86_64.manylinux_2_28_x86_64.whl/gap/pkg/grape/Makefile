@@ -1,0 +1,27 @@
+# read GAP's build settings
+GAPPATH = /host/sage-manylinux_2_28_x86_64/lib/gap/
+include $(GAPPATH)/sysinfo.gap
+
+NAUTYDIR = nauty2_8_6
+BINDIR = bin/$(GAParch)
+
+binaries: Makefile
+	mkdir -p $(BINDIR)
+	cd $(NAUTYDIR) && rm -f *.o config.log config.cache config.status makefile
+	# configure with --enable-generic to turn off -march=native which causes
+	# problems when installing the result
+	cd $(NAUTYDIR) && ./configure --enable-generic
+	make -C $(NAUTYDIR) dreadnaut
+	mv $(NAUTYDIR)/dreadnaut $(BINDIR)
+	chmod 755 $(BINDIR)/dreadnaut
+	rm -f $(NAUTYDIR)/*.o
+
+clean: Makefile
+	make -C $(NAUTYDIR) clean
+	rm -rf $(BINDIR)
+
+.PHONY: binaries clean
+
+# re-run configure if configure, Makefile.in or GAP itself changed
+Makefile: configure Makefile.in $(GAPPATH)/sysinfo.gap
+	./configure "$(GAPPATH)"
