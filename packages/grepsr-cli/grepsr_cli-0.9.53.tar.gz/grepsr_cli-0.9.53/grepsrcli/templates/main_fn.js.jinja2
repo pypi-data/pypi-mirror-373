@@ -1,0 +1,29 @@
+async function main() {
+    {% if '@vortex-ts-registry/crawler-utils' in packages_to_install -%}
+    li("Starting the crawler");
+    {% elif '@vortex-ts-sdk/http-crawler' in packages_to_install -%}
+    VtxLogger.info("Starting the crawler");
+    {% endif %}
+
+    await newSession(HANDLER.request);
+
+    {% if '@vortex-ts-registry/p-queue' in packages_to_install -%}
+    const concurrency = 5
+    const queue = new PQueue({ concurrency: concurrency })
+    queue.add(() => HANDLER.loadDocument(BASE_URL))
+    await queue.onSizeLessThan(concurrency);
+    await queue.onIdle()
+    {% elif '@vortex-ts-registry/crawler-utils' in packages_to_install -%}
+    const concurrency = 5
+    const queue = new MyQueue(concurrency)
+    await queue.add(() => HANDLER.loadDocument(BASE_URL))
+    await queue.onIdle()
+    {%- else -%}
+    await HANDLER.loadDocument(BASE_URL);
+    {%- endif %}
+
+    const arr = HANDLER.dataSet.getEmptyRow();
+    await HANDLER.dataSet.addRow(arr);
+}
+
+void main();
