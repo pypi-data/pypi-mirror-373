@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.x']
+        simd: [AVX2, SSE2, NONE]
+        include:
+          - os: ubuntu-latest
+            pip-cache-path: ~/.cache/pip
+          - os: macos-latest
+            pip-cache-path: ~/Library/Caches/pip
+          - os: windows-latest
+            pip-cache-path: ~\AppData\Local\pip\Cache
+        exclude:
+          - os: windows-latest
+            simd: NONE
+          - os: windows-latest
+            simd: SSE2
+          - os: macos-latest
+            simd: NONE
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ matrix.pip-cache-path }}
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml', '**/uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ matrix.python-version }}-
+            ${{ runner.os }}-pip-
+      - name: Set compiler flags
+        env:
+          OPT_FLAGS_LINUX: -O3
+          OPT_FLAGS_MACOS: -O3
+          OPT_FLAGS_WINDOWS: /O2
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            FLAGS="${{ env.OPT_FLAGS_WINDOWS }}"
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            FLAGS="${{ env.OPT_FLAGS_MACOS }}"
+          else
+            FLAGS="${{ env.OPT_FLAGS_LINUX }}"
+          fi
+
+          # Append SIMD flags only for x86_64 architecture on non-Windows runners
+          if [ "${{ runner.os }}" != "Windows" ] && [ "${{ runner.arch }}" = "X64" ]; then
+            if [ "${{ matrix.simd }}" = "AVX2" ]; then
+              FLAGS="$FLAGS -mavx2"
+            elif [ "${{ matrix.simd }}" = "SSE2" ]; then
+              FLAGS="$FLAGS -msse2"
+            elif [ "${{ matrix.simd }}" = "NONE" ]; then
+              FLAGS="$FLAGS -mno-avx2 -mno-sse2"
+            fi
+          fi
+          
+          echo "CXXFLAGS=$FLAGS" >> $GITHUB_ENV
+        shell: bash
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+      - name: Run tests
+        run: pytest
+
+  test-arm:
+    name: Test on ARM64 (QEMU)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Install and Test on ARM64
+        uses: uraimo/run-on-arch-action@v3
+        with:
+          arch: aarch64
+          distro: ubuntu24.04
+          env: |
+            CXXFLAGS: -O3 -std=c++11
+          run: |
+            echo "Running on $(uname -m)"
+            apt-get update
+            apt-get install -y python3 python3-pip python3-venv git
+            python3 -m venv venv
+            source venv/bin/activate
+            pip install --upgrade pip
+            pip install -e .[dev]
+            pytest
