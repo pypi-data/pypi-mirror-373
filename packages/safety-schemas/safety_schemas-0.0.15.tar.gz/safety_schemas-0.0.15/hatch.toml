@@ -1,0 +1,103 @@
+[envs.default]
+dependencies = [
+  "commitizen"
+]
+[envs.default.scripts]
+bump = "cz bump --check-consistency --yes && cz changelog --merge-prerelease"
+beta-bump = "cz bump -pr beta --check-consistency --yes && cz changelog --merge-prerelease"
+dev-bump = "cz bump --devrelease {args} --check-consistency --yes"
+local-bump = "cz bump {args} --changelog --files-only --yes"
+
+[envs.test]
+description = """
+Main test environment for safety_schenas. Use this environment to run basic tests on the minimum supported python version while developing safety_schemas.
+"""
+dependencies = [
+  "coverage[toml]>=6.5",
+  "pytest",
+  "tomli; python_version < '3.11'",
+  "pytest-cov",
+  "hatch-containers",
+  "deepdiff",
+  "orderly-set==5.3.2"
+]
+[envs.test.scripts]
+run-coverage = "python -m pytest --cov-config=pyproject.toml --cov=safety_schemas {args}"
+run = "run-coverage --no-cov"
+cov-report = [
+  "- coverage combine",
+  "coverage {args:report --show-missing}",]
+cov = [
+  "run-coverage",
+  "cov-report",
+]
+
+[envs.debug]
+installer = "uv"
+python = "3.8"
+template = "test"
+type = "virtual"
+path = ".venv"
+
+[envs.all]
+skip-install = true
+template = "test"
+description = """
+Use this environment to run an exaustive testing. Preferably use this env on a CI/CD pipeline.
+"""
+
+[envs.all.overrides]
+matrix.deps.skip-install = { value = false, if = ["main"] }
+matrix.deps.dependencies = [
+ { value = "pydantic==1.*", if = ["pydantic1"] },
+ { value = "dparse", if = ["pydantic1"] },
+ { value = "ruamel-yaml", if = ["pydantic1"] },
+ { value = "packaging", if = ["pydantic1"] },
+ { value = "typing-extensions", if = ["pydantic1"] },
+]
+
+[[envs.all.matrix]]
+python = ["3.7", "3.8", "3.9", "3.10", "3.11", "3.12"]
+deps = ["pydantic1", "main"]
+
+
+[envs.lint]
+detached = true
+dependencies = [
+  "black",
+  "mypy",
+  "ruff",
+  "pydantic<=1.10.14",
+  "pytest",
+]
+
+[envs.lint.scripts]
+typing = "mypy {args:safety_schemas tests}"
+style = [
+  "ruff {args:.}",
+  "black --check --diff {args:.}",
+]
+fmt = [
+  "black {args:.}",
+  "ruff --fix {args:.}",
+  "style",
+]
+all = [
+  "style",
+  "typing",
+]
+
+[envs.security]
+detached = true
+dependencies = [
+  "safety"
+]
+
+[envs.security.scripts]
+scan = "safety scan"
+
+[build.targets.wheel]
+packages = ["safety_schemas"]
+
+[build.targets.sdists]
+packages = ["safety_schemas"]
