@@ -1,0 +1,101 @@
+{% extends "afat/base.html" %}
+
+{% load i18n %}
+
+{% block page_title %}
+    {% translate "Fleet activity tracking" as page_title %}
+    {{ page_title|title }}
+{% endblock %}
+
+{% block afat_header %}
+    {% translate "All FAT links" as site_title %}
+    {% include "framework/header/page-header.html" with title=site_title %}
+{% endblock %}
+
+{% block afat_body %}
+    {% url "afat:fatlinks_overview" year_prev as url_previous_year %}
+    {% url "afat:fatlinks_overview" year_next as url_next_year %}
+    {% url "afat:fatlinks_overview" year_current as url_current_year %}
+
+    {% include "afat/partials/common/navigation/year-navigation.html" with url_previous_year=url_previous_year url_next_year=url_next_year url_current_year=url_current_year %}
+
+    <div class="card card-default">
+        <div class="card-body">
+            <table class="table table-striped table-hover w-100" id="link-list">
+                <thead>
+                    <tr>
+                        <th>{% translate "Fleet name" %}</th>
+                        <th>{% translate "Fleet type" %}</th>
+                        <th>{% translate "Doctrine" %}</th>
+                        <th>{% translate "Creator" %}</th>
+                        <th>{% translate "EVE time" %}</th>
+                        <th>{% translate "# of FATs" %}</th>
+
+                        {# Display the "Actions" column only if the user has the 'add_fatlink' or 'manage_afat' permission. #}
+                        {% if perms.afat.add_fatlink or perms.afat.manage_afat %}
+                            <th><!-- {% translate "Actions" %} --></th>
+                        {% endif %}
+                    </tr>
+                </thead>
+
+                <tbody></tbody>
+
+                <tfoot>
+                    <tr>
+                        <td colspan="{% if perms.afat.add_fatlink or perms.afat.manage_afat %}7{% else %}6{% endif %}">
+                            {% include "afat/partials/fatlinks/fatlink-list-legend.html" %}
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    {% translate "Delete FAT link" as translated_title %}
+    {% include "afat/modals/general.html" with modal_name="deleteFatLink" modal_title=translated_title confirm_button_class="btn-danger" %}
+
+    {% translate "Close ESI fleet tracking" as translated_title %}
+    {% include "afat/modals/general.html" with modal_name="cancelEsiFleet" modal_title=translated_title confirm_button_class="btn-danger" %}
+{% endblock %}
+
+{% block extra_css %}
+    {% include "bundles/datatables-css-bs5.html" %}
+    {% include "afat/bundles/afat-css.html" %}
+{% endblock %}
+
+{% block extra_javascript %}
+    {% translate "ESI" as dataTableFilterViaEsi %}
+
+    <script>
+        const afatJsSettingsOverride = {
+            url: {
+                linkList: '{% url "afat:fatlinks_ajax_get_fatlinks_by_year" year %}'
+            },
+            permissions: {
+                addFatLink: {% if perms.afat.add_fatlink %}true{% else %}false{% endif %},
+                manageAfat: {% if perms.afat.manage_afat %}true{% else %}false{% endif %}
+            },
+            translation: {
+                dataTable: {
+                    filter: {
+                        viaEsi: '{{ dataTableFilterViaEsi|escapejs }}'
+                    }
+                },
+            },
+            modal: {
+                deleteFatLinkModal: {
+                    element: '#deleteFatLinkModal'
+                },
+                cancelEsiFleetModal: {
+                    element: '#cancelEsiFleetModal'
+                }
+            }
+        };
+    </script>
+
+    {% include "bundles/datatables-js-bs5.html" %}
+    {% include "bundles/moment-js.html" with locale=True %}
+    {% include "afat/bundles/afat-js.html" %}
+    {% include "afat/bundles/afat-fatlist-js.html" %}
+    {% include "bundles/filterdropdown-js.html" %}
+{% endblock %}
