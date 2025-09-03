@@ -1,0 +1,182 @@
+import contextlib
+import io
+import logging
+import pathlib
+import tempfile
+
+import minio
+import minio.error
+import tenacity
+
+from dsw.config.model import S3Config
+
+LOG = logging.getLogger(__name__)
+
+DOCUMENTS_DIR = 'documents'
+
+RETRY_S3_MULTIPLIER = 0.5
+RETRY_S3_TRIES = 3
+
+
+@contextlib.contextmanager
+def temp_binary_file(data: bytes):
+    file = tempfile.TemporaryFile()
+    file.write(data)
+    file.seek(0)
+    yield file
+    file.close()
+
+
+class S3Storage:
+
+    @staticmethod
+    def _get_endpoint(url: str):
+        parts = url.split('://', maxsplit=1)
+        return parts[0] if len(parts) == 1 else parts[1]
+
+    def __init__(self, *, cfg: S3Config, multi_tenant: bool):
+        self.cfg = cfg
+        self.multi_tenant = multi_tenant
+        self.client = minio.Minio(
+            endpoint=self._get_endpoint(self.cfg.url),
+            access_key=self.cfg.username,
+            secret_key=self.cfg.password,
+            secure=self.cfg.url.startswith('https://'),
+            region=self.cfg.region,
+        )
+
+    @property
+    def identification(self) -> str:
+        return f'{self.cfg.url}/{self.cfg.bucket}'
+
+    @tenacity.retry(
+        reraise=True,
+        wait=tenacity.wait_exponential(multiplier=RETRY_S3_MULTIPLIER),
+        stop=tenacity.stop_after_attempt(RETRY_S3_TRIES),
+        before=tenacity.before_log(LOG, logging.DEBUG),
+        after=tenacity.after_log(LOG, logging.DEBUG),
+    )
+    def ensure_bucket(self):
+        found = self.client.bucket_exists(self.cfg.bucket)
+        if not found:
+            self.client.make_bucket(self.cfg.bucket)
+
+    @tenacity.retry(
+        reraise=True,
+        wait=tenacity.wait_exponential(multiplier=RETRY_S3_MULTIPLIER),
+        stop=tenacity.stop_after_attempt(RETRY_S3_TRIES),
+        before=tenacity.before_log(LOG, logging.DEBUG),
+        after=tenacity.after_log(LOG, logging.DEBUG),
+    )
+    def store_document(self, *, tenant_uuid: str, file_name: str,
+                       content_type: str, data: bytes,
+                       metadata: dict | None = None):
+        object_name = f'{DOCUMENTS_DIR}/{file_name}'
+        if self.multi_tenant:
+            object_name = f'{tenant_uuid}/{object_name}'
+        with temp_binary_file(data=data) as file:
+            self.client.put_object(
+                bucket_name=self.cfg.bucket,
+                object_name=object_name,
+                data=file,
+                length=len(data),
+                content_type=content_type,
+                metadata=metadata,
+            )
+
+    @tenacity.retry(
+        reraise=True,
+        wait=tenacity.wait_exponential(multiplier=RETRY_S3_MULTIPLIER),
+        stop=tenacity.stop_after_attempt(RETRY_S3_TRIES),
+        before=tenacity.before_log(LOG, logging.DEBUG),
+        after=tenacity.after_log(LOG, logging.DEBUG),
+    )
+    def download_questionnaire_file(self, *, tenant_uuid: str, questionnaire_uuid: str,
+                                    file_uuid: str, target_path: pathlib.Path) -> bool:
+        return self._download_file(
+            tenant_uuid=tenant_uuid,
+            file_name=f'questionnaire-files/{questionnaire_uuid}/{file_uuid}',
+            target_path=target_path,
+        )
+
+    @tenacity.retry(
+        reraise=True,
+        wait=tenacity.wait_exponential(multiplier=RETRY_S3_MULTIPLIER),
+        stop=tenacity.stop_after_attempt(RETRY_S3_TRIES),
+        before=tenacity.before_log(LOG, logging.DEBUG),
+        after=tenacity.after_log(LOG, logging.DEBUG),
+    )
+    def download_template_asset(self, *, tenant_uuid: str, template_id: str,
+                                file_name: str, target_path: pathlib.Path) -> bool:
+        return self._download_file(
+            tenant_uuid=tenant_uuid,
+            file_name=f'templates/{template_id}/{file_name}',
+            target_path=target_path,
+        )
+
+    @tenacity.retry(
+        reraise=True,
+        wait=tenacity.wait_exponential(multiplier=RETRY_S3_MULTIPLIER),
+        stop=tenacity.stop_after_attempt(RETRY_S3_TRIES),
+        before=tenacity.before_log(LOG, logging.DEBUG),
+        after=tenacity.after_log(LOG, logging.DEBUG),
+    )
+    def download_locale(self, *, tenant_uuid: str, locale_id: str,
+                        file_name: str, target_path: pathlib.Path) -> bool:
+        return self._download_file(
+            tenant_uuid=tenant_uuid,
+            file_name=f'locales/{locale_id}/{file_name}',
+            target_path=target_path,
+        )
+
+    @tenacity.retry(
+        reraise=True,
+        wait=tenacity.wait_exponential(multiplier=RETRY_S3_MULTIPLIER),
+        stop=tenacity.stop_after_attempt(RETRY_S3_TRIES),
+        before=tenacity.before_log(LOG, logging.DEBUG),
+        after=tenacity.after_log(LOG, logging.DEBUG),
+    )
+    def _download_file(self, *, tenant_uuid: str, file_name: str,
+                       target_path: pathlib.Path) -> bool:
+        if self.multi_tenant:
+            file_name = f'{tenant_uuid}/{file_name}'
+        try:
+            self.client.fget_object(
+                bucket_name=self.cfg.bucket,
+                object_name=file_name,
+                file_path=str(target_path),
+            )
+        except minio.error.S3Error as e:
+            if e.code != 'NoSuchKey':
+                raise e
+            return False
+        return True
+
+    @tenacity.retry(
+        reraise=True,
+        wait=tenacity.wait_exponential(multiplier=RETRY_S3_MULTIPLIER),
+        stop=tenacity.stop_after_attempt(RETRY_S3_TRIES),
+        before=tenacity.before_log(LOG, logging.DEBUG),
+        after=tenacity.after_log(LOG, logging.DEBUG),
+    )
+    def store_object(self, *, tenant_uuid: str, object_name: str,
+                     content_type: str, data: bytes,
+                     metadata: dict | None = None):
+        if self.multi_tenant:
+            object_name = f'{tenant_uuid}/{object_name}'
+        with io.BytesIO(data) as file:
+            self.client.put_object(
+                bucket_name=self.cfg.bucket,
+                object_name=object_name,
+                data=file,
+                length=len(data),
+                content_type=content_type,
+                metadata=metadata,
+            )
+
+    def make_path(self, fragments: list[str], tenant_uuid: str) -> str:
+        lst = []
+        if self.multi_tenant:
+            lst.append(tenant_uuid)
+        lst.extend(fragments)
+        return '/'.join(lst)
