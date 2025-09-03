@@ -1,0 +1,342 @@
+document.formset = [];
+
+document.gtwidgets = {
+    ImageRecordInput: function (instance) {
+        instance.each(function (i, e) {
+            getMediaRecord(e, 'photo');
+        });
+    },
+    VideoRecordInput: function (instance) {
+        instance.each(function (i, e) {
+            getMediaRecord(e, 'video');
+        });
+    },
+    AudioRecordInput: function (instance) {
+        instance.each(function (i, e) {
+            getMediaRecord(e, 'audio');
+        });
+    },
+    Select: function (instance) {
+        instance.each(function (i, e) {
+            let s2instance = $(e);
+            let contexts2 = {};
+            extract_select2_context(contexts2, s2instance);
+            s2instance.select2(contexts2);
+        });
+    },
+    SelectMultiple: function (instance) {
+        instance.each(function (i, e) {
+            let s2instance = $(e);
+            let contexts2 = {};
+            extract_select2_context(contexts2, s2instance);
+            s2instance.select2(contexts2);
+        });
+    },
+    TreeSelect: function (instance) {
+
+        instance.each(function (i, e) {
+            let s2instance = $(e);
+            let contexts2 = {templateResult: decore_select2};
+            extract_select2_context(contexts2, s2instance);
+            s2instance.select2(contexts2);
+        });
+    },
+    CheckboxInput: function (instance) {
+
+        var checkklass = instance.data('checkboxclass') || 'icheckbox_flat-green';
+        var radioklass = instance.data('radioclass') || 'iradio_flat-green';
+        instance.iCheck({
+            checkboxClass: checkklass,
+            radioClass: radioklass
+        });
+    },
+    YesNoInput: function (instance) {
+        instance.each(function (index, element) {
+            switchery = new Switchery(element, {color: '#26B99A'});
+            instance.data('switchery', switchery);
+            showHideRelatedFormFields($(element));
+        });
+    },
+    NullBooleanSelect: function (instance) {
+        var checkklass = instance.data('checkboxclass') || 'icheckbox_flat-green';
+        var radioklass = instance.data('radioclass') || 'iradio_flat-green';
+        instance.iCheck({
+            checkboxClass: checkklass,
+            radioClass: radioklass
+        });
+    },
+    DateRangeInput: function (instance) {
+        format = instance.attr('data-format')
+        instance.each((i, element) => {
+            $(element).daterangepicker(load_date_range(instance), (from_date, to_date) => {
+                $(element).val(from_date.format(format) + ' - ' + to_date.format(format));
+            });
+        });
+    },
+
+    GridSlider: function (instance) {
+        instance.ionRangeSlider(grid_slider(instance));
+    },
+    DateGridSlider: function (instance) {
+        date_grid_slider(instance);
+    },
+    SingleGridSlider: function (instance) {
+        instance.ionRangeSlider(grid_slider_single(instance));
+    },
+    DateRangeInputCustom: function (instance) {
+        instance.daterangepicker(load_date_range_custom(instance));
+    },
+    RadioVerticalSelect: function (instance) {
+        instance.find('input').iCheck({radioClass: 'iradio_flat-green'});
+    },
+    RadioHorizontalSelect: function (instance) {
+        instance.find('input').iCheck({radioClass: 'iradio_flat-green'});
+    },
+    DateRangeTimeInput: function (instance) {
+        instance.daterangepicker(load_datetime_range(instance));
+    },
+    DateTimeInput: function (instance) {
+        instance.datetimepicker({
+            format: instance.data('format'),
+            sideBySide: true, icons: {
+                time: "fa fa-clock-o",
+                up: "fa fa-arrow-up",
+                down: "fa fa-arrow-down"
+            }
+        });// "YYYY-MM-DD HH:mm"
+    },
+    TimeInput: function (instance) {
+        instance.datetimepicker({
+            format: instance.data('format'),
+            sideBySide: true, icons: {
+                time: "fa fa-clock-o",
+                up: "fa fa-arrow-up",
+                down: "fa fa-arrow-down"
+            }
+        }); // 'HH:mm'
+    },
+    DateInput: function (instance) {
+        instance.datetimepicker({format: instance.data('format')}); //"DD/MM/YYYY"
+    },
+    Textarea: function (instance) {
+        autosize(instance);
+        instance.each(function (i, e) {
+            if ($(e).attr('maxlength') != undefined) {
+                $(e).maxlength({alwaysShow: true, warningClass: "label label-success"});
+            }
+        });
+    },
+    PhoneNumberMaskInput: function (instance) {
+        instance.inputmask({"mask": "(999)9999-9999"});
+    },
+    PhoneNumberTwoDigitMaskInput: function (instance) {
+        instance.inputmask({"mask": "(99)9999-9999"});
+    },
+    PhoneNumberFourDigitMaskInput: function (instance) {
+        instance.inputmask({"mask": "(9999)9999-9999"});
+    },
+    DateMaskInput: function (instance) {
+        instance.inputmask("99/99/9999", {"placeholder": "dd/mm/yyyy"});
+    },
+    DateTimeMaskInput: function (instance) {
+        instance.inputmask("99/99/9999 99:99", {
+            "placeholder": "dd/mm/yyyy HH:mm",
+            format: "YYYY-MM-DD HH:mm"
+        });
+    },
+    EmailMaskInput: function (instance) {
+        instance.inputmask({
+            regex: "[a-zA-Z0-9._%-]+@[a-zA-Z0-9-]+(\.[a-zA-Z]+)+",
+            greedy: false,
+            onBeforePaste: function (pastedValue, opts) {
+                pastedValue = pastedValue.toLowerCase();
+                return pastedValue.replace("mailto:", "");
+            },
+            definitions: {
+                '*': {
+                    validator: "[0-9A-Za-z!#$%&'*+/=?^_`{|}~\-]",
+                    casing: "lower"
+                }
+            }
+        });
+    },
+    SelectWithAdd: function (instance) {
+        instance.addselectwidget();
+        instance.each(function (i, e) {
+            let contexts2 = {};
+            let s2instance = $(e);
+            extract_select2_context(contexts2, s2instance);
+            s2instance.select2(contexts2);
+        });
+    },
+    SelectMultipleAdd: function (instance) {
+        instance.addselectwidget();
+        instance.each(function (i, e) {
+            let contexts2 = {};
+            let s2instance = $(e);
+            extract_select2_context(contexts2, s2instance);
+            s2instance.select2(contexts2);
+        });
+    },
+    TreeSelectMultipleWithAdd: function (instance) {
+        instance.addselectwidget();
+        instance.select2({templateResult: decore_select2});
+        instance.each(function (i, e) {
+            let s2instance = $(e);
+            let contexts2 = {templateResult: decore_select2};
+            extract_select2_context(contexts2, s2instance);
+            s2instance.select2(contexts2);
+        });
+    },
+    TreeSelectWithAdd: function (instance) {
+        instance.addselectwidget();
+        instance.each(function (i, e) {
+            let s2instance = $(e);
+            let contexts2 = {templateResult: decore_select2};
+            extract_select2_context(contexts2, s2instance);
+            s2instance.select2(contexts2);
+        });
+    },
+    FileInput: function (instance) {
+        instance.fileuploadwidget();
+    },
+    FileChunkedUpload: function (instance) {
+        instance.fileuploadwidget();
+    },
+    GTAutocompleteSelect: function (instance) {
+        build_select2_init(instance);
+    },
+    SerialNumberMaskInput: function (instance) {
+        instance.inputmask({"mask": "9999-9999-9999-9999-999"});
+    },
+    TaxIDMaskInput: function (instance) {
+        instance.inputmask({"mask": "99-99999999"});
+    },
+    CreditCardMaskInput: function (instance) {
+        instance.inputmask({"mask": "9999-9999-9999-9999"});
+    },
+    NumberKnobInput: function (instance) {
+        instance.knob();
+    },
+    TextareaWysiwyg: function (instance) {
+        $(instance).removeAttr('required');
+        instance.tinymce({
+            menubar: false,
+            toolbar: 'undo redo | bold italic underline strikethrough | fontselect fontsizeselect formatselect | alignleft aligncenter alignright alignjustify | outdent indent |  numlist bullist checklist | forecolor backcolor casechange permanentpen formatpainter removeformat | pagebreak | charmap emoticons | fullscreen  preview save print | insertfile image media pageembed template link anchor codesample | a11ycheck ltr rtl | showcomments addcomment',
+            plugins: ['autolink', 'codesample', 'link', 'lists', 'media', 'quickbars', "advlist autolink lists link image charmap print preview anchor",
+                "searchreplace visualblocks code fullscreen", "insertdatetime media table paste imagetools wordcount",
+                "autoresize", "hr", "image",
+            ],
+            quickbars_insert_toolbar: 'quicktable | hr pagebreak',
+            file_picker_callback: function (callback, value, meta) {
+                var input = document.createElement('input');
+                input.setAttribute('type', 'file');
+                input.setAttribute('accept', 'image/*');
+                input.onchange = function () {
+                    var file = this.files[0];
+                    upload_files(callback, meta, file, instance.attr('data-option-image'),
+                        instance.attr('data-option-video'));
+                };
+                input.click();
+            },
+        });
+    },
+
+    EditorTinymce: function (instance) {
+        $(instance).removeAttr('required');
+        instance.tinymce({
+            menubar: false,
+            toolbar: 'undo redo | bold italic underline strikethrough | fontselect fontsizeselect formatselect | alignleft aligncenter alignright alignjustify | outdent indent |  numlist bullist checklist | forecolor backcolor casechange permanentpen formatpainter removeformat | pagebreak | charmap emoticons | fullscreen  preview save print | insertfile image media pageembed template link anchor codesample | a11ycheck ltr rtl | showcomments addcomment',
+            plugins: ['autolink', 'codesample', 'link', 'lists', 'media', 'quickbars', "advlist autolink lists link image charmap print preview anchor",
+                "searchreplace visualblocks code fullscreen", "insertdatetime media table paste imagetools wordcount",
+                "autoresize", "hr", "image",
+            ],
+            quickbars_insert_toolbar: 'quicktable | hr pagebreak',
+            file_picker_callback: function (callback, value, meta) {
+                var input = document.createElement('input');
+                input.setAttribute('type', 'file');
+                input.setAttribute('accept', 'image/*');
+                input.onchange = function () {
+                    var file = this.files[0];
+                    upload_files(callback, meta, file, instance.attr('data-option-image'),
+                        instance.attr('data-option-video'));
+                };
+                input.click();
+            },
+        });
+    },
+
+    TaggingInput: function (instance) {
+        build_tagginginput(instance);
+    },
+    EmailTaggingInput: function (instance) {
+        build_tagging_email(instance);
+    },
+    DJGraph: function (instance) {
+        instance.gentelella_chart();
+    },
+    NullBooleanSelect: function (instance) {
+        instance.iCheck({
+            checkboxClass: 'icheckbox_flat-green',
+            radioClass: 'iradio_flat-green'
+        });
+    },
+    UrlTimeLineInput: function (instance) {
+        build_timeline(instance);
+    },
+
+    CalendarInput: function (instance) {
+        build_calendar(instance);
+    },
+    GigaPixelStoryMapInput: function (instance) {
+        build_gigapixel_storymap(instance);
+    },
+    MapBasedStoryMapInput: function (instance) {
+        build_mapbased_storymap(instance);
+    },
+    UrlStoryLineInput: function (instance) {
+        build_storyline(instance)
+    },
+    RemoteAutocompleteEmailTagifyWidget: function(instance){
+        build_remote_tagify_email(instance)
+
+    },
+    DigitalSignatureInput: function (instance) {
+        // instancia del dom = e
+        instance.each(function (i, e) {
+            build_digital_signature(e);
+        });
+    },
+    FirmadorCORS: function (instance){
+        instance.each(function (i, e) {
+            build_cors_headers(e);
+        });
+    },
+
+}
+
+function gt_find_initialize(instance) {
+    var widgets = Object.keys(document.gtwidgets);
+    widgets.forEach((widgetname) => {
+        var elems = instance.find('[data-widget="' + widgetname + '"]');
+        if (elems.length > 0) {
+            document.gtwidgets[widgetname](elems);
+        }
+    });
+    let textautocomplete = '[data-widget="AutocompleteSelectMultiple"],[data-widget="AutocompleteSelect"]';
+    textautocomplete += ',[data-widget="AutocompleteSelectMultipleImage"],[data-widget="AutocompleteSelectImage"]';
+    var autocomplete = instance.find(textautocomplete);
+    if (autocomplete.length > 0) {
+        document.gtwidgets['GTAutocompleteSelect'](autocomplete);
+    }
+}
+function gt_find_initialize_from_dom(instance) {
+    gt_find_initialize($(instance));
+}
+
+$(document).ready(function () {
+    $(".formset").each(function (index, elem) {
+        document.formset.push(gtformSetManager($(elem)));
+    });
+
+});
