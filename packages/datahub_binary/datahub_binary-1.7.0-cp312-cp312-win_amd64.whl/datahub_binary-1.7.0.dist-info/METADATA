@@ -1,0 +1,252 @@
+Metadata-Version: 2.4
+Name: datahub_binary
+Version: 1.7.0
+Summary: A comprehensive Python library for data processing, integration, and management.
+Requires-Python: <3.13,>=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: SQLAlchemy>=1.0.0
+Requires-Dist: httpx[socks]>=0.28.0
+Requires-Dist: starrocks>=1.0.0
+Requires-Dist: polars-lts-cpu==1.26.0; sys_platform == "darwin"
+Requires-Dist: polars==1.26.0; sys_platform != "darwin"
+Requires-Dist: loguru>=0.7.3
+Requires-Dist: numpy>=1.0.0
+Requires-Dist: protobuf>=6.30.1
+Requires-Dist: redis>=5.2.1
+Requires-Dist: psycopg2-binary>=2.9.10
+Requires-Dist: paramiko>=3.5.1
+Requires-Dist: toml>=0.10.0
+Requires-Dist: pydantic>=2.11.3
+Requires-Dist: lark-oapi>=1.4.14
+Requires-Dist: pyzmq>=26.4.0
+Requires-Dist: sortedcontainers>=2.4.0
+
+### 使用示例
+
+```python3
+import os
+from datetime import datetime
+
+import polars as pl
+
+os.environ["LOGURU_LEVEL"] = "TRACE"
+
+from datahub import *
+
+
+def main():
+    starrocks_setting = StarRocksSetting(
+        host="xxx",
+        db_port=9030,
+        http_port=8040,
+        username="xxx",
+        password="xxx",
+        # sftp=sftp_setting  # 设置sftp后会启用大查询缓存
+    )
+
+    setting = Setting(
+        starrocks=starrocks_setting,
+    )
+    datahub = DataHub(setting)
+    start_time = datetime(2024, 12, 19)
+    end_time = datetime(2024, 12, 29)
+    # pl.Config.set_tbl_cols(-1)  # -1 表示显示所有列
+    # pl.Config.set_fmt_str_lengths(100)  # 设置字符串显示长度
+    # pl.Config.set_tbl_width_chars(200)  # 设置表格宽度字符数
+
+    # 发送监控报警
+    # mylogger = logger.Logger("test")
+    # mylogger.monitor.to("alpha运维").info("test")
+    # mylogger.monitor.to("alpha运维").at("all").error("test")
+
+    print("获取交易日")
+    result = datahub.get_trading_days(start_time, end_time)
+    print(result)
+
+    print("获取指定日期, 指定indicator 可用标的")
+    result = datahub.get_instrument_list(
+        trade_date=start_time.date(),
+        indicators=["premiums_income"],
+    )
+    print(result)
+
+    print("获取指定日期标的信息")
+    result = datahub.get_instrument_info(
+        trade_date=start_time.date(), market="XSHG", instrument_type="spot")
+    print(result)
+
+    print("获取指定日期标的池")
+    result = datahub.get_universe(trade_date=datetime(
+        2025, 2, 20), universe="basic_alpha")
+    print(result)
+
+    print("获取某日逐笔成交")
+    result = datahub.get_md_transaction(
+        start_date=datetime(2025, 1, 27).date(),
+        instruments=["508086.XSHG"],
+    )
+    print(result)
+
+    print("获取某日快照行情")
+    result = datahub.get_md_snapshot(
+        start_date=datetime(2025, 1, 27).date(),
+        instruments=["508086.XSHG"],
+    )
+    print(result)
+
+    print("获取某日快照行情")
+    result = datahub.get_trading_days(
+        start_date=start_time.date(),
+        end_date=end_time.date(),
+    )
+    print(result)
+
+    print("获取指标值")
+    result = datahub.get_indicator_data(
+        start_time=start_time,
+        end_time=end_time,
+        # indicators=["5min_stat_open"],
+        instruments=["600519.XSHG"],
+        types=["5min_stat"]
+    )
+    print(result)
+
+    print("获取BarDataMatrix")
+    bar_data = datahub.get_indicator_matrix(
+        trade_time=datetime(2024, 12, 19, 10),
+        indicators=["5min_stat_open", "5min_stat_low"],
+        instrument_ids=["600519.XSHG", "000001.XSHE", "000002.XSHG"],
+    )
+    print(bar_data)
+
+    print("获取BarDataMatrix列表")
+    bar_data = datahub.get_indicator_matrix_list(
+        start_date=datetime(2024, 12, 19, 10),
+        end_date=datetime(2024, 12, 20, 10),
+        indicators=["5min_stat_open", "5min_stat_low"],
+        instrument_ids=["600519.XSHG", "000001.XSHE", "000002.XSHG"],
+    )
+    print(bar_data)
+
+    print("获取因子值")
+    result = datahub.get_factor_data(
+        start_time=start_time,
+        end_time=end_time,
+        # factors=["5min_stat_open"],
+        instruments=["600519.XSHG"],
+        types=["5min_stat"]
+    )
+    print(result)
+
+    print("获取因子值矩阵")
+    result = datahub.get_factor_matrix(
+        trade_time=datetime(2024, 12, 19, 10),
+        factors=["5min_stat_open", "5min_stat_low"],
+        instrument_ids=["600519.XSHG", "000001.XSHE", "000002.XSHG"],
+    )
+    print(result)
+
+    print("获取收益率数据")
+    result = datahub.get_return_data(
+        start_time=start_time,
+        end_time=end_time,
+        instruments=["600519.XSHG"],
+    )
+    print(result)
+
+    print("获取收益率矩阵")
+    result = datahub.get_return_matrix(
+        trade_time=datetime(2024, 10, 31, 19, 15),
+        factors=["forward_ret_raw_1d"],
+        instrument_ids=["600519.XSHG", "000001.XSHE", "000002.XSHG"],
+    )
+    print(result)
+
+    print("获取K线")
+    result = datahub.get_kline(
+        "5min", instruments=["600519.XSHG", "603350.XSHG"],
+        start_time=start_time, end_time=end_time, adj_method="backward"
+    )
+    print(result)
+
+    print("获取指标信息")
+    result = datahub.get_indicator_info()
+    print(result)
+
+    print("获取指标类型信息")
+    result = datahub.get_indicator_type()
+    print(result)
+
+    print("获取因子类型信息")
+    result = datahub.get_factor_type()
+    print(result)
+
+    print("获取行业分类信息")
+    result = datahub.get_instrument_industry(datetime(2018, 1, 5).date())
+    print(result)
+
+    print("获取交易日")
+    result = datahub.calendar.get_latest_trade_date(
+        dt=datetime(2025, 1, 4).date())
+    print(result)
+
+    print("获取主力期货合约信息")
+    result = datahub.get_future_domain_info("IC")
+    print(result)
+
+    print("获取主力期货快照行情")
+    result = datahub.get_future_snapshot(
+        "IC", start_date=start_time.date(), end_date=end_time.date())
+    print(result)
+
+    print("获取return_factor的数据")
+    df = datahub.get_return_matrix(
+        trade_time=datetime(2018, 1, 29, 9, 35),
+        factors=["ret_raw_1d", "ret_raw_3d", "ret_raw_5d"],
+        instrument_ids=["600519.XSHG", "000001.XSHE", "000002.XSHG"],
+    )
+    print(df)
+
+    print("获取risk_factor的数据")
+    df = datahub.get_risk_factor_matrix(
+        version="rq_v2_sws2021",
+        trade_time=datetime(2018, 1, 11, 20),
+        factors=["liquidity", "longterm_reversal", "mid_cap"],
+        instrument_ids=["600519.XSHG", "000001.XSHE", "000002.XSHG"],
+    )
+    print(df)
+
+    print("获取最新黑名单列表, 可以指定日期")
+    df = datahub.get_blacklist(blacklist_ids=["cms_dma_blacklist", "XXX"], end_date=None)
+    print(df)
+
+    print("获取券池列表, 可以指定券池和日期")
+    df = datahub.get_sbl_list(end_date=datetime(2025, 1, 1))
+    print(df)
+
+    print("获取seq y")
+    df = datahub.get_seq_y_info(resample_type="time_interval_ms_500",)
+    print(df)
+
+    print("获取seq factor info")
+    df = datahub.get_seq_factor_info(resample_type="time_interval_ms_500",)
+    print(df)
+
+    print("获取 seq factor")
+    df = datahub.get_seq_factor_data(
+        start_time=datetime(2025, 2, 10, 9, 30, 9, 920000),
+        end_time=datetime(2025, 2, 10, 9, 30, 11, 920000),
+        factors=["ActiveCashFlowFactors__lookback_tick_30s__time_interval_ms_500__buy_amount"],
+        instruments=["000029.XSHE"]
+    )
+    print(df)
+
+    print("获取get_seq_y_stat")
+    df = datahub.get_seq_y_stat(start_time=datetime(2025, 1, 10, 23), end_time=datetime(2025, 1, 10, 23),
+                                stat_type="std_1d")
+    print(df)
+
+
+if __name__ == "__main__":
+    main()
+```

@@ -1,0 +1,488 @@
+from google.protobuf.internal import containers as _containers
+from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
+from google.protobuf import descriptor as _descriptor
+from google.protobuf import message as _message
+from collections.abc import Iterable as _Iterable, Mapping as _Mapping
+from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
+
+DESCRIPTOR: _descriptor.FileDescriptor
+
+class QuoteLevelData(_message.Message):
+    __slots__ = ("bid_price", "bid_volume", "ask_price", "ask_volume")
+    BID_PRICE_FIELD_NUMBER: _ClassVar[int]
+    BID_VOLUME_FIELD_NUMBER: _ClassVar[int]
+    ASK_PRICE_FIELD_NUMBER: _ClassVar[int]
+    ASK_VOLUME_FIELD_NUMBER: _ClassVar[int]
+    bid_price: int
+    bid_volume: int
+    ask_price: int
+    ask_volume: int
+    def __init__(self, bid_price: _Optional[int] = ..., bid_volume: _Optional[int] = ..., ask_price: _Optional[int] = ..., ask_volume: _Optional[int] = ...) -> None: ...
+
+class SignalQuoteData(_message.Message):
+    __slots__ = ("id", "value")
+    ID_FIELD_NUMBER: _ClassVar[int]
+    VALUE_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    value: int
+    def __init__(self, id: _Optional[str] = ..., value: _Optional[int] = ...) -> None: ...
+
+class MDSnapshot(_message.Message):
+    __slots__ = ("msg_type", "node_name", "node_type", "msg_sequence", "last_timestamp", "instrument_id", "market", "security_id", "security_type", "md_date", "md_time", "md_type", "last_price", "volume", "turnover", "high_price", "low_price", "open_price", "close_price", "pre_close_price", "up_limit", "down_limit", "iopv", "open_interest", "trade_nums", "status", "phase_code", "signal_value", "signal_id", "signal_name", "depth_quote")
+    MSG_TYPE_FIELD_NUMBER: _ClassVar[int]
+    NODE_NAME_FIELD_NUMBER: _ClassVar[int]
+    NODE_TYPE_FIELD_NUMBER: _ClassVar[int]
+    MSG_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    LAST_TIMESTAMP_FIELD_NUMBER: _ClassVar[int]
+    INSTRUMENT_ID_FIELD_NUMBER: _ClassVar[int]
+    MARKET_FIELD_NUMBER: _ClassVar[int]
+    SECURITY_ID_FIELD_NUMBER: _ClassVar[int]
+    SECURITY_TYPE_FIELD_NUMBER: _ClassVar[int]
+    MD_DATE_FIELD_NUMBER: _ClassVar[int]
+    MD_TIME_FIELD_NUMBER: _ClassVar[int]
+    MD_TYPE_FIELD_NUMBER: _ClassVar[int]
+    LAST_PRICE_FIELD_NUMBER: _ClassVar[int]
+    VOLUME_FIELD_NUMBER: _ClassVar[int]
+    TURNOVER_FIELD_NUMBER: _ClassVar[int]
+    HIGH_PRICE_FIELD_NUMBER: _ClassVar[int]
+    LOW_PRICE_FIELD_NUMBER: _ClassVar[int]
+    OPEN_PRICE_FIELD_NUMBER: _ClassVar[int]
+    CLOSE_PRICE_FIELD_NUMBER: _ClassVar[int]
+    PRE_CLOSE_PRICE_FIELD_NUMBER: _ClassVar[int]
+    UP_LIMIT_FIELD_NUMBER: _ClassVar[int]
+    DOWN_LIMIT_FIELD_NUMBER: _ClassVar[int]
+    IOPV_FIELD_NUMBER: _ClassVar[int]
+    OPEN_INTEREST_FIELD_NUMBER: _ClassVar[int]
+    TRADE_NUMS_FIELD_NUMBER: _ClassVar[int]
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    PHASE_CODE_FIELD_NUMBER: _ClassVar[int]
+    SIGNAL_VALUE_FIELD_NUMBER: _ClassVar[int]
+    SIGNAL_ID_FIELD_NUMBER: _ClassVar[int]
+    SIGNAL_NAME_FIELD_NUMBER: _ClassVar[int]
+    DEPTH_QUOTE_FIELD_NUMBER: _ClassVar[int]
+    msg_type: int
+    node_name: str
+    node_type: int
+    msg_sequence: int
+    last_timestamp: int
+    instrument_id: str
+    market: str
+    security_id: str
+    security_type: str
+    md_date: int
+    md_time: int
+    md_type: int
+    last_price: int
+    volume: int
+    turnover: int
+    high_price: int
+    low_price: int
+    open_price: int
+    close_price: int
+    pre_close_price: int
+    up_limit: int
+    down_limit: int
+    iopv: int
+    open_interest: int
+    trade_nums: int
+    status: int
+    phase_code: int
+    signal_value: int
+    signal_id: int
+    signal_name: str
+    depth_quote: _containers.RepeatedCompositeFieldContainer[QuoteLevelData]
+    def __init__(self, msg_type: _Optional[int] = ..., node_name: _Optional[str] = ..., node_type: _Optional[int] = ..., msg_sequence: _Optional[int] = ..., last_timestamp: _Optional[int] = ..., instrument_id: _Optional[str] = ..., market: _Optional[str] = ..., security_id: _Optional[str] = ..., security_type: _Optional[str] = ..., md_date: _Optional[int] = ..., md_time: _Optional[int] = ..., md_type: _Optional[int] = ..., last_price: _Optional[int] = ..., volume: _Optional[int] = ..., turnover: _Optional[int] = ..., high_price: _Optional[int] = ..., low_price: _Optional[int] = ..., open_price: _Optional[int] = ..., close_price: _Optional[int] = ..., pre_close_price: _Optional[int] = ..., up_limit: _Optional[int] = ..., down_limit: _Optional[int] = ..., iopv: _Optional[int] = ..., open_interest: _Optional[int] = ..., trade_nums: _Optional[int] = ..., status: _Optional[int] = ..., phase_code: _Optional[int] = ..., signal_value: _Optional[int] = ..., signal_id: _Optional[int] = ..., signal_name: _Optional[str] = ..., depth_quote: _Optional[_Iterable[_Union[QuoteLevelData, _Mapping]]] = ...) -> None: ...
+
+class MDTransaction(_message.Message):
+    __slots__ = ("msg_type", "node_name", "node_type", "msg_sequence", "last_timestamp", "instrument_id", "market", "security_id", "security_type", "md_date", "md_time", "trade_index", "trade_price", "trade_qty", "bs_flag", "ask_order_id", "bid_order_id", "trade_type", "channel_id", "biz_index", "status")
+    MSG_TYPE_FIELD_NUMBER: _ClassVar[int]
+    NODE_NAME_FIELD_NUMBER: _ClassVar[int]
+    NODE_TYPE_FIELD_NUMBER: _ClassVar[int]
+    MSG_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    LAST_TIMESTAMP_FIELD_NUMBER: _ClassVar[int]
+    INSTRUMENT_ID_FIELD_NUMBER: _ClassVar[int]
+    MARKET_FIELD_NUMBER: _ClassVar[int]
+    SECURITY_ID_FIELD_NUMBER: _ClassVar[int]
+    SECURITY_TYPE_FIELD_NUMBER: _ClassVar[int]
+    MD_DATE_FIELD_NUMBER: _ClassVar[int]
+    MD_TIME_FIELD_NUMBER: _ClassVar[int]
+    TRADE_INDEX_FIELD_NUMBER: _ClassVar[int]
+    TRADE_PRICE_FIELD_NUMBER: _ClassVar[int]
+    TRADE_QTY_FIELD_NUMBER: _ClassVar[int]
+    BS_FLAG_FIELD_NUMBER: _ClassVar[int]
+    ASK_ORDER_ID_FIELD_NUMBER: _ClassVar[int]
+    BID_ORDER_ID_FIELD_NUMBER: _ClassVar[int]
+    TRADE_TYPE_FIELD_NUMBER: _ClassVar[int]
+    CHANNEL_ID_FIELD_NUMBER: _ClassVar[int]
+    BIZ_INDEX_FIELD_NUMBER: _ClassVar[int]
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    msg_type: int
+    node_name: str
+    node_type: int
+    msg_sequence: int
+    last_timestamp: int
+    instrument_id: str
+    market: str
+    security_id: str
+    security_type: str
+    md_date: int
+    md_time: int
+    trade_index: int
+    trade_price: int
+    trade_qty: int
+    bs_flag: str
+    ask_order_id: int
+    bid_order_id: int
+    trade_type: str
+    channel_id: int
+    biz_index: int
+    status: int
+    def __init__(self, msg_type: _Optional[int] = ..., node_name: _Optional[str] = ..., node_type: _Optional[int] = ..., msg_sequence: _Optional[int] = ..., last_timestamp: _Optional[int] = ..., instrument_id: _Optional[str] = ..., market: _Optional[str] = ..., security_id: _Optional[str] = ..., security_type: _Optional[str] = ..., md_date: _Optional[int] = ..., md_time: _Optional[int] = ..., trade_index: _Optional[int] = ..., trade_price: _Optional[int] = ..., trade_qty: _Optional[int] = ..., bs_flag: _Optional[str] = ..., ask_order_id: _Optional[int] = ..., bid_order_id: _Optional[int] = ..., trade_type: _Optional[str] = ..., channel_id: _Optional[int] = ..., biz_index: _Optional[int] = ..., status: _Optional[int] = ...) -> None: ...
+
+class MDOrder(_message.Message):
+    __slots__ = ("msg_type", "node_name", "node_type", "msg_sequence", "last_timestamp", "instrument_id", "market", "security_id", "security_type", "md_date", "md_time", "order_id", "bs_flag", "order_price", "order_qty", "order_type", "channel_id", "biz_index", "status")
+    MSG_TYPE_FIELD_NUMBER: _ClassVar[int]
+    NODE_NAME_FIELD_NUMBER: _ClassVar[int]
+    NODE_TYPE_FIELD_NUMBER: _ClassVar[int]
+    MSG_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    LAST_TIMESTAMP_FIELD_NUMBER: _ClassVar[int]
+    INSTRUMENT_ID_FIELD_NUMBER: _ClassVar[int]
+    MARKET_FIELD_NUMBER: _ClassVar[int]
+    SECURITY_ID_FIELD_NUMBER: _ClassVar[int]
+    SECURITY_TYPE_FIELD_NUMBER: _ClassVar[int]
+    MD_DATE_FIELD_NUMBER: _ClassVar[int]
+    MD_TIME_FIELD_NUMBER: _ClassVar[int]
+    ORDER_ID_FIELD_NUMBER: _ClassVar[int]
+    BS_FLAG_FIELD_NUMBER: _ClassVar[int]
+    ORDER_PRICE_FIELD_NUMBER: _ClassVar[int]
+    ORDER_QTY_FIELD_NUMBER: _ClassVar[int]
+    ORDER_TYPE_FIELD_NUMBER: _ClassVar[int]
+    CHANNEL_ID_FIELD_NUMBER: _ClassVar[int]
+    BIZ_INDEX_FIELD_NUMBER: _ClassVar[int]
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    msg_type: int
+    node_name: str
+    node_type: int
+    msg_sequence: int
+    last_timestamp: int
+    instrument_id: str
+    market: str
+    security_id: str
+    security_type: str
+    md_date: int
+    md_time: int
+    order_id: int
+    bs_flag: str
+    order_price: int
+    order_qty: int
+    order_type: str
+    channel_id: int
+    biz_index: int
+    status: int
+    def __init__(self, msg_type: _Optional[int] = ..., node_name: _Optional[str] = ..., node_type: _Optional[int] = ..., msg_sequence: _Optional[int] = ..., last_timestamp: _Optional[int] = ..., instrument_id: _Optional[str] = ..., market: _Optional[str] = ..., security_id: _Optional[str] = ..., security_type: _Optional[str] = ..., md_date: _Optional[int] = ..., md_time: _Optional[int] = ..., order_id: _Optional[int] = ..., bs_flag: _Optional[str] = ..., order_price: _Optional[int] = ..., order_qty: _Optional[int] = ..., order_type: _Optional[str] = ..., channel_id: _Optional[int] = ..., biz_index: _Optional[int] = ..., status: _Optional[int] = ...) -> None: ...
+
+class RCParam(_message.Message):
+    __slots__ = ("msg_type", "node_name", "node_type", "msg_sequence", "last_timestamp", "account_id", "instrument_id", "market", "security_id", "buy_order_num", "sell_order_num", "buy_cancel_num", "sell_cancel_num", "buy_order_qty", "sell_order_qty", "buy_order_amt", "sell_order_amt", "buy_active_qty", "sell_active_qty", "buy_active_amt", "sell_active_amt", "buy_trade_qty", "sell_trade_qty", "buy_trade_amt", "sell_trade_amt")
+    MSG_TYPE_FIELD_NUMBER: _ClassVar[int]
+    NODE_NAME_FIELD_NUMBER: _ClassVar[int]
+    NODE_TYPE_FIELD_NUMBER: _ClassVar[int]
+    MSG_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    LAST_TIMESTAMP_FIELD_NUMBER: _ClassVar[int]
+    ACCOUNT_ID_FIELD_NUMBER: _ClassVar[int]
+    INSTRUMENT_ID_FIELD_NUMBER: _ClassVar[int]
+    MARKET_FIELD_NUMBER: _ClassVar[int]
+    SECURITY_ID_FIELD_NUMBER: _ClassVar[int]
+    BUY_ORDER_NUM_FIELD_NUMBER: _ClassVar[int]
+    SELL_ORDER_NUM_FIELD_NUMBER: _ClassVar[int]
+    BUY_CANCEL_NUM_FIELD_NUMBER: _ClassVar[int]
+    SELL_CANCEL_NUM_FIELD_NUMBER: _ClassVar[int]
+    BUY_ORDER_QTY_FIELD_NUMBER: _ClassVar[int]
+    SELL_ORDER_QTY_FIELD_NUMBER: _ClassVar[int]
+    BUY_ORDER_AMT_FIELD_NUMBER: _ClassVar[int]
+    SELL_ORDER_AMT_FIELD_NUMBER: _ClassVar[int]
+    BUY_ACTIVE_QTY_FIELD_NUMBER: _ClassVar[int]
+    SELL_ACTIVE_QTY_FIELD_NUMBER: _ClassVar[int]
+    BUY_ACTIVE_AMT_FIELD_NUMBER: _ClassVar[int]
+    SELL_ACTIVE_AMT_FIELD_NUMBER: _ClassVar[int]
+    BUY_TRADE_QTY_FIELD_NUMBER: _ClassVar[int]
+    SELL_TRADE_QTY_FIELD_NUMBER: _ClassVar[int]
+    BUY_TRADE_AMT_FIELD_NUMBER: _ClassVar[int]
+    SELL_TRADE_AMT_FIELD_NUMBER: _ClassVar[int]
+    msg_type: int
+    node_name: str
+    node_type: int
+    msg_sequence: int
+    last_timestamp: int
+    account_id: str
+    instrument_id: str
+    market: str
+    security_id: str
+    buy_order_num: int
+    sell_order_num: int
+    buy_cancel_num: int
+    sell_cancel_num: int
+    buy_order_qty: int
+    sell_order_qty: int
+    buy_order_amt: float
+    sell_order_amt: float
+    buy_active_qty: int
+    sell_active_qty: int
+    buy_active_amt: float
+    sell_active_amt: float
+    buy_trade_qty: int
+    sell_trade_qty: int
+    buy_trade_amt: float
+    sell_trade_amt: float
+    def __init__(self, msg_type: _Optional[int] = ..., node_name: _Optional[str] = ..., node_type: _Optional[int] = ..., msg_sequence: _Optional[int] = ..., last_timestamp: _Optional[int] = ..., account_id: _Optional[str] = ..., instrument_id: _Optional[str] = ..., market: _Optional[str] = ..., security_id: _Optional[str] = ..., buy_order_num: _Optional[int] = ..., sell_order_num: _Optional[int] = ..., buy_cancel_num: _Optional[int] = ..., sell_cancel_num: _Optional[int] = ..., buy_order_qty: _Optional[int] = ..., sell_order_qty: _Optional[int] = ..., buy_order_amt: _Optional[float] = ..., sell_order_amt: _Optional[float] = ..., buy_active_qty: _Optional[int] = ..., sell_active_qty: _Optional[int] = ..., buy_active_amt: _Optional[float] = ..., sell_active_amt: _Optional[float] = ..., buy_trade_qty: _Optional[int] = ..., sell_trade_qty: _Optional[int] = ..., buy_trade_amt: _Optional[float] = ..., sell_trade_amt: _Optional[float] = ...) -> None: ...
+
+class ETFQuoteSnapshot(_message.Message):
+    __slots__ = ("msg_type", "msg_sequence", "last_timestamp", "instrument_id", "security_id", "market", "currency_id", "security_type", "symbol", "constituent_nums", "suspension_nums", "up_limit_nums", "down_limit_nums", "bid_iopv", "ask_iopv", "iopv", "pre_close_iopv", "iopv_pct_change", "etf_last_price", "etf_bid_price", "etf_ask_price", "etf_pre_close_price", "etf_pct_change", "index_last_price", "index_pre_close_price", "index_pct_change", "index_deviation", "etf_deviation", "etf_bid_premium_rate", "etf_ask_premium_rate", "etf_premium_rate", "md_date", "md_time", "signal_id", "node_name", "node_type")
+    MSG_TYPE_FIELD_NUMBER: _ClassVar[int]
+    MSG_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    LAST_TIMESTAMP_FIELD_NUMBER: _ClassVar[int]
+    INSTRUMENT_ID_FIELD_NUMBER: _ClassVar[int]
+    SECURITY_ID_FIELD_NUMBER: _ClassVar[int]
+    MARKET_FIELD_NUMBER: _ClassVar[int]
+    CURRENCY_ID_FIELD_NUMBER: _ClassVar[int]
+    SECURITY_TYPE_FIELD_NUMBER: _ClassVar[int]
+    SYMBOL_FIELD_NUMBER: _ClassVar[int]
+    CONSTITUENT_NUMS_FIELD_NUMBER: _ClassVar[int]
+    SUSPENSION_NUMS_FIELD_NUMBER: _ClassVar[int]
+    UP_LIMIT_NUMS_FIELD_NUMBER: _ClassVar[int]
+    DOWN_LIMIT_NUMS_FIELD_NUMBER: _ClassVar[int]
+    BID_IOPV_FIELD_NUMBER: _ClassVar[int]
+    ASK_IOPV_FIELD_NUMBER: _ClassVar[int]
+    IOPV_FIELD_NUMBER: _ClassVar[int]
+    PRE_CLOSE_IOPV_FIELD_NUMBER: _ClassVar[int]
+    IOPV_PCT_CHANGE_FIELD_NUMBER: _ClassVar[int]
+    ETF_LAST_PRICE_FIELD_NUMBER: _ClassVar[int]
+    ETF_BID_PRICE_FIELD_NUMBER: _ClassVar[int]
+    ETF_ASK_PRICE_FIELD_NUMBER: _ClassVar[int]
+    ETF_PRE_CLOSE_PRICE_FIELD_NUMBER: _ClassVar[int]
+    ETF_PCT_CHANGE_FIELD_NUMBER: _ClassVar[int]
+    INDEX_LAST_PRICE_FIELD_NUMBER: _ClassVar[int]
+    INDEX_PRE_CLOSE_PRICE_FIELD_NUMBER: _ClassVar[int]
+    INDEX_PCT_CHANGE_FIELD_NUMBER: _ClassVar[int]
+    INDEX_DEVIATION_FIELD_NUMBER: _ClassVar[int]
+    ETF_DEVIATION_FIELD_NUMBER: _ClassVar[int]
+    ETF_BID_PREMIUM_RATE_FIELD_NUMBER: _ClassVar[int]
+    ETF_ASK_PREMIUM_RATE_FIELD_NUMBER: _ClassVar[int]
+    ETF_PREMIUM_RATE_FIELD_NUMBER: _ClassVar[int]
+    MD_DATE_FIELD_NUMBER: _ClassVar[int]
+    MD_TIME_FIELD_NUMBER: _ClassVar[int]
+    SIGNAL_ID_FIELD_NUMBER: _ClassVar[int]
+    NODE_NAME_FIELD_NUMBER: _ClassVar[int]
+    NODE_TYPE_FIELD_NUMBER: _ClassVar[int]
+    msg_type: int
+    msg_sequence: int
+    last_timestamp: int
+    instrument_id: str
+    security_id: str
+    market: str
+    currency_id: str
+    security_type: str
+    symbol: str
+    constituent_nums: int
+    suspension_nums: int
+    up_limit_nums: int
+    down_limit_nums: int
+    bid_iopv: int
+    ask_iopv: int
+    iopv: int
+    pre_close_iopv: int
+    iopv_pct_change: float
+    etf_last_price: int
+    etf_bid_price: int
+    etf_ask_price: int
+    etf_pre_close_price: int
+    etf_pct_change: float
+    index_last_price: int
+    index_pre_close_price: int
+    index_pct_change: float
+    index_deviation: float
+    etf_deviation: float
+    etf_bid_premium_rate: float
+    etf_ask_premium_rate: float
+    etf_premium_rate: float
+    md_date: int
+    md_time: int
+    signal_id: int
+    node_name: str
+    node_type: int
+    def __init__(self, msg_type: _Optional[int] = ..., msg_sequence: _Optional[int] = ..., last_timestamp: _Optional[int] = ..., instrument_id: _Optional[str] = ..., security_id: _Optional[str] = ..., market: _Optional[str] = ..., currency_id: _Optional[str] = ..., security_type: _Optional[str] = ..., symbol: _Optional[str] = ..., constituent_nums: _Optional[int] = ..., suspension_nums: _Optional[int] = ..., up_limit_nums: _Optional[int] = ..., down_limit_nums: _Optional[int] = ..., bid_iopv: _Optional[int] = ..., ask_iopv: _Optional[int] = ..., iopv: _Optional[int] = ..., pre_close_iopv: _Optional[int] = ..., iopv_pct_change: _Optional[float] = ..., etf_last_price: _Optional[int] = ..., etf_bid_price: _Optional[int] = ..., etf_ask_price: _Optional[int] = ..., etf_pre_close_price: _Optional[int] = ..., etf_pct_change: _Optional[float] = ..., index_last_price: _Optional[int] = ..., index_pre_close_price: _Optional[int] = ..., index_pct_change: _Optional[float] = ..., index_deviation: _Optional[float] = ..., etf_deviation: _Optional[float] = ..., etf_bid_premium_rate: _Optional[float] = ..., etf_ask_premium_rate: _Optional[float] = ..., etf_premium_rate: _Optional[float] = ..., md_date: _Optional[int] = ..., md_time: _Optional[int] = ..., signal_id: _Optional[int] = ..., node_name: _Optional[str] = ..., node_type: _Optional[int] = ...) -> None: ...
+
+class ETFQuoteTick(_message.Message):
+    __slots__ = ("msg_type", "msg_sequence", "last_timestamp", "instrument_id", "security_id", "market", "security_type", "symbol", "constituent_nums", "suspension_nums", "up_limit_nums", "down_limit_nums", "iopv", "etf_premium_rate", "md_date", "md_time", "etf_last_price", "etf_bid_price", "etf_ask_price", "etf_pre_close_price", "etf_pct_change", "signal_id", "bid_iopv", "ask_iopv", "node_name", "node_type")
+    MSG_TYPE_FIELD_NUMBER: _ClassVar[int]
+    MSG_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    LAST_TIMESTAMP_FIELD_NUMBER: _ClassVar[int]
+    INSTRUMENT_ID_FIELD_NUMBER: _ClassVar[int]
+    SECURITY_ID_FIELD_NUMBER: _ClassVar[int]
+    MARKET_FIELD_NUMBER: _ClassVar[int]
+    SECURITY_TYPE_FIELD_NUMBER: _ClassVar[int]
+    SYMBOL_FIELD_NUMBER: _ClassVar[int]
+    CONSTITUENT_NUMS_FIELD_NUMBER: _ClassVar[int]
+    SUSPENSION_NUMS_FIELD_NUMBER: _ClassVar[int]
+    UP_LIMIT_NUMS_FIELD_NUMBER: _ClassVar[int]
+    DOWN_LIMIT_NUMS_FIELD_NUMBER: _ClassVar[int]
+    IOPV_FIELD_NUMBER: _ClassVar[int]
+    ETF_PREMIUM_RATE_FIELD_NUMBER: _ClassVar[int]
+    MD_DATE_FIELD_NUMBER: _ClassVar[int]
+    MD_TIME_FIELD_NUMBER: _ClassVar[int]
+    ETF_LAST_PRICE_FIELD_NUMBER: _ClassVar[int]
+    ETF_BID_PRICE_FIELD_NUMBER: _ClassVar[int]
+    ETF_ASK_PRICE_FIELD_NUMBER: _ClassVar[int]
+    ETF_PRE_CLOSE_PRICE_FIELD_NUMBER: _ClassVar[int]
+    ETF_PCT_CHANGE_FIELD_NUMBER: _ClassVar[int]
+    SIGNAL_ID_FIELD_NUMBER: _ClassVar[int]
+    BID_IOPV_FIELD_NUMBER: _ClassVar[int]
+    ASK_IOPV_FIELD_NUMBER: _ClassVar[int]
+    NODE_NAME_FIELD_NUMBER: _ClassVar[int]
+    NODE_TYPE_FIELD_NUMBER: _ClassVar[int]
+    msg_type: int
+    msg_sequence: int
+    last_timestamp: int
+    instrument_id: str
+    security_id: str
+    market: str
+    security_type: str
+    symbol: str
+    constituent_nums: int
+    suspension_nums: int
+    up_limit_nums: int
+    down_limit_nums: int
+    iopv: int
+    etf_premium_rate: float
+    md_date: int
+    md_time: int
+    etf_last_price: int
+    etf_bid_price: int
+    etf_ask_price: int
+    etf_pre_close_price: int
+    etf_pct_change: float
+    signal_id: int
+    bid_iopv: int
+    ask_iopv: int
+    node_name: str
+    node_type: int
+    def __init__(self, msg_type: _Optional[int] = ..., msg_sequence: _Optional[int] = ..., last_timestamp: _Optional[int] = ..., instrument_id: _Optional[str] = ..., security_id: _Optional[str] = ..., market: _Optional[str] = ..., security_type: _Optional[str] = ..., symbol: _Optional[str] = ..., constituent_nums: _Optional[int] = ..., suspension_nums: _Optional[int] = ..., up_limit_nums: _Optional[int] = ..., down_limit_nums: _Optional[int] = ..., iopv: _Optional[int] = ..., etf_premium_rate: _Optional[float] = ..., md_date: _Optional[int] = ..., md_time: _Optional[int] = ..., etf_last_price: _Optional[int] = ..., etf_bid_price: _Optional[int] = ..., etf_ask_price: _Optional[int] = ..., etf_pre_close_price: _Optional[int] = ..., etf_pct_change: _Optional[float] = ..., signal_id: _Optional[int] = ..., bid_iopv: _Optional[int] = ..., ask_iopv: _Optional[int] = ..., node_name: _Optional[str] = ..., node_type: _Optional[int] = ...) -> None: ...
+
+class FXSnapshot(_message.Message):
+    __slots__ = ("msg_type", "msg_sequence", "last_timestamp", "node_name", "node_type", "md_date", "md_time", "currency_id", "opposite_currency_id", "fx_market", "fx_rate")
+    MSG_TYPE_FIELD_NUMBER: _ClassVar[int]
+    MSG_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    LAST_TIMESTAMP_FIELD_NUMBER: _ClassVar[int]
+    NODE_NAME_FIELD_NUMBER: _ClassVar[int]
+    NODE_TYPE_FIELD_NUMBER: _ClassVar[int]
+    MD_DATE_FIELD_NUMBER: _ClassVar[int]
+    MD_TIME_FIELD_NUMBER: _ClassVar[int]
+    CURRENCY_ID_FIELD_NUMBER: _ClassVar[int]
+    OPPOSITE_CURRENCY_ID_FIELD_NUMBER: _ClassVar[int]
+    FX_MARKET_FIELD_NUMBER: _ClassVar[int]
+    FX_RATE_FIELD_NUMBER: _ClassVar[int]
+    msg_type: int
+    msg_sequence: int
+    last_timestamp: int
+    node_name: str
+    node_type: int
+    md_date: int
+    md_time: int
+    currency_id: str
+    opposite_currency_id: str
+    fx_market: str
+    fx_rate: float
+    def __init__(self, msg_type: _Optional[int] = ..., msg_sequence: _Optional[int] = ..., last_timestamp: _Optional[int] = ..., node_name: _Optional[str] = ..., node_type: _Optional[int] = ..., md_date: _Optional[int] = ..., md_time: _Optional[int] = ..., currency_id: _Optional[str] = ..., opposite_currency_id: _Optional[str] = ..., fx_market: _Optional[str] = ..., fx_rate: _Optional[float] = ...) -> None: ...
+
+class SignalSnapshot(_message.Message):
+    __slots__ = ("msg_type", "msg_sequence", "last_timestamp", "node_name", "node_type", "instrument_id", "security_id", "market", "security_type", "symbol", "md_date", "md_time", "signal_type", "signal_id", "signal_name", "signal_value", "signal_quote", "depth_quote")
+    MSG_TYPE_FIELD_NUMBER: _ClassVar[int]
+    MSG_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    LAST_TIMESTAMP_FIELD_NUMBER: _ClassVar[int]
+    NODE_NAME_FIELD_NUMBER: _ClassVar[int]
+    NODE_TYPE_FIELD_NUMBER: _ClassVar[int]
+    INSTRUMENT_ID_FIELD_NUMBER: _ClassVar[int]
+    SECURITY_ID_FIELD_NUMBER: _ClassVar[int]
+    MARKET_FIELD_NUMBER: _ClassVar[int]
+    SECURITY_TYPE_FIELD_NUMBER: _ClassVar[int]
+    SYMBOL_FIELD_NUMBER: _ClassVar[int]
+    MD_DATE_FIELD_NUMBER: _ClassVar[int]
+    MD_TIME_FIELD_NUMBER: _ClassVar[int]
+    SIGNAL_TYPE_FIELD_NUMBER: _ClassVar[int]
+    SIGNAL_ID_FIELD_NUMBER: _ClassVar[int]
+    SIGNAL_NAME_FIELD_NUMBER: _ClassVar[int]
+    SIGNAL_VALUE_FIELD_NUMBER: _ClassVar[int]
+    SIGNAL_QUOTE_FIELD_NUMBER: _ClassVar[int]
+    DEPTH_QUOTE_FIELD_NUMBER: _ClassVar[int]
+    msg_type: int
+    msg_sequence: int
+    last_timestamp: int
+    node_name: str
+    node_type: int
+    instrument_id: str
+    security_id: str
+    market: str
+    security_type: str
+    symbol: str
+    md_date: int
+    md_time: int
+    signal_type: int
+    signal_id: int
+    signal_name: str
+    signal_value: int
+    signal_quote: _containers.RepeatedCompositeFieldContainer[SignalQuoteData]
+    depth_quote: _containers.RepeatedCompositeFieldContainer[QuoteLevelData]
+    def __init__(self, msg_type: _Optional[int] = ..., msg_sequence: _Optional[int] = ..., last_timestamp: _Optional[int] = ..., node_name: _Optional[str] = ..., node_type: _Optional[int] = ..., instrument_id: _Optional[str] = ..., security_id: _Optional[str] = ..., market: _Optional[str] = ..., security_type: _Optional[str] = ..., symbol: _Optional[str] = ..., md_date: _Optional[int] = ..., md_time: _Optional[int] = ..., signal_type: _Optional[int] = ..., signal_id: _Optional[int] = ..., signal_name: _Optional[str] = ..., signal_value: _Optional[int] = ..., signal_quote: _Optional[_Iterable[_Union[SignalQuoteData, _Mapping]]] = ..., depth_quote: _Optional[_Iterable[_Union[QuoteLevelData, _Mapping]]] = ...) -> None: ...
+
+class SignalTick(_message.Message):
+    __slots__ = ("msg_type", "msg_sequence", "last_timestamp", "node_name", "node_type", "instrument_id", "md_date", "md_time", "signal_type", "signal_id", "signal_value")
+    MSG_TYPE_FIELD_NUMBER: _ClassVar[int]
+    MSG_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    LAST_TIMESTAMP_FIELD_NUMBER: _ClassVar[int]
+    NODE_NAME_FIELD_NUMBER: _ClassVar[int]
+    NODE_TYPE_FIELD_NUMBER: _ClassVar[int]
+    INSTRUMENT_ID_FIELD_NUMBER: _ClassVar[int]
+    MD_DATE_FIELD_NUMBER: _ClassVar[int]
+    MD_TIME_FIELD_NUMBER: _ClassVar[int]
+    SIGNAL_TYPE_FIELD_NUMBER: _ClassVar[int]
+    SIGNAL_ID_FIELD_NUMBER: _ClassVar[int]
+    SIGNAL_VALUE_FIELD_NUMBER: _ClassVar[int]
+    msg_type: int
+    msg_sequence: int
+    last_timestamp: int
+    node_name: str
+    node_type: int
+    instrument_id: str
+    md_date: int
+    md_time: int
+    signal_type: int
+    signal_id: int
+    signal_value: int
+    def __init__(self, msg_type: _Optional[int] = ..., msg_sequence: _Optional[int] = ..., last_timestamp: _Optional[int] = ..., node_name: _Optional[str] = ..., node_type: _Optional[int] = ..., instrument_id: _Optional[str] = ..., md_date: _Optional[int] = ..., md_time: _Optional[int] = ..., signal_type: _Optional[int] = ..., signal_id: _Optional[int] = ..., signal_value: _Optional[int] = ...) -> None: ...
+
+class BarMatrix(_message.Message):
+    __slots__ = ("msg_type", "msg_sequence", "trade_time", "last_timestamp", "source", "instrument_ids", "cols", "data_matrix")
+    class Source(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+        __slots__ = ()
+        INDICATOR: _ClassVar[BarMatrix.Source]
+        PREDICTOR: _ClassVar[BarMatrix.Source]
+        FACTOR: _ClassVar[BarMatrix.Source]
+    INDICATOR: BarMatrix.Source
+    PREDICTOR: BarMatrix.Source
+    FACTOR: BarMatrix.Source
+    MSG_TYPE_FIELD_NUMBER: _ClassVar[int]
+    MSG_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    TRADE_TIME_FIELD_NUMBER: _ClassVar[int]
+    LAST_TIMESTAMP_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_FIELD_NUMBER: _ClassVar[int]
+    INSTRUMENT_IDS_FIELD_NUMBER: _ClassVar[int]
+    COLS_FIELD_NUMBER: _ClassVar[int]
+    DATA_MATRIX_FIELD_NUMBER: _ClassVar[int]
+    msg_type: int
+    msg_sequence: int
+    trade_time: int
+    last_timestamp: int
+    source: BarMatrix.Source
+    instrument_ids: _containers.RepeatedScalarFieldContainer[str]
+    cols: _containers.RepeatedScalarFieldContainer[str]
+    data_matrix: _containers.RepeatedScalarFieldContainer[float]
+    def __init__(self, msg_type: _Optional[int] = ..., msg_sequence: _Optional[int] = ..., trade_time: _Optional[int] = ..., last_timestamp: _Optional[int] = ..., source: _Optional[_Union[BarMatrix.Source, str]] = ..., instrument_ids: _Optional[_Iterable[str]] = ..., cols: _Optional[_Iterable[str]] = ..., data_matrix: _Optional[_Iterable[float]] = ...) -> None: ...
