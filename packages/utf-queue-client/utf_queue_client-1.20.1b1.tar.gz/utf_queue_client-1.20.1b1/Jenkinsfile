@@ -1,0 +1,136 @@
+@Library('utf-pipeline-libraries') _
+
+def vaultSecrets = [
+    [
+        path: 'teams/infra-sw/app/pypi-tokens',
+        secretValues: [
+            [
+                envVar: 'TWINE_PASSWORD',
+                vaultKey: 'utf-queue-client'
+            ]
+        ]
+    ]
+]
+
+pipeline {
+    agent {
+        label "AWSLinuxWorker"
+    }
+    options {
+        disableConcurrentBuilds()
+        lock(resource: 'utf-queue-central-testing')
+    }
+    environment {
+        GIT_HASH = GIT_COMMIT.take(10)
+        TEST_RESULTS_DIR = 'test/test_results'
+        OTEL_EXPORTER_OTLP_ENDPOINT = "https://otel-collector-http.silabs.net"
+        OTEL_EXPORTER_OTLP_PROTOCOL = "http/protobuf"
+        UTF_QUEUE_VIRTUAL_HOST = "testing"
+        OTEL_SERVICE_NAME = "utf-queue-client-tests"
+        PYENV_VERSION = "3.9"
+    }
+    stages {
+        stage("environment setup") {
+            steps {
+                withCredentials([sshUserPrivateKey(credentialsId: '87616d18-3af5-4fa6-b20f-538f92b10079',
+                                                   keyFileVariable: 'JENKINS_SSH_KEY_PATH',
+                                                   passphraseVariable: 'PASSPHRASE_UNUSED', \
+                                                   usernameVariable: 'USERNAME_UNUSED')]) {
+                    sh '''
+                        export GIT_SSH_COMMAND=ssh\\ -o\\ StrictHostKeyChecking=no\\ -i\\ \\"$JENKINS_SSH_KEY_PATH\\"
+                        git fetch --no-tags --force --progress -- ssh://git@stash.silabs.com/utf/utf_queue_client_python.git +refs/heads/main:refs/remotes/origin/main
+                    '''
+                }
+                // set up first venv with test-requirements.txt
+                sh '''
+                    python3 -m venv venv
+                    . venv/bin/activate
+                    uv pip install --upgrade pip wheel
+                    uv pip install -r test-requirements.txt
+
+                    pre-commit run --all-files
+                '''
+                // set up second venv with test-requirements-pydantic-v1.txt
+                sh '''
+                    python3 -m venv venv_2
+                    . venv_2/bin/activate
+                    uv pip install --upgrade pip wheel
+                    uv pip install -r test-requirements-pydantic-v1.txt
+                '''
+            }
+        }
+        stage('Run Tests') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'sqatest_readwrite', passwordVariable: 'UTF_QUEUE_PASSWORD', usernameVariable: 'UTF_QUEUE_USERNAME'),
+                                 usernamePassword(credentialsId: 'mwlabuser_jenkins', passwordVariable: 'UTF_QUEUE_PASSWORD_LDAP', usernameVariable: 'UTF_QUEUE_USERNAME_LDAP')]) {
+                    catchError(buildResult: 'FAILURE', message: "[ERROR] One or more unit tests have failed", stageResult: 'FAILURE') {
+                        sh '''
+                            . venv/bin/activate
+                            rm -rf ${TEST_RESULTS_DIR}
+                            mkdir -p ${TEST_RESULTS_DIR}
+                            set +e
+                            export PYTHONPATH=$PWD
+
+                            # test with venv from test-requirements.txt
+                            python -m pytest test -n auto --dist loadscope --junit-prefix=test --junitxml=${TEST_RESULTS_DIR}/junit_report_unit.xml --cov-branch --cov=utf_queue_client
+                            exitcode=$?
+
+                            . venv_2/bin/activate
+                            # test with venv from test-requirements-pydantic-v1.txt
+                            python -m pytest test -n auto --dist loadscope --cov-append --cov-report xml:${TEST_RESULTS_DIR}/coverage.xml --cov-report html:${TEST_RESULTS_DIR}/cov_html --cov-branch --cov=utf_queue_client
+                            exitcode_2=$?
+
+                            if [ $exitcode -ne 0 ] || [ $exitcode_2 -ne 0 ]; then
+                                exit 1
+                            fi
+                        '''
+                    }
+                }
+
+                archiveArtifacts artifacts: "${TEST_RESULTS_DIR}/junit_report_*.xml,${TEST_RESULTS_DIR}/cov_html/*.*"
+                junit allowEmptyResults: false, testResults: "${TEST_RESULTS_DIR}/junit_report_*.xml"
+                cobertura autoUpdateHealth: false, autoUpdateStability: false, coberturaReportFile: "${TEST_RESULTS_DIR}/coverage.xml", conditionalCoverageTargets:'70,0,0', failUnhealthy:false, failUnstable:false, lineCoverageTargets: '80,0,0', maxNumberOfBuilds:0, methodCoverageTargets: '80,0,0', onlyStable:false, sourceEncoding:'ASCII', zoomCoverageChart: false
+
+                withSonarQubeEnv(installationName: 'SILABS_SONARQUBE_SERVER') {
+                    sh '''
+                        ${SONAR_SCANNER} -Dsonar.projectVersion=${GIT_HASH}
+                    '''
+                }
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+            post {
+                failure {
+                    error 'The "Run Tests" stage has failed'
+                }
+            }
+        }
+        stage('Deploy to pypi') {
+            when {
+                 branch 'main'
+            }
+            environment {
+                TWINE_REPOSITORY_URL = "https://upload.pypi.org/legacy/"
+                TWINE_USERNAME = "__token__"
+            }
+            steps {
+                withVaultOnAgent(vaultSecrets: vaultSecrets) {
+                    sh '''
+                        if [ ! -f venv/bin/activate ]; then
+                           python3 -m venv venv
+                        fi
+                        . venv/bin/activate
+                        pip3 install wheel && pip3 install -r test-requirements.txt build
+                        rm -rf build
+                        rm -rf dist
+                        rm -rf utf_queue_client.egg-info
+                        python3 -m build
+
+                        twine upload dist/*
+                    '''
+                }
+            }
+        }
+    }
+}
