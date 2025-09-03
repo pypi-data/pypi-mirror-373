@@ -1,0 +1,9 @@
+from enum import Enum
+
+
+class CollectionsGetCollectionAuthorizationFilter(str, Enum):
+    MYSELF = "myself"
+    OWNERS = "owners"
+
+    def __str__(self) -> str:
+        return str(self.value)
