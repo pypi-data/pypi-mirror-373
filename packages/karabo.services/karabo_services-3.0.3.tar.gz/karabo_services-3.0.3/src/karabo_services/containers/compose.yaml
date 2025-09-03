@@ -1,0 +1,71 @@
+# this compose file sets up the services required
+# for a full-fledged standalone Karabo installation:
+# - a RabbitMQ broker
+# - a InfluxDB logging backend - note this is still a 1.7.X version
+# - an existDB instance configured to allow Karabo to access it with a preset password
+# - a Grafana frontend for Influx
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: karabo-mq
+    environment:
+      # if you change these, be sure to adapt the var/environment/KARABO_BROKER definition
+      RABBITMQ_DEFAULT_USER: xfel
+      RABBITMQ_DEFAULT_PASS: karabo
+    ports:
+      # if you change these, be sure to adapt the var/environment/KARABO_BROKER definition
+      - "5673:5672"
+      - "15673:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq/
+      - rabbitmq-logs:/var/log/rabbitmq
+
+    restart: unless-stopped
+
+  influxdb:
+    # InfluxDB2 is currently not supported
+    image: influxdb:1.7.8
+    container_name: karabo-influxdb
+    ports:
+      - 8086:8086
+      - 8083:8083
+    environment:
+      INFLUXDB_ADMIN_ENABLED: true
+    volumes:
+      - type: volume
+        source: influxdb-data
+        target: /var/lib/influxdb
+    restart: unless-stopped
+
+  exist:
+    # an image with preset credentials
+    image: europeanxfel/existdb:2.2
+    container_name: karabo-existdb
+    ports:
+        - 8181:8080
+        - 8443:8443
+    volumes:
+      - exist-data:/opt/exist_data/export/
+    restart: unless-stopped
+
+  grafana:
+    # works with, and is provisioned with the influx data source
+    image: grafana/grafana-oss
+    container_name: grafana
+    ports:
+      - '3000:3000'
+    depends_on:
+      - influxdb
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./grafana_provisioning:/etc/grafana/provisioning/datasources
+    restart: unless-stopped
+
+volumes:
+  influxdb-data:
+  exist-data:
+  rabbitmq-data:
+  rabbitmq-logs:
+  grafana-storage:
+
