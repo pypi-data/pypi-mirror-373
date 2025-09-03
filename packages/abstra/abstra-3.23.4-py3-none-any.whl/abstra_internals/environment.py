@@ -1,0 +1,112 @@
+import os
+
+import requests
+
+# LOGS
+DEFAULT_LOGLEVEL = "WARNING"
+LOGLEVEL = lambda: os.getenv("ABSTRA_LOGLEVEL", DEFAULT_LOGLEVEL)  # noqa: E731
+NOISY_LOGLEVEL = lambda: os.getenv("ABSTRA_NOISY_LOGLEVEL", DEFAULT_LOGLEVEL)  # noqa: E731
+
+PROCESS_LOGFORMAT = "[%(asctime)s][%(levelname)s][%(name)s][%(process)d]%(message)s"
+DEFAULT_LOGFORMAT = "[%(asctime)s][%(levelname)s][%(name)s] %(message)s"
+LOGFORMAT = lambda: os.getenv("ABSTRA_LOGFORMAT", DEFAULT_LOGFORMAT)  # noqa: E731
+CLOUD_SAMPLE_RATE = float(os.getenv("ABSTRA_CLOUD_SAMPLE_RATE", 0.2))
+LOCAL_SAMPLE_RATE = float(os.getenv("ABSTRA_LOCAL_SAMPLE_RATE", 0.0))
+
+# SERVER
+HOST = os.getenv("ABSTRA_HOST", "localhost")
+DEFAULT_PORT = os.getenv("PORT") or os.getenv("ABSTRA_SERVER_PORT")
+
+# PRODUCTION ENVIRONMENT
+BUILD_ID = os.getenv("ABSTRA_BUILD_ID") or "dev"
+PROJECT_ID = os.getenv("ABSTRA_PROJECT_ID") or "dev-project-id"
+PROJECT_URL = os.getenv("ABSTRA_PROJECT_URL")
+
+# PASSWORDLESS AUTHENTICATION
+EMAIL_JWT_AUDIENCE = f"abstra:email:{PROJECT_ID}"
+PUBLIC_KEY = os.getenv("ABSTRA_JWT_PUBLIC_KEY_PEM")
+
+# OIDC AUTHENTICATION
+OIDC_CLIENT_ID = lambda: os.getenv("ABSTRA_OIDC_CLIENT_ID")  # noqa: E731
+OIDC_AUTHORITY = lambda: os.getenv("ABSTRA_OIDC_AUTHORITY")  # noqa: E731
+
+
+# CLOUD API
+CLOUD_API_DEFAULT_ENDPOINT = "https://cloud-api.abstra.cloud"
+CLOUDFRONT_CLOUD_API_ENDPOINT = "https://cloud.abstra.io/api/cloud-api"
+
+
+def select_cloud_api_endpoint() -> str:
+    try:
+        response = requests.get(f"{CLOUD_API_DEFAULT_ENDPOINT}/healthcheck", timeout=10)
+        if response.status_code == 200:
+            return CLOUD_API_DEFAULT_ENDPOINT
+    except Exception as e:
+        print(f"Healthcheck failed for {CLOUD_API_DEFAULT_ENDPOINT}: {e}")
+
+    return CLOUDFRONT_CLOUD_API_ENDPOINT
+
+
+CLOUD_API_ENDPOINT = os.getenv("CLOUD_API_ENDPOINT") or select_cloud_api_endpoint()
+
+
+CLOUD_API_CLI_URL = f"{CLOUD_API_ENDPOINT}/cli"
+
+CLOUD_API_PROD_SHARED_TOKEN = os.getenv("ABSTRA_CLOUD_API_SHARED_TOKEN", "shared")
+CLOUD_API_PROD_HEADERS = {"shared-token": CLOUD_API_PROD_SHARED_TOKEN}
+CLOUD_API_PROD_URL = f"{CLOUD_API_ENDPOINT}/apps"
+
+
+# DOCS
+
+DOCS_URL = os.getenv("ABSTRA_DOCS_URL", "https://www.abstra.io/docs")
+
+# DEBUG
+DISABLE_STDIO_PATCH = os.getenv("ABSTRA_DISABLE_STDIO_PATCH", "false") == "true"
+REQUEST_TIMEOUT = int(os.getenv("ABSTRA_REQUEST_TIMEOUT", 300))
+MAX_HTTP_CLIENT_THREADS = int(os.getenv("ABSTRA_MAX_HTTP_CLIENT_THREADS", 10))
+
+# FILES
+FILES_FOLDER = os.getenv("ABSTRA_FILES_FOLDER")
+DISABLED_STAGES_FOLDER = os.getenv("ABSTRA_DISABLED_STAGES_FOLDER")
+
+# WEBEDITOR
+WAITING_ROOM_URL = os.getenv("ABSTRA_WAITING_ROOM_URL") or ""
+
+# ENVIRONMENT
+IS_PRODUCTION = os.getenv("ABSTRA_ENVIRONMENT") == "production"
+EDITOR_MODE = os.getenv("ABSTRA_EDITOR_MODE") or "local"
+
+# FORMS CONFIG
+SHOW_WATERMARK = os.getenv("ABSTRA_SHOW_WATERMARK", "false") == "true"
+
+# AMQP
+RABBITMQ_EXECUTION_QUEUE = os.getenv("ABSTRA_RABBITMQ_EXECUTION_QUEUE", "executions")
+RABBITMQ_DEFAUT_EXCHANGE = os.getenv("ABSTRA_RABBITMQ_DEFAUT_EXCHANGE", "")
+RABBITMQ_CONNECTION_URI = os.getenv("ABSTRA_RABBITMQ_CONNECTION_URI")
+EXECUTION_QUEUE_CONCURRENCY = int(os.getenv("ABSTRA_RABBITMQ_QUEUE_CONCURRENCY", 2))
+
+# WORKER PROCESSING
+PROCESS_TIMEOUT_SECONDS = int(os.getenv("ABSTRA_PROCESS_TIMEOUT_SECONDS", 60 * 60 * 2))
+
+# GUNICORN SERVER
+WORKERS = os.getenv("ABSTRA_WORKERS", 2)
+THREADS = os.getenv("ABSTRA_THREADS", 20)
+WORKER_CLASS = os.getenv("ABSTRA_WORKER_CLASS", "gthread")
+WORKER_TEMP_DIR = os.getenv("ABSTRA_WORKER_TEMP_DIR")
+
+# EXECUTORS UUIDS
+__WORKER_UUID_ENV__ = "ABSTRA_WORKER_UUID"
+WORKER_UUID = lambda: os.getenv(__WORKER_UUID_ENV__)  # noqa: E731
+
+
+def set_WORKER_UUID(worker_uuid: str):
+    os.environ[__WORKER_UUID_ENV__] = worker_uuid
+
+
+__SERVER_UUID_ENV__ = "ABSTRA_SERVER_UUID"
+SERVER_UUID = lambda: os.getenv(__SERVER_UUID_ENV__)  # noqa: E731
+
+
+def set_SERVER_UUID(server_uuid: str):
+    os.environ[__SERVER_UUID_ENV__] = server_uuid
