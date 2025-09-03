@@ -1,0 +1,98 @@
+{% load i18n %}
+
+<div class="col-md-12 mb-3">
+    <div class="row">
+        <div class="col-md-6">
+            {% translate "Creator" %}: {{ link.creator.profile.main_character.character_name }}
+        </div>
+
+        <div class="col-md-6 text-end">
+            <p>
+                {% translate "Link created (EVE Time)" %}: {{ link.created|date:"d. F Y H:i" }}
+
+                {% if link_expires %}
+                    <br>
+
+                    {% if link_ongoing %}
+                        {% translate "Link expires (EVE Time)" as line_title %}
+                    {% else %}
+                        {% translate "Link expired (EVE Time)" as line_title %}
+                    {% endif %}
+
+                    {{ line_title }}: {{ link_expires|date:"d. F Y H:i" }}
+                {% endif %}
+
+                {% if link.is_esilink %}
+                    <br>
+
+                    {% if link.is_registered_on_esi %}
+                        {% translate 'Participation is being tracked via ESI' %}
+
+                        {% if request.user == link.creator %}
+                            <button class="btn btn-primary btn-sm ms-1"
+                                title="{% translate 'Clicking here will stop the automatic tracking through ESI for this fleet and close the associated FAT link.' %}"
+                                data-bs-toggle="modal"
+                                data-bs-target="#cancelEsiFleetModal"
+                                data-url="{% url 'afat:fatlinks_close_esi_fatlink' link.hash %}?next={% url 'afat:fatlinks_details_fatlink' link.hash %}"
+                                data-body-text="{% blocktranslate with esi_fleet_id=link.esi_fleet_id character_name=link.character.character_name %}<p>Are you sure you want to close ESI fleet with ID {{ esi_fleet_id }} from {{ character_name }}</p>{% endblocktranslate %}"
+                                data-confirm-text="{% translate 'Stop tracking' %}"
+                            >
+                                <i class="fa-solid fa-times"></i>
+                                <!-- {% translate "Stop tracking" %} -->
+                            </button>
+                        {% endif %}
+                    {% else %}
+                        {% translate "Participation has been tracked via ESI" %}
+                    {% endif %}
+                {% endif %}
+            </p>
+
+            {% if link_can_be_reopened and perms.afat.manage_afat %}
+                <p>
+                    {% blocktranslate with reopen_grace_time=reopen_grace_time %}This link has already expired but is within the grace<br>time of {{ reopen_grace_time }} minutes where it can be re-opened.{% endblocktranslate %}
+                </p>
+
+                <p>
+                    <button class="btn btn-secondary btn-sm"
+                        data-bs-toggle="modal"
+                        data-bs-target="#reopenFatLinkModal"
+                        data-url="{% url 'afat:fatlinks_reopen_fatlink' link.hash %}"
+                        data-body-text="{% blocktranslate with reopen_duration=reopen_duration %}<p>Are you sure you want to re-open this FAT link for another {{ reopen_duration }} minutes?<br>FAT links can be re-opened only once!<br><em>(Be aware, this action will be logged)</em></p>{% endblocktranslate %}"
+                        data-confirm-text="{% translate 'Re-Open' %}"
+                    >
+                        {% translate "Re-open FAT link" %}
+                    </button>
+                </p>
+            {% endif %}
+        </div>
+
+        {% if is_clickable_link and link_ongoing %}
+            <div class="col-md-12">
+                <p>{% translate "FAT Link" %}:
+                    <i>
+                        {{ SITE_URL }}{% url 'afat:fatlinks_add_fat' link.hash %}
+                        <a class="label label-success copy-link" href="{% url 'afat:fatlinks_add_fat' link.hash %}"></a>
+                    </i>
+
+                    <button class="copy-btn btn btn-success btn-sm ms-3"
+                        data-toggle="tooltip"
+                        data-html="true"
+                        data-clipboard-text="{{ SITE_URL }}{% url 'afat:fatlinks_add_fat' link.hash %}"
+                    >
+                        {% translate "Copy me!" %}
+                    </button>
+                </p>
+            </div>
+        {% endif %}
+    </div>
+
+    {% if link.is_registered_on_esi and request.user == link.creator %}
+        {% translate "Close ESI fleet tracking" as translated_title %}
+        {% include "afat/modals/general.html" with modal_name="cancelEsiFleet" modal_title=translated_title confirm_button_class="btn-danger" %}
+    {% endif %}
+
+    {% if link_can_be_reopened and perms.afat.manage_afat %}
+        {% translate "Re-open FAT link" as translated_title %}
+        {% include "afat/modals/general.html" with modal_name="reopenFatLink" modal_title=translated_title confirm_button_class="btn-success" %}
+    {% endif %}
+</div>
