@@ -1,0 +1,83 @@
+{% load i18n cms_tags sekizai_tags static aldryn_forms_tags %}
+
+{% addtoblock "js" %}
+    <script src="{% static "aldryn_forms/js/main.js" %}"></script>
+{% endaddtoblock %}
+
+<form method="post"
+    id="cms-form"
+    {% if form.is_multipart %}enctype="multipart/form-data"{% endif %}
+    {% if instance.form_attributes %} {{ instance.form_attributes_str }}{% endif %}
+    {% if instance.custom_classes %} class="{{ instance.custom_classes }}"{% else %} class="cms-form"{% endif %}
+    {% if instance.use_form_action %} action="{{ instance.success_url }}"{% endif %}
+    data-post_ident="{{ form.instance.post_ident|default_if_none:"" }}"
+    >
+
+    {% if form.non_field_errors %}
+        <ul class="errormessages">
+            {% for error in form.non_field_errors %}
+                <li>{{ error }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    {% if post_success %}
+        <div class="cms-form-success-message{% if instance.success_message %} markdown{% endif %}">
+            {% if form_success_url %}
+                {% blocktranslate %}You will be <a href="{{ form_success_url }}">redirected shortly</a>.{% endblocktranslate %}
+            {% elif instance.success_message %}
+                {{ instance.success_message|markdown }}
+            {% else %}
+                <p>{% blocktranslate %}Thank you for submitting your information.{% endblocktranslate %}</p>
+            {% endif %}
+        </div>
+    {% else %}
+        {% csrf_token %}
+        {% for plugin in instance.child_plugin_instances %}
+            {% render_plugin plugin %}
+        {% endfor %}
+        {% for field in form.hidden_fields %}
+            {{ field }}
+        {% endfor %}
+        {% if form.ident_field_name %}
+            <input type="hidden" class="aldryn-forms-field-ident" name="{{ form.ident_field_name }}">
+        {% endif %}
+    {% endif %}
+</form>
+
+{# INFO: this solution is currently required because we can't redirect from a plugin. #}
+{% if post_success and form_success_url %}
+    {% addtoblock "js" %}
+        <script>
+            setTimeout(function () {
+                window.location.href = '{{ form_success_url }}';
+            }, 5000);
+        </script>
+    {% endaddtoblock %}
+{% endif %}
+
+{% if post_success %}
+    {% addtoblock "js" %}
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                document.querySelector('#cms-form').scrollIntoView();
+            }, {once: true});
+        </script>
+    {% endaddtoblock %}
+{% endif %}
+
+{% if instance.is_enable_autofill_from_url_params %}
+    {% addtoblock "js" %}
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                const searchParams = (new URLSearchParams(window.location.search));
+                const formInputs = document.querySelectorAll('.cms-form input');
+                for (const input of formInputs) {
+                    if (searchParams.has(input.name)) {
+                        input.value = searchParams.get(input.name);
+                    }
+                }
+            });
+        </script>
+    {% endaddtoblock %}
+{% endif %}
