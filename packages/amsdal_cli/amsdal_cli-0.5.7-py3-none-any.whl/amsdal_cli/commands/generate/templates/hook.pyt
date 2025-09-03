@@ -1,0 +1,3 @@
+{% if not ctx.is_init and ctx.is_async %}async {% endif %}def {% if not ctx.is_init and ctx.is_async %}a{% endif %}{{ ctx.hook_name }}(self{% if ctx.is_init %}, *, is_new_object: bool, kwargs: dict[str, Any]{% endif %}):
+    # TODO: implementation here
+    ...
