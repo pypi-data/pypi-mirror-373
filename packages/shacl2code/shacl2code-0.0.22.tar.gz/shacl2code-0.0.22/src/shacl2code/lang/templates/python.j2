@@ -1,0 +1,2533 @@
+#! /usr/bin/env python3
+#
+# Generated Python bindings from a SHACL model
+#
+# {{ disclaimer }}
+#
+# SPDX-License-Identifier: {{ spdx_license }}
+
+from __future__ import annotations
+
+import decimal
+import functools
+import hashlib
+import json
+import re
+import sys
+import threading
+import time
+import warnings
+from abc import ABC, abstractmethod
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
+from enum import Enum
+from typing import (
+    Any,
+    Callable,
+    Collection,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+    Union,
+    cast,
+)
+
+
+def check_type(obj: Any, types: Union[Type[Any], Tuple[Type[Any], ...]]) -> None:
+    if not isinstance(obj, types):
+        if isinstance(types, (list, tuple)):
+            raise TypeError(
+                f"Value must be one of type: {', '.join(t.__name__ for t in types)}. Got {type(obj).__name__}"
+            )
+        raise TypeError(
+            f"Value must be of type {types.__name__}. Got {type(obj).__name__}"
+        )
+
+
+class Property(ABC):
+    """
+    A generic SHACL object property. The different types will derive from this
+    class
+    """
+
+    VALID_TYPES: Union[Tuple, Type] = ()
+
+    def __init__(self, *, pattern: Optional[str] = None):
+        self.pattern = pattern
+
+    def init(self) -> Any:
+        return None
+
+    def validate(self, value) -> None:
+        check_type(value, self.VALID_TYPES)
+        if self.pattern is not None and not re.search(
+            self.pattern, self.to_string(value)
+        ):
+            raise ValueError(
+                f"Value is not correctly formatted. Got '{self.to_string(value)}'"
+            )
+
+    def set(self, value: Any) -> Any:
+        return value
+
+    def check_min_count(self, value, min_count: int) -> bool:
+        return min_count == 1
+
+    def check_max_count(self, value, max_count: int) -> bool:
+        return max_count == 1
+
+    def elide(self, value) -> bool:
+        return value is None
+
+    def walk(self, value, callback: Callable, path: List[str]) -> None:
+        callback(value, path)
+
+    def iter_objects(
+        self, value, recursive: bool, visited: Set[SHACLObject]
+    ) -> Iterable[Any]:
+        return []
+
+    def link_prop(
+        self, value, objectset, missing: Optional[Set[str]], visited: Set[SHACLObject]
+    ):
+        return value
+
+    def to_string(self, value) -> str:
+        return str(value)
+
+    @abstractmethod
+    def encode(self, encoder, value, state) -> None:
+        raise NotImplementedError("Subclasses must implement encode method")
+
+    @abstractmethod
+    def decode(self, decoder, *, objectset: Optional[SHACLObjectSet] = None) -> Any:
+        raise NotImplementedError("Subclasses must implement decode method")
+
+
+class StringProp(Property):
+    """
+    A scalar string property for an SHACL object
+    """
+
+    VALID_TYPES = str
+
+    def set(self, value) -> str:
+        return str(value)
+
+    def encode(self, encoder, value, state) -> None:
+        encoder.write_string(value)
+
+    def decode(
+        self, decoder, *, objectset: Optional[SHACLObjectSet] = None
+    ) -> Optional[str]:
+        return decoder.read_string()
+
+
+class AnyURIProp(StringProp):
+    def encode(self, encoder, value, state) -> None:
+        encoder.write_iri(value)
+
+    def decode(
+        self, decoder, *, objectset: Optional[SHACLObjectSet] = None
+    ) -> Optional[str]:
+        return decoder.read_iri()
+
+
+class DateTimeProp(Property):
+    """
+    A Date/Time Object with optional timezone
+    """
+
+    VALID_TYPES = datetime
+    UTC_FORMAT_STR = "%Y-%m-%dT%H:%M:%SZ"
+    REGEX = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})?$"
+
+    def set(self, value) -> datetime:
+        return self._normalize(value)
+
+    def encode(self, encoder, value, state) -> None:
+        encoder.write_datetime(self.to_string(value))
+
+    def decode(
+        self, decoder, *, objectset: Optional[SHACLObjectSet] = None
+    ) -> Optional[datetime]:
+        s = decoder.read_datetime()
+        if s is None:
+            return None
+        if isinstance(s, datetime):
+            return self._normalize(s)
+        v = self.from_string(s)
+        return self._normalize(v)
+
+    def _normalize(self, value: datetime) -> datetime:
+        if value.utcoffset() is None:
+            value = value.astimezone()
+
+        # Remove seconds from timezone offset
+        offset = value.utcoffset()
+        if offset is not None:
+            seconds = offset % timedelta(
+                minutes=-1 if offset.total_seconds() < 0 else 1
+            )
+            if seconds:
+                offset = offset - seconds
+                value = value.replace(tzinfo=timezone(offset))
+
+        # Convert 00:00 timezone offset to UTC
+        offset = value.utcoffset()
+        if offset is not None and offset.seconds == 0:
+            value = value.astimezone(timezone.utc)
+
+        value = value.replace(microsecond=0)
+        return value
+
+    def to_string(self, value: datetime) -> str:
+        value = self._normalize(value)
+        if value.tzinfo == timezone.utc:
+            return value.strftime(self.UTC_FORMAT_STR)
+        return value.isoformat()
+
+    def from_string(self, value: str) -> datetime:
+        if not re.match(self.REGEX, value):
+            raise ValueError(f"'{value}' is not a correctly formatted datetime")
+        if "Z" in value:
+            d = datetime(
+                *(time.strptime(value, self.UTC_FORMAT_STR)[0:6]),
+                tzinfo=timezone.utc,
+            )
+        else:
+            d = datetime.fromisoformat(value)
+
+        return self._normalize(d)
+
+
+class DateTimeStampProp(DateTimeProp):
+    """
+    A Date/Time Object with required timestamp
+    """
+
+    REGEX = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$"
+
+
+class IntegerProp(Property):
+    VALID_TYPES = int
+
+    def set(self, value) -> int:
+        return int(value)
+
+    def encode(self, encoder, value, state) -> None:
+        encoder.write_integer(value)
+
+    def decode(
+        self, decoder, *, objectset: Optional[SHACLObjectSet] = None
+    ) -> Optional[int]:
+        return decoder.read_integer()
+
+
+class PositiveIntegerProp(IntegerProp):
+    def validate(self, value) -> None:
+        super().validate(value)
+        if value < 1:
+            raise ValueError(f"Value must be >=1. Got {value}")
+
+
+class NonNegativeIntegerProp(IntegerProp):
+    def validate(self, value) -> None:
+        super().validate(value)
+        if value < 0:
+            raise ValueError(f"Value must be >= 0. Got {value}")
+
+
+class BooleanProp(Property):
+    VALID_TYPES = bool
+
+    def set(self, value) -> bool:
+        return bool(value)
+
+    def encode(self, encoder, value, state) -> None:
+        encoder.write_bool(value)
+
+    def decode(
+        self, decoder, *, objectset: Optional[SHACLObjectSet] = None
+    ) -> Optional[bool]:
+        return decoder.read_bool()
+
+
+class FloatProp(Property):
+    VALID_TYPES = (float, int)
+
+    def set(self, value) -> float:
+        return float(value)
+
+    def encode(self, encoder, value, state) -> None:
+        encoder.write_float(value)
+
+    def decode(
+        self, decoder, *, objectset: Optional[SHACLObjectSet] = None
+    ) -> Optional[float]:
+        return decoder.read_float()
+
+
+class IRIProp(Property):
+    def __init__(
+        self,
+        context: Optional[List[Tuple[str, str]]] = None,
+        *,
+        pattern: Optional[str] = None,
+    ):
+        if context is None:
+            context = []
+        super().__init__(pattern=pattern)
+        self.context = context
+
+    def compact(self, value) -> Optional[str]:
+        for iri, compact in self.context:
+            if value == iri:
+                return compact
+        return None
+
+    def expand(self, value) -> Optional[str]:
+        for iri, compact in self.context:
+            if value == compact:
+                return iri
+        return None
+
+    def iri_values(self):
+        return (iri for iri, _ in self.context)
+
+
+class ObjectProp(IRIProp):
+    """
+    A scalar SHACL object property of a SHACL object
+    """
+
+    def __init__(
+        self, cls, required: bool, context: Optional[List[Tuple[str, str]]] = None
+    ):
+        if context is None:
+            context = []
+        super().__init__(context)
+        self.cls = cls
+        self.required = required
+
+    def validate(self, value) -> None:
+        check_type(value, (self.cls, str))
+
+    def walk(self, value, callback: Callable, path: List[str]) -> None:
+        if value is None:
+            return
+
+        if not isinstance(value, str):
+            value.walk(callback, path)
+        else:
+            callback(value, path)
+
+    def iter_objects(self, value, recursive: bool, visited):
+        if value is None or isinstance(value, str):
+            return
+
+        if value not in visited:
+            visited.add(value)
+            yield value
+
+            if recursive:
+                for c in value.iter_objects(recursive=True, visited=visited):
+                    yield c
+
+    def encode(self, encoder, value, state) -> None:
+        if value is None:
+            raise ValueError("Object cannot be None")
+
+        if isinstance(value, str):
+            encoder.write_iri(value, self.compact(value))
+            return
+
+        return value.encode(encoder, state)
+
+    def decode(self, decoder, *, objectset: Optional[SHACLObjectSet] = None):
+        if decoder.is_object():
+            return self.cls.decode(decoder, objectset=objectset)
+
+        iri = decoder.read_iri()
+
+        iri = self.expand(iri) or iri
+
+        if objectset is None:
+            return iri
+
+        obj = objectset.find_by_id(iri)
+        if obj is None:
+            return iri
+
+        self.validate(obj)
+        return obj
+
+    def link_prop(self, value, objectset, missing, visited):
+        if value is None:
+            return value
+
+        if isinstance(value, str):
+            o = objectset.find_by_id(value)
+            if o is not None:
+                self.validate(o)
+                return o
+
+            if missing is not None:
+                missing.add(value)
+
+            return value
+
+        # De-duplicate IDs
+        if value._id:
+            value = objectset.find_by_id(value._id, value)
+            self.validate(value)
+
+        value.link_helper(objectset, missing, visited)
+        return value
+
+
+class ListProxy(object):
+    def __init__(self, prop: Property, data: Optional[List[Any]] = None):
+        if data is None:
+            self.__data: List[Any] = []
+        else:
+            self.__data = data
+        self.__prop = prop
+
+    def append(self, value) -> None:
+        self.__prop.validate(value)
+        self.__data.append(self.__prop.set(value))
+
+    def insert(self, idx: int, value) -> None:
+        self.__prop.validate(value)
+        self.__data.insert(idx, self.__prop.set(value))
+
+    def extend(self, items: Iterable[Any]) -> None:
+        for i in items:
+            self.append(i)
+
+    def sort(self, *args, **kwargs) -> None:
+        self.__data.sort(*args, **kwargs)
+
+    def __getitem__(self, key):
+        return self.__data[key]
+
+    def __setitem__(self, key, value) -> None:
+        if isinstance(key, slice):
+            for v in value:
+                self.__prop.validate(v)
+            self.__data[key] = [self.__prop.set(v) for v in value]
+        elif isinstance(key, int):
+            self.__prop.validate(value)
+            self.__data[key] = self.__prop.set(value)
+        else:
+            raise TypeError(
+                f"ListProxy indices must be integers or slices. Got {type(key).__name__}"
+            )
+
+    def __delitem__(self, key) -> None:
+        del self.__data[key]
+
+    def __contains__(self, item):
+        return item in self.__data
+
+    def __iter__(self):
+        return iter(self.__data)
+
+    def __len__(self) -> int:
+        return len(self.__data)
+
+    def __str__(self) -> str:
+        return str(self.__data)
+
+    def __repr__(self):
+        return repr(self.__data)
+
+    def __eq__(self, other):
+        if isinstance(other, ListProxy):
+            return self.__data == other.__data
+
+        return self.__data == other
+
+
+class ListProp(Property):
+    """
+    A list of SHACL properties
+    """
+
+    VALID_TYPES = (list, ListProxy)
+
+    def __init__(self, prop: Property):
+        super().__init__()
+        self.prop = prop
+
+    def init(self) -> ListProxy:
+        return ListProxy(self.prop)
+
+    def validate(self, value) -> None:
+        super().validate(value)
+
+        for i in value:
+            self.prop.validate(i)
+
+    def set(self, value) -> ListProxy:
+        if isinstance(value, ListProxy):
+            return value
+
+        return ListProxy(self.prop, [self.prop.set(d) for d in value])
+
+    def check_min_count(self, value, min_count: int) -> bool:
+        check_type(value, ListProxy)
+        return len(value) >= min_count
+
+    def check_max_count(self, value, max_count: int) -> bool:
+        check_type(value, ListProxy)
+        return len(value) <= max_count
+
+    def elide(self, value) -> bool:
+        check_type(value, ListProxy)
+        return len(value) == 0
+
+    def walk(self, value, callback: Callable, path: List[str]) -> None:
+        callback(value, path)
+        for idx, v in enumerate(value):
+            self.prop.walk(v, callback, path + [f"[{idx}]"])
+
+    def iter_objects(self, value, recursive: bool, visited):
+        for v in value:
+            for c in self.prop.iter_objects(v, recursive, visited):
+                yield c
+
+    def link_prop(self, value, objectset, missing, visited):
+        if isinstance(value, ListProxy):
+            data = [self.prop.link_prop(v, objectset, missing, visited) for v in value]
+        else:
+            data = [self.prop.link_prop(v, objectset, missing, visited) for v in value]
+
+        return ListProxy(self.prop, data=data)
+
+    def encode(self, encoder, value, state) -> None:
+        check_type(value, ListProxy)
+
+        with encoder.write_list() as list_s:
+            for v in value:
+                with list_s.write_list_item() as item_s:
+                    self.prop.encode(item_s, v, state)
+
+    def decode(
+        self, decoder, *, objectset: Optional[SHACLObjectSet] = None
+    ) -> ListProxy:
+        data = []
+        for val_d in decoder.read_list():
+            v = self.prop.decode(val_d, objectset=objectset)
+            self.prop.validate(v)
+            data.append(v)
+
+        return ListProxy(self.prop, data=data)
+
+
+class EnumProp(IRIProp):
+    VALID_TYPES = str
+
+    def __init__(self, values, *, pattern: Optional[str] = None):
+        super().__init__(values, pattern=pattern)
+
+    def validate(self, value) -> None:
+        super().validate(value)
+
+        valid_values = self.iri_values()
+        if value not in valid_values:
+            raise ValueError(
+                f"'{value}' is not a valid value. Choose one of {' '.join(valid_values)}"
+            )
+
+    def encode(self, encoder, value, state) -> None:
+        encoder.write_enum(value, self, self.compact(value))
+
+    def decode(self, decoder, *, objectset: Optional[SHACLObjectSet] = None) -> str:
+        v = decoder.read_enum(self)
+        return self.expand(v) or v
+
+
+class NodeKind(Enum):
+    BlankNode = 1
+    IRI = 2
+    BlankNodeOrIRI = 3
+
+
+def is_IRI(s: Any) -> bool:
+    if not isinstance(s, str):
+        return False
+    if s.startswith("_:"):
+        return False
+    if ":" not in s:
+        return False
+    return True
+
+
+def is_blank_node(s: Any) -> bool:
+    if not isinstance(s, str):
+        return False
+    if not s.startswith("_:"):
+        return False
+    return True
+
+
+def register(
+    type_iri: str, *, compact_type: Optional[str] = None, abstract: bool = False
+):
+    def add_class(key: str, c: Type[SHACLObject]) -> None:
+        assert (
+            key not in SHACLObject.CLASSES
+        ), f"{key} already registered to {SHACLObject.CLASSES[key].__name__}"
+        SHACLObject.CLASSES[key] = c
+
+    def decorator(c: Type[SHACLObject]) -> Type[SHACLObject]:
+        """
+        Decorator to register a class as a SHACL object type.
+        The class must derive from SHACLObject.
+        """
+        global NAMED_INDIVIDUALS
+
+        assert issubclass(c, SHACLObject), f"{c} is not derived from SHACLObject"
+
+        c._OBJ_TYPE = type_iri
+        c.IS_ABSTRACT = abstract
+        add_class(type_iri, c)
+
+        c._OBJ_COMPACT_TYPE = compact_type
+        if compact_type:
+            add_class(compact_type, c)
+
+        NAMED_INDIVIDUALS |= set(c.NAMED_INDIVIDUALS.values())
+
+        # Registration is deferred until the first instance of class is created
+        # so that it has access to any other defined class
+        c._NEEDS_REG = True
+        return c
+
+    return decorator
+
+
+register_lock = threading.Lock()
+NAMED_INDIVIDUALS: Set[str] = set()
+
+
+@functools.total_ordering
+class SHACLObject(object):
+    CLASSES: Dict[str, Type] = {}
+    NAMED_INDIVIDUALS: Dict[str, str] = {}
+    NODE_KIND = NodeKind.BlankNodeOrIRI
+    ID_ALIAS: Optional[str] = None
+    IS_ABSTRACT: bool = True
+    IS_DEPRECATED: bool = False
+
+    # These will be reinitialized during registration with @register decorator,
+    # defined here first to allow visibility at class level
+    _OBJ_TYPE: str = ""
+    _OBJ_COMPACT_TYPE: Optional[str] = None
+    _OBJ_PROPERTIES: Dict[str, Tuple] = {}
+    _OBJ_IRIS: Dict[str, str] = {}
+    _OBJ_DEPRECATED: Set[str] = set()
+    _NEEDS_REG: bool = True
+
+    # Instance variables
+    _id: Optional[str]
+    _obj_data: Dict[str, Any]
+    _obj_metadata: Dict[str, Any]
+
+    def __init__(self, **kwargs):
+        if self._is_abstract():
+            raise NotImplementedError(
+                f"{self.__class__.__name__} is abstract and cannot be implemented"
+            )
+
+        if self.__class__.IS_DEPRECATED:
+            warnings.warn(
+                f"{self.__class__.__name__} is deprecated", DeprecationWarning
+            )
+
+        with register_lock:
+            cls = self.__class__
+            if cls._NEEDS_REG:
+                cls._OBJ_PROPERTIES = {}
+                cls._OBJ_IRIS = {}
+                cls._OBJ_DEPRECATED = set()
+                cls._register_props()
+                cls._NEEDS_REG = False
+
+        self.__dict__["_obj_data"] = {}
+        self.__dict__["_obj_metadata"] = {}
+
+        for iri, prop, _, _, _, _ in self.__iter_props():
+            self.__dict__["_obj_data"][iri] = prop.init()
+
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+    def _is_abstract(self) -> bool:
+        return self.__class__.IS_ABSTRACT
+
+    @classmethod
+    def _register_props(cls: Type[SHACLObject]) -> None:
+        cls._add_property("_id", StringProp(), iri="@id")
+
+    @classmethod
+    def _add_property(
+        cls: Type[SHACLObject],
+        pyname: str,
+        prop: Property,
+        iri: str,
+        min_count: Optional[int] = None,
+        max_count: Optional[int] = None,
+        compact: Optional[str] = None,
+        deprecated: bool = False,
+    ) -> None:
+        if pyname in cls._OBJ_IRIS:
+            raise KeyError(f"'{pyname}' is already defined for '{cls.__name__}'")
+        if iri in cls._OBJ_PROPERTIES:
+            raise KeyError(f"'{iri}' is already defined for '{cls.__name__}'")
+
+        while hasattr(cls, pyname):
+            pyname = pyname + "_"
+
+        pyname = sys.intern(pyname)
+        iri = sys.intern(iri)
+
+        cls._OBJ_IRIS[pyname] = iri
+        cls._OBJ_PROPERTIES[iri] = (prop, min_count, max_count, pyname, compact)
+        if deprecated:
+            cls._OBJ_DEPRECATED.add(iri)
+
+    def __setattr__(self, name: str, value) -> None:
+        if name == self.ID_ALIAS:
+            self["@id"] = value
+            return
+
+        try:
+            iri = self._OBJ_IRIS[name]
+            self[iri] = value
+        except KeyError:
+            raise AttributeError(
+                f"'{name}' is not a valid property of {self.__class__.__name__}"
+            )
+
+    def __getattr__(self, name: str):
+        if name in self._OBJ_IRIS:
+            return self.__dict__["_obj_data"][self._OBJ_IRIS[name]]
+
+        if name == self.ID_ALIAS:
+            return self.__dict__["_obj_data"]["@id"]
+
+        if name == "_metadata":
+            return self.__dict__["_obj_metadata"]
+
+        if name == "_IRI":
+            return self._OBJ_IRIS
+
+        if name == "TYPE":
+            return self.__class__._OBJ_TYPE
+
+        if name == "COMPACT_TYPE":
+            return self.__class__._OBJ_COMPACT_TYPE
+
+        raise AttributeError(
+            f"'{name}' is not a valid property of {self.__class__.__name__}"
+        )
+
+    def __delattr__(self, name: str) -> None:
+        if name == self.ID_ALIAS:
+            del self["@id"]
+            return
+
+        try:
+            iri = self._OBJ_IRIS[name]
+            del self[iri]
+        except KeyError:
+            raise AttributeError(
+                f"'{name}' is not a valid property of {self.__class__.__name__}"
+            )
+
+    def __get_prop(
+        self, iri: str
+    ) -> Tuple[Property, Optional[int], Optional[int], str, Optional[str]]:
+        if iri not in self._OBJ_PROPERTIES:
+            raise KeyError(
+                f"'{iri}' is not a valid property of {self.__class__.__name__}"
+            )
+
+        return self._OBJ_PROPERTIES[iri]
+
+    def __iter_props(
+        self,
+    ) -> Iterator[
+        Tuple[str, Property, Optional[int], Optional[int], str, Optional[str]]
+    ]:
+        for iri, v in self._OBJ_PROPERTIES.items():
+            yield iri, *v
+
+    def __getitem__(self, iri: str) -> Any:
+        return self.__dict__["_obj_data"][iri]
+
+    def __setitem__(self, iri: str, value) -> None:
+        if iri == "@id":
+            if self.NODE_KIND == NodeKind.BlankNode:
+                if not is_blank_node(value):
+                    raise ValueError(
+                        f"{self.__class__.__name__} ({id(self)}) can only have local reference. Property '{iri}' cannot be set to {value!r} and must start with '_:'"
+                    )
+            elif self.NODE_KIND == NodeKind.IRI:
+                if not is_IRI(value):
+                    raise ValueError(
+                        f"{self.__class__.__name__} ({id(self)}) can only have an IRI value. Property '{iri}' cannot be set to {value!r}"
+                    )
+            else:
+                if not is_blank_node(value) and not is_IRI(value):
+                    raise ValueError(
+                        f"{self.__class__.__name__} ({id(self)}) Has invalid Property '{iri}' {value!r}. Must be a blank node or IRI"
+                    )
+
+        prop, _, _, pyname, _ = self.__get_prop(iri)
+        prop.validate(value)
+        if iri in self._OBJ_DEPRECATED:
+            warnings.warn(
+                f"{self.__class__.__name__}.{pyname} is deprecated", DeprecationWarning
+            )
+        self.__dict__["_obj_data"][iri] = prop.set(value)
+
+    def __delitem__(self, iri: str) -> None:
+        prop, _, _, _, _ = self.__get_prop(iri)
+        self.__dict__["_obj_data"][iri] = prop.init()
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._OBJ_PROPERTIES.keys())
+
+    def walk(self, callback: Callable, path: Optional[List[str]] = None) -> None:
+        """
+        Walk object tree, invoking the callback for each item
+
+        Callback has the form:
+
+        def callback(object, path):
+        """
+        if path is None:
+            path = ["."]
+
+        if callback(self, path):
+            for iri, prop, _, _, _, _ in self.__iter_props():
+                prop.walk(self.__dict__["_obj_data"][iri], callback, path + [f".{iri}"])
+
+    def property_keys(self) -> Iterator[Tuple[Optional[str], str, Optional[str]]]:
+        for iri, _, _, _, pyname, compact in self.__iter_props():
+            if iri == "@id":
+                compact = self.ID_ALIAS
+            yield pyname, iri, compact
+
+    def iter_objects(self, *, recursive: bool = False, visited=None):
+        """
+        Iterate of all objects that are a child of this one
+        """
+        if visited is None:
+            visited = set()
+
+        for iri, prop, _, _, _, _ in self.__iter_props():
+            for c in prop.iter_objects(
+                self.__dict__["_obj_data"][iri], recursive=recursive, visited=visited
+            ):
+                yield c
+
+    def encode(self, encoder, state) -> None:
+        idname = self.ID_ALIAS or self._OBJ_IRIS["_id"]
+        if not self._id and self.NODE_KIND == NodeKind.IRI:
+            raise ValueError(
+                f"{self.__class__.__name__} ({id(self)}) must have a IRI for property '{idname}'"
+            )
+
+        if state.is_written(self):
+            encoder.write_iri(state.get_object_id(self))
+            return
+
+        state.add_written(self)
+
+        with encoder.write_object(
+            self,
+            state.get_object_id(self),
+            bool(self._id) or state.is_refed(self),
+        ) as obj_s:
+            self._encode_properties(obj_s, state)
+
+    def _encode_properties(self, encoder, state):
+        for iri, prop, min_count, max_count, pyname, compact in self.__iter_props():
+            value = self.__dict__["_obj_data"][iri]
+            if prop.elide(value):
+                if min_count:
+                    raise ValueError(
+                        f"Property '{pyname}' in {self.__class__.__name__} ({id(self)}) is required (currently {value!r})"
+                    )
+                continue
+
+            if min_count is not None:
+                if not prop.check_min_count(value, min_count):
+                    raise ValueError(
+                        f"Property '{pyname}' in {self.__class__.__name__} ({id(self)}) requires a minimum of {min_count} elements"
+                    )
+
+            if max_count is not None:
+                if not prop.check_max_count(value, max_count):
+                    raise ValueError(
+                        f"Property '{pyname}' in {self.__class__.__name__} ({id(self)}) requires a maximum of {max_count} elements"
+                    )
+
+            if iri == self._OBJ_IRIS["_id"]:
+                continue
+
+            with encoder.write_property(iri, compact) as prop_s:
+                prop.encode(prop_s, value, state)
+
+    @classmethod
+    def _make_object(cls: Type["SHACLObject"], typ: str) -> "SHACLObject":
+        if typ not in cls.CLASSES:
+            raise TypeError(f"Unknown type {typ}")
+
+        return cls.CLASSES[typ]()
+
+    @classmethod
+    def decode(cls, decoder, *, objectset: Optional[SHACLObjectSet] = None):
+        typ, obj_d = decoder.read_object()
+        if typ is None:
+            raise TypeError("Unable to determine type for object")
+
+        obj = cls._make_object(typ)
+        _id = obj_d.read_object_id(obj.ID_ALIAS)
+        if _id is not None:
+            obj._id = _id
+
+        if obj.NODE_KIND == NodeKind.IRI and not obj._id:
+            raise ValueError("Object is missing required IRI")
+
+        if objectset is not None:
+            if obj._id:
+                v = objectset.find_by_id(obj._id)
+                if v is not None:
+                    return v
+            objectset.add_index(obj)
+
+        obj._decode_properties(obj_d, objectset=objectset)
+
+        return obj
+
+    def _decode_properties(self, decoder, objectset: Optional[SHACLObjectSet] = None):
+        for key in decoder.object_keys():
+            if not self._decode_prop(decoder, key, objectset=objectset):
+                raise KeyError(f"Unknown property '{key}'")
+
+    def _decode_prop(self, decoder, key, objectset: Optional[SHACLObjectSet] = None):
+        if key in (self._OBJ_IRIS["_id"], self.ID_ALIAS):
+            return True
+
+        for iri, prop, _, _, _, compact in self.__iter_props():
+            if compact == key:
+                read_key = compact
+            elif iri == key:
+                read_key = iri
+            else:
+                continue
+
+            with decoder.read_property(read_key) as prop_d:
+                v = prop.decode(prop_d, objectset=objectset)
+                prop.validate(v)
+                self.__dict__["_obj_data"][iri] = v
+            return True
+
+        return False
+
+    def link_helper(
+        self, objectset: Optional[SHACLObjectSet], missing, visited
+    ) -> None:
+        if self in visited:
+            return
+
+        visited.add(self)
+
+        for iri, prop, _, _, _, _ in self.__iter_props():
+            self.__dict__["_obj_data"][iri] = prop.link_prop(
+                self.__dict__["_obj_data"][iri],
+                objectset,
+                missing,
+                visited,
+            )
+
+    def __str__(self):
+        parts = [
+            f"{self.__class__.__name__}(",
+        ]
+        if self._id:
+            parts.append(f"@id='{self._id}'")
+        parts.append(")")
+        return "".join(parts)
+
+    def __hash__(self):
+        return super().__hash__()
+
+    def __eq__(self, other):
+        return super().__eq__(other)
+
+    def __lt__(self, other):
+        def sort_key(obj):
+            if isinstance(obj, str):
+                return (obj, "", "", "")
+            return (
+                obj._id or "",
+                obj.TYPE,
+                getattr(obj, "name", None) or "",
+                id(obj),
+            )
+
+        return sort_key(self) < sort_key(other)
+
+
+class SHACLExtensibleObject(SHACLObject):
+    CLOSED = False
+
+    def __init__(self, typ=None, **kwargs):
+        if typ:
+            self.__dict__["_obj_TYPE"] = (typ, None)
+        else:
+            self.__dict__["_obj_TYPE"] = (self._OBJ_TYPE, self._OBJ_COMPACT_TYPE)
+        super().__init__(**kwargs)
+
+    def _is_abstract(self) -> bool:
+        # Unknown classes are assumed to not be abstract so that they can be
+        # deserialized
+        typ = self.__dict__["_obj_TYPE"][0]
+        if typ in self.__class__.CLASSES:
+            return self.__class__.CLASSES[typ].IS_ABSTRACT
+
+        return False
+
+    @classmethod
+    def _make_object(cls, typ):
+        # Check for a known type, and if so, deserialize as that instead
+        if typ in cls.CLASSES:
+            return cls.CLASSES[typ]()
+
+        obj = cls(typ)
+        return obj
+
+    def _decode_properties(self, decoder, objectset: Optional[SHACLObjectSet] = None):
+        def decode_value(d):
+            if not d.is_list():
+                return d.read_value()
+
+            return [decode_value(val_d) for val_d in d.read_list()]
+
+        if self.CLOSED:
+            super()._decode_properties(decoder, objectset=objectset)
+            return
+
+        for key in decoder.object_keys():
+            if self._decode_prop(decoder, key, objectset=objectset):
+                continue
+
+            if not is_IRI(key):
+                raise KeyError(
+                    f"Extensible object properties must be IRIs. Got '{key}'"
+                )
+
+            with decoder.read_property(key) as prop_d:
+                self.__dict__["_obj_data"][key] = decode_value(prop_d)
+
+    def _encode_properties(self, encoder, state):
+        super()._encode_properties(encoder, state)
+        if self.CLOSED:
+            return
+
+        for iri, value in self.__dict__["_obj_data"].items():
+            if iri in self._OBJ_PROPERTIES:
+                continue
+
+            with encoder.write_property(iri) as prop_s:
+                if isinstance(value, list):
+                    v = value
+                else:
+                    v = [value]
+                with prop_s.write_list() as list_s:
+                    for i in v:
+                        with list_s.write_list_item() as item_s:
+                            if isinstance(i, bool):
+                                item_s.write_bool(i)
+                            elif isinstance(i, str):
+                                item_s.write_string(i)
+                            elif isinstance(i, int):
+                                item_s.write_integer(i)
+                            elif isinstance(i, float):
+                                item_s.write_float(i)
+                            else:
+                                raise TypeError(
+                                    f"Unsupported serialized type {type(i)} with value {i!r}"
+                                )
+
+    def __setitem__(self, iri: str, value) -> None:
+        try:
+            super().__setitem__(iri, value)
+        except KeyError:
+            if self.CLOSED:
+                raise
+
+            if not is_IRI(iri):
+                raise KeyError(f"Key '{iri}' must be an IRI")
+            obj_data = self.__dict__["_obj_data"]
+            self.__dict__["_obj_data"][iri] = value
+
+    def __delitem__(self, iri: str) -> None:
+        try:
+            super().__delitem__(iri)
+        except KeyError:
+            if self.CLOSED:
+                raise
+
+            if not is_IRI(iri):
+                raise KeyError(f"Key '{iri}' must be an IRI")
+            del self.__dict__["_obj_data"][iri]
+
+    def __getattr__(self, name):
+        if name == "TYPE":
+            return self.__dict__["_obj_TYPE"][0]
+        if name == "COMPACT_TYPE":
+            return self.__dict__["_obj_TYPE"][1]
+        return super().__getattr__(name)
+
+    def property_keys(self) -> Iterator[Tuple[Optional[str], str, Optional[str]]]:
+        iris: Set[str] = set()
+        for pyname, iri, compact in super().property_keys():
+            iris.add(iri)
+            yield pyname, iri, compact
+
+        if self.CLOSED:
+            return
+
+        for iri in self.__dict__["_obj_data"].keys():
+            if iri not in iris:
+                yield None, iri, None
+
+
+class SHACLObjectSet(object):
+    def __init__(self, objects: Collection[SHACLObject] = [], *, link: bool = False):
+        self.objects: Set[SHACLObject] = set(objects)
+        self.missing_ids: Set[str] = set()
+        self.obj_by_id: Dict[str, SHACLObject] = {}
+        self.obj_by_type: Dict[str, Set[Tuple[bool, SHACLObject]]] = {}
+        self.create_index()
+        if link:
+            self._link()
+
+    def create_index(self) -> None:
+        """
+        (re)Create object index
+
+        Creates or recreates the indices for the object set to enable fast
+        lookup. All objects and their children are walked and indexed
+        """
+        self.obj_by_id = {}
+        self.obj_by_type = {}
+        for o in self.foreach():
+            self.add_index(o)
+
+    def add_index(self, obj: SHACLObject) -> None:
+        """
+        Add object to index
+
+        Adds the object to all appropriate indices
+        """
+
+        def reg_type(typ, compact, o, exact):
+            self.obj_by_type.setdefault(typ, set()).add((exact, o))
+            if compact:
+                self.obj_by_type.setdefault(compact, set()).add((exact, o))
+
+        if not isinstance(obj, SHACLObject):
+            raise TypeError("Object is not of type SHACLObject")
+
+        for typ in SHACLObject.CLASSES.values():
+            if isinstance(obj, typ):
+                reg_type(
+                    typ._OBJ_TYPE, typ._OBJ_COMPACT_TYPE, obj, obj.__class__ is typ
+                )
+
+        # This covers custom extensions
+        reg_type(obj.TYPE, obj.COMPACT_TYPE, obj, True)
+
+        if not obj._id:
+            return
+
+        self.missing_ids.discard(obj._id)
+
+        if obj._id in self.obj_by_id:
+            return
+
+        self.obj_by_id[obj._id] = obj
+
+    def add(self, obj: SHACLObject) -> SHACLObject:
+        """
+        Add object to object set
+
+        Adds a SHACLObject to the object set and index it.
+
+        NOTE: Child objects of the attached object are not indexes
+        """
+        if not isinstance(obj, SHACLObject):
+            raise TypeError("Object is not of type SHACLObject")
+
+        if obj not in self.objects:
+            self.objects.add(obj)
+            self.add_index(obj)
+        return obj
+
+    def update(self, *others) -> None:
+        """
+        Update object set adding all objects in each other iterable
+        """
+        for o in others:
+            for obj in o:
+                self.add(obj)
+
+    def __contains__(self, item: SHACLObject) -> bool:
+        """
+        Returns True if the item is in the object set
+        """
+        return item in self.objects
+
+    def link(self) -> Set[str]:
+        """
+        Link object set
+
+        Links the object in the object set by replacing string object
+        references with references to the objects themselves. e.g.
+        a property that references object "https://foo/bar" by a string
+        reference will be replaced with an actual reference to the object in
+        the object set with the same ID if it exists in the object set
+
+        If multiple objects with the same ID are found, the duplicates are
+        eliminated
+        """
+        self.create_index()
+        return self._link()
+
+    def _link(self) -> Set[str]:
+        global NAMED_INDIVIDUALS
+
+        self.missing_ids = set()
+        visited: Set[SHACLObject] = set()
+
+        new_objects: Set[SHACLObject] = set()
+
+        for o in self.objects:
+            if o._id:
+                o = cast(SHACLObject, self.find_by_id(o._id, o))
+            o.link_helper(self, self.missing_ids, visited)
+            new_objects.add(o)
+
+        self.objects = new_objects
+
+        # Remove blank nodes
+        obj_by_id: Dict[str, SHACLObject] = {}
+        for _id, obj in self.obj_by_id.items():
+            if _id.startswith("_:"):
+                del obj._id
+            else:
+                obj_by_id[_id] = obj
+        self.obj_by_id = obj_by_id
+
+        # Named individuals aren't considered missing
+        self.missing_ids -= NAMED_INDIVIDUALS
+
+        return self.missing_ids
+
+    def find_by_id(
+        self, _id: str, default: Optional[SHACLObject] = None
+    ) -> Optional[SHACLObject]:
+        """
+        Find object by ID
+
+        Returns objects that match the specified ID, or default if there is no
+        object with the specified ID
+        """
+        if _id not in self.obj_by_id:
+            return default
+        return self.obj_by_id[_id]
+
+    def foreach(self) -> Iterable[SHACLObject]:
+        """
+        Iterate over every object in the object set, and all child objects
+        """
+        visited = set()
+        for o in self.objects:
+            if o not in visited:
+                yield o
+                visited.add(o)
+
+            for child in o.iter_objects(recursive=True, visited=visited):
+                yield child
+
+    def foreach_type(
+        self, typ: Union[str, SHACLObject], *, match_subclass: bool = True
+    ) -> Iterable[SHACLObject]:
+        """
+        Iterate over each object of a specified type (or subclass there of)
+
+        If match_subclass is True, and class derived from typ will also match
+        (similar to isinstance()). If False, only exact matches will be
+        returned
+        """
+        if not isinstance(typ, str):
+            if not isinstance(typ, type) or not issubclass(typ, SHACLObject):
+                raise TypeError(f"Type must be derived from SHACLObject, got {typ}")
+            typ = cast(SHACLObject, typ)
+            typ = typ._OBJ_TYPE
+
+        if typ not in self.obj_by_type:
+            return
+
+        for exact, o in self.obj_by_type[typ]:
+            if match_subclass or exact:
+                yield o
+
+    def merge(self, *objectsets) -> "SHACLObjectSet":
+        """
+        Merge object sets
+
+        Returns a new object set that is the combination of this object set and
+        all provided arguments
+        """
+        new_objects = set()
+        new_objects |= self.objects
+        for d in objectsets:
+            new_objects |= d.objects
+
+        return SHACLObjectSet(new_objects, link=True)
+
+    def inline_blank_nodes(self) -> None:
+        """
+        Removes (inlines) blank node objects from the root object set if they
+        are referenced in only one other location besides the root.
+
+        Deserializers that do not preserve the tree-like structure of the
+        objects (e.g. RDF) should call this to ensure that blank nodes are
+        inline correctly
+        """
+        ref_counts: Dict[SHACLObject, int] = {}
+
+        def walk_callback(value: SHACLObject, path: List[str]) -> bool:
+            nonlocal ref_counts
+
+            if not isinstance(value, SHACLObject):
+                return True
+
+            ref_counts.setdefault(value, 0)
+            ref_counts[value] += 1
+            if ref_counts[value] > 1:
+                return False
+
+            return True
+
+        for o in self.objects:
+            # Note that every object in the root object set gets at least one
+            # reference
+            o.walk(walk_callback)
+
+        new_objects = set()
+        for o in self.objects:
+            if is_IRI(o._id):
+                new_objects.add(o)
+            # If the object is a blank node and is only referenced by this
+            # root list and one other location, remove it from the root list
+            #
+            # A count of 1 means the object is only referenced by the root, and
+            # therefore must be kept
+            elif ref_counts[o] != 2:
+                new_objects.add(o)
+
+        self.objects = new_objects
+
+    def encode(self, encoder, force_list: bool = False, *, key=None) -> None:
+        """
+        Serialize a list of objects to a serialization encoder
+
+        If force_list is true, a list will always be written using the encoder.
+        """
+        ref_counts: Dict[SHACLObject, int] = {}
+        state = EncodeState()
+
+        def walk_callback(value: SHACLObject, path: List[str]) -> bool:
+            nonlocal state
+            nonlocal ref_counts
+
+            if not isinstance(value, SHACLObject):
+                return True
+
+            # Remove blank node ID for re-assignment
+            if is_blank_node(value._id):
+                del value._id
+
+            if value._id:
+                state.add_refed(value)
+
+            # If the object is referenced more than once, add it to the set of
+            # referenced objects
+            ref_counts.setdefault(value, 0)
+            ref_counts[value] += 1
+            if ref_counts[value] > 1:
+                state.add_refed(value)
+                return False
+
+            return True
+
+        for o in self.objects:
+            if o._id:
+                state.add_refed(o)
+            o.walk(walk_callback)
+
+        use_list = force_list or len(self.objects) > 1
+
+        if use_list:
+            # If we are making a list add all the objects referred to by reference
+            # to the list
+            objects = list(self.objects | state.ref_objects)
+        else:
+            objects = list(self.objects)
+
+        objects.sort(key=key)
+
+        if use_list:
+            # Ensure top level objects are only written in the top level graph
+            # node, and referenced by ID everywhere else. This is done by setting
+            # the flag that indicates this object has been written for all the top
+            # level objects, then clearing it right before serializing the object.
+            #
+            # In this way, if an object is referenced before it is supposed to be
+            # serialized into the @graph, it will serialize as a string instead of
+            # the actual object
+            for o in objects:
+                state.written_objects.add(o)
+
+            with encoder.write_list() as list_s:
+                for o in objects:
+                    # Allow this specific object to be written now
+                    state.written_objects.remove(o)
+                    with list_s.write_list_item() as item_s:
+                        o.encode(item_s, state)
+
+        elif objects:
+            objects[0].encode(encoder, state)
+
+    def decode(self, decoder):
+        self.create_index()
+
+        for obj_d in decoder.read_list():
+            o = SHACLExtensibleObject.decode(obj_d, objectset=self)
+            self.objects.add(o)
+
+        self._link()
+
+
+class EncodeState(object):
+    def __init__(self):
+        self.ref_objects = set()
+        self.written_objects = set()
+        self.blank_objects = {}
+
+    def get_object_id(self, o):
+        if o._id:
+            return o._id
+
+        if o not in self.blank_objects:
+            _id = f"_:{o.__class__.__name__}{len(self.blank_objects)}"
+            self.blank_objects[o] = _id
+
+        return self.blank_objects[o]
+
+    def is_refed(self, o) -> bool:
+        return o in self.ref_objects
+
+    def add_refed(self, o) -> None:
+        self.ref_objects.add(o)
+
+    def is_written(self, o) -> bool:
+        return o in self.written_objects
+
+    def add_written(self, o):
+        self.written_objects.add(o)
+
+
+class Decoder(ABC):
+    @abstractmethod
+    def read_value(self) -> Optional[Any]:
+        """
+        Consume next item
+
+        Consumes the next item of any type
+        """
+        raise NotImplementedError("Subclasses must implement read_value method")
+
+    @abstractmethod
+    def read_string(self) -> Optional[str]:
+        """
+        Consume the next item as a string.
+
+        Returns the string value of the next item, or `None` if the next item
+        is not a string
+        """
+        raise NotImplementedError("Subclasses must implement read_string method")
+
+    @abstractmethod
+    def read_datetime(self) -> Optional[str]:
+        """
+        Consumes the next item as a date & time string
+
+        Returns the string value of the next item, if it is a ISO datetime, or
+        `None` if the next item is not a ISO datetime string.
+
+        Note that validation of the string is done by the caller, so a minimal
+        implementation can just check if the next item is a string without
+        worrying about the format
+        """
+        raise NotImplementedError("Subclasses must implement read_datetime method")
+
+    @abstractmethod
+    def read_integer(self) -> Optional[int]:
+        """
+        Consumes the next item as an integer
+
+        Returns the integer value of the next item, or `None` if the next item
+        is not an integer
+        """
+        raise NotImplementedError("Subclasses must implement read_integer method")
+
+    @abstractmethod
+    def read_iri(self) -> Optional[str]:
+        """
+        Consumes the next item as an IRI string
+
+        Returns the string value of the next item an IRI, or `None` if the next
+        item is not an IRI.
+
+        The returned string should be either a fully-qualified IRI, or a blank
+        node ID
+        """
+        raise NotImplementedError("Subclasses must implement read_iri method")
+
+    @abstractmethod
+    def read_enum(self, e) -> Optional[str]:
+        """
+        Consumes the next item as an Enum value string
+
+        Returns the fully qualified IRI of the next enum item, or `None` if the
+        next item is not an enum value.
+
+        The callee is responsible for validating that the returned IRI is
+        actually a member of the specified Enum, so the `Decoder` does not need
+        to check that, but can if it wishes
+        """
+        raise NotImplementedError("Subclasses must implement read_enum method")
+
+    @abstractmethod
+    def read_bool(self) -> Optional[bool]:
+        """
+        Consume the next item as a boolean value
+
+        Returns the boolean value of the next item, or `None` if the next item
+        is not a boolean
+        """
+        raise NotImplementedError("Subclasses must implement read_bool method")
+
+    @abstractmethod
+    def read_float(self) -> Optional[float]:
+        """
+        Consume the next item as a float value
+
+        Returns the float value of the next item, or `None` if the next item is
+        not a float
+        """
+        raise NotImplementedError("Subclasses must implement read_float method")
+
+    @abstractmethod
+    def read_list(self) -> Iterator["Decoder"]:
+        """
+        Consume the next item as a list generator
+
+        This should generate a `Decoder` object for each item in the list. The
+        generated `Decoder` can be used to read the corresponding item from the
+        list
+        """
+        raise NotImplementedError("Subclasses must implement read_list method")
+
+    @abstractmethod
+    def is_list(self) -> bool:
+        """
+        Checks if the next item is a list
+
+        Returns True if the next item is a list, or False if it is a scalar
+        """
+        raise NotImplementedError("Subclasses must implement is_list method")
+
+    @abstractmethod
+    def read_object(self) -> Tuple[Any, "Decoder"]:
+        """
+        Consume next item as an object
+
+        A context manager that "enters" the next item as a object and yields a
+        `Decoder` that can read properties from it. If the next item is not an
+        object, yields `None`
+
+        Properties will be read out of the object using `read_property` and
+        `read_object_id`
+        """
+        raise NotImplementedError("Subclasses must implement read_object method")
+
+    @abstractmethod
+    @contextmanager
+    def read_property(self, key) -> Iterator[Optional["Decoder"]]:
+        """
+        Read property from object
+
+        A context manager that yields a `Decoder` that can be used to read the
+        value of the property with the given key in current object, or `None`
+        if the property does not exist in the current object.
+        """
+        raise NotImplementedError("Subclasses must implement read_property method")
+
+    @abstractmethod
+    def is_object(self) -> bool:
+        """
+        Checks if the item is an object
+
+        Returns True if the item is an object, or False if is not
+        """
+        raise NotImplementedError("Subclasses must implement is_object method")
+
+    @abstractmethod
+    def object_keys(self) -> Iterator[str]:
+        """
+        Read property keys from an object
+
+        Iterates over all the serialized keys for the current object
+        """
+        raise NotImplementedError("Subclasses must implement object_keys method")
+
+    @abstractmethod
+    def read_object_id(self, alias=None) -> Optional[Any]:
+        """
+        Read current object ID property
+
+        Returns the ID of the current object if one is defined, or `None` if
+        the current object has no ID.
+
+        The ID must be a fully qualified IRI or a blank node
+
+        If `alias` is provided, is is a hint as to another name by which the ID
+        might be found, if the `Decoder` supports aliases for an ID
+        """
+        raise NotImplementedError("Subclasses must implement read_object_id method")
+
+
+class JSONLDDecoder(Decoder):
+    def __init__(self, data, root: bool = False):
+        self.data = data
+        self.root = root
+
+    def read_value(self) -> Optional[Any]:
+        if isinstance(self.data, str):
+            try:
+                return float(self.data)
+            except ValueError:
+                pass
+        return self.data
+
+    def read_string(self) -> Optional[str]:
+        if isinstance(self.data, str):
+            return self.data
+        return None
+
+    def read_datetime(self) -> Optional[str]:
+        return self.read_string()
+
+    def read_integer(self) -> Optional[int]:
+        if isinstance(self.data, int):
+            return self.data
+        return None
+
+    def read_bool(self) -> Optional[bool]:
+        if isinstance(self.data, bool):
+            return self.data
+        return None
+
+    def read_float(self) -> Optional[float]:
+        if isinstance(self.data, (int, float, str)):
+            return float(self.data)
+        return None
+
+    def read_iri(self) -> Optional[str]:
+        if isinstance(self.data, str):
+            return self.data
+        return None
+
+    def read_enum(self, e) -> Optional[str]:
+        if isinstance(self.data, str):
+            return self.data
+        return None
+
+    def read_list(self) -> Iterator["JSONLDDecoder"]:
+        if self.is_list():
+            for v in self.data:
+                yield self.__class__(v)
+        else:
+            yield self
+
+    def is_list(self) -> bool:
+        return isinstance(self.data, (list, tuple, set))
+
+    def __get_value(self, *keys):
+        for k in keys:
+            if k and k in self.data:
+                return self.data[k]
+        return None
+
+    @contextmanager
+    def read_property(self, key) -> Iterator[Optional["JSONLDDecoder"]]:
+        v = self.__get_value(key)
+        if v is not None:
+            yield self.__class__(v)
+        else:
+            yield None
+
+    def is_object(self) -> bool:
+        return isinstance(self.data, dict)
+
+    def object_keys(self) -> Iterator[str]:
+        for key in self.data.keys():
+            if key in ("@type", "{{ context.compact_iri('@type') }}"):
+                continue
+            if self.root and key == "@context":
+                continue
+            yield key
+
+    def read_object(self) -> Tuple[Any, "JSONLDDecoder"]:
+        typ = self.__get_value("@type", "{{ context.compact_iri('@type') }}")
+        if typ is not None:
+            return typ, self
+
+        return None, self
+
+    def read_object_id(self, alias=None) -> Optional[Any]:
+        return self.__get_value(alias, "@id")
+
+
+class JSONLDDeserializer(object):
+    def deserialize_data(self, data, objectset: SHACLObjectSet) -> None:
+        if "@graph" in data:
+            h = JSONLDDecoder(data["@graph"], True)
+        else:
+            h = JSONLDDecoder(data, True)
+
+        objectset.decode(h)
+
+    def read(self, f, objectset: SHACLObjectSet) -> None:
+        data = json.load(f)
+        self.deserialize_data(data, objectset)
+
+
+class Encoder(ABC):
+    @abstractmethod
+    def write_string(self, v) -> None:
+        """
+        Write a string value
+
+        Encodes the value as a string in the output
+        """
+        raise NotImplementedError("Subclasses must implement write_string method")
+
+    @abstractmethod
+    def write_datetime(self, v) -> None:
+        """
+        Write a date & time string
+
+        Encodes the value as an ISO datetime string
+
+        Note: The provided string is already correctly encoded as an ISO datetime
+        """
+        raise NotImplementedError("Subclasses must implement write_datetime method")
+
+    @abstractmethod
+    def write_integer(self, v) -> None:
+        """
+        Write an integer value
+
+        Encodes the value as an integer in the output
+        """
+        raise NotImplementedError("Subclasses must implement write_integer method")
+
+    @abstractmethod
+    def write_iri(self, v, compact=None) -> None:
+        """
+        Write IRI
+
+        Encodes the string as an IRI. Note that the string will be either a
+        fully qualified IRI or a blank node ID. If `compact` is provided and
+        the serialization supports compacted IRIs, it should be preferred to
+        the full IRI
+        """
+        raise NotImplementedError("Subclasses must implement write_iri method")
+
+    @abstractmethod
+    def write_enum(self, v, e, compact=None) -> None:
+        """
+        Write enum value IRI
+
+        Encodes the string enum value IRI. Note that the string will be a fully
+        qualified IRI. If `compact` is provided and the serialization supports
+        compacted IRIs, it should be preferred to the full IRI.
+        """
+        raise NotImplementedError("Subclasses must implement write_enum method")
+
+    @abstractmethod
+    def write_bool(self, v) -> None:
+        """
+        Write boolean
+
+        Encodes the value as a boolean in the output
+        """
+        raise NotImplementedError("Subclasses must implement write_bool method")
+
+    @abstractmethod
+    def write_float(self, v) -> None:
+        """
+        Write float
+
+        Encodes the value as a floating point number in the output
+        """
+        raise NotImplementedError("Subclasses must implement write_float method")
+
+    @abstractmethod
+    @contextmanager
+    def write_object(self, o: SHACLObject, _id: str, needs_id: bool):
+        """
+        Write object
+
+        A context manager that yields an `Encoder` that can be used to encode
+        the given object properties.
+
+        The provided ID will always be a valid ID (even if o._id is `None`), in
+        case the `Encoder` _must_ have an ID. `needs_id` is a hint to indicate
+        to the `Encoder` if an ID must be written or not (if that is even an
+        option). If it is `True`, the `Encoder` must encode an ID for the
+        object. If `False`, the encoder is not required to encode an ID and may
+        omit it.
+
+        The ID will be either a fully qualified IRI, or a blank node IRI.
+
+        Properties will be written the object using `write_property`
+        """
+        raise NotImplementedError("Subclasses must implement write_object method")
+
+    @abstractmethod
+    @contextmanager
+    def write_property(self, iri: str, compact: Optional[str] = None):
+        """
+        Write object property
+
+        A context manager that yields an `Encoder` that can be used to encode
+        the value for the property with the given IRI in the current object
+
+        Note that the IRI will be fully qualified. If `compact` is provided and
+        the serialization supports compacted IRIs, it should be preferred to
+        the full IRI.
+        """
+        raise NotImplementedError("Subclasses must implement write_property method")
+
+    @abstractmethod
+    @contextmanager
+    def write_list(self):
+        """
+        Write list
+
+        A context manager that yields an `Encoder` that can be used to encode a
+        list.
+
+        Each item of the list will be added using `write_list_item`
+        """
+        raise NotImplementedError("Subclasses must implement write_list method")
+
+    @abstractmethod
+    @contextmanager
+    def write_list_item(self):
+        """
+        Write list item
+
+        A context manager that yields an `Encoder` that can be used to encode
+        the value for a list item
+        """
+        raise NotImplementedError("Subclasses must implement write_list_item method")
+
+
+class JSONLDEncoder(Encoder):
+    def __init__(self, data=None):
+        self.data = data
+
+    def write_string(self, v):
+        self.data = v
+
+    def write_datetime(self, v):
+        self.data = v
+
+    def write_integer(self, v):
+        self.data = v
+
+    def write_iri(self, v, compact=None):
+        self.write_string(compact or v)
+
+    def write_enum(self, v, e, compact=None):
+        self.write_string(compact or v)
+
+    def write_bool(self, v):
+        self.data = v
+
+    def write_float(self, v):
+        self.data = str(v)
+
+    @contextmanager
+    def write_property(self, iri: str, compact: Optional[str] = None):
+        s = self.__class__(None)
+        yield s
+        if s.data is not None:
+            self.data[compact or iri] = s.data  # type: ignore # within write_object() context, self.data is always dict or None
+
+    @contextmanager
+    def write_object(self, o: SHACLObject, _id: str, needs_id: bool):
+        self.data = {
+            "{{ context.compact_iri('@type') }}": o.COMPACT_TYPE or o.TYPE,
+        }
+        if needs_id:
+            self.data[o.ID_ALIAS or "@id"] = _id
+        yield self
+
+    @contextmanager
+    def write_list(self):
+        self.data = []
+        yield self
+        if not self.data:
+            self.data = None
+
+    @contextmanager
+    def write_list_item(self):
+        s = self.__class__(None)
+        yield s
+        if s.data is not None:
+            self.data.append(s.data)  # type: ignore # within write_list() context, self.data is always list or None
+
+
+class JSONLDSerializer(object):
+    def __init__(self, **args):
+        self.args = args
+
+    def serialize_data(
+        self,
+        objectset: SHACLObjectSet,
+        force_at_graph: bool = False,
+    ):
+        h = JSONLDEncoder()
+        objectset.encode(h, force_at_graph)
+        data: Dict[str, Any] = {}
+        if len(CONTEXT_URLS) == 1:
+            data["@context"] = CONTEXT_URLS[0]
+        elif CONTEXT_URLS:
+            data["@context"] = CONTEXT_URLS
+
+        if isinstance(h.data, list):
+            data["@graph"] = h.data
+        elif isinstance(h.data, dict):
+            for k, v in h.data.items():
+                data[k] = v
+        # elif h.data is not None: # str, int, float, bool
+        #    data["value"] = h.data
+
+        return data
+
+    def write(
+        self,
+        objectset: SHACLObjectSet,
+        f,
+        force_at_graph: bool = False,
+        **kwargs,
+    ):
+        """
+        Write a SHACLObjectSet to a JSON LD file
+
+        If force_at_graph is True, a @graph node will always be written
+
+        Note that f should be a file-like object that supports the `write`
+        method, and that opens in binary mode (e.g. `open("file.json", "wb")`).
+        """
+        data = self.serialize_data(objectset, force_at_graph)
+
+        args = {**self.args, **kwargs}
+
+        sha1 = hashlib.sha1()
+        for chunk in json.JSONEncoder(**args).iterencode(data):
+            chunk_bytes = chunk.encode("utf-8")
+            f.write(chunk_bytes)
+            sha1.update(chunk_bytes)
+
+        return sha1.hexdigest()
+
+
+class JSONLDInlineEncoder(Encoder):
+    def __init__(self, f, sha1):
+        self.f = f
+        self.comma = False
+        self.sha1 = sha1
+
+    def write(self, s):
+        s = s.encode("utf-8")
+        self.f.write(s)
+        self.sha1.update(s)
+
+    def _write_comma(self):
+        if self.comma:
+            self.write(",")
+            self.comma = False
+
+    def write_string(self, v):
+        self.write(json.dumps(v))
+
+    def write_datetime(self, v):
+        self.write_string(v)
+
+    def write_integer(self, v):
+        self.write(f"{v}")
+
+    def write_iri(self, v, compact=None):
+        self.write_string(compact or v)
+
+    def write_enum(self, v, e, compact=None):
+        self.write_iri(v, compact)
+
+    def write_bool(self, v):
+        if v:
+            self.write("true")
+        else:
+            self.write("false")
+
+    def write_float(self, v):
+        self.write(json.dumps(str(v)))
+
+    @contextmanager
+    def write_property(self, iri: str, compact: Optional[str] = None):
+        self._write_comma()
+        self.write_string(compact or iri)
+        self.write(":")
+        yield self
+        self.comma = True
+
+    @contextmanager
+    def write_object(self, o: SHACLObject, _id: str, needs_id: bool):
+        self._write_comma()
+
+        self.write("{")
+        self.write_string("{{ context.compact_iri('@type') }}")
+        self.write(":")
+        self.write_string(o.COMPACT_TYPE or o.TYPE)
+        self.comma = True
+
+        if needs_id:
+            self._write_comma()
+            self.write_string(o.ID_ALIAS or "@id")
+            self.write(":")
+            self.write_string(_id)
+            self.comma = True
+
+        self.comma = True
+        yield self
+
+        self.write("}")
+        self.comma = True
+
+    @contextmanager
+    def write_list(self):
+        self._write_comma()
+        self.write("[")
+        yield self.__class__(self.f, self.sha1)
+        self.write("]")
+        self.comma = True
+
+    @contextmanager
+    def write_list_item(self):
+        self._write_comma()
+        yield self.__class__(self.f, self.sha1)
+        self.comma = True
+
+
+class JSONLDInlineSerializer(object):
+    def write(
+        self,
+        objectset: SHACLObjectSet,
+        f,
+        force_at_graph: bool = False,
+    ):
+        """
+        Write a SHACLObjectSet to a JSON LD file
+
+        Note: force_at_graph is included for compatibility, but ignored. This
+        serializer always writes out a graph
+        """
+        sha1 = hashlib.sha1()
+        h = JSONLDInlineEncoder(f, sha1)
+        h.write('{"@context":')
+        if len(CONTEXT_URLS) == 1:
+            h.write(f'"{CONTEXT_URLS[0]}"')
+        elif CONTEXT_URLS:
+            h.write('["')
+            h.write('","'.join(CONTEXT_URLS))
+            h.write('"]')
+        h.write(",")
+
+        h.write('"@graph":')
+
+        objectset.encode(h, True)
+        h.write("}")
+        return sha1.hexdigest()
+
+
+try:
+    import rdflib
+    import rdflib.term
+    from rdflib.namespace import RDF
+
+    class RDFDecoder(Decoder):
+        def __init__(
+            self,
+            graph: rdflib.Graph,
+            subject: Optional[rdflib.term.Node] = None,
+            predicate: Optional[rdflib.term.Node] = None,
+            value: Optional[rdflib.term.Node] = None,
+        ):
+            self.graph = graph
+            self.subject = subject
+            self.predicate = predicate
+            self.value = value
+
+        def __read_node(self):
+            if self.value is not None:
+                return self.value
+            if self.predicate is None:
+                return None
+            return self.graph.value(self.subject, self.predicate)
+
+        def read_value(self) -> Optional[Any]:
+            v = self.__read_node()
+            if isinstance(v, rdflib.term.Literal):
+                return v.toPython()
+            return None
+
+        def read_string(self) -> Optional[str]:
+            v = self.read_value()
+            if isinstance(v, str):
+                return v
+            return None
+
+        def read_datetime(self) -> Optional[str]:
+            return self.read_value()
+
+        def read_integer(self) -> Optional[int]:
+            v = self.read_value()
+            if isinstance(v, (int, decimal.Decimal)):
+                return int(v)
+            return None
+
+        def read_bool(self) -> Optional[bool]:
+            v = self.read_value()
+            if isinstance(v, bool):
+                return v
+            return None
+
+        def read_float(self) -> Optional[float]:
+            v = self.read_value()
+            if isinstance(v, (int, float, str, decimal.Decimal)):
+                return float(v)
+            return None
+
+        def read_iri(self) -> Optional[str]:
+            v = self.__read_node()
+            if isinstance(v, rdflib.term.URIRef):
+                return v.toPython()
+            elif isinstance(v, rdflib.term.Literal):
+                v = v.toPython()
+                if isinstance(v, str):
+                    return v
+            elif isinstance(v, rdflib.term.BNode):
+                return v.n3()
+            return None
+
+        def read_enum(self, e) -> Optional[str]:
+            v = self.__read_node()
+            if isinstance(v, rdflib.term.URIRef):
+                return v.toPython()
+            return None
+
+        def read_list(self) -> Iterator["RDFDecoder"]:
+            if not self.subject:
+                blank_nodes = set()
+                for s in self.graph.subjects(unique=True):
+                    # type: ignore # RDF.type is dynamic
+                    if (s, RDF.type, None) not in self.graph:
+                        continue
+
+                    if isinstance(s, rdflib.term.BNode):
+                        blank_nodes.add(s)
+                        continue
+                    yield self.__class__(self.graph, s)
+
+                for s in blank_nodes:
+                    yield self.__class__(self.graph, s)
+            else:
+                for o in self.graph.objects(self.subject, self.predicate):
+                    # type: ignore # RDF.type is dynamic
+                    if (o, RDF.type, None) in self.graph:
+                        yield self.__class__(self.graph, o)
+                    else:
+                        yield self.__class__(
+                            self.graph,
+                            self.subject,
+                            self.predicate,
+                            o,
+                        )
+
+        def is_list(self) -> bool:
+            if not self.subject:
+                return True
+            if self.value is not None:
+                return False
+            return len(list(self.graph.objects(self.subject, self.predicate))) > 1
+
+        @contextmanager
+        def read_property(self, key) -> Iterator[Optional["RDFDecoder"]]:
+            if key == "@id":
+                yield self.__class__(self.graph, value=self.subject)
+            else:
+                yield self.__class__(self.graph, self.subject, rdflib.term.URIRef(key))
+
+        def is_object(self) -> bool:
+            n = self.__read_node() or self.subject
+            # type: ignore # RDF.type is dynamic
+            return (n, RDF.type, None) in self.graph
+
+        def object_keys(self) -> Iterator[str]:
+            for p in self.graph.predicates(self.subject, unique=True):
+                # type: ignore # RDF.type is dynamic
+                if p == RDF.type:
+                    continue
+
+                if not isinstance(p, rdflib.term.IdentifiedNode):
+                    raise TypeError(f"Predicate is of unknown type {type(p)}")
+
+                yield p.toPython()
+
+        def read_object(self) -> Tuple[Any, "RDFDecoder"]:
+            s = self.__read_node()
+            if s is None:
+                s = self.subject
+
+            # type: ignore # RDF.type is dynamic
+            typ = self.graph.value(s, RDF.type)
+            if typ is None:
+                return None, self
+
+            if not isinstance(typ, rdflib.term.IdentifiedNode):
+                raise TypeError(f"Type value is of unknown type {type(typ)}")
+
+            return typ.toPython(), self.__class__(self.graph, s)
+
+        def read_object_id(self, alias=None) -> Optional[Any]:
+            if isinstance(self.subject, rdflib.term.BNode):
+                return self.subject.n3()
+            if not isinstance(self.subject, rdflib.term.IdentifiedNode):
+                raise TypeError(f"Subject is of unknown type {type(self.subject)}")
+            return self.subject.toPython()
+
+    class RDFDeserializer(object):
+        def read(self, graph: rdflib.Graph, objset: SHACLObjectSet) -> None:
+            d = RDFDecoder(graph)
+            objset.decode(d)
+            objset.inline_blank_nodes()
+
+    class RDFEncoder(Encoder):
+        def __init__(
+            self,
+            graph: rdflib.Graph,
+            subject: Optional[rdflib.term.Node] = None,
+            predicate: Optional[rdflib.term.Node] = None,
+        ):
+            self.graph = graph
+            self.subject = subject
+            self.predicate = predicate
+
+        def __add_literal(self, v):
+            if self.subject is None or self.predicate is None:
+                raise TypeError()
+            self.graph.add((self.subject, self.predicate, rdflib.Literal(v)))
+
+        def __add_uriref(self, v):
+            if self.subject is None or self.predicate is None:
+                raise TypeError()
+            self.graph.add((self.subject, self.predicate, rdflib.URIRef(v)))
+
+        def write_string(self, v):
+            self.__add_literal(v)
+
+        def write_datetime(self, v):
+            self.__add_literal(v)
+
+        def write_integer(self, v):
+            self.__add_literal(v)
+
+        def write_iri(self, v, compact=None):
+            self.__add_uriref(v)
+
+        def write_enum(self, v, e, compact=None):
+            self.__add_uriref(v)
+
+        def write_bool(self, v):
+            self.__add_literal(v)
+
+        def write_float(self, v):
+            self.__add_literal(v)
+
+        @contextmanager
+        def write_property(self, iri: str, compact: Optional[str] = None):
+            yield self.__class__(self.graph, self.subject, rdflib.URIRef(iri))
+
+        @contextmanager
+        def write_object(self, o, _id, needs_id: bool):
+            obj: rdflib.term.Node
+            if _id.startswith("_:"):
+                obj = rdflib.BNode(_id[2:])
+            else:
+                obj = rdflib.URIRef(_id)
+
+            if self.subject is not None:
+                if self.predicate is None:
+                    raise TypeError()
+                self.graph.add((self.subject, self.predicate, obj))
+            self.graph.add((obj, RDF.type, rdflib.URIRef(o.TYPE)))  # type: ignore # RDF.type is dynamic
+            yield self.__class__(self.graph, obj)
+
+        @contextmanager
+        def write_list(self):
+            yield self
+
+        @contextmanager
+        def write_list_item(self):
+            yield self
+
+    class RDFSerializer(object):
+        def write(self, objset: SHACLObjectSet, g: rdflib.Graph):
+            """
+            Write a SHACLObjectSet to an RDF graph
+            """
+            e = RDFEncoder(g)
+            objset.encode(e)
+
+except ImportError:
+    pass
+
+
+def print_tree(objects, all_fields: bool = False) -> None:
+    """
+    Print object tree
+    """
+    seen = set()
+
+    def callback(value, path: List[str]):
+        nonlocal seen
+
+        s = ("  " * (len(path) - 1)) + f"{path[-1]}"
+        if isinstance(value, SHACLObject):
+            s += f" {value} ({id(value)})"
+            is_empty = False
+        elif isinstance(value, ListProxy):
+            is_empty = len(value) == 0
+            if is_empty:
+                s += " []"
+        else:
+            s += f" {value!r}"
+            is_empty = value is None
+
+        if all_fields or not is_empty:
+            print(s)
+
+        if isinstance(value, SHACLObject):
+            if value in seen:
+                return False
+            seen.add(value)
+            return True
+
+        return True
+
+    for o in objects:
+        o.walk(callback)
+
+
+# fmt: off
+"""Format Guard{{ '"' }}{{ '"' }}{{ '"' }}
+{% set
+DATATYPE_CLASSES = {
+    "http://www.w3.org/2001/XMLSchema#string": "StringProp",
+    "http://www.w3.org/2001/XMLSchema#anyURI": "AnyURIProp",
+    "http://www.w3.org/2001/XMLSchema#integer": "IntegerProp",
+    "http://www.w3.org/2001/XMLSchema#positiveInteger": "PositiveIntegerProp",
+    "http://www.w3.org/2001/XMLSchema#nonNegativeInteger": "NonNegativeIntegerProp",
+    "http://www.w3.org/2001/XMLSchema#boolean": "BooleanProp",
+    "http://www.w3.org/2001/XMLSchema#decimal": "FloatProp",
+    "http://www.w3.org/2001/XMLSchema#dateTime": "DateTimeProp",
+    "http://www.w3.org/2001/XMLSchema#dateTimeStamp": "DateTimeStampProp",
+}
+%}
+
+CONTEXT_URLS: List[str] = [
+{%- for url in context.urls %}
+    "{{ url }}",
+{%- endfor %}
+]
+
+
+# CLASSES
+{%- for class in classes %}
+{%- if class.comment %}
+{%- for l in class.comment.split("\n") %}
+#{{ (" " + l).rstrip() }}
+{%- endfor %}
+{%- endif %}
+@register("{{ class._id }}"{%- if context.compact_iri(class._id) != class._id %}, compact_type="{{ context.compact_iri(class._id) }}"{%- endif %}, abstract={{ class.is_abstract }})
+class {{ varname(*class.clsname) }}(
+{%- if class.is_extensible -%}
+    SHACLExtensibleObject{{", "}}
+{%- endif %}
+{%- if class.parent_ids %}
+    {%- for id in class.parent_ids %}
+        {{- varname(*classes.get(id).clsname) }}{% if not loop.last %}, {% endif %}
+    {%- endfor %}
+{%- else -%}
+    SHACLObject
+{%- endif -%}):
+    NODE_KIND = NodeKind.{{ class.node_kind.split("#")[-1] }}
+    {%- if class.id_property %}
+    ID_ALIAS = "{{ class.id_property }}"
+    {%- endif %}
+    IS_DEPRECATED = {{ class.deprecated }}
+    NAMED_INDIVIDUALS: Dict[str, str] = {
+        {%- for member in class.named_individuals %}
+        "{{ varname(member.varname) }}": "{{ member._id }}",
+        {%- endfor %}
+    }
+    {%- for member in class.named_individuals %}
+    {%- if member.comment %}
+    {%- for l in member.comment.split("\n") %}
+    #{{ (" " + l).rstrip() }}
+    {%- endfor %}
+    {%- endif %}
+    {{ varname(member.varname) }} = "{{ member._id }}"
+    {%- endfor %}
+    {%- if class.properties %}
+
+    @classmethod
+    def _register_props(cls):
+        super()._register_props()
+        {%- for prop in class.properties %}
+        {%- set is_list = prop.max_count is none or prop.max_count != 1 %}
+        {%- if prop.comment %}
+        {%- for l in prop.comment.split("\n") %}
+        #{{ (" " + l).rstrip() }}
+        {%- endfor %}
+        {%- endif %}
+        cls._add_property(
+            "{{ varname(prop.varname) }}",
+            {% if is_list -%}ListProp({% endif %}
+            {%- if prop.enum_values -%}
+                EnumProp([
+                {%- for value in prop.enum_values %}
+                    ("{{ value }}", "{{ context.compact_vocab(value, prop.path) }}"),
+                {%- endfor %}
+                ])
+            {%- elif prop.class_id -%}
+                {%- set ctx = [] %}
+                {%- for value in get_all_named_individuals(classes.get(prop.class_id)) %}
+                    {%- if context.compact_vocab(value, prop.path) != value %}
+                        {{- ctx.append((value, context.compact_vocab(value, prop.path))) or "" }}
+                    {%- endif %}
+                {%- endfor -%}
+                ObjectProp({{ varname(*classes.get(prop.class_id).clsname) }}, {% if prop.min_count and not is_list %}True{% else %}False{% endif %}{% if ctx %}, context=[
+                {%- for value, compact in ctx %}
+                    ("{{ value }}", "{{ compact }}"),
+                {%- endfor %}
+                ],
+                {%- endif -%}
+                )
+            {%- else -%}
+                {% if not prop.datatype in DATATYPE_CLASSES -%}
+                    {{ abort("Unknown data type " + prop.datatype) -}}
+                {% endif -%}
+                {{ DATATYPE_CLASSES[prop.datatype] }}({%- if prop.pattern %}pattern=r"{{ prop.pattern }}",{%- endif %})
+            {%- endif %}{% if is_list %}){% endif %},
+            iri="{{ prop.path }}",
+            {%- if is_list and not prop.max_count is none %}
+            max_count={{ prop.max_count }},
+            {%- endif %}
+            {%- if not prop.min_count is none %}
+            min_count={{ prop.min_count }},
+            {%- endif %}
+            {%- if context.compact_vocab(prop.path) != prop.path %}
+            compact="{{ context.compact_vocab(prop.path) }}",
+            {%- endif %}
+            deprecated={{ prop.deprecated }}
+        )
+        {%- endfor %}
+    {%- endif %}
+
+{% endfor %}
+{{ '"' }}{{ '"' }}{{ '"' }}Format Guard"""
+# fmt: on
+
+
+def main():
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(description="Python SHACL model test")
+    parser.add_argument("infile", type=Path, help="Input file")
+    parser.add_argument("--print", action="store_true", help="Print object tree")
+    parser.add_argument("--outfile", type=Path, help="Output file")
+
+    args = parser.parse_args()
+
+    objectset = SHACLObjectSet()
+    with args.infile.open("r") as f:
+        d = JSONLDDeserializer()
+        d.read(f, objectset)
+
+    if args.print:
+        print_tree(objectset.objects)
+
+    if args.outfile:
+        with args.outfile.open("wb") as f:
+            s = JSONLDSerializer()
+            s.write(objectset, f)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
