@@ -1,0 +1,183 @@
+name: Auto Release (Backend API changes)
+
+on:
+  repository_dispatch:
+    types: [openapi-updated]
+
+permissions:
+  contents: write
+
+jobs:
+  detect:
+    name: Detect OpenAPI change
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+      spec_url: ${{ steps.spec.outputs.spec_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Resolve spec URL
+        id: spec
+        run: |
+          SPEC_URL="${{ github.event.client_payload.spec_url }}"
+          if [ -z "$SPEC_URL" ]; then
+            SPEC_URL="https://api.amigo.ai/v1/openapi.json"
+          fi
+          echo "spec_url=$SPEC_URL" >> $GITHUB_OUTPUT
+
+      - name: Fetch current production spec
+        run: |
+          mkdir -p specs
+          curl -fSL -o specs/openapi-new.json "${{ steps.spec.outputs.spec_url }}"
+
+      - name: Check baseline presence
+        id: baseline
+        run: |
+          mkdir -p specs
+          if [ ! -f specs/openapi-baseline.json ]; then
+            echo "missing=true" >> $GITHUB_OUTPUT
+          else
+            echo "missing=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Prepare baseline
+        run: |
+          mkdir -p specs
+          if [ ! -f specs/openapi-baseline.json ]; then
+            cp specs/openapi-new.json specs/openapi-baseline.json
+          fi
+
+      - name: Diagnostics (spec and baseline)
+        run: |
+          echo "Resolved spec_url: ${{ steps.spec.outputs.spec_url }}"
+          echo "Baseline missing: ${{ steps.baseline.outputs.missing }}"
+          echo "jq version: $(jq --version)"
+          jq -S '
+            def sort_deep:
+              if type == "array" then
+                map(sort_deep) | sort_by(tostring)
+              elif type == "object" then
+                with_entries(.value |= sort_deep)
+              else . end;
+            (del(.info) | del(.servers)) | sort_deep
+          ' specs/openapi-baseline.json > baseline.norm.json || true
+          jq -S '
+            def sort_deep:
+              if type == "array" then
+                map(sort_deep) | sort_by(tostring)
+              elif type == "object" then
+                with_entries(.value |= sort_deep)
+              else . end;
+            (del(.info) | del(.servers)) | sort_deep
+          ' specs/openapi-new.json > new.norm.json
+          if [ -f baseline.norm.json ]; then
+            echo "BASELINE_NORM_SHA=$(sha256sum baseline.norm.json | awk '{print $1}')"
+          else
+            echo "BASELINE_NORM_SHA=(none)"
+          fi
+          echo "NEW_NORM_SHA=$(sha256sum new.norm.json | awk '{print $1}')"
+          if [ -f baseline.norm.json ]; then
+            if diff -q baseline.norm.json new.norm.json >/dev/null 2>&1; then
+              echo "Quick diff: identical"
+            else
+              echo "Quick diff: differs"
+            fi
+          fi
+
+          # Section-level hashes and key diffs
+          echo "\n== Section-level hashes =="
+          if [ -f specs/openapi-baseline.json ]; then
+            BASELINE_PATHS_SHA=$(jq -cS '(.paths // {})' specs/openapi-baseline.json | sha256sum | awk '{print $1}')
+            BASELINE_SCHEMAS_SHA=$(jq -cS '(.components.schemas // {})' specs/openapi-baseline.json | sha256sum | awk '{print $1}')
+            BASELINE_PATHS_COUNT=$(jq -r '(.paths // {}) | keys | length' specs/openapi-baseline.json)
+            BASELINE_SCHEMAS_COUNT=$(jq -r '(.components.schemas // {}) | keys | length' specs/openapi-baseline.json)
+          else
+            BASELINE_PATHS_SHA=(none)
+            BASELINE_SCHEMAS_SHA=(none)
+            BASELINE_PATHS_COUNT=0
+            BASELINE_SCHEMAS_COUNT=0
+          fi
+          NEW_PATHS_SHA=$(jq -cS '(.paths // {})' specs/openapi-new.json | sha256sum | awk '{print $1}')
+          NEW_SCHEMAS_SHA=$(jq -cS '(.components.schemas // {})' specs/openapi-new.json | sha256sum | awk '{print $1}')
+          NEW_PATHS_COUNT=$(jq -r '(.paths // {}) | keys | length' specs/openapi-new.json)
+          NEW_SCHEMAS_COUNT=$(jq -r '(.components.schemas // {}) | keys | length' specs/openapi-new.json)
+          echo "BASELINE paths: count=$BASELINE_PATHS_COUNT sha=$BASELINE_PATHS_SHA"
+          echo "NEW      paths: count=$NEW_PATHS_COUNT sha=$NEW_PATHS_SHA"
+          echo "BASELINE schemas: count=$BASELINE_SCHEMAS_COUNT sha=$BASELINE_SCHEMAS_SHA"
+          echo "NEW      schemas: count=$NEW_SCHEMAS_COUNT sha=$NEW_SCHEMAS_SHA"
+
+          echo "\n== Key diffs (paths) =="
+          if [ -f specs/openapi-baseline.json ]; then
+            jq -r '(.paths // {}) | keys | sort[]' specs/openapi-baseline.json > baseline.paths.txt || true
+          else
+            : > baseline.paths.txt
+          fi
+          jq -r '(.paths // {}) | keys | sort[]' specs/openapi-new.json > new.paths.txt
+          echo "Removed paths (in baseline, not in new):"; comm -23 baseline.paths.txt new.paths.txt || true
+          echo "Added paths (in new, not in baseline):"; comm -13 baseline.paths.txt new.paths.txt || true
+
+          echo "\n== Key diffs (components.schemas) =="
+          if [ -f specs/openapi-baseline.json ]; then
+            jq -r '(.components.schemas // {}) | keys | sort[]' specs/openapi-baseline.json > baseline.schemas.txt || true
+          else
+            : > baseline.schemas.txt
+          fi
+          jq -r '(.components.schemas // {}) | keys | sort[]' specs/openapi-new.json > new.schemas.txt
+          echo "Removed schemas (in baseline, not in new):"; comm -23 baseline.schemas.txt new.schemas.txt || true
+          echo "Added schemas (in new, not in baseline):"; comm -13 baseline.schemas.txt new.schemas.txt || true
+
+      - name: Compare normalized specs
+        id: diff
+        run: |
+          if [ "${{ steps.baseline.outputs.missing }}" = "true" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          jq -S '
+            def sort_deep:
+              if type == "array" then
+                map(sort_deep) | sort_by(tostring)
+              elif type == "object" then
+                with_entries(.value |= sort_deep)
+              else . end;
+            (del(.info) | del(.servers)) | sort_deep
+          ' specs/openapi-baseline.json > baseline.norm.json
+          jq -S '
+            def sort_deep:
+              if type == "array" then
+                map(sort_deep) | sort_by(tostring)
+              elif type == "object" then
+                with_entries(.value |= sort_deep)
+              else . end;
+            (del(.info) | del(.servers)) | sort_deep
+          ' specs/openapi-new.json > new.norm.json
+          if diff -q baseline.norm.json new.norm.json >/dev/null 2>&1; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload normalized specs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: normalized-specs
+          path: |
+            baseline.norm.json
+            new.norm.json
+          retention-days: 7
+
+  release-on-dispatch:
+    name: Trigger SDK release (minor)
+    needs: detect
+    if: needs.detect.outputs.changed == 'true'
+    uses: ./.github/workflows/release.yml
+    with:
+      version_type: minor
+      dry_run: ${{ github.event.client_payload.dry_run == true }}
+      spec_url: ${{ needs.detect.outputs.spec_url }}
+    secrets: inherit

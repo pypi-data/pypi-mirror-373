@@ -1,0 +1,215 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: "Version increment type"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: "Dry run (skip upload)"
+        required: false
+        default: false
+        type: boolean
+  workflow_call:
+    inputs:
+      version_type:
+        description: "Version increment type (patch|minor|major)"
+        required: true
+        type: string
+        default: "patch"
+      dry_run:
+        description: "Dry run (skip upload)"
+        required: false
+        type: boolean
+        default: false
+      spec_url:
+        description: "OpenAPI spec URL to use for generation"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  # Reuse the existing test workflow
+  test:
+    uses: ./.github/workflows/test.yml
+    with:
+      skip_codecov: true
+    secrets: inherit
+
+  release:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Create GitHub App token (release-bot)
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history for version tagging
+          fetch-depth: 0
+          # Use a token that can push tags and create releases
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Ensure jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Fetch OpenAPI spec
+        id: fetch_spec
+        run: |
+          SPEC_URL="${{ inputs.spec_url }}"
+          if [ -z "$SPEC_URL" ]; then
+            SPEC_URL="https://api.amigo.ai/v1/openapi.json"
+          fi
+          mkdir -p specs
+          curl -fSL -o specs/openapi-new.json "$SPEC_URL"
+          cp specs/openapi-new.json specs/openapi-baseline.json
+
+      # Generator always fetches remote; no local spec path needed
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install hatch
+
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Get current version
+        id: current_version
+        run: |
+          CURRENT_VERSION=$(hatch version)
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT_VERSION"
+
+      - name: Generate models
+        run: |
+          echo "🔄 Generating models from API spec..."
+          python -m scripts.gen_models
+          echo "✅ Models generated successfully"
+
+      - name: Increment version
+        id: new_version
+        run: |
+          echo "🔄 Incrementing ${{ inputs.version_type }} version..."
+          hatch version ${{ inputs.version_type }}
+          NEW_VERSION=$(hatch version)
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "✅ Version updated: ${{ steps.current_version.outputs.version }} → $NEW_VERSION"
+
+      - name: Build package
+        run: |
+          echo "🔄 Building package..."
+          # Clean any existing build artifacts
+          rm -rf dist/
+          hatch build
+          echo "✅ Package built successfully"
+          ls -la dist/
+
+      - name: Upload to PyPI
+        if: ${{ !inputs.dry_run }}
+        env:
+          HATCH_INDEX_USER: __token__
+          HATCH_INDEX_AUTH: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          echo "🔄 Uploading to PyPI..."
+          hatch publish --repo https://upload.pypi.org/legacy/
+          echo "✅ Package uploaded to PyPI"
+
+      - name: Commit version bump
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git add -A
+          git commit -m "Bump version to ${{ steps.new_version.outputs.version }}"
+          git push origin HEAD
+
+      - name: Create and push tag
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git tag -a "v${{ steps.new_version.outputs.version }}" -m "Release v${{ steps.new_version.outputs.version }}"
+          git push origin "v${{ steps.new_version.outputs.version }}"
+
+      - name: Create GitHub Release
+        if: ${{ !inputs.dry_run }}
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        with:
+          tag_name: "v${{ steps.new_version.outputs.version }}"
+          release_name: "Release v${{ steps.new_version.outputs.version }}"
+          body: |
+            ## Changes in v${{ steps.new_version.outputs.version }}
+
+            This release was automatically created by the GitHub Actions release workflow.
+
+            ### Package Information
+            - **Version**: ${{ steps.new_version.outputs.version }}
+            - **Target**: PyPI
+            - **Type**: ${{ inputs.version_type }} release
+
+            ### Links
+            ${{ format('- [View on PyPI](https://pypi.org/project/amigo_sdk/{0}/)', steps.new_version.outputs.version) }}
+
+            ### Installation
+            ```bash
+            pip install amigo_sdk
+            ```
+          draft: false
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ steps.new_version.outputs.version }}
+          path: dist/
+          retention-days: 30
+
+      - name: Release Summary
+        run: |
+          echo "## 🎉 Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ steps.new_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Previous**: ${{ steps.current_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Type**: ${{ inputs.version_type }} release" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target**: PyPI" >> $GITHUB_STEP_SUMMARY
+          echo "- **Dry Run**: ${{ inputs.dry_run }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ inputs.dry_run }}" = "false" ]; then
+            echo "### 📦 Package Links" >> $GITHUB_STEP_SUMMARY
+            echo "- [PyPI Package](https://pypi.org/project/amigo_sdk/${{ steps.new_version.outputs.version }}/)" >> $GITHUB_STEP_SUMMARY
+            echo "- [GitHub Release](https://github.com/${{ github.repository }}/releases/tag/v${{ steps.new_version.outputs.version }})" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🚀 Next Steps" >> $GITHUB_STEP_SUMMARY
+            echo "The package has been successfully released and is available for installation!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### 🚫 Dry Run Results" >> $GITHUB_STEP_SUMMARY
+            echo "- All steps completed successfully" >> $GITHUB_STEP_SUMMARY
+            echo "- Version would be bumped to: ${{ steps.new_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Package built and ready for upload" >> $GITHUB_STEP_SUMMARY
+            echo "- No commits, tags, or uploads were made" >> $GITHUB_STEP_SUMMARY
+          fi
