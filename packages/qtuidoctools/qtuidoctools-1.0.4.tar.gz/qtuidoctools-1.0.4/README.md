@@ -1,0 +1,246 @@
+
+# qtuidoctools
+
+Tools for working with Qt .ui files. Written in Python 3.11+ (not compatible with older versions).
+
+- Copyright (c) 2025 Fontlab Ltd. <opensource@fontlab.com>
+- [MIT license](./LICENSE)
+
+## 1. What It Does
+
+**qtuidoctools** is a command-line tool that bridges Qt UI files and documentation systems. It extracts widget information from Qt Designer's .ui XML files, converts them to structured YAML documentation, and compiles everything into JSON help files for runtime use.
+
+### 1.1. Primary Use Cases
+
+1. **Documentation Generation**: Extract all widgets from .ui files and create editable YAML documentation files
+2. **Help System Building**: Compile YAML documentation into JSON files for in-application help systems
+3. **Tooltip Synchronization**: Bidirectionally sync tooltips between UI files and documentation
+4. **Documentation Maintenance**: Keep UI changes and documentation in sync across large Qt projects
+
+## 2. Installation
+
+Install the release version from PyPI:
+
+```bash
+uv pip install --system qtuidoctools
+```
+
+Or install the development version from GitHub:
+
+```bash
+uv pip install --system --upgrade git+https://github.com/fontlabcom/qtuidoctools
+```
+
+## 3. How It Works
+
+### 3.1. Architecture Overview
+
+The tool consists of three main components:
+
+#### 3.1.1. **CLI Interface** (`__main__.py`)
+
+- **Commands**: `update`, `build`, `cleanup`
+- **Framework**: Click-based command-line interface
+- **Purpose**: Orchestrates the processing pipeline and handles user interactions
+
+#### 3.1.2. **UI Processing Engine** (`qtui.py`)
+
+- **Core Class**: `UIDoc` - handles individual .ui file processing
+- **XML Parsing**: Uses lxml to extract widget metadata from Qt Designer XML
+- **YAML Generation**: Creates structured documentation files with widget information
+- **Tooltip Management**: Synchronizes tooltips between UI and YAML files
+
+#### 3.1.3. **Build System** (`qtuibuild.py`)
+
+- **Core Class**: `UIBuild` - compiles YAML files into JSON
+- **Text Processing**: Supports markdown-like formatting via `prepMarkdown()`
+- **Cross-referencing**: Allows help tips to reference other widgets
+- **JSON Output**: Creates consolidated help files for runtime consumption
+
+### 3.2. Data Flow Pipeline
+
+```
+Qt .ui Files → Widget Extraction → YAML Documentation → JSON Help System
+     ↓              ↓                    ↓                  ↓
+   XML Parse    Metadata Extract    Structured Docs    Runtime Help
+```
+
+#### 3.2.1. Step 1: Widget Extraction
+
+- Parses Qt Designer .ui XML files using lxml
+- Extracts widget IDs, names, tooltips, and hierarchical structure
+- Handles nested containers and numbered widget indices
+- Creates XPath-based widget addressing system
+
+#### 3.2.2. Step 2: YAML Documentation
+
+- Generates one YAML file per .ui file
+- Maintains widget metadata in structured, human-editable format
+- Uses OrderedDict for consistent output ordering (diff-friendly)
+- Supports empty widget inclusion for comprehensive documentation
+
+#### 3.2.3. Step 3: Table of Contents (TOC)
+
+- Creates master index (`helptips.yaml`) of all widgets across files
+- Tracks widget relationships and cross-references
+- Maintains project-wide documentation structure
+
+#### 3.2.4. Step 4: JSON Compilation
+
+- Processes all YAML files into single JSON output
+- Applies text formatting and markdown processing
+- Resolves cross-references between help tips
+- Creates runtime-ready help system data
+
+## 4. Usage Examples
+
+### 4.1. Basic Workflow
+
+1. **Extract widgets from UI files**:
+
+```bash
+qtuidoctools update -d path/to/ui/files -t helptips.yaml -o yaml/
+```
+
+2. **Build JSON help system**:
+
+```bash
+qtuidoctools build -j helptips.json -t helptips.yaml -d yaml/
+```
+
+3. **Clean up YAML formatting**:
+
+```bash
+qtuidoctools cleanup -o yaml/ -c
+```
+
+### 4.2. Advanced Options
+
+**Tooltip synchronization**:
+
+```bash
+# Copy YAML help tips to UI tooltips
+qtuidoctools update -d ui/ -t helptips.yaml -o yaml/ -T
+
+# Copy UI tooltips to YAML help tips
+qtuidoctools update -d ui/ -t helptips.yaml -o yaml/ -U
+```
+
+**Debug and verbose output**:
+
+```bash
+qtuidoctools update -d ui/ -v  # Detailed logging
+qtuidoctools update -d ui/ -q  # Quiet mode (errors only)
+```
+
+## 5. Code Structure
+
+### 5.1. Key Files
+
+- **`qtuidoctools/__init__.py`**: Package metadata and version info
+- **`qtuidoctools/__main__.py`**: Click CLI interface with three main commands
+- **`qtuidoctools/qtui.py`**: Core UI processing logic and `UIDoc` class
+- **`qtuidoctools/qtuibuild.py`**: Build system and `UIBuild` class
+- **`qtuidoctools/textutils.py`**: Text processing utilities for markdown formatting
+- **`qtuidoctools/keymap_db.py`**: Keyboard mapping utilities
+- **`setup.py`**: Package configuration and dependencies
+
+### 5.2. Dependencies
+
+- **Click** (≥7.0): Command-line interface framework
+- **lxml** (≥4.4.1): XML parsing for .ui files
+- **PyYAML** (≥5.1.1): YAML file processing
+- **yaplon**: Enhanced YAML processing with OrderedDict support
+- **Qt.py** (≥1.2.1): Qt compatibility layer
+
+### 5.3. Processing Logic
+
+#### 5.3.1. Widget Extraction (`UIDoc.extractWidgets()`)
+
+```python
+# Simplified extraction flow
+1. Parse UI XML with lxml
+2. Find all widgets with object names
+3. Extract metadata: ID, name, tooltip, type
+4. Build hierarchical structure using XPath
+5. Generate YAML-friendly data structure
+```
+
+#### 5.3.2. YAML Generation (`UIDoc.updateYaml()`)
+
+```python
+# YAML structure per widget
+widget_id:
+  h.nam: "Human readable name"
+  h.tip: "Help tip content"
+  h.cls: "Widget class name"
+  # Additional metadata...
+```
+
+#### 5.3.3. JSON Compilation (`UIBuild.build()`)
+
+```python
+# Build process
+1. Load all YAML files from directory
+2. Process text with prepMarkdown()
+3. Resolve cross-references between tips
+4. Compile into single JSON structure
+5. Add debug information if requested
+```
+
+## 6. Why This Architecture?
+
+### 6.1. Design Principles
+
+1. **Separation of Concerns**: CLI, processing, and building are distinct modules
+2. **Format Flexibility**: Multiple output formats (YAML for editing, JSON for runtime)
+3. **Human-Friendly**: YAML files are editable and version-control friendly
+4. **Bidirectional Sync**: Changes can flow from UI to docs or docs to UI
+5. **Incremental Updates**: Process only changed files for large projects
+
+### 6.2. Technical Decisions
+
+- **lxml over xml.etree**: Better XPath support and namespace handling
+- **OrderedDict**: Ensures consistent YAML output for version control
+- **Click over argparse**: More sophisticated CLI with nested commands
+- **YAML intermediate format**: Human-readable, editable, diff-friendly
+- **uv script headers**: Modern Python dependency management
+
+## 7. File Format Examples
+
+### 7.1. Input: Qt .ui File
+
+```xml
+<ui version="4.0">
+  <widget class="QMainWindow" name="MainWindow">
+    <widget class="QPushButton" name="saveButton">
+      <property name="toolTip">
+        <string>Save the current document</string>
+      </property>
+    </widget>
+  </widget>
+</ui>
+```
+
+### 7.2. Output: YAML Documentation
+
+```yaml
+saveButton:
+  h.nam: 'Save Button'
+  h.tip: 'Save the current document to disk'
+  h.cls: 'QPushButton'
+```
+
+### 7.3. Output: JSON Help System
+
+```json
+{
+  "saveButton": {
+    "name": "Save Button",
+    "tip": "Save the current document to disk",
+    "class": "QPushButton"
+  }
+}
+```
+
+--- 
