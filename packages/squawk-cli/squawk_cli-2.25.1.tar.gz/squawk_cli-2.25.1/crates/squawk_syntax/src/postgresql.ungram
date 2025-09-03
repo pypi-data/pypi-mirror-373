@@ -1,0 +1,2012 @@
+// Grammar =
+//   Node*
+
+// Node =
+//   name:'ident' '=' Stmt
+
+// Stmt =
+//   'ident'                // Alphabetic identifier
+// | 'token_ident'          // Single quoted string
+// | Stmt*                  // Concatenation
+// | Stmt ('|' Stmt)*       // Alternation
+// | Stmt '?'               // Zero or one repetition
+// | Stmt '*'               // Kleene star
+// | '(' Stmt ')'           // Grouping
+// | label:'ident' ':' Stmt // Labeled rule
+
+NameRef =
+  '#ident'?
+
+
+Name =
+  '#ident'?
+
+PathSegment =
+  NameRef?
+  Name?
+
+Path =
+  qualifier:Path?
+  '.'
+  segment:PathSegment?
+
+ParamVariadic =
+  'variadic'
+
+ParamInOut =
+  'in' 'out'
+| 'inout'
+
+ParamIn =
+  'in'
+
+ParamOut =
+  'out'
+
+Arg =
+  Expr
+
+ParamMode =
+  ParamVariadic
+| ParamInOut
+| ParamIn
+| ParamOut
+
+ParamDefault =
+ ('default' | '=') Expr
+
+Param =
+  mode:ParamMode? Name? Type ParamDefault?
+
+ParamList =
+  (Param (',' Param)*)?
+
+ArgList =
+ '(' '*' ')'
+| '(' ('distinct' | 'all') 'variadic'? Expr ')'
+| '(' args:(Expr (',' Expr)*)? ')'
+
+CallExpr =
+  Expr ArgList
+
+CastExpr =
+  Expr (ColonColon? | 'as') Type
+
+ArrayExpr =
+  'array' '[' (Expr (',' Expr)*) ']'
+| 'array' '(' Select ')'
+
+Literal =
+  value:(
+    '@string'
+  | '@null'
+  | '@float_number'
+  | '@int_number'
+  | '@byte_string'
+  | '@bit_string'
+  | '@dollar_quoted_string'
+  | '@esc_string'
+  | '@positional_param'
+  )
+
+NamedArg =
+  NameRef FatArrow Expr
+
+JsonFormatClause =
+  'format' 'json' ('encoding' Name)?
+
+JsonValueExpr =
+  Expr JsonFormatClause?
+
+JsonKeyValue =
+  Expr ':' JsonValueExpr
+
+Gteq =
+ '>' '='
+
+FatArrow =
+  '=' '>'
+
+Neqb =
+  '<' '>'
+
+Lteq =
+  '<' '='
+
+NotLike =
+  'not' 'like'
+
+NotIlike =
+  'not' 'ilike'
+
+CustomOp =
+  ('+' | '-' | '*' | '/' | '<' | '>' | '=' | '~' | '!' | '@' | '#' | '%' | '^' | '&' | '|' | '`' | '?')
+
+NotIn =
+ 'not' 'in'
+
+IsDistinctFrom =
+  'is' 'distinct' 'from'
+
+IsNotDistinctFrom =
+  'is' 'not' 'distinct' 'from'
+
+UnicodeNormalForm =
+  'nfc'
+| 'nfd'
+| 'nfkc'
+| 'nfkd'
+
+IsNormalized =
+  'is' UnicodeNormalForm? 'normalized'
+
+IsNotNormalized =
+  'is' UnicodeNormalForm? 'not' 'normalized'
+
+OperatorCall =
+  'operator' '(' (Path '.')? Op ')'
+
+ColonEq =
+  ':' '='
+
+ColonColon =
+  ':' ':'
+
+Neq =
+ '!' '='
+
+SimilarTo =
+  'similar' 'to'
+
+NotSimilarTo =
+  'not' 'similar' 'to'
+
+AtTimeZone =
+  'at' 'time' 'zone'
+
+IsNot =
+  'is' 'not'
+
+Op =
+'or' | Gteq | '<' | '>' | FatArrow | '=' | 'in' | Neqb | Lteq | '+' | 'overlaps' | 'like' | 'ilike' | NotLike | NotIlike | NotIn | CustomOp | IsDistinctFrom | IsNotDistinctFrom | OperatorCall | 'is' | '^' | '%' | 'and' | '/' | Neq | 'collate' | '-' | ColonEq | ColonColon | 'value' | ':' | IsNot | SimilarTo | NotSimilarTo | AtTimeZone | IsJson | IsJsonValue | IsNotJson | IsJsonObject | IsJsonArray |IsJsonScalar | IsNotJsonValue | IsJsonObject | IsNotJsonArray | IsNotJsonScalar
+
+IsJson =
+  'is' 'json' JsonKeysUniqueClause?
+
+IsNotJson =
+  'is' 'not' 'json' JsonKeysUniqueClause?
+
+IsNotJsonValue =
+  'is' 'not' 'json' 'value' JsonKeysUniqueClause?
+
+IsNotJsonObject =
+  'is' 'not' 'json' 'object' JsonKeysUniqueClause?
+
+IsNotJsonArray =
+  'is' 'not' 'json' 'array' JsonKeysUniqueClause?
+
+IsNotJsonScalar =
+  'is' 'not' 'json' 'scalar' JsonKeysUniqueClause?
+
+IsJsonValue =
+  'is' 'json' 'value' JsonKeysUniqueClause?
+
+IsJsonObject =
+  'is' 'json' 'object' JsonKeysUniqueClause?
+
+IsJsonArray =
+  'is' 'json' 'array' JsonKeysUniqueClause?
+
+IsJsonScalar =
+  'is' 'json' 'scalar' JsonKeysUniqueClause?
+
+BinExpr =
+  lhs:Expr Op rhs:Expr
+
+CaseExpr =
+  'case'
+
+FieldExpr =
+  Expr '.' (NameRef | '*')
+
+Expr =
+  CallExpr
+| CastExpr
+| ArrayExpr
+| Literal
+| NameRef
+| BinExpr
+| CaseExpr
+| FieldExpr
+| IndexExpr
+| BetweenExpr
+
+ArrayType =
+  // int array[]
+  // text[]
+  // t[10][10]
+  Type NameRef 'array'? '[' Expr? ']'
+
+PercentType =
+  '%' 'type'
+
+PathType =
+  Path ArgList?
+
+CharType =
+  ('varchar' | ( 'character' | 'char' | 'nchar' ) 'varying'? )
+  ArgList?
+
+BitType =
+  'bit' 'varying'?  ArgList?
+
+DoubleType =
+  'double' 'precision'
+
+Timezone =
+  WithTimezone 
+| WithoutTimezone
+
+TimeType =
+  ('time' | 'timestamp')
+  ('(' Literal ')')?
+  Timezone?
+
+IntervalType =
+  'interval'
+  (
+    'year'
+  | 'month'
+  | 'day'
+  | 'hour'
+  | 'minute'
+  | 'second'
+  | 'year' 'to' 'month'
+  | 'day' 'to' 'hour'
+  | 'day' 'to' 'minute'
+  | 'day' 'to' 'second'
+  | 'hour' 'to' 'minute'
+  | 'hour' 'to' 'second'
+  | 'minute' 'to' 'second'
+  )
+  ('(' Literal ')')?
+
+
+Type =
+  ArrayType
+| PercentType
+| PathType
+| CharType
+| BitType
+| DoubleType
+| TimeType
+| IntervalType
+
+Role =
+  ('group'? '#ident')
+| 'current_role' | 'current_user' | 'session_user'
+
+CheckConstraint  =
+  ('constraint' NameRef)
+  'check' '(' Expr ')'
+
+UsingIndex =
+  'using' 'index' NameRef
+
+WithOptions =
+  'with' 'options'
+
+Storage =
+  'storage' ('default' | 'external' | '#ident')
+
+CompressionMethod =
+  'compression' ('#ident' | 'default')
+
+Column =
+  'period'?
+  (Name WithOptions? | Name Type Storage? CompressionMethod? Collate? | IndexExpr)
+
+NullsDistinct =
+  'nulls' 'distinct'
+
+NullsNotDistinct =
+  'nulls' 'not' 'distinct'
+
+UniqueConstraint =
+  ('constraint' NameRef)
+  'unique'
+  (
+    UsingIndex
+  | (NullsNotDistinct | NullsDistinct)? ColumnList
+  )
+
+PrimaryKeyConstraint =
+  ('constraint' NameRef)
+  'primary' 'key' (UsingIndex | ColumnList IndexParams)
+
+SetNullColumns =
+  'set' 'null' ColumnList?
+
+SetDefaultColumns =
+  'set' 'default' ColumnList?
+
+Cascade =
+  'cascade'
+
+Restrict =
+  'restrict'
+
+NoAction =
+  'no' 'action'
+
+RefAction =
+  NoAction
+| Restrict
+| Cascade
+| SetNullColumns
+| SetDefaultColumns
+
+OnDeleteAction =
+  'on' 'delete' RefAction
+
+OnUpdateAction =
+  'on' 'update' RefAction
+
+MatchFull =
+  'match' 'full'
+
+MatchPartial =
+  'match' 'partial'
+
+
+MatchSimple =
+  'match' 'simple'
+
+MatchType =
+  MatchFull
+| MatchPartial
+| MatchSimple
+
+
+ForeignKeyConstraint =
+  'foreign' 'key' from_columns:ColumnList 'references' Path to_columns:ColumnList
+  MatchType?
+  OnDeleteAction?
+  OnUpdateAction?
+
+DeferrableConstraintOption =
+  'deferrable'
+
+NotDeferrableConstraintOption =
+  'not' 'deferrable'
+
+
+InitiallyImmediateConstraintOption  =
+  'initially' 'immediate'
+
+InitiallyDeferredConstraintOption =
+  'initially' 'deferred'
+
+NotEnforced =
+  'not' 'enforced'
+
+Enforced =
+  'enforced'
+
+NotNullConstraint =
+  ('constraint' NameRef)
+  'not' 'null'
+
+NullConstraint =
+  ('constraint' NameRef)
+  'null'
+
+DefaultConstraint =
+  ('constraint' NameRef)
+  'default' Expr
+
+// SequenceOption =
+//   'as' Type
+// | 'increment' 'by'? Literal
+// | 'sequence' 'name' NameRef
+// | 'restart' ('with'? Literal)?
+// | 'logged'
+// | 'unlogged'
+// | 'start' 'with'? Literal
+// | 'owned' 'by' ('none' | Path)
+// | 'maxvalue' Literal
+// | 'minvalue' Literal
+// | 'no' 'minvalue'
+// | 'no' 'cycle'
+// | 'no' 'maxvalue'
+// | 'cycle'
+
+// SequenceOptionList =
+//   '(' SequenceOption SequenceOption* ')'
+
+GeneratedConstraint =
+  ('constraint' NameRef)
+  'generated'
+  ('always' 'as' '(' Expr ')' 'stored' | ('always' | 'by' 'default') 'as' 'identity' SequenceOptionList? )
+
+ReferencesConstraint =
+  ('constraint' NameRef)
+  'references' Path '(' NameRef ')'
+  MatchType?
+  OnDeleteAction?
+  OnUpdateAction?
+
+AlterTableAction =
+  ValidateConstraint
+| ReplicaIdentity
+| OfType
+| NotOf
+| ForceRls
+| NoForceRls
+| Inherit
+| NoInherit
+| EnableTrigger
+| EnableReplicaTrigger
+| EnableReplicaRule
+| EnableAlwaysTrigger
+| EnableAlwaysRule
+| EnableRule
+| EnableRls
+| DisableTrigger
+| DisableRls
+| DisableRule
+| ClusterOn
+| OwnerTo
+| DetachPartition
+| DropConstraint
+| DropColumn
+| AddConstraint
+| AddColumn
+| AttachPartition
+| SetSchema
+| SetTablespace
+| SetWithoutCluster
+| SetWithoutOids
+| SetAccessMethod
+| SetLogged
+| SetUnlogged
+| SetStorageParams
+| ResetStorageParams
+| RenameTable
+| RenameConstraint
+| RenameColumn
+| AlterConstraint
+| AlterColumn
+| OptionsList
+
+OptionsList =
+ 'option' '(' ')'
+
+
+RelationName =
+  'only' ( '(' Path ')' | Path )
+| Path '*'
+
+TableList =
+  RelationName (',' RelationName)*
+
+Truncate =
+  'truncate' 'table'? TableList
+  ('restart' 'identity' | 'continue' 'identity')?
+  ('cascade' | 'restrict')?
+
+LikeClause =
+  'like'
+
+WhereClause =
+  'where'
+
+GroupByClause =
+  'group' 'by' ('all' | 'distinct') (GroupingRollup | GroupingCube | GroupingSets | GroupingExpr)
+
+GroupingRollup =
+  'rollup' Expr
+
+GroupingSets =
+  'grouping' 'sets' '(' Expr ')'
+
+GroupingCube = 
+  'cube' Expr
+
+GroupingExpr =
+  Expr
+
+HavingClause =
+  'having'
+
+WindowDef =
+  Name 'as' '(' WindowSpec ')'
+
+WindowClause =
+  'window' (WindowDef (',' WindowDef)*)
+
+LimitClause =
+  'limit'
+
+FetchClause =
+  'fetch'
+
+OffsetClause =
+  'offset'
+
+DistinctClause =
+  'distinct'
+
+Target =
+  '*'
+| Expr
+
+TargetList =
+  Target (',' Target)*
+
+
+TableConstraint =
+  PrimaryKeyConstraint
+| UniqueConstraint
+| CheckConstraint
+| ExcludeConstraint
+| ForeignKeyConstraint
+
+TableArg =
+  Column
+| LikeClause
+| TableConstraint
+
+TableArgList =
+  '(' args:((TableArg (',' TableArg)*)?) ')'
+
+WhenClause =
+  'when'
+
+UsingClause =
+  'using'
+
+Alias =
+  'as'?
+
+SequenceOptionList =
+  '(' ')'
+
+ColumnList =
+  '(' ')'
+
+ConstraintIncludeClause =
+  'include'
+
+WithParams =
+  'with' '(' ')'
+
+ConstraintIndexTablespace =
+  'using' 'index' 'tablespace' NameRef
+
+JoinInner =
+  'inner'? 'join'
+
+JoinLeft =
+  'left' 'outer'? 'join'
+
+JoinRight =
+  'right' 'outer'? 'join'
+
+JoinFull =
+  'full' 'outer'? 'join'
+
+JoinCross =
+  'cross' 'join'
+
+JoinType =
+  JoinInner
+| JoinLeft
+| JoinRight
+| JoinFull
+| JoinCross
+
+OnClause =
+  'on' Expr
+
+JoinUsingClause =
+  'using' ColumnList Alias?
+
+Join =
+  'natural'? JoinType (using_clause:JoinUsingClause | OnClause)?
+
+JoinExpr =
+  (FromItem | JoinExpr) Join
+
+// TODO: do we even want this in the AST?
+ParenSelect =
+ '('
+  Select
+ ')'
+
+Select =
+ SelectClause
+ FromClause?
+ WhereClause?
+ GroupByClause?
+ HavingClause?
+ WindowClause?
+ OrderByClause?
+ LockingClause*
+ LimitClause?
+ FetchClause?
+ OffsetClause?
+ FilterClause?
+
+Serializable =
+  'isolation' 'level' 'serializable'
+
+RepeatableRead =
+  'isolation' 'level' 'repeatable' 'read'
+
+ReadCommitted =
+  'isolation' 'level' 'read' 'committed'
+
+ReadUncommitted =
+  'isolation' 'level' 'read' 'uncommitted'
+
+
+ReadWrite =
+  'read' 'write'
+
+ReadOnly =
+  'read' 'only'
+
+Deferrable =
+  'deferrable'
+
+NotDeferrable =
+  'not' 'deferrable'
+
+TransactionMode =
+  Serializable 
+| RepeatableRead 
+| ReadCommitted 
+| ReadUncommitted
+| ReadWrite
+| ReadOnly
+| Deferrable
+| NotDeferrable
+
+TransactionModeList =
+  TransactionMode (',' TransactionMode)*
+
+Begin =
+  ('begin' ('work' | 'transaction') | 'start' 'transaction')
+  TransactionModeList?
+
+Commit =
+  'commit' (('work' | 'transaction')? ('and' 'no'? 'chain') | 'prepared' Literal)
+
+Rollback =
+  'rollback' | 'abort'
+
+CreateAggregate =
+  'create' OrReplace? 'aggregate' Path ParamList
+
+IfExists =
+ 'if' 'exists'
+
+DropType =
+  'drop' 'type' IfExists? (Path (',' Path)*) ('cascade' | 'restrict')?
+
+DropIndex =
+  'drop' 'index' 'concurrently'? IfExists? (Path (',' Path)*)
+
+DropTable =
+  'drop' 'table' IfExists? (Path (',' Path)) ('cascade' | 'restrict')?
+
+DropDatabase =
+  'drop' 'database' IfExists? NameRef
+
+IfNotExists =
+  'if' 'not' 'exists'
+
+PartitionOf =
+  'partition' 'of' Type
+
+PreserveRows =
+  'preserve' 'rows'
+
+DeleteRows =
+  'delete' 'rows'
+
+Drop =
+  'drop'
+
+OnCommitAction =
+  PreserveRows
+| DeleteRows
+| Drop
+
+OnCommit =
+  'on' 'commit' OnCommitAction
+
+Inherits =
+  'inherits' '(' (Path (',' Path)*) ')'
+
+Tablespace =
+  'tablespace' NameRef
+
+WithoutOids =
+  'without' 'oids'
+
+UsingMethod =
+  'using' NameRef
+
+PartitionBy =
+  'partition' 'by'
+
+CreateTable =
+  'create' 'table' IfNotExists? Path PartitionOf? OfType? TableArgList Inherits? PartitionBy? UsingMethod? (WithParams | WithoutOids)? OnCommit? Tablespace?
+
+CreateIndex =
+  'create' 'unique'? 'index' 'concurrently'? (IfNotExists? Name)? 'on' RelationName
+
+OrReplace =
+  'or' 'replace'
+
+RetType =
+  'returns' Type
+
+BeginFuncOption =
+  'begin' 'atomic' 'end'
+
+ReturnFuncOption =
+  'return' Expr
+
+FuncOptionList =
+  options:(FuncOption*)
+
+FuncOption =
+  BeginFuncOption
+| ReturnFuncOption
+| AsFuncOption
+| SetFuncOption
+| SupportFuncOption
+| RowsFuncOption
+| CostFuncOption
+| ParallelFuncOption
+| SecurityFuncOption
+| StrictFuncOption
+| LeakproofFuncOption
+| ResetFuncOption
+| VolatilityFuncOption
+| WindowFuncOption
+| TransformFuncOption
+| LanguageFuncOption
+
+
+
+CreateFunction =
+  'create' OrReplace? 'function' Path ParamList RetType? option_list:FuncOptionList
+
+SetDefault =
+  'set' 'default' Expr
+
+DropDefault =
+  'drop' 'default'
+
+SetNotNull =
+  'set' 'not' 'null'
+
+DropNotNull =
+  'drop' 'not' 'null'
+
+NotValid =
+  'not' 'valid'
+
+Constraint =
+  DefaultConstraint
+| GeneratedConstraint
+| ReferencesConstraint
+| PrimaryKeyConstraint
+| ForeignKeyConstraint
+| UniqueConstraint
+| CheckConstraint
+| NullConstraint
+| NotNullConstraint
+
+AddConstraint =
+  'add' Constraint
+  DeferrableConstraintOption?
+  NotDeferrableConstraintOption?
+  InitiallyDeferredConstraintOption?
+  InitiallyImmediateConstraintOption?
+  NotValid?
+  NoInherit?
+  NotEnforced?
+  Enforced?
+
+DropConstraint =
+  'drop' 'constraint' IfExists? NameRef ('restrict' | 'cascade')?
+
+RenameConstraint =
+  'rename' 'constraint' NameRef 'to' Name
+
+ValidateConstraint =
+  'validate' 'constraint' NameRef
+
+OwnerTo =
+  'owner' 'to' Role
+
+RenameTo =
+  'rename' 'to' Name
+
+SetSchema =
+  'set' 'schema' NameRef
+
+AlterDomainAction =
+  SetDefault
+| DropDefault
+| SetNotNull
+| DropNotNull
+| AddConstraint
+| DropConstraint
+| RenameConstraint
+| ValidateConstraint
+| OwnerTo
+| RenameTo
+| SetSchema
+
+AlterDomain =
+  'alter' 'domain' Path action:AlterDomainAction
+
+AlterTable =
+  'alter' 'table' RelationName actions:AlterTableAction*
+
+Revoke =
+  'revoke'
+
+Values =
+  'values'
+
+Table =
+  'table'
+
+Insert =
+  'insert'
+
+Update =
+  'update'
+  ReturningClause?
+
+ReturningClause =
+  'returning'
+  TargetList?
+
+Delete =
+  'delete'
+
+Notify =
+  'notify'
+
+Merge =
+  'merge'
+
+Declare =
+  'declare'
+
+Execute =
+  'execute'
+
+WithData =
+  'with' 'data'
+
+WithNoData =
+  'with' 'no' 'data'
+
+CreateTableAs =
+  'create' 'table' IfNotExists? Path UsingMethod? WithParams? OnCommit? Tablespace? 'as' Stmt (WithData | WithNoData)?
+
+CreateMaterializedView =
+  'create'
+
+Savepoint =
+  'savepoint'
+
+PrepareTransaction =
+  'prepare' 'transaction' Literal
+
+ReleaseSavepoint =
+  'release' 'savepoint' NameRef
+
+ParenExpr =
+  '(' Expr ')'
+
+TupleExpr =
+  '(' ')'
+
+PrefixExpr =
+  Expr
+
+PostfixExpr =
+  Expr
+
+NonStandardParam =
+  ':' NameRef
+
+IndexExpr =
+  base:Expr '[' index:Expr ']'
+
+BetweenExpr =
+  target:Expr 'between' (start:Expr) 'and' (end:Expr)
+
+JsonTableColumn =
+  Name 'for' 'ordinality'
+| Name Type
+| 'nested' 'path'? Expr
+
+JsonTableColumnList =
+  'columns' '(' (JsonTableColumn (',' JsonTableColumn)*) ')'
+
+JsonReturningClause =
+  'returning' Type
+
+JsonNullClause =
+  'null' 'on' 'null' | 'absent' 'on' 'null'
+
+JsonKeysUniqueClause =
+  'with' 'unique' 'keys' | 'without' 'unique' 'keys'
+
+JsonQuotesClause =
+  'keep' 'quotes' | 'omit' 'quotes'
+
+JsonBehaviorDefault =
+ 'default' Expr
+
+JsonBehaviorError =
+  'error'
+
+JsonBehaviorNull =
+  'null'
+
+JsonBehaviorTrue =
+  'true'
+
+JsonBehaviorFalse =
+  'false'
+
+JsonBehaviorUnknown =
+  'unknown'
+
+JsonBehaviorEmptyArray =
+  'empty' 'array'?
+
+JsonBehaviorEmptyObject =
+  'empty' 'object'
+
+JsonBehavior =
+  JsonBehaviorDefault
+| JsonBehaviorError
+| JsonBehaviorNull
+| JsonBehaviorTrue
+| JsonBehaviorFalse
+| JsonBehaviorUnknown
+| JsonBehaviorEmptyArray
+| JsonBehaviorEmptyObject
+
+JsonWrapperBehaviorClause =
+  'with' 'wrapper' | 'without' 'wrapper' | 'with' 'conditional' 'wrapper'
+
+JsonOnErrorClause =
+  JsonBehavior 'on' 'error'
+
+JsonOnEmptyClause =
+  JsonBehavior 'on' 'empty'
+
+JsonPassingArg =
+  Expr JsonFormatClause? 'as' Name
+
+JsonPassingClause =
+  'passing' (JsonPassingArg (',' JsonPassingArg)*)
+
+PercentTypeClause =
+  Path PercentTypeClause
+
+WithTimezone =
+  'with' 'time' 'zone'
+
+WithoutTimezone =
+  'without' 'time' 'zone'
+
+AttributeOption =
+  '='?
+
+AttributeList =
+  '(' ( AttributeOption (',' AttributeOption)* ) ')'
+
+FilterClause =
+  'filter' '(' 'where' Expr ')'
+
+OverClause =
+  'over' '(' ')'
+
+WithinClause =
+  'within' 'group' '(' OrderByClause ')'
+
+Materialized =
+  'materialized'
+
+NotMaterialized =
+  'not' 'materialized'
+
+WithTable =
+  'with' (Materialized | NotMaterialized)?
+
+WithClause =
+  'with' 'recursive'? (WithTable (',' WithTable)*)
+
+SelectClause =
+  'select'
+  ('all' | DistinctClause)?
+  TargetList?
+
+CompoundSelect =
+  Select
+
+SelectInto =
+  SelectClause
+  IntoClause
+  FromClause?
+  WhereClause?
+  GroupByClause?
+  HavingClause?
+  WindowClause?
+  OrderByClause?
+  LockingClause*
+  LimitClause?
+  OffsetClause?
+  FilterClause?
+
+IntoClause =
+  'into'
+
+LockingClause =
+  'for'
+
+NullsFirst =
+  'nulls' 'first'
+
+NullsLast =
+  'nulls' 'last'
+
+SortAsc =
+  'asc'
+
+SortDesc =
+  'desc'
+
+SortUsing =
+  'using' Op
+
+SortBy =
+  Expr (SortAsc | SortDesc | SortUsing)? (NullsFirst | NullsLast)?
+
+OrderByClause =
+  'order' 'by' (SortBy (',' SortBy)*)
+
+FromItem =
+  'only'? NameRef
+
+FromClause =
+  'from'
+  (FromItem (',' FromItem)*)?
+  (JoinExpr (',' JoinExpr)*)?
+
+XmlTableColumnList =
+  (XmlTableColumn (',' XmlTableColumn)*)
+
+XmlTableColumn = 
+  Name Type XmlColumnOptionList?
+| Name 'for' 'ordinality'
+
+XmlColumnOptionList =
+  (XmlColumnOption (XmlColumnOption*))
+
+XmlColumnOption =
+  '#ident' Expr
+| 'default' Expr
+| 'not' 'null'
+| 'null'
+| 'path' Expr
+
+ConstraintIndexMethod =
+  'using'
+
+ConstraintExclusions =
+  'exclude'
+
+ConstraintWhereClause =
+  'where'
+
+ExcludeConstraint =
+  'exclude' ConstraintIndexMethod? ConstraintExclusions
+
+FrameClause =
+  ('range' | 'rows' | 'groups')
+
+WindowSpec =
+  '#ident'? ('partition' 'by' (Expr (',' Expr)*))? OrderByClause? FrameClause?
+
+AlterStatistics =
+  'alter' 'statistics' NameRef
+
+AlterServer =
+  'alter' 'server' NameRef
+
+AlterSequence =
+  'alter' 'sequence' NameRef
+
+AlterSchema =
+  'alter' 'schema' NameRef 'rename' 'to' NameRef
+
+AlterRule =
+  'alter' 'rule' NameRef 'on'
+
+AlterRoutine =
+  'alter' 'routine'
+
+AlterRole =
+  'alter' 'role'
+
+AlterPublication =
+  'alter' 'publication' NameRef
+
+AlterProcedure =
+  'alter' 'procedure'
+
+AlterPolicy =
+  'alter' 'policy' NameRef 'on'
+
+AlterOperatorFamily =
+  'alter' 'operator' 'family' NameRef 'using' NameRef
+
+AlterOperatorClass =
+  'alter' 'operator' 'class' NameRef 'using' NameRef
+
+AlterOperator =
+  'alter' 'operator'
+
+AlterMaterializedView =
+  'alter' 'materialized' 'view' NameRef
+
+AlterLargeObject =
+  'alter' 'large' 'object'
+
+AlterLanguage =
+  'alter' 'language' NameRef
+
+AlterIndex =
+  'alter' 'index' NameRef
+
+AlterGroup =
+  'alter' 'group' NameRef
+
+AlterFunction =
+  'alter' 'function'
+
+AlterForeignTable =
+  'alter' 'foreign' 'table'
+
+AlterForeignDataWrapper =
+  'alter' 'foreign' 'data' 'wrapper'
+
+AlterEventTrigger =
+  'alter' 'event' 'trigger'
+
+AlterExtension =
+  'alter' 'extension' NameRef
+
+AlterDefaultPrivileges =
+  'alter' 'default' 'privileges'
+
+AlterDatabase =
+  'alter' 'database' NameRef
+
+AlterConversion =
+  'alter' 'conversion' NameRef
+
+AlterCollation =
+  'alter' 'collation' NameRef
+
+AlterAggregate =
+  'alter' 'aggregate' Aggregate
+
+AlterSubscription =
+  'alter' 'subscription' NameRef
+
+AlterSystem =
+  'alter' 'system' 'set'
+
+AlterTablespace =
+  'alter' 'tablespace' NameRef
+
+AlterTextSearchParser =
+  'alter' 'text' 'search' 'parser' NameRef
+
+AlterTextSearchDictionary =
+  'alter' 'text' 'search' 'dictionary' NameRef
+
+AlterTextSearchConfiguration =
+  'alter' 'text' 'search' 'configuration' NameRef
+
+AlterTextSearchTemplate =
+  'alter' 'text' 'search' 'template' NameRef
+
+AlterTrigger =
+  'alter' 'trigger' NameRef 'on'
+
+AlterType =
+  'alter' 'type' Type
+
+AlterUser =
+  'alter' 'user' NameRef
+
+AlterUserMapping =
+  'alter' 'user' 'mapping' 'for' NameRef 'server' NameRef
+
+AlterView =
+  'alter' 'view' NameRef
+
+Analyze =
+  'analyze' 'verbose'?
+
+// suffix it with `On` to avoid conflicting with comment nodes
+CommentOn =
+  'comment' 'on'
+
+Cluster =
+  'cluster' 'verbose'?
+
+CreateAccessMethod =
+  'create' 'access' 'method' NameRef 'type'
+
+CreateCast =
+  'create' 'cast' '(' Type 'as' Type ')'
+
+CreateCollation =
+  'create' 'collation' NameRef
+
+CreateConversion =
+  'create' 'conversion' NameRef 'for'
+
+CreateDatabase =
+  'create' 'database' NameRef
+
+CreateDomain =
+  'create' 'domain' NameRef 'as'? Type Collate? Constraint*
+
+CreateEventTrigger =
+  'create' 'event' 'trigger' NameRef 'on'
+
+CreateForeignDataWrapper =
+  'create' 'foreign' 'data' 'wrapper' NameRef
+
+CreateForeignTable =
+  'create' 'foreign' 'table' IfNotExists?
+
+CreateGroup =
+  'create' 'group' NameRef
+
+CreateLanguage =
+  'create' 'language' NameRef
+
+CreateOperator =
+  'create' 'operator'
+
+CreateOperatorClass =
+  'create' 'operator' 'class' NameRef 'default'? 'for' 'type' Type 'using' NameRef
+
+CreateOperatorFamily =
+  'create' 'operator' 'family' NameRef 'using' NameRef
+
+CreatePolicy =
+  'create' 'policy' NameRef 'on'
+
+CreateProcedure =
+  'create' 'procedure'
+
+CreatePublication =
+  'create' 'publication' NameRef
+
+CreateRole =
+  'create' 'role' NameRef
+
+CreateRule =
+  'create' 'rule' NameRef 'as' 'on'
+
+CreateSequence =
+  'create' 'sequence' NameRef
+
+CreateServer =
+  'create' 'server' NameRef
+
+CreateStatistics =
+  'create' 'statistics' NameRef
+
+CreateSubscription =
+  'create' 'subscription' NameRef
+
+CreateTablespace =
+  'create' 'tablespace' NameRef
+
+CreateTextSearchParser =
+  'create' 'text' 'search' 'parser' NameRef
+
+CreateTextSearchDictionary =
+  'create' 'text' 'search' 'dictionary' NameRef
+
+CreateTextSearchConfiguration =
+  'create' 'text' 'search' 'configuration' NameRef AttributeList
+
+CreateTextSearchTemplate =
+  'create' 'text' 'search' 'template' NameRef
+
+CreateTransform =
+  'create' 'transform' 'for' Type 'language' NameRef
+
+CreateUserMapping =
+  'create' 'user' 'mapping' 'for' NameRef 'server' NameRef
+
+CreateUser =
+  'create' 'user' NameRef
+
+DropLanguage =
+  'drop' 'language' IfExists? NameRef
+
+DropGroup =
+  'drop' 'group' IfExists? NameRef
+
+DropFunction =
+  'drop' 'function' IfExists?
+
+DropForeignDataWrapper =
+  'drop' 'foreign' 'data' 'wrapper' IfExists? NameRef
+
+DropForeignTable =
+  'drop' 'foreign' 'table' IfExists?
+
+DropAccessMethod =
+  'drop' 'access' 'method' IfExists? NameRef
+
+Aggregate =
+  Path ParamList
+
+DropAggregate =
+  'drop' 'aggregate' IfExists? (Aggregate (',' Aggregate)*)
+
+DropCast =
+  'drop' 'cast' IfExists? '(' Type 'as' Type ')'
+
+DropCollation =
+  'drop' 'collation' IfExists? NameRef
+
+DropConversion =
+  'drop' 'conversion' IfExists? NameRef
+
+DropDomain =
+  'drop' 'domain' IfExists? (Type (',' Type)*)
+
+DropEventTrigger =
+  'drop' 'event' 'trigger' IfExists? NameRef
+
+DropExtension =
+  'drop' 'extension' IfExists? (NameRef (',' NameRef)*)
+
+DropMaterializedView =
+  'drop' 'materialized' 'view' IfExists?
+
+DropOperatorFamily =
+  'drop' 'operator' 'family' IfExists?
+
+DropOperator =
+  'drop' 'operator' IfExists?
+
+DropOperatorClass =
+  'drop' 'operator' 'class' IfExists? NameRef 'using'
+
+DropOwned =
+  'drop' 'owned' 'by'
+
+DropPolicy =
+  'drop' 'policy' IfExists? NameRef 'on'
+
+DropProcedure =
+  'drop' 'procedure' IfExists?
+
+DropPublication =
+  'drop' 'publication' IfExists? (NameRef (',' NameRef)*)
+
+DropRole =
+  'drop' 'role' IfExists? (NameRef (',' NameRef)*)
+
+DropRoutine =
+  'drop' 'routine' IfExists?
+
+DropRule =
+  'drop' 'rule' IfExists? NameRef 'on'
+
+DropSequence =
+  'drop' 'sequence' IfExists? (NameRef (',' NameRef)*)
+
+DropServer =
+  'drop' 'server' IfExists? NameRef
+
+DropStatistics =
+  'drop' 'statistics' IfExists? NameRef
+
+DropSubscription =
+  'drop' 'subscription' IfExists? NameRef
+
+DropTablespace =
+  'drop' 'tablespace' IfExists? NameRef
+
+DropTextSearchParser =
+  'drop' 'text' 'search' 'parser' IfExists? NameRef
+
+DropTextSearchConfig =
+  'drop' 'text' 'search' 'configuration' IfExists?
+
+DropTextSearchDict =
+  'drop' 'text' 'search' 'dictionary' IfExists?
+
+DropTextSearchTemplate =
+  'drop' 'text' 'search' 'template' IfExists?
+
+DropTransform =
+  'drop' 'transform' IfExists?
+
+DropUser =
+  'drop' 'user' IfExists? (NameRef (',' NameRef)*)
+
+DropUserMapping =
+  'drop' 'user' 'mapping' IfExists? 'for' NameRef 'server' NameRef
+
+DropView =
+  'drop' 'view' IfExists?
+
+Explain =
+  'explain'
+
+ImportForeignSchema =
+  'import' 'foreign' 'schema' NameRef
+
+Lock =
+  'lock' 'table'?
+
+Reassign =
+  'reassign'
+
+Refresh =
+  'refresh' 'materialized' 'view' 'concurrently'? NameRef 'with' 'data'?
+
+Grant =
+  'grant'
+
+SecurityLabel =
+  'security' 'label'
+
+SetConstraints =
+  'set' 'constraints'
+
+SetRole =
+  'set' 'role'
+
+SetSessionAuth =
+  'set' 'session' 'authorization'
+
+SetTransaction =
+  'set' 'transaction'
+
+Reindex =
+  'reindex'
+
+CreateView =
+  'create' 'view' NameRef
+
+Prepare =
+  'prepare' NameRef
+
+Unlisten =
+  'unlisten' ('*' | NameRef)
+
+Checkpoint =
+  'checkpoint'
+
+Deallocate =
+  'deallocate' ('prepare' NameRef | 'all')
+
+Load =
+  'load'
+
+Listen =
+  'listen' NameRef
+
+Reset =
+  'reset' (NameRef | 'all')
+
+Discard =
+  'discard' ('all' | 'temp' | 'temporary' | 'plans' | 'sequences')
+
+Do =
+  'do'
+
+Move =
+  'move'
+
+Fetch =
+  'fetch'
+
+Close =
+  'close'
+
+Vacuum =
+  'vacuum'
+
+Copy =
+  'copy'
+
+Call =
+  'call'
+
+CreateTrigger =
+  'create'
+
+DropSchema =
+  'drop' 'schema' IfExists?
+
+CreateSchema =
+  'create' 'schema'
+
+DropTrigger =
+  'drop' 'trigger' IfExists? NameRef 'on'
+
+PartitionItem =
+  Expr Collate?
+
+IndexParams =
+  '(' (PartitionItem (',' PartitionItem)*) ')'
+
+CreateType =
+  'create' 'type' Type
+
+CreateExtension =
+  'create' 'extension'
+
+Set =
+  'set' SetOptions
+
+Show =
+  'show'
+
+LanguageFuncOption =
+  'language' NameRef
+
+TransformFuncOption =
+  'transform'
+
+WindowFuncOption =
+  'window'
+
+VolatilityFuncOption =
+  'immutable' | 'stable' | 'volatile'
+
+LeakproofFuncOption =
+  'leakproof' | 'not' 'leakproof'
+
+ResetFuncOption =
+  'reset' NameRef
+
+StrictFuncOption =
+  'strict' | 'called' 'on' 'null' 'input' | 'returns' 'null' 'on' 'null' 'input'
+
+SecurityFuncOption =
+  'security' ('invoker' | 'definer')
+
+ParallelFuncOption =
+  'parallel' '#ident'
+
+CostFuncOption =
+  'cost'
+
+RowsFuncOption =
+  'rows'
+
+SupportFuncOption =
+  'support'
+
+SetFuncOption =
+  'set'
+
+AsFuncOption =
+  'as' (definition:Literal | obj_file:Literal ',' link_symbol:Literal)
+
+ReplicaIdentity =
+  'replica' 'identity'
+
+OfType =
+  'of' Type
+
+NotOf =
+  'not' 'of'
+
+ForceRls =
+  'force' 'row' 'level' 'security'
+
+NoForceRls =
+  'no' 'force' 'row' 'level' 'security'
+
+Inherit =
+  'inherit'
+
+NoInherit =
+  'no' 'inherit'
+
+EnableTrigger =
+  'enable' 'trigger'
+
+EnableReplicaTrigger =
+  'enable' 'replica' 'trigger'
+
+EnableReplicaRule =
+  'enable' 'replica' 'rule'
+
+EnableAlwaysTrigger =
+  'enable' 'always' 'trigger'
+
+EnableAlwaysRule =
+  'enable' 'always' 'rule'
+
+EnableRule =
+  'enable' 'rule'
+
+EnableRls =
+  'enable' 'row' 'level' 'security'
+
+DisableTrigger =
+  'disable' 'trigger'
+
+DisableRls =
+  'disable' 'row' 'level' 'security'
+
+DisableRule =
+  'disable' 'rule'
+
+ClusterOn =
+  'cluster' 'on'
+
+DetachPartition =
+  'detach' 'partition'
+
+DropColumn =
+  'drop' 'column'? IfExists?
+
+AddColumn =
+  'add' 'column'? IfNotExists? NameRef Type Collate? (Constraint (',' Constraint)*)?
+
+PartitionForValuesWith =
+  'for' 'values' 'with' '(' '#ident' Literal ',' '#ident' Literal ')'
+
+PartitionForValuesIn =
+  'for' 'values' 'in' '(' (Expr (',' Expr)*) ')'
+
+PartitionForValuesFrom =
+  'for' 'values' 'from' '(' (Expr (',' Expr)*) ')' 'to' '(' (Expr (',' Expr)*) ')'
+
+PartitionDefault =
+  'default'
+
+PartitionType =
+  PartitionForValuesWith
+| PartitionForValuesIn
+| PartitionForValuesFrom
+| PartitionDefault
+
+AttachPartition =
+  'attach' 'partition' Path PartitionType
+
+SetTablespace =
+  'set' 'tablespace' NameRef
+
+SetWithoutCluster =
+  'set' 'without' 'cluster'
+
+SetWithoutOids =
+  'set' 'without' 'oids'
+
+SetAccessMethod =
+  'set' 'access' 'method' NameRef
+
+SetLogged =
+  'set' 'logged'
+
+SetUnlogged =
+  'set' 'unlogged'
+
+SetStorageParams =
+  'set' '(' ')'
+
+ResetStorageParams =
+  'reset' '(' ')'
+
+RenameTable =
+  'rename' 'to' NameRef
+
+RenameColumn =
+  'rename' 'column'?
+
+AlterColumnOption =
+  DropDefault
+| DropExpression
+| DropIdentity
+| DropNotNull
+| Restart
+| AddGenerated
+| ResetOptions
+| SetType
+| SetGeneratedOptions
+| SetGenerated
+| SetSequenceOption
+| SetDefault
+| SetExpression
+| SetStatistics
+| SetOptions
+| SetStorage
+| SetCompression
+| SetNotNull
+
+AlterConstraint =
+  'alter' 'constraint' option:AlterColumnOption
+
+AlterColumn =
+  'alter' 'column'? option:AlterColumnOption
+
+Restart =
+  'restart' 'with'?
+
+SetSequenceOption =
+  'set'
+
+SetGenerated =
+  'set'
+
+DropExpression =
+  'drop' 'expression' IfExists?
+
+DropIdentity =
+  'drop' 'identity' IfExists?
+
+AddGenerated =
+  'add'
+
+ResetOptions =
+  'reset' '(' ')'
+
+SetType =
+  'set' 'type' Type Collate?
+
+SetGeneratedOptions =
+  'set'
+
+SetOptionsList =
+  'set' '(' ')'
+
+SetExpression =
+  'set' 'expression' Expr
+
+SetStatistics =
+  'set' 'statistics'
+
+SetOptions =
+  'set' '(' ')'
+
+SetStorage =
+  'set' 'storage'
+
+SetCompression =
+  'set' 'compression'
+
+Collate =
+  'collate' Path
+
+Stmt =
+  // We merge this into Rollback
+  // Abort
+  AlterAggregate
+| AlterCollation
+| AlterConversion
+| AlterDatabase
+| AlterDefaultPrivileges
+| AlterDomain
+| AlterEventTrigger
+| AlterExtension
+| AlterForeignDataWrapper
+| AlterForeignTable
+| AlterFunction
+| AlterGroup
+| AlterIndex
+| AlterLanguage
+| AlterLargeObject
+| AlterMaterializedView
+| AlterOperator
+| AlterOperatorClass
+| AlterOperatorFamily
+| AlterPolicy
+| AlterProcedure
+| AlterPublication
+| AlterRole
+| AlterRoutine
+| AlterRule
+| AlterSchema
+| AlterSequence
+| AlterServer
+| AlterStatistics
+| AlterSubscription
+| AlterSystem
+| AlterTable
+| AlterTablespace
+| AlterTextSearchConfiguration
+| AlterTextSearchDictionary
+| AlterTextSearchParser
+| AlterTextSearchTemplate
+| AlterTrigger
+| AlterType
+| AlterUser
+| AlterUserMapping
+| AlterView
+| Analyze
+| Begin
+| Call
+| Checkpoint
+| Close
+| Cluster
+| CommentOn
+| Commit
+// Merged into Commit
+// | CommitPrepared
+| Copy
+| CreateAccessMethod
+| CreateAggregate
+| CreateCast
+| CreateCollation
+| CreateConversion
+| CreateDatabase
+| CreateDomain
+| CreateEventTrigger
+| CreateExtension
+| CreateForeignDataWrapper
+| CreateForeignTable
+| CreateFunction
+| CreateGroup
+| CreateIndex
+| CreateLanguage
+| CreateMaterializedView
+| CreateOperator
+| CreateOperatorClass
+| CreateOperatorFamily
+| CreatePolicy
+| CreateProcedure
+| CreatePublication
+| CreateRole
+| CreateRule
+| CreateSchema
+| CreateSequence
+| CreateServer
+| CreateStatistics
+| CreateSubscription
+| CreateTable
+| CreateTableAs
+| CreateTablespace
+| CreateTextSearchConfiguration
+| CreateTextSearchDictionary
+| CreateTextSearchParser
+| CreateTextSearchTemplate
+| CreateTransform
+| CreateTrigger
+| CreateType
+| CreateUser
+| CreateUserMapping
+| CreateView
+| Deallocate
+| Declare
+| Delete
+| Discard
+| Do
+| DropAccessMethod
+| DropAggregate
+| DropCast
+| DropCollation
+| DropConversion
+| DropDatabase
+| DropDomain
+| DropEventTrigger
+| DropExtension
+| DropForeignDataWrapper
+| DropForeignTable
+| DropFunction
+| DropGroup
+| DropIndex
+| DropLanguage
+| DropMaterializedView
+| DropOperator
+| DropOperatorClass
+| DropOperatorFamily
+| DropOwned
+| DropPolicy
+| DropProcedure
+| DropPublication
+| DropRole
+| DropRoutine
+| DropRule
+| DropSchema
+| DropSequence
+| DropServer
+| DropStatistics
+| DropSubscription
+| DropTable
+| DropTablespace
+| DropTextSearchConfig
+| DropTextSearchDict
+| DropTextSearchParser
+| DropTextSearchTemplate
+| DropTransform
+| DropTrigger
+| DropType
+| DropUser
+| DropUserMapping
+| DropView
+// Merged into Commit
+// | End
+| Execute
+| Explain
+| Fetch
+| Grant
+| ImportForeignSchema
+| Insert
+| Listen
+| Load
+| Lock
+| Merge
+| Move
+| Notify
+| Prepare
+| PrepareTransaction
+| Reassign
+| Refresh
+| Reindex
+| ReleaseSavepoint
+| Reset
+| Revoke
+| Rollback
+// Merged into Rollback
+// | RollbackPrepared
+// | RollbackToSavepoint
+| Savepoint
+| SecurityLabel
+| Select
+| SelectInto
+| Set
+| SetConstraints
+| SetRole
+| SetSessionAuth
+| SetTransaction
+| Show
+// We don't include this and instead merge it into Begin
+// | StartTransaction
+| Truncate
+| Unlisten
+| Update
+| Vacuum
+| Values
+| ParenSelect
+| ';'
+
+
+SourceFile =
+  Stmt*
