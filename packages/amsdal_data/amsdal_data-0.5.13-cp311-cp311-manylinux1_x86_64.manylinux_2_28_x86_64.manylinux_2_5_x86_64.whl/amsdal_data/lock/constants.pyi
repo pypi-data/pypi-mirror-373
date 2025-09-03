@@ -1,0 +1,1 @@
+LOCK_CLASS_NAME: str

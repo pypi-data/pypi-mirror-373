@@ -1,0 +1,106 @@
+import amsdal_glue as glue
+
+from amsdal_data.connections.constants import METADATA_TABLE
+from amsdal_data.connections.constants import PRIMARY_PARTITION_KEY
+
+metadata_schema = glue.Schema(
+    name=METADATA_TABLE,
+    version='',
+    properties=[
+        glue.PropertySchema(
+            name=PRIMARY_PARTITION_KEY,
+            type=str,
+            required=True,
+        ),
+        glue.PropertySchema(
+            name='object_id',
+            type=list,
+            required=False,
+            default=None,
+        ),
+        glue.PropertySchema(
+            name='object_version',
+            type=str,
+            required=False,
+            default=None,
+        ),
+        glue.PropertySchema(
+            name='class_schema_reference',
+            type=dict,
+            required=False,
+            default=None,
+        ),
+        glue.PropertySchema(
+            name='class_meta_schema_reference',
+            type=dict,
+            required=False,
+            default=None,
+        ),
+        glue.PropertySchema(
+            name='transaction',
+            type=dict,
+            required=False,
+            default=None,
+        ),
+        glue.PropertySchema(
+            name='is_deleted',
+            type=bool,
+            required=True,
+            default=False,
+        ),
+        glue.PropertySchema(
+            name='prior_version',
+            type=str,
+            required=False,
+            default=None,
+        ),
+        glue.PropertySchema(
+            name='created_at',
+            type=float,
+            required=False,
+            default=None,
+        ),
+        glue.PropertySchema(
+            name='updated_at',
+            type=float,
+            required=False,
+            default=None,
+        ),
+    ],
+    constraints=[
+        glue.PrimaryKeyConstraint(
+            name=f'pk_{METADATA_TABLE.lower()}',
+            fields=[PRIMARY_PARTITION_KEY],
+        ),
+        glue.UniqueConstraint(
+            name=f'uq_object_id_prior_version_{METADATA_TABLE.lower()}',
+            fields=['object_id', 'prior_version'],
+        ),
+        glue.UniqueConstraint(
+            name=f'uq_object_id_object_version_{METADATA_TABLE.lower()}',
+            fields=['object_id', 'object_version'],
+        ),
+    ],
+    indexes=[
+        glue.IndexSchema(
+            name='idx_metadata_object_id',
+            fields=['object_id'],
+        ),
+        glue.IndexSchema(
+            name='idx_metadata_object_version',
+            fields=['object_version'],
+        ),
+        glue.IndexSchema(
+            name='idx_metadata_is_deleted',
+            fields=['is_deleted'],
+        ),
+        glue.IndexSchema(
+            name='idx_metadata_prior_version',
+            fields=['prior_version'],
+        ),
+        glue.IndexSchema(
+            name='idx_metadata_updated_at',
+            fields=['updated_at'],
+        ),
+    ],
+)

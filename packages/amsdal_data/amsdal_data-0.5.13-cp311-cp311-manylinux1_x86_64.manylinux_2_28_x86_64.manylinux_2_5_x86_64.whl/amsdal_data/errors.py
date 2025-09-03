@@ -1,0 +1,16 @@
+from amsdal_utils.errors import AmsdalError
+
+
+class MetadataInfoQueryError(AmsdalError): ...
+
+
+class RegisterTableError(AmsdalError): ...
+
+
+class QueryError(AmsdalError): ...
+
+
+class CommandError(AmsdalError): ...
+
+
+class AmsdalConnectionError(AmsdalError): ...
