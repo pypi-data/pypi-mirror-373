@@ -1,0 +1,260 @@
+# PDF Font Checker
+
+A lightweight Python utility that extracts and lists all fonts used in PDF documents using MuPDF's `mutool` command-line tool.
+
+## Features
+
+- 🔍 **Extract font information** from PDF files
+- 🚀 **Automatic dependency management** - automatically installs MuPDF tools if needed
+- 🖥️ **Cross-platform support** - works on Linux, macOS, and Windows
+- 📦 **Simple API** - easy to integrate into your Python projects
+- 🛠️ **Command-line interface** - use directly from terminal
+- 🧪 **Well-tested** - comprehensive test suite included
+
+## Installation
+
+### From PyPI (recommended)
+
+```bash
+pip install pdf-font-checker
+```
+
+### From Source
+
+```bash
+git clone https://github.com/genie360s/pdf-font-checker.git
+cd pdf-font-checker
+pip install -e .
+```
+
+## Dependencies
+
+This package requires MuPDF's `mutool` command-line tool. The package will attempt to automatically install it using your system's package manager:
+
+- **macOS**: via Homebrew (`brew install mupdf-tools`)
+- **Linux**: via apt, dnf, yum, pacman, or zypper (`mupdf-tools` or `mupdf`)
+- **Windows**: Manual installation required
+
+If automatic installation fails, you can install MuPDF manually:
+
+### Manual Installation
+
+#### macOS
+```bash
+brew install mupdf-tools
+```
+
+#### Ubuntu/Debian
+```bash
+sudo apt-get update
+sudo apt-get install mupdf-tools
+```
+
+#### Fedora/CentOS/RHEL
+```bash
+sudo dnf install mupdf-tools
+# or on older systems:
+sudo yum install mupdf-tools
+```
+
+#### Arch Linux
+```bash
+sudo pacman -S mupdf-tools
+```
+
+## Usage
+
+### Command Line Interface
+
+Extract fonts from a PDF file:
+
+```bash
+pdf-font-checker document.pdf
+```
+
+Disable automatic MuPDF installation:
+
+```bash
+pdf-font-checker --no-auto-install document.pdf
+```
+
+### Python API
+
+```python
+from pdf_font_checker import list_pdf_fonts
+
+# Basic usage
+fonts = list_pdf_fonts("document.pdf")
+print("Fonts found:")
+for font in fonts:
+    print(f"  - {font}")
+
+# Disable automatic installation of mutool
+fonts = list_pdf_fonts("document.pdf", auto_install=False)
+
+# Disable mutool availability check entirely
+fonts = list_pdf_fonts("document.pdf", ensure=False)
+```
+
+### Advanced Usage
+
+```python
+from pdf_font_checker.core import list_pdf_fonts, ensure_mutool
+
+# Ensure mutool is available before processing multiple files
+ensure_mutool()
+
+pdf_files = ["doc1.pdf", "doc2.pdf", "doc3.pdf"]
+all_fonts = set()
+
+for pdf_file in pdf_files:
+    try:
+        fonts = list_pdf_fonts(pdf_file, ensure=False)  # Skip check after first
+        all_fonts.update(fonts)
+        print(f"{pdf_file}: {len(fonts)} fonts")
+    except Exception as e:
+        print(f"Error processing {pdf_file}: {e}")
+
+print(f"\nUnique fonts across all documents: {len(all_fonts)}")
+for font in sorted(all_fonts):
+    print(f"  - {font}")
+```
+
+## Output Example
+
+```bash
+$ pdf-font-checker sample.pdf
+Arial-Bold
+Helvetica
+TimesNewRomanPSMT
+Calibri-Light
+Verdana-Italic
+```
+
+## API Reference
+
+### `list_pdf_fonts(pdf_path, ensure=True, auto_install=True)`
+
+Extract font names from a PDF file.
+
+**Parameters:**
+- `pdf_path` (str): Path to the PDF file
+- `ensure` (bool, default=True): Check for mutool availability before processing
+- `auto_install` (bool, default=True): Attempt to install MuPDF tools automatically
+
+**Returns:**
+- `List[str]`: List of unique font names found in the PDF
+
+**Raises:**
+- `RuntimeError`: If mutool is not available or PDF processing fails
+- `FileNotFoundError`: If the PDF file doesn't exist
+
+### `ensure_mutool(auto_install=True)`
+
+Ensure MuPDF's mutool is available on the system.
+
+**Parameters:**
+- `auto_install` (bool, default=True): Attempt automatic installation if mutool is missing
+
+**Raises:**
+- `RuntimeError`: If mutool cannot be found or installed
+
+## Development
+
+### Setting up Development Environment
+
+```bash
+git clone https://github.com/genie360s/pdf-font-checker.git
+cd pdf-font-checker
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install in development mode
+pip install -e .
+
+# Install development dependencies
+pip install pytest pytest-cov black flake8
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+python -m pytest
+
+# Run with coverage
+python -m pytest --cov=pdf_font_checker
+
+# Run specific test file
+python -m pytest tests/test_core.py
+
+# Run specific test
+python -m pytest tests/test_core.py::TestPdfFontChecker::test_parse_mutool_fonts_various_formats
+```
+
+### Code Quality
+
+```bash
+# Format code
+black src/ tests/
+
+# Lint code
+flake8 src/ tests/
+
+# Type checking (if mypy is installed)
+mypy src/
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Add tests for your changes
+5. Ensure all tests pass (`python -m pytest`)
+6. Format your code (`black .`)
+7. Commit your changes (`git commit -m 'Add amazing feature'`)
+8. Push to the branch (`git push origin feature/amazing-feature`)
+9. Open a Pull Request
+
+## Troubleshooting
+
+### Common Issues
+
+**Q: "mutool not found" error**
+A: Install MuPDF tools using your system package manager. See the Dependencies section above.
+
+**Q: "Permission denied" when auto-installing**
+A: The automatic installation requires admin privileges on some systems. Install MuPDF manually or run with sudo (Linux) or as Administrator (Windows).
+
+**Q: No fonts detected in PDF**
+A: Some PDFs may use embedded fonts in formats that mutool doesn't recognize, or the PDF might use images instead of text.
+
+**Q: Installation fails on Windows**
+A: Windows support requires manual installation of MuPDF. Download from [mupdf.com](https://mupdf.com/) and ensure `mutool.exe` is in your PATH.
+
+### Getting Help
+
+- 📖 [Documentation](https://github.com/genie360s/pdf-font-checker)
+- 🐛 [Issue Tracker](https://github.com/genie360s/pdf-font-checker/issues)
+- 💬 [Discussions](https://github.com/genie360s/pdf-font-checker/discussions)
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- Built on top of [MuPDF](https://mupdf.com/) - a lightweight PDF toolkit
+- Inspired by the need for simple font analysis in PDF workflows
+
+## Changelog
+
+### v0.1.0 (2025-09-02)
+- Initial release
+- Basic font extraction functionality
+- Cross-platform automatic dependency installation
+- Command-line interface
+- Python API
