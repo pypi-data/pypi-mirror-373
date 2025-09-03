@@ -1,0 +1,473 @@
+diff --git a/src/Scanner.c b/src/Scanner.c
+index 19a35a7..2d0e528 100644
+--- a/src/Scanner.c
++++ b/src/Scanner.c
+@@ -5,41 +5,37 @@
+ // Implementation of type Scanner (the main Jess query object).
+ // ==================================================================
+ 
++#include <assert.h>
++#include <stdlib.h>
++#include <stdbool.h>
++#include <string.h>
++
+ #include "Scanner.h"
+ #include "KdTree.h"
+ #include "Region.h"
+ #include "Annulus.h"
+ #include "Join.h"
+-#include <stdlib.h>
+-#include <string.h>
++#include "CandidateSet.h"
+ 
+ // ==================================================================
+-// Local type CandidateSet
+-// ==================================================================
+-// count				Number of atoms in the set
+-// atom[k]				Points to ATOM record for kth candidate
+-// coord[k]				Points to coordinates for kth candidate
+-// ==================================================================
+-
+-typedef struct _CandidateSet CandidateSet;
++// type ScannerData
++//===================================================================
+ 
+-struct _CandidateSet
++struct _ScannerData
+ {
+-	int count;
+-	Atom **atom;
+-	double **coord;
++	CandidateSet** candidates;
++	int* index;
++	Atom** atom;
++	Join** regions;
++	bool *active;
++	KdTree **trees;
++	KdTreeQuery **queries;
++	double* weights;
++	int* order;
++	size_t count;
++	size_t capacity;
+ };
+ 
+-// ==================================================================
+-// Declaration of methods of local type CandidateSet
+-// ==================================================================
+-// create(M,T,k)		Create from molecule M, atom k of T
+-// free(S)				Free candidate set
+-// ==================================================================
+-
+-static CandidateSet *CandidateSet_create(Molecule*,Template*,int);
+-static void CandidateSet_free(CandidateSet*);
+-
+ // ==================================================================
+ // type Scanner
+ //===================================================================
+@@ -63,9 +59,12 @@ struct _Scanner
+ 	CandidateSet **set;
+ 	KdTree **tree;
+ 	KdTreeQuery **query;
++	bool *active;
+ 	int *index;
+ 	Atom **atom;
+-	Region **region;
++	Join **regions;
++	double *weights;
++	int* order;
+ 	int count;
+ 	double threshold;
+ 	double max_total_threshold;
+@@ -75,19 +74,59 @@ struct _Scanner
+ // Methods of type Scanner
+ // ==================================================================
+ 
+-Scanner *Scanner_create(Molecule *M, Template *T,double r, double s)
++#ifdef HAVE_THREADLOCALSTORAGE
++static __thread CandidateSet **candidates;
++static int _CandidateSet_size_compare(const void* a, const void* b)
++{
++	int x = *((int*)a);
++	int y = *((int*)b);
++	int diff = candidates[x]->count - candidates[y]->count;
++	return (diff == 0) ? x-y : diff;
++}
++#endif
++
++#ifdef HAVE_GNU_QSORT_R
++static int _CandidateSet_size_compare_r(const void* a, const void* b, void* data)
++#else
++static int _CandidateSet_size_compare_r(void* data, const void* a, const void* b)
++#endif
++{
++	CandidateSet** candidates = (CandidateSet**) data;
++	int x = *((int*)a);
++	int y = *((int*)b);
++	int diff = candidates[x]->count - candidates[y]->count;
++	return (diff == 0) ? x-y : diff;
++}
++
++Scanner *Scanner_create(Molecule *M, Template *T, ScannerData* D, double r, double s, bool reorder)
++{
++	return Scanner_reuse(NULL,M,T,D,r,s,reorder);
++}
++
++Scanner *Scanner_reuse(Scanner *S, Molecule *M, Template *T, ScannerData* D, double r, double s, bool reorder)
+ {
+-	Scanner *S;
+ 	int k,n=T->count(T);
+ 	int m;
+ 
+-	S=(Scanner*)calloc(1,sizeof(Scanner));
+-	S->set=(CandidateSet**)calloc(n,sizeof(CandidateSet*));
+-	S->tree=(KdTree**)calloc(n,sizeof(KdTree*));
+-	S->query=(KdTreeQuery**)calloc(n,sizeof(KdTreeQuery*));
+-	S->index=(int*)calloc(n,sizeof(int));
+-	S->atom=(Atom**)calloc(n,sizeof(Atom*));
+-	S->region=(Region**)calloc(n,sizeof(Region*));
++	if(!D) return NULL;
++	if(!S)
++	{
++		S=(Scanner*) malloc(sizeof(Scanner));
++		if(!S) return NULL;
++	}
++
++	if(ScannerData_resize(D,n)!=0) 
++		return NULL;
++
++	S->set=D->candidates;
++	S->tree=D->trees;
++	S->query=D->queries;
++	S->index=D->index;
++	S->atom=D->atom;
++	S->regions=D->regions;
++	S->active=D->active;
++	S->weights=D->weights;
++	S->order=D->order;
+ 
+ 	S->template=T;
+ 	S->threshold=r;
+@@ -96,22 +135,48 @@ Scanner *Scanner_create(Molecule *M, Template *T,double r, double s)
+ 
+ 	for(k=0; k<n; k++)
+ 	{
++		S->atom[k]=NULL;
++		S->order[k]=k;
+ 		S->index[k]=-1;
+-		S->set[k]=CandidateSet_create(M,T,k);
++		S->active[k]=false;
++		S->weights[k]=S->template->distWeight(S->template, k);
+ 
++		T->candidates(T,M,k, &S->set[k]);
+ 		if(S->set[k]->count==0)
+ 		{
+ 			Scanner_free(S);
+ 			return NULL;
+ 		}
+ 
+-		S->tree[k]=KdTree_create(S->set[k]->coord,S->set[k]->count,3);
++		S->tree[k]=KdTree_reuse(S->tree[k],S->set[k]->coord,S->set[k]->count);
++		if(!S->tree[k])
++		{
++			Scanner_free(S);
++			return NULL;
++		}
++
+ 	}
+ 
+-	if(S->count>0 && S->set[0]->count>0)
++#if defined(HAVE_GNU_QSORT_R)
++	if(reorder) qsort_r(S->order,n,sizeof(int),_CandidateSet_size_compare_r,S->set);
++#elif defined(HAVE_APPLE_QSORT_R)
++	if(reorder) qsort_r(S->order,n,sizeof(int),S->set,_CandidateSet_size_compare_r);
++#elif defined(HAVE_WIN32_QSORT_S)
++	if(reorder) qsort_s(S->order,n,sizeof(int),_CandidateSet_size_compare_r,S->set);
++#elif defined(HAVE_THREADLOCALSTORAGE)
++	if(reorder)
+ 	{
+-		S->index[0]=0;
+-		S->atom[0]=S->set[0]->atom[0];
++		candidates = S->set;
++		qsort(S->order,n,sizeof(int),_CandidateSet_size_compare);
++	}
++#else
++#warning "No re-entrant `qsort` implementation or thread-local storage, no iteration reordering will be done."
++#endif	
++
++	if(S->count>0 && S->set[S->order[0]]->count>0)
++	{
++		S->index[S->order[0]]=0;
++		S->atom[S->order[0]]=S->set[S->order[0]]->atom[0];
+ 	}
+ 
+ 	return S;
+@@ -119,36 +184,16 @@ Scanner *Scanner_create(Molecule *M, Template *T,double r, double s)
+ 
+ void Scanner_free(Scanner *S)
+ {
+-	int k,n;
+-
+ 	if(S)
+ 	{
+-		n = S->template->count(S->template);
+-
+-		for(k=0; k<n; k++)
+-		{
+-			if(S->set && S->set[k]) CandidateSet_free(S->set[k]);
+-			if(S->tree && S->tree[k]) KdTree_free(S->tree[k]);
+-			if(S->query && S->query[k]) KdTreeQuery_free(S->query[k]);
+-		}
+-
+-		if(S->set) free(S->set);
+-		if(S->query) free(S->query);
+-		if(S->tree) free(S->tree);
+-		if(S->atom) free(S->atom);
+-		if(S->index) free(S->index);
+-		if(S->region) free(S->region);
+-
+ 		free(S);
+ 	}
+ }
+ 
+-Atom **Scanner_next(Scanner *S, int ignore_chain)
++Atom **Scanner_next(Scanner *S, IgnoreType ignore_chain)
+ {
+ 	int j,k;
+ 	double min,max;
+-	Region *J;
+-
+ 	double dynamic_threshold = S->threshold;
+ 
+ 	k=S->count-1;
+@@ -166,17 +211,16 @@ Atom **Scanner_next(Scanner *S, int ignore_chain)
+ 
+ 		if(k==0)
+ 		{
+-			S->index[0]++;
++			S->index[S->order[0]]++;
+ 
+-			if(S->index[0]>=S->set[0]->count)
++			if(S->index[S->order[0]]>=S->set[S->order[0]]->count)
+ 			{
+ 				// End of query...
+-
+ 				k=-1;
+ 			}
+ 			else
+ 			{
+-				S->atom[0]=S->set[0]->atom[S->index[0]];
++				S->atom[S->order[0]]=S->set[S->order[0]]->atom[S->index[S->order[0]]];
+ 				k++;
+ 			}
+ 
+@@ -186,17 +230,16 @@ Atom **Scanner_next(Scanner *S, int ignore_chain)
+ 		// So k>0. If there is an active query for this
+ 		// set then query it now...
+ 
+-		if(S->query[k])
++		if(S->active[S->order[k]])
+ 		{
+-			S->index[k]=KdTreeQuery_next(S->query[k]);
+-			if(S->index[k]<0)
++			S->index[S->order[k]]=KdTreeQuery_next(S->query[S->order[k]]);
++			if(S->index[S->order[k]]<0)
+ 			{
+ 				// The query ended. So we need to destroy
+ 				// this query, then drop down a level...
+ 
+-				KdTreeQuery_free(S->query[k]);
+-				S->query[k]=NULL;
+-				S->atom[k]=NULL;
++				S->active[S->order[k]]=false;
++				S->atom[S->order[k]]=NULL;
+ 				k--;
+ 			}
+ 			else
+@@ -205,8 +248,8 @@ Atom **Scanner_next(Scanner *S, int ignore_chain)
+ 				// atom, check n-ary constraints and continue
+ 				// up...
+ 
+-				S->atom[k]=S->set[k]->atom[S->index[k]];
+-				if(S->template->check(S->template,S->atom,k+1,ignore_chain))
++				S->atom[S->order[k]]=S->set[S->order[k]]->atom[S->index[S->order[k]]];
++				if(S->template->check(S->template,S->atom,S->order,k+1,ignore_chain))
+ 				{
+ 					k++;
+ 				}
+@@ -219,7 +262,7 @@ Atom **Scanner_next(Scanner *S, int ignore_chain)
+ 		// no active query result for set k-1 then we need
+ 		// to drop down again...
+ 
+-		if(S->index[k-1]<0)
++		if(S->index[S->order[k-1]]<0)
+ 		{
+ 			k--;
+ 			continue;
+@@ -231,9 +274,9 @@ Atom **Scanner_next(Scanner *S, int ignore_chain)
+ 
+ 		for(j=0; j<k; j++)
+ 		{
+-			S->template->range(S->template,j,k,&min,&max);
++			S->template->range(S->template,S->order[j],S->order[k],&min,&max);
+ 
+-			dynamic_threshold = S->threshold + S->template->distWeight(S->template, j) + S->template->distWeight(S->template, k);
++			dynamic_threshold = S->threshold + S->weights[S->order[j]] + S->weights[S->order[k]];
+ 			// Limit threshold to a hard cutoff so execution does not suffer
+ 			if(dynamic_threshold > S->max_total_threshold){
+ 				dynamic_threshold = S->max_total_threshold;
+@@ -242,11 +285,13 @@ Atom **Scanner_next(Scanner *S, int ignore_chain)
+ 			max += dynamic_threshold;
+ 			if(min<0.5) min=0.5;
+ 
+-			S->region[j]=Annulus_create(S->atom[j]->x,min,max,3);
++			assert(S->atom[S->order[j]]);
++			S->regions[k]->R[j]=Annulus_reuse(S->regions[k]->R[j],S->atom[S->order[j]]->x,min,max);
+ 		}
+ 
+-		J = Join_create(S->region,k,innerJoin);
+-		S->query[k]=KdTree_query(S->tree[k],J);
++		S->active[S->order[k]]=true;
++		S->query[S->order[k]]=KdTreeQuery_reuse(S->query[S->order[k]],S->tree[S->order[k]],S->regions[k]);
++		if(!S->query[S->order[k]]) return NULL;
+ 	}
+ 
+ 	// If k<0 there is no more!
+@@ -259,49 +304,108 @@ Atom **Scanner_next(Scanner *S, int ignore_chain)
+ }
+ 
+ // ==================================================================
+-// Methods of local type CandidateSet
++// Methods of type ScannerData
+ // ==================================================================
+ 
+-static CandidateSet *CandidateSet_create(Molecule *M, Template *T, int k)
++ScannerData *ScannerData_create()
+ {
+-	CandidateSet *S;
+-	Atom *A;
+-	int n = Molecule_count(M);
+-	int m;
+-
+-	S = (CandidateSet*)calloc(1,sizeof(CandidateSet));
+-	S->atom=(Atom**)calloc(n,sizeof(Atom*));
++	ScannerData* D = malloc(sizeof(ScannerData));
++	if(!D) return NULL;
++	D->count=0;
++	D->capacity=0;
++	D->candidates=NULL;
++	D->index=NULL;
++	D->atom=NULL;
++	D->regions=NULL;
++	D->active=NULL;
++	D->queries=NULL;
++	D->trees=NULL;
++	D->weights=NULL;
++	D->order=NULL;
++	return D;
++}
+ 
+-	for(m=0; m<n; m++)
++void ScannerData_free(ScannerData* D)
++{
++	if(D)
+ 	{
+-		A = (Atom*)Molecule_atom(M,m);
+-		if(T->match(T,k,A))
++		if(D->candidates) 
+ 		{
+-			S->atom[S->count]=A;
+-			S->count++;
++			for(int i=0;i<D->capacity;i++) CandidateSet_free(D->candidates[i]);
++			free(D->candidates);
+ 		}
++		if(D->regions)
++		{
++			for(int i=0;i<D->capacity;i++) Join_free(D->regions[i]);
++			free(D->regions);
++		}
++		if(D->queries)
++		{
++			for(int i=0;i<D->capacity;i++) KdTreeQuery_free(D->queries[i]);
++			free(D->queries);
++		}
++		if(D->trees)
++		{
++			for(int i=0;i<D->capacity;i++) KdTree_free(D->trees[i]);
++			free(D->trees);
++		}
++		if(D->index) free(D->index);
++		if(D->atom) free(D->atom);
++		if(D->active) free(D->active);
++		if(D->weights) free(D->weights);
++		if(D->order) free(D->order);
++		free(D);
+ 	}
+-
+-	S->atom=(Atom**)realloc(S->atom,sizeof(Atom*)*S->count);
+-	S->coord=(double**)calloc(S->count,sizeof(double*));
+-
+-	for(m=0; m<S->count; m++)
+-	{
+-		S->coord[m]=S->atom[m]->x;
+-	}
+-
+-	return S;
+ }
+ 
+-static void CandidateSet_free(CandidateSet *S)
++int ScannerData_resize(ScannerData* D, int n)
+ {
+-	if(S)
++	if(D->capacity<n)
+ 	{
+-		if(S->atom) free(S->atom);
+-		if(S->coord) free(S->coord);
+-		free(S);
++		D->candidates=(CandidateSet**)realloc(D->candidates,n*sizeof(CandidateSet*));
++		if(!D->candidates) return -1;
++		for(int i=D->capacity;i<n;i++)
++		{
++			D->candidates[i]=CandidateSet_create();
++			if(!D->candidates[i]) return -1;
++		}
++
++		D->regions=(Join**)realloc(D->regions,n*sizeof(Join*));
++		if(!D->regions) return -1;
++		for(int i=D->capacity;i<n;i++)
++		{
++			D->regions[i]=Join_allocate(i,innerJoin);
++			if(!D->regions[i]) return -1;
++		}
++
++		D->trees=(KdTree**)realloc(D->trees,n*sizeof(KdTree*));
++		if(!D->trees) return -1;
++		for(int i=D->capacity;i<n;i++) D->trees[i]=NULL;
++
++		D->queries=(KdTreeQuery**)realloc(D->queries,n*sizeof(KdTreeQuery*));
++		if(!D->queries) return -1;
++		for(int i=D->capacity;i<n;i++) D->queries[i]=NULL;
++
++		D->index=(int*)realloc(D->index,n*sizeof(int));
++		if(!D->index) return -1;
++
++		D->atom=(Atom**)realloc(D->atom,n*sizeof(Atom*));
++		if(!D->atom) return -1;
++
++		D->active=(bool*)realloc(D->active,n*sizeof(bool));
++		if(!D->active) return -1;
++
++		D->weights=(double*)realloc(D->weights,n*sizeof(double));
++		if(!D->weights) return -1;
++
++		D->order=(int*)realloc(D->order,n*sizeof(int));
++		if(!D->order) return -1;
++
++		D->capacity=n;
+ 	}
++
++	D->count=n;
++	return 0;
+ }
+ 
+ // ==================================================================
+-

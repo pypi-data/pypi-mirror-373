@@ -1,0 +1,169 @@
+diff --git a/src/ResIndex.c b/src/ResIndex.c
+new file mode 100644
+index 0000000..ed907f4
+--- /dev/null
++++ b/src/ResIndex.c
+@@ -0,0 +1,163 @@
++// ==================================================================
++// HashMap.h
++// Copyright (c) Martin Larralde, 2025
++// ==================================================================
++// Implementation of type ResIndex.
++// ==================================================================
++
++#include <assert.h>
++#include <stddef.h>
++#include <stdlib.h>
++#include <string.h>
++#include <stdio.h>
++
++#include "Atom.h"
++#include "TessAtom.h"
++#include "ResIndex.h"
++
++static int ResNames_compare(const void *pa, const void *pb)
++{
++	const Atom *a = **((const Atom***)pa);
++	const Atom *b = **((const Atom***)pb);
++    int result = TessAtom_compareName(&a->resName[0], &b->resName[0]);
++    if (result != 0)
++        return result;
++    return a->serial - b->serial;
++}
++
++extern ResIndex* ResIndex_create(Atom** atoms, int n)
++{
++    int i;
++    int j;
++    int k;
++    int numRes;
++    Atom*** tmp;
++    ResIndex* I;
++
++    // Allocate struct
++
++    I = (ResIndex*) malloc(sizeof(ResIndex));
++    if(!I) return NULL;
++
++    // Initialize fields
++    I->n = 0;
++    I->names = NULL;
++    I->offset = NULL;
++    I->atoms = NULL;
++
++    // No extra allocation on empty case
++    if(n==0) return I;
++
++    // Allocate auxilliary data to sort names
++
++    tmp = (Atom***) calloc(n, sizeof(Atom**));
++    if(!tmp) {
++        ResIndex_free(I);
++        return NULL;
++    }
++
++    // Sort residue names found in molecule
++
++    for (i = 0; i < n; i++) tmp[i] = (Atom**) &atoms[i];
++    qsort(tmp,n, sizeof(Atom**),ResNames_compare);
++
++    // Count number of distinct residue names in molecule
++
++    numRes = 1;
++    for (i = 1; i < n; i++) 
++        numRes += (TessAtom_compareName((*tmp[i-1])->resName, (*tmp[i])->resName) != 0);
++    
++    // Allocate data for residues
++
++    I->names = (char*) calloc(numRes, 4*sizeof(char));
++    I->offset = (size_t*) calloc(numRes+1, sizeof(size_t));
++    I->atoms = (Atom**) calloc(n + numRes, sizeof(Atom*));
++    if ((I->names == NULL) || (I->atoms == NULL) || (I->offset == NULL)) {
++        free(tmp);
++        ResIndex_free(I);
++        return NULL;
++    }
++
++    // Record data in index
++
++    memcpy(&I->names[0], (*tmp[0])->resName, 4*sizeof(char));
++    I->n = numRes;
++    I->offset[0] = 0;
++    I->atoms[0] = *tmp[0];
++
++    char* names = &I->names[4];
++    size_t* offset = &I->offset[1];
++
++    for (i = 1, j = 4, k = 1; i < n; i++) {
++
++        if (TessAtom_compareName((*tmp[i-1])->resName, (*tmp[i])->resName) != 0) {
++            memcpy(names, (*tmp[i])->resName, 4*sizeof(char));
++            names += 4;
++
++            I->atoms[k] = NULL;
++            k += 1;
++
++            (*offset) = k;
++            offset++;
++        }
++
++        I->atoms[k] = *tmp[i];
++        k += 1;
++    }
++
++    (*offset) = k;
++
++    free(tmp);
++    
++    return I;
++}
++
++extern int ResIndex_find(const ResIndex* I, const char resName[4]) {
++    //NB: As the names have been sorted with `qsort`, we can use a binary search
++    
++    int cmp;
++    size_t mid;
++    size_t start = 0;
++    size_t end = I->n;
++    size_t n = 0;
++
++    while (start < end) {
++        mid = (start + end) / 2;
++        cmp = TessAtom_compareName(&I->names[4*mid], resName);
++        if(cmp < 0) {
++            start = (mid == start) ? mid + 1 : mid;
++        } else if (cmp > 0) {
++            end = (mid == end) ? mid - 1 : mid;
++        } else {
++            return mid;
++        }
++
++        n++;
++        assert(n < I->n);
++    }
++
++    return -1;
++}
++
++extern Atom** ResIndex_get(const ResIndex* I, const char resName[4])
++{
++    int i = ResIndex_find(I, resName);
++    return ResIndex_values(I, i);
++}
++
++extern Atom** ResIndex_values(const ResIndex* I, int i)
++{
++    static Atom* noatom = NULL;
++    if(i > I->n || i < 0) return &noatom;
++    return &I->atoms[I->offset[i]];
++}
++
++extern void ResIndex_free(ResIndex* I)
++{
++    if(I) {
++        if (I->names) free(I->names);
++        if (I->atoms) free(I->atoms);
++        if (I->offset) free(I->offset);
++        free(I);
++    }
++}

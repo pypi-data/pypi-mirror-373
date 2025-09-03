@@ -1,0 +1,215 @@
+diff --git a/src/TessAtom.c b/src/TessAtom.c
+index e1cce1a..9ba021e 100644
+--- a/src/TessAtom.c
++++ b/src/TessAtom.c
+@@ -7,40 +7,13 @@
+ 
+ #include "TessAtom.h"
+ #include "Atom.h"
++
++#include <math.h>
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <string.h>
+ #include <ctype.h>
+ 
+-// ==================================================================
+-// Local type TessAtom
+-// ==================================================================
+-// code					The code describing the match mode
+-// resSeq				The residue sequence number
+-// nameCount			Number of atom names present
+-// resNameCount			Number of residue names present
+-// chainID				The chain field
+-// name[k]				kth atom name alternate
+-// resName[k]			kth residue name alternate
+-// pos[k]				kth coordinate of position of atom
+-// distWeight[k]			kth atom distance threshold modifier (weight)
+-// ==================================================================
+-
+-struct _TessAtom
+-{
+-	int code;
+-	int resSeq;
+-	int nameCount;
+-	int resNameCount;
+-	char chainID1; //Riziotis edit
+-	char chainID2;
+-	//char chainID; 
+-	char **name;
+-	char **resName;
+-	double pos[3];
+-	double distWeight;
+-};
+-
+ // ==================================================================
+ // Methods of type TessAtom (ARGGH!!!)
+ // ==================================================================
+@@ -91,7 +64,7 @@ TessAtom *TessAtom_create(const char *s)
+ 	int rq;
+ 	const char *q;
+ 	const char *tmp;
+-	void *p;
++	char *p;
+ 
+ 
+ 	// 0. Parse the record as a standard PDB atom. We must
+@@ -157,8 +130,8 @@ TessAtom *TessAtom_create(const char *s)
+ 	// Set up all the pointers to the
+ 	// residue name and atom name fields
+ 
+-	p=&A[1];
+-	A->name=p;
++	p=(void*)&A[1];
++	A->name=(char**)p;
+ 	p+=sizeof(char*)*ac;
+ 	for(m=0; m<ac; m++)
+ 	{
+@@ -166,7 +139,7 @@ TessAtom *TessAtom_create(const char *s)
+ 		p+=5;
+ 	}
+ 
+-	A->resName=p;
++	A->resName=(char**)p;
+ 	p+=sizeof(char*)*rc;
+ 	for(m=0; m<rc; m++)
+ 	{
+@@ -259,41 +232,7 @@ TessAtom *TessAtom_create(const char *s)
+ }
+ 
+ //Riziotis edit
+-char TessAtom_chainID1(const TessAtom *A)
+-{
+-	return A->chainID1;
+-}
+-
+-char TessAtom_chainID2(const TessAtom *A)
+-{
+-	return A->chainID2;
+-}
+-
+-double TessAtom_distWeight(const TessAtom *A)
+-{
+-	return A->distWeight;
+-}
+   
+-//char TessAtom_chainID(const TessAtom *A)
+-//{
+-//	return A->chainID;
+-//}
+-
+-const double *TessAtom_position(const TessAtom *A)
+-{
+-	return A->pos;
+-}
+-
+-void TessAtom_free(TessAtom *A)
+-{
+-	if(A) free(A);
+-}
+-
+-int TessAtom_resSeq(const TessAtom *A)
+-{
+-	return A->resSeq;
+-}
+-
+ static int TessAtom_isCarbon(const Atom *A)
+ {
+ 	return A->name[0]=='_' && A->name[1]=='C' ? 1:0;
+@@ -327,9 +266,9 @@ static int TessAtom_isInSamePosition(const TessAtom *T, const Atom *A)
+ 
+ static int TessAtom_isMainChain(const Atom *A)
+ {
+-	if(strcasecmp(A->name,"_CA_")==0) return 1;
+-	if(strcasecmp(A->name,"_N__")==0) return 1;
+-	if(strcasecmp(A->name,"_O__")==0) return 1;
++	if(TessAtom_compareName(A->name,"_CA_")==0) return 1;
++	if(TessAtom_compareName(A->name,"_N__")==0) return 1;
++	if(TessAtom_compareName(A->name,"_O__")==0) return 1;
+ 
+ 	return 0;
+ }
+@@ -340,7 +279,7 @@ static int TessAtom_matchName(const TessAtom *T, const Atom *A)
+ 
+ 	for(k=0; k<T->nameCount; k++)
+ 	{
+-		if(strcasecmp(A->name,T->name[k])==0) return 1;
++		if(TessAtom_compareName(A->name,T->name[k])==0) return 1;
+ 	}
+ 
+ 	return 0;
+@@ -352,7 +291,7 @@ static int TessAtom_matchResName(const TessAtom *T, const Atom *A)
+ 
+ 	for(k=0; k<T->resNameCount; k++)
+ 	{
+-		if(strcasecmp(A->resName,T->resName[k])==0) return 1;
++		if(TessAtom_compareName(A->resName,T->resName[k])==0) return 1;
+ 	}
+ 
+ 	return 0;
+@@ -507,5 +446,65 @@ int TessAtom_match(const TessAtom *T, const Atom *A)
+ 	}
+ }
+ 
++TessAtom *TessAtom_copy(const TessAtom *A)
++{
++	int ac;
++	int rc;
++	int rq;
++	int m;
++	char* p;
++	TessAtom* B;
++
++	// get allocation size
++	ac = A->nameCount;
++	rc = A->resNameCount;
++	rq = sizeof(TessAtom);
++	rq += sizeof(char*)*(ac+rc);
++	rq += sizeof(char)*(5*ac+4*rc);
++
++	// allocate new atom
++	B = (TessAtom*)malloc(rq);
++
++	// copy all fields including string data from original Atom
++	memcpy(B, A, rq);
++
++	// set pointers to string data
++	p=(char*) &B[1];
++	B->name=(char**)p;
++	p+=sizeof(char*)*ac;
++	for(m=0; m<ac; m++)
++	{
++		B->name[m]=p;
++		p+=5;
++	}
++
++	B->resName=(char**)p;
++	p+=sizeof(char*)*rc;
++	for(m=0; m<rc; m++)
++	{
++		B->resName[m]=p;
++		p+=4;
++	}
++
++	return B;
++}
++
++double TessAtom_distance(const TessAtom* A1, const TessAtom* A2)
++{
++	int k;
++	double tmp, dist;
++	const double* x = TessAtom_position(A1);
++	const double* y = TessAtom_position(A2);
++
++	dist = 0.0;
++	for(k=0; k<3; k++)
++	{
++		tmp = x[k]-y[k];
++		dist += tmp*tmp;
++	}
++
++	return sqrt(dist);
++}
++
+ // ==================================================================
+ 

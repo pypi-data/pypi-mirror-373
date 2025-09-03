@@ -1,0 +1,216 @@
+diff --git a/src/Jess.c b/src/Jess.c
+index e81bda0..a0929cd 100644
+--- a/src/Jess.c
++++ b/src/Jess.c
+@@ -4,15 +4,18 @@
+ // Implementation of types Jess and JessQuery.
+ // ==================================================================
+ 
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdbool.h>
++#include <math.h>
++#include <string.h>
++
+ #include "Jess.h"
+ #include "Molecule.h"
+ #include "Scanner.h"
+ #include "TessTemplate.h"
+ #include "Super.h"
+-#include <stdio.h>
+-#include <stdlib.h>
+-#include <math.h>
+-#include <string.h>
++
+ 
+ // ==================================================================
+ // Forward declarations of local types
+@@ -43,18 +46,23 @@ struct _Jess
+ // molecule				The molecule being scanned
+ // atoms				Array of Atoms which are hit
+ // threshold			The distance threshold
++// candidates			CandidateSetArray to recycle between scanners
++// reorder				Whether to use atom reordering while scanning
+ // ==================================================================
+ 
+ struct _JessQuery
+ {
+ 	Node *node;
+ 	Scanner *scanner;
++	bool scan;
+ 	Superposition *super;
+ 	int reverseQ;
+ 	Molecule *molecule;
+ 	Atom **atoms;
+ 	double threshold;
+ 	double max_total_threshold;
++	ScannerData* scanner_data;
++	bool reorder;
+ };
+ 
+ // ==================================================================
+@@ -91,8 +99,10 @@ void Jess_free(Jess *J)
+ 			n=J->head->next;
+ 			T=J->head->template;
+ 			if(T) T->free(T);
++			free(J->head);
+ 			J->head=n;
+ 		}
++		free(J);
+ 	}
+ }
+ 
+@@ -100,21 +110,33 @@ void Jess_addTemplate(Jess *J, Template *T)
+ {
+ 	Node *n;
+ 
+-	n=(Node*)calloc(1,sizeof(Node));
++	n=(Node*)malloc(sizeof(Node));
+ 	n->template=T;
+ 	n->next=J->head;
+ 	J->head=n;
+ }
+ 
+-JessQuery *Jess_query(Jess *J, Molecule *M,double t,double s)
++JessQuery *Jess_query(Jess *J, Molecule *M,double t,double s,bool reorder)
+ {
+ 	JessQuery *Q;
+ 
+ 	Q = (JessQuery*)calloc(1,sizeof(JessQuery));
++	if(!Q)
++		return NULL;
++
+ 	Q->node=J->head;
+ 	Q->molecule=M;
+ 	Q->threshold=t;
+ 	Q->max_total_threshold=s;
++	Q->scan=false;
++	Q->reorder=reorder;
++	Q->scanner=NULL;
++	Q->scanner_data=ScannerData_create();
++	if(!Q->scanner_data)
++	{
++		JessQuery_free(Q);
++		return NULL;
++	}
+ 
+ 	return Q;
+ }
+@@ -129,74 +151,90 @@ void JessQuery_free(JessQuery *Q)
+ 	{
+ 		Scanner_free(Q->scanner);
+ 		Superposition_free(Q->super);
++		ScannerData_free(Q->scanner_data);
+ 		free(Q);
+ 	}
+ }
+ 
+-Template *JessQuery_template(JessQuery *Q)
++Template *JessQuery_template(const JessQuery *Q)
+ {
+ 	if(!Q->node) return NULL;
+ 	return Q->node->template;
+ }
+ 
+-const Molecule *JessQuery_molecule(JessQuery *Q)
++const Molecule *JessQuery_molecule(const JessQuery *Q)
+ {
+ 	return Q->molecule;
+ }
+ 
+-Atom **JessQuery_atoms(JessQuery *Q)
++Atom **JessQuery_atoms(const JessQuery *Q)
+ {
+ 	if(!Q->atoms) return NULL;
+ 	return Q->atoms;
+ }
+ 
+-Superposition *JessQuery_superposition(JessQuery *Q)
++Superposition *JessQuery_superposition(const JessQuery *Q)
+ {
+ 	int i;
+ 	int count;
+ 	Template *T;
+ 	Atom **A;
+-
+-	if(Q->super) return Q->super;
++	Superposition* super;
+ 
+ 	A = Q->atoms;
+ 	T = Q->node->template;
+ 	count = T->count(T);
+-	Q->super=Superposition_create();
++	super=Superposition_create();
+ 
+ 	for(i=0; i<count; i++)
+ 	{
+-		Superposition_align(Q->super,A[i]->x,T->position(T,i));
++		Superposition_align(super,A[i]->x,T->position(T,i));
+ 	}
+ 
+-	return Q->super;
++	return super;
++}
++
++int JessQuery_nextTemplate(JessQuery *Q)
++{
++	Q->scan=false;
++	Superposition_free(Q->super);
++	Q->super=NULL;
++	Q->atoms=NULL;
++	Q->node=Q->node->next;
++	return (Q->node) ? 1 : 0;
+ }
+ 
+-int JessQuery_next(JessQuery *Q, int ignore_chain)
++int JessQuery_next(JessQuery *Q, IgnoreType ignore_chain)
+ {
+ 	Template *T;
+ 	Atom **A;
+-	Superposition *S;
+ 
+ 	while(Q->node)
+ 	{
+ 		Superposition_free(Q->super);
+ 		Q->super=NULL;
+ 
+-		if(!Q->scanner)
++		if(!Q->scan)
+ 		{
+-			Q->scanner=Scanner_create(
++			Q->scanner=Scanner_reuse(
++				Q->scanner,
+ 				Q->molecule,
+ 				Q->node->template,
++				Q->scanner_data,
+ 				Q->threshold,
+-				Q->max_total_threshold
++				Q->max_total_threshold,
++				Q->reorder
+ 				);
+ 
+ 			if(!Q->scanner)
+-			{
++			{	
+ 				Q->node=Q->node->next;
+ 				continue;
+ 			}
++			else
++			{
++				Q->scan=true;
++			}
+ 		}
+ 
+ 		if((A=Scanner_next(Q->scanner, ignore_chain)))
+@@ -207,8 +245,9 @@ int JessQuery_next(JessQuery *Q, int ignore_chain)
+ 			return 1;
+ 		}
+ 
+-		Scanner_free(Q->scanner);
+-		Q->scanner=NULL;
++		// Scanner_free(Q->scanner);
++		// Q->scanner=NULL;
++		Q->scan=false;
+ 
+ 		Superposition_free(Q->super);
+ 		Q->super=NULL;
