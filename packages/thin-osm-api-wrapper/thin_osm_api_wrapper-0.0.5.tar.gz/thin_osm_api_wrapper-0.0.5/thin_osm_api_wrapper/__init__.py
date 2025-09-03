@@ -1,0 +1,1 @@
+import thin_osm_api_wrapper.api
