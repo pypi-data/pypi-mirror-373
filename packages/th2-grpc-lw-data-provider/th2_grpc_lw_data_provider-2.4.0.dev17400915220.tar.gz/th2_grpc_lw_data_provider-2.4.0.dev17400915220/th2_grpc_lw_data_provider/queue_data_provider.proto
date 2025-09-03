@@ -1,0 +1,96 @@
+/*
+ * Copyright 2022-2025 Exactpro (Exactpro Systems Limited)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package th2.data_provider.lw;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "th2_grpc_lw_data_provider/lw_data_provider.proto";
+
+option java_multiple_files = true;
+option java_package = "com.exactpro.th2.dataprovider.lw.grpc";
+
+option go_package = "github.com/th2-net/th2-grpc-lw-data-provider-go";
+
+/**
+ Service is used to request messages from DB and sent them to specified Queue
+ */
+service QueueDataProvider {
+  /*
+  The messages are return within group batches
+   */
+  rpc SearchMessageGroups(MessageGroupsQueueSearchRequest) returns (MessageLoadedStatistic);
+
+  /*
+  Requesting events with the specified interval and sends them to queue
+  */
+  rpc SearchEvents(EventQueueSearchRequest) returns (EventLoadedStatistic);
+}
+
+message MessageGroupsQueueSearchRequest {
+  message BookGroups {
+    th2.data_provider.lw.BookId book_id = 1;
+    repeated th2.data_provider.lw.MessageGroupsSearchRequest.Group group = 2;
+  }
+  google.protobuf.Timestamp start_timestamp = 1;
+  google.protobuf.Timestamp end_timestamp = 2;
+  reserved 3; // simple groups
+  repeated BookGroups message_group = 7;
+  google.protobuf.Duration sync_interval = 4;
+  string external_queue = 5;
+  bool keep_alive = 6;
+  /**
+  Enables sending raw batches directly to external_queue. Sends raw directly first then sends raw to pins
+   */
+  bool send_raw_directly = 8;
+  /**
+  If enabled the message won't be sent to codecs
+   */
+  bool raw_only = 9;
+}
+
+message MessageLoadedStatistic {
+  message GroupStat {
+    th2.data_provider.lw.BookId book_id = 3;
+    th2.data_provider.lw.MessageGroupsSearchRequest.Group group = 1;
+    uint64 count = 2;
+  }
+  repeated GroupStat stat = 1;
+}
+
+message EventQueueSearchRequest {
+  message BookScopes {
+    th2.data_provider.lw.BookId book_id = 1;
+    repeated th2.data_provider.lw.EventScope scope = 2;
+  }
+  google.protobuf.Timestamp start_timestamp = 1;
+  google.protobuf.Timestamp end_timestamp = 2;
+  repeated BookScopes event_scopes = 7;
+  google.protobuf.Duration sync_interval = 4;
+  string external_queue = 5;
+  bool keep_alive = 6;
+}
+
+message EventLoadedStatistic {
+  message ScopeStat {
+    th2.data_provider.lw.BookId book_id = 3;
+    th2.data_provider.lw.EventScope scope = 1;
+    uint64 count = 2;
+  }
+  repeated ScopeStat stat = 1;
+}
