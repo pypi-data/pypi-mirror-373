@@ -1,0 +1,311 @@
+# This file is part of Karabo.
+#
+# http://www.karabo.eu
+#
+# Copyright (C) European XFEL GmbH Schenefeld. All rights reserved.
+#
+# Karabo is free software: you can redistribute it and/or modify it under
+# the terms of the MPL-2 Mozilla Public License.
+#
+# You should have received a copy of the MPL-2 Public License along with
+# Karabo. If not, see <https://www.mozilla.org/en-US/MPL/2.0/>.
+#
+# Karabo is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or
+# FITNESS FOR A PARTICULAR PURPOSE.
+# Copied from karabo/util/Schema.hh!
+KARABO_SCHEMA_NODE_TYPE = "nodeType"
+KARABO_SCHEMA_VALUE_TYPE = "valueType"
+KARABO_SCHEMA_CLASS_ID = "classId"
+KARABO_SCHEMA_DISPLAYED_NAME = "displayedName"
+KARABO_SCHEMA_DESCRIPTION = "description"
+KARABO_SCHEMA_DEFAULT_VALUE = "defaultValue"
+KARABO_SCHEMA_DISPLAY_TYPE = "displayType"
+KARABO_SCHEMA_ACCESS_MODE = "accessMode"
+KARABO_SCHEMA_ALIAS = "alias"
+KARABO_SCHEMA_ALLOWED_STATES = "allowedStates"
+KARABO_SCHEMA_ASSIGNMENT = "assignment"
+KARABO_SCHEMA_TAGS = "tags"
+KARABO_SCHEMA_ROW_SCHEMA = "rowSchema"
+KARABO_SCHEMA_OPTIONS = "options"
+KARABO_SCHEMA_REQUIRED_ACCESS_LEVEL = "requiredAccessLevel"
+KARABO_SCHEMA_UNIT_ENUM = "unitEnum"
+KARABO_SCHEMA_UNIT_NAME = "unitName"
+KARABO_SCHEMA_UNIT_SYMBOL = "unitSymbol"
+KARABO_SCHEMA_METRIC_PREFIX_ENUM = "metricPrefixEnum"
+KARABO_SCHEMA_METRIC_PREFIX_NAME = "metricPrefixName"
+KARABO_SCHEMA_METRIC_PREFIX_SYMBOL = "metricPrefixSymbol"
+KARABO_SCHEMA_MIN_INC = "minInc"
+KARABO_SCHEMA_MAX_INC = "maxInc"
+KARABO_SCHEMA_MIN_EXC = "minExc"
+KARABO_SCHEMA_MAX_EXC = "maxExc"
+KARABO_SCHEMA_MIN_SIZE = "minSize"
+KARABO_SCHEMA_MAX_SIZE = "maxSize"
+KARABO_SCHEMA_ARCHIVE_POLICY = "archivePolicy"
+KARABO_SCHEMA_OVERWRITE = "overwrite"
+KARABO_SCHEMA_DAQ_DATA_TYPE = "daqDataType"
+KARABO_SCHEMA_REGEX = "regex"
+
+# Fixed classId definitions
+
+KARABO_CLASS_ID_STATE = "State"
+KARABO_CLASS_ID_ALARM = "AlarmCondition"
+
+KARABO_HASH_CLASS_ID = "__classId"
+
+# The default scene name to be used
+KARABO_SCHEMA_DEFAULT_SCENE = "scene"
+
+# A tuple which defines the ordering of the above attributes
+KARABO_SCHEMA_ATTRIBUTES = (
+    KARABO_SCHEMA_DISPLAYED_NAME,
+    KARABO_SCHEMA_DESCRIPTION,
+    KARABO_SCHEMA_DEFAULT_VALUE,
+    KARABO_SCHEMA_DISPLAY_TYPE,
+    KARABO_SCHEMA_ACCESS_MODE,
+    KARABO_SCHEMA_NODE_TYPE,
+    KARABO_SCHEMA_VALUE_TYPE,
+    KARABO_SCHEMA_CLASS_ID,
+    KARABO_SCHEMA_ALIAS,
+    KARABO_SCHEMA_ALLOWED_STATES,
+    KARABO_SCHEMA_ASSIGNMENT,
+    KARABO_SCHEMA_TAGS,
+    KARABO_SCHEMA_ROW_SCHEMA,
+    KARABO_SCHEMA_OPTIONS,
+    KARABO_SCHEMA_REQUIRED_ACCESS_LEVEL,
+    KARABO_SCHEMA_UNIT_ENUM,
+    KARABO_SCHEMA_UNIT_NAME,
+    KARABO_SCHEMA_UNIT_SYMBOL,
+    KARABO_SCHEMA_METRIC_PREFIX_ENUM,
+    KARABO_SCHEMA_METRIC_PREFIX_NAME,
+    KARABO_SCHEMA_METRIC_PREFIX_SYMBOL,
+    KARABO_SCHEMA_MIN_INC,
+    KARABO_SCHEMA_MAX_INC,
+    KARABO_SCHEMA_MIN_EXC,
+    KARABO_SCHEMA_MAX_EXC,
+    KARABO_SCHEMA_MIN_SIZE,
+    KARABO_SCHEMA_MAX_SIZE,
+    KARABO_SCHEMA_ARCHIVE_POLICY,
+    KARABO_SCHEMA_REGEX,
+    KARABO_SCHEMA_OVERWRITE,
+    KARABO_SCHEMA_DAQ_DATA_TYPE,
+)
+
+KARABO_TYPE_BOOL = "BOOL"
+KARABO_TYPE_CHAR = "CHAR"
+KARABO_TYPE_INT8 = "INT8"
+KARABO_TYPE_UINT8 = "UINT8"
+KARABO_TYPE_INT16 = "INT16"
+KARABO_TYPE_UINT16 = "UINT16"
+KARABO_TYPE_INT32 = "INT32"
+KARABO_TYPE_UINT32 = "UINT32"
+KARABO_TYPE_INT64 = "INT64"
+KARABO_TYPE_UINT64 = "UINT64"
+KARABO_TYPE_FLOAT = "FLOAT"
+KARABO_TYPE_DOUBLE = "DOUBLE"
+KARABO_TYPE_COMPLEX_FLOAT = "COMPLEX_FLOAT"
+KARABO_TYPE_COMPLEX_DOUBLE = "COMPLEX_DOUBLE"
+KARABO_TYPE_STRING = "STRING"
+KARABO_TYPE_HASH = "HASH"
+KARABO_TYPE_SCHEMA = "SCHEMA"
+KARABO_TYPE_NONE = "NONE"
+KARABO_TYPE_BYTE_ARRAY = "BYTE_ARRAY"
+KARABO_TYPE_VECTOR_BOOL = "VECTOR_BOOL"
+KARABO_TYPE_VECTOR_CHAR = "VECTOR_CHAR"
+KARABO_TYPE_VECTOR_INT8 = "VECTOR_INT8"
+KARABO_TYPE_VECTOR_UINT8 = "VECTOR_UINT8"
+KARABO_TYPE_VECTOR_INT16 = "VECTOR_INT16"
+KARABO_TYPE_VECTOR_UINT16 = "VECTOR_UINT16"
+KARABO_TYPE_VECTOR_INT32 = "VECTOR_INT32"
+KARABO_TYPE_VECTOR_UINT32 = "VECTOR_UINT32"
+KARABO_TYPE_VECTOR_INT64 = "VECTOR_INT64"
+KARABO_TYPE_VECTOR_UINT64 = "VECTOR_UINT64"
+KARABO_TYPE_VECTOR_DOUBLE = "VECTOR_DOUBLE"
+KARABO_TYPE_VECTOR_FLOAT = "VECTOR_FLOAT"
+KARABO_TYPE_VECTOR_COMPLEX_DOUBLE = "VECTOR_COMPLEX_DOUBLE"
+KARABO_TYPE_VECTOR_COMPLEX_FLOAT = "VECTOR_COMPLEX_FLOAT"
+KARABO_TYPE_VECTOR_STRING = "VECTOR_STRING"
+KARABO_TYPE_VECTOR_HASH = "VECTOR_HASH"
+
+KARABO_LOGGER_CONTENT_DEFAULT = 100
+
+KARABO_TYPES = (
+    KARABO_TYPE_BOOL,
+    KARABO_TYPE_CHAR,
+    KARABO_TYPE_INT8,
+    KARABO_TYPE_UINT8,
+    KARABO_TYPE_INT16,
+    KARABO_TYPE_UINT16,
+    KARABO_TYPE_INT32,
+    KARABO_TYPE_UINT32,
+    KARABO_TYPE_INT64,
+    KARABO_TYPE_UINT64,
+    KARABO_TYPE_FLOAT,
+    KARABO_TYPE_DOUBLE,
+    KARABO_TYPE_COMPLEX_FLOAT,
+    KARABO_TYPE_COMPLEX_DOUBLE,
+    KARABO_TYPE_STRING,
+    KARABO_TYPE_HASH,
+    KARABO_TYPE_SCHEMA,
+    KARABO_TYPE_NONE,
+    KARABO_TYPE_BYTE_ARRAY,
+    KARABO_TYPE_VECTOR_BOOL,
+    KARABO_TYPE_VECTOR_CHAR,
+    KARABO_TYPE_VECTOR_INT8,
+    KARABO_TYPE_VECTOR_UINT8,
+    KARABO_TYPE_VECTOR_INT16,
+    KARABO_TYPE_VECTOR_UINT16,
+    KARABO_TYPE_VECTOR_INT32,
+    KARABO_TYPE_VECTOR_UINT32,
+    KARABO_TYPE_VECTOR_INT64,
+    KARABO_TYPE_VECTOR_UINT64,
+    KARABO_TYPE_VECTOR_DOUBLE,
+    KARABO_TYPE_VECTOR_FLOAT,
+    KARABO_TYPE_VECTOR_COMPLEX_DOUBLE,
+    KARABO_TYPE_VECTOR_COMPLEX_FLOAT,
+    KARABO_TYPE_VECTOR_STRING,
+    KARABO_TYPE_VECTOR_HASH,
+)
+
+__KARABO_VECTOR_TYPES = (
+    KARABO_TYPE_VECTOR_BOOL,
+    KARABO_TYPE_VECTOR_INT8,
+    KARABO_TYPE_VECTOR_UINT8,
+    KARABO_TYPE_VECTOR_INT16,
+    KARABO_TYPE_VECTOR_UINT16,
+    KARABO_TYPE_VECTOR_INT32,
+    KARABO_TYPE_VECTOR_UINT32,
+    KARABO_TYPE_VECTOR_INT64,
+    KARABO_TYPE_VECTOR_UINT64,
+    KARABO_TYPE_VECTOR_DOUBLE,
+    KARABO_TYPE_VECTOR_FLOAT,
+    KARABO_TYPE_VECTOR_COMPLEX_DOUBLE,
+    KARABO_TYPE_VECTOR_COMPLEX_FLOAT,
+    KARABO_TYPE_VECTOR_STRING,
+    KARABO_TYPE_VECTOR_HASH,
+)
+
+__KARABO_INTEGER_TYPES = (
+    KARABO_TYPE_INT8,
+    KARABO_TYPE_UINT8,
+    KARABO_TYPE_INT16,
+    KARABO_TYPE_UINT16,
+    KARABO_TYPE_INT32,
+    KARABO_TYPE_UINT32,
+    KARABO_TYPE_INT64,
+    KARABO_TYPE_UINT64,
+)
+
+__KARABO_SIGNED_INTEGER_TYPES = (
+    KARABO_TYPE_INT8,
+    KARABO_TYPE_INT16,
+    KARABO_TYPE_INT32,
+    KARABO_TYPE_INT64,
+)
+
+__KARABO_UNSIGNED_INTEGER_TYPES = (
+    KARABO_TYPE_UINT8,
+    KARABO_TYPE_UINT16,
+    KARABO_TYPE_UINT32,
+    KARABO_TYPE_UINT64,
+)
+
+__KARABO_FLOAT_TYPES = (
+    KARABO_TYPE_FLOAT,
+    KARABO_TYPE_DOUBLE,
+    KARABO_TYPE_COMPLEX_FLOAT,
+    KARABO_TYPE_COMPLEX_DOUBLE,
+)
+
+__KARABO_VECTOR_INTEGER_TYPES = (
+    KARABO_TYPE_VECTOR_INT8,
+    KARABO_TYPE_VECTOR_INT16,
+    KARABO_TYPE_VECTOR_INT32,
+    KARABO_TYPE_VECTOR_INT64,
+    KARABO_TYPE_VECTOR_UINT8,
+    KARABO_TYPE_VECTOR_UINT16,
+    KARABO_TYPE_VECTOR_UINT32,
+    KARABO_TYPE_VECTOR_UINT64,
+)
+
+__KARABO_VECTOR_FLOAT_TYPES = (
+    KARABO_TYPE_VECTOR_DOUBLE,
+    KARABO_TYPE_VECTOR_FLOAT,
+    KARABO_TYPE_VECTOR_COMPLEX_DOUBLE,
+    KARABO_TYPE_VECTOR_COMPLEX_FLOAT,
+)
+
+
+def is_string_like_type(vtype: str) -> bool:
+    """Check if this value type is a string like type"""
+    return vtype in (KARABO_TYPE_CHAR, KARABO_TYPE_STRING)
+
+
+def is_string_type(vtype: str) -> bool:
+    """Check if this value type is a string type"""
+    return vtype == KARABO_TYPE_STRING
+
+
+def is_boolean_type(vtype: str) -> bool:
+    """Check if this value type is a bool type"""
+    return vtype == KARABO_TYPE_BOOL
+
+
+def is_bytearray_type(vtype: str) -> bool:
+    """Check if this value type is a bytearray type"""
+    return vtype == KARABO_TYPE_BYTE_ARRAY
+
+
+def is_vector_bool_type(vtype: str) -> bool:
+    """Check if this value type is a vector bool type"""
+    return vtype == KARABO_TYPE_VECTOR_BOOL
+
+
+def is_vector_char_type(vtype: str) -> bool:
+    """Check if this value type is a vector char type"""
+    return vtype == KARABO_TYPE_VECTOR_CHAR
+
+
+def is_vector_string_type(vtype: str) -> bool:
+    """Check if this value type is a vector string type"""
+    return vtype == KARABO_TYPE_VECTOR_STRING
+
+
+def is_vector_type(vtype: str) -> bool:
+    """Check if this value type is a vector type"""
+    return vtype in __KARABO_VECTOR_TYPES
+
+
+def is_float_type(vtype: str) -> bool:
+    """Check if this value type is a floating type"""
+    return vtype in __KARABO_FLOAT_TYPES
+
+
+def is_integer_type(vtype: str) -> bool:
+    """Check if this value type is an integer type"""
+    return vtype in __KARABO_INTEGER_TYPES
+
+
+def is_unsigned_integer_type(vtype: str) -> bool:
+    """Check if this value type belongs to an unsigned integer"""
+    return vtype in __KARABO_UNSIGNED_INTEGER_TYPES
+
+
+def is_signed_integer_type(vtype: str) -> bool:
+    """Check if this value type belongs to a signed integer"""
+    return vtype in __KARABO_SIGNED_INTEGER_TYPES
+
+
+def is_vector_integer_type(vtype: str) -> bool:
+    """Check if this value type belongs to a vector with integers"""
+    return vtype in __KARABO_VECTOR_INTEGER_TYPES
+
+
+def is_vector_float_type(vtype: str) -> bool:
+    """Check if this value type belongs to a vector with float types"""
+    return vtype in __KARABO_VECTOR_FLOAT_TYPES
+
+
+def is_vector_hash_type(vtype: str) -> bool:
+    """Check if this value type belongs to a vector hash"""
+    return vtype == KARABO_TYPE_VECTOR_HASH
