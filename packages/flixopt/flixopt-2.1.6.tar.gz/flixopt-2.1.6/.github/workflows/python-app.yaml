@@ -1,0 +1,223 @@
+name: Python Package CI/CD
+
+on:
+  push:
+    branches: [main]  # Run on pushes to main (after PR is merged)
+    tags:
+      - 'v*'  # Trigger on version tags
+  pull_request:
+    branches: [main, next/*]  # Run when PRs are created or updated
+    types: [opened, synchronize, reopened]
+  release:
+    types: [created]  # Trigger when a release is created
+
+jobs:
+  lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"  # Ruff tasks can run with a single Python version
+
+      - name: Install Ruff
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+
+      - name: Run Ruff Linting
+        run: ruff check .
+
+  test:
+    runs-on: ubuntu-22.04
+    needs: lint  # Run tests only after linting passes
+    strategy:
+      fail-fast: false  # Continue testing other Python versions if one fails
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev]
+
+      - name: Run tests
+        run: pytest -v -p no:warnings
+
+  create-release:
+    name: Create Release with Changelog
+    runs-on: ubuntu-22.04
+    needs: [test]
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Sync changelog to docs
+        run: |
+          cp CHANGELOG.md docs/changelog.md
+          echo "✅ Synced changelog to docs"
+
+      - name: Extract release notes
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "Extracting release notes for version: $VERSION"
+          python scripts/extract_release_notes.py $VERSION > current_release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: current_release_notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    runs-on: ubuntu-22.04
+    needs: [test, create-release]  # Run after tests and release creation
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')  # Only on tag push
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build setuptools wheel twine
+
+      - name: Build the distribution
+        run: |
+          python -m build
+
+      - name: Upload to TestPyPI
+        run: |
+          twine upload --repository testpypi dist/* --verbose
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+
+      - name: Test install from TestPyPI
+        run: |
+          # Create a temporary environment to test installation
+          python -m venv test_env
+          source test_env/bin/activate
+          # Get the package name from the built distribution
+          PACKAGE_NAME=$(ls dist/*.tar.gz | head -n 1 | sed 's/dist\///' | sed 's/-[0-9].*$//')
+          # Install from TestPyPI with retry (TestPyPI can be slow to index)
+          pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ $PACKAGE_NAME || \
+          (sleep 30 && pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ $PACKAGE_NAME) || \
+          (sleep 60 && pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ $PACKAGE_NAME)
+          # Basic import test
+          python -c "import flixopt; print('Installation successful!')"
+
+  publish-pypi:
+    name: Publish to PyPI
+    runs-on: ubuntu-22.04
+    needs: [publish-testpypi]  # Only run after TestPyPI publish succeeds
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')  # Only on tag push
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build setuptools wheel twine
+
+      - name: Build the distribution
+        run: |
+          python -m build
+
+      - name: Upload to PyPI
+        run: |
+          twine upload dist/* --verbose
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Verify PyPI installation
+        run: |
+          # Create a temporary environment to test installation
+          python -m venv prod_test_env
+          source prod_test_env/bin/activate
+          # Get the package name from the built distribution
+          PACKAGE_NAME=$(ls dist/*.tar.gz | head -n 1 | sed 's/dist\///' | sed 's/-[0-9].*$//')
+          # Wait for PyPI to index the package
+          sleep 60
+          # Install from PyPI
+          pip install $PACKAGE_NAME
+          # Basic import test
+          python -c "import flixopt; print('PyPI installation successful!')"
+
+  deploy-docs:
+    name: Deploy Documentation
+    runs-on: ubuntu-22.04
+    needs: [publish-pypi]  # Deploy docs after successful PyPI publishing
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, 'alpha') && !contains(github.ref, 'beta') && !contains(github.ref, 'rc')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for proper versioning
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Sync changelog to docs
+        run: |
+          cp CHANGELOG.md docs/changelog.md
+          echo "✅ Synced changelog to docs"
+
+      - name: Install documentation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[docs]"
+
+      - name: Configure Git Credentials
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+      - name: Deploy docs
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "Deploying docs after successful PyPI publish: $VERSION"
+          mike deploy --push --update-aliases $VERSION latest
+          mike set-default --push latest
