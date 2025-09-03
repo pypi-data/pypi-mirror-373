@@ -1,0 +1,531 @@
+# -*- python -*-
+from __future__ import absolute_import, division, print_function
+import warpoptions
+warpoptions.ignoreUnknownArgs = True
+
+from numpy import linalg
+from scipy import constants
+from scipy import spatial
+from scipy.interpolate import interp1d as scipy_interp1d
+import h5py
+import json
+import math
+import msgpack
+import numpy as np
+import os
+import rswarp
+import scipy
+import sys
+import time
+import array
+
+from rswarp.cathode import injectors
+from rswarp.cathode import sources
+from rswarp.diagnostics import ConductorTemplates
+from rswarp.diagnostics import FieldDiagnostic
+from rswarp.diagnostics import ImpactDensity
+from rswarp.diagnostics.ConductorTemplates import conductor_type_2d, conductor_type_3d
+from rswarp.run_files.tec.reflection import particlereflector
+from rswarp.stlconductor import stlconductor
+
+
+import warp as wp
+from warp.data_dumping.openpmd_diag import ParticleDiagnostic
+from warp.field_solvers.generateconductors import XPlane, YPlane, ZPlane, Box, Sphere
+from warp.particles.singleparticle import TraceParticle
+from warp.run_modes.egun_like import gun, gunppzx #needed for egun script
+
+
+{% if isOptimize %}
+def parse_opts():
+    res = {}
+    i = 1
+    fields = (
+{% for f in optimizeFields %}
+        '{{ f }}',
+{% endfor %}
+    )
+    for field in fields:
+        assert len(sys.argv) > i, 'missing opt args: {}'.format(' '.join(fields))
+        res[field] = float(sys.argv[i])
+        i += 1
+    return res
+
+opts = parse_opts()
+{% endif %}
+
+kb_eV = 8.6173324e-5 #Bolztmann constant in eV/K
+kb_J = constants.k #Boltzmann constant in J/K
+
+#-----
+
+diag_dir = 'diags/xzsolver/hdf5/'
+
+#------
+
+#GLOBAL GEOMETRY PARAMETERS FOR USERS
+PLATE_SPACING = {{ simulationGrid_plate_spacing }}
+CHANNEL_WIDTH = {{ simulationGrid_channel_width }} #width of simulation box
+CHANNEL_HEIGHT = {{ simulationGrid_channel_height }}
+
+#Dimensions
+X_MAX = CHANNEL_WIDTH*0.5
+X_MIN = -1.*X_MAX
+Y_MAX = CHANNEL_HEIGHT*0.5
+Y_MIN = -1.*Y_MAX
+Z_MIN = 0.
+Z_MAX = PLATE_SPACING
+
+#Grid parameters
+NUM_X = {{ simulationGrid_num_x }}
+NUM_Y = {{ simulationGrid_num_y }}
+NUM_Z = {{ simulationGrid_num_z }}
+
+#z step size
+dx = (X_MAX - X_MIN)/NUM_X
+dy = (Y_MAX - Y_MIN)/NUM_Y
+dz = (Z_MAX - Z_MIN)/NUM_Z
+
+#------
+
+#Specify solver geometry
+{% if is3D %}
+wp.w3d.solvergeom = wp.w3d.XYZgeom
+{% else %}
+wp.w3d.solvergeom = wp.w3d.XZgeom
+{% endif %}
+
+# Set boundary conditions
+# Longitudinal conditions overriden by conducting plates
+wp.w3d.bound0  = wp.dirichlet
+wp.w3d.boundnz = wp.dirichlet
+wp.w3d.boundxy = wp.periodic
+# Particles boundary conditions
+wp.top.pbound0  = wp.absorb
+wp.top.pboundnz = wp.absorb
+wp.top.pboundxy = wp.periodic
+
+# Set grid boundaries
+wp.w3d.xmmin = X_MIN
+wp.w3d.xmmax = X_MAX
+if wp.w3d.solvergeom == wp.w3d.XYZgeom:
+    wp.w3d.ymmin = Y_MIN
+    wp.w3d.ymmax = Y_MAX
+wp.w3d.zmmin = 0.
+wp.w3d.zmmax = Z_MAX
+
+# Set grid counts
+wp.w3d.nx = NUM_X
+if wp.w3d.solvergeom == wp.w3d.XYZgeom:
+    wp.w3d.ny = NUM_Y
+wp.w3d.nz = NUM_Z
+
+zmesh = np.linspace(0,Z_MAX,NUM_Z+1) #holds the z-axis grid points in an array
+
+#------
+
+#Cathode and anode settings
+CATHODE_TEMP = {{ beam_cathode_temperature }} #cathode temperature in K
+CATHODE_PHI = {{ beam_cathode_work_function }} #work function in eV
+ANODE_WF = {{ beam_anode_work_function }}
+GRID_BIAS = {{ beam_anode_voltage }} #voltage applied to any grid of electrodes
+
+vacuum_level = CATHODE_PHI - ANODE_WF + GRID_BIAS
+
+#compute beam cutoff velocity for time-step determinance
+beam_beta = sources.compute_cutoff_beta(CATHODE_TEMP)
+
+#Compute Child-Langmuir limit for this setup A/m^2
+cl_limit = sources.cl_limit(CATHODE_PHI, ANODE_WF, GRID_BIAS, PLATE_SPACING)
+
+#------
+
+#INJECTION SPECIFICATION
+USER_INJECT = {{ beam_currentMode }}
+
+# --- Setup simulation species
+beam = wp.Species(type=wp.{{ beam_species }}, name='beam')
+
+# --- Set basic beam parameters
+SOURCE_RADIUS_1 = 0.5*CHANNEL_WIDTH #a0 parameter - X plane
+SOURCE_RADIUS_2 = 0.5*CHANNEL_HEIGHT #b0 parameter - Y plane
+Z_PART_MIN = dz/8. #starting particle z value
+
+
+#Compute cathode area for geomtry-specific current calculations
+if wp.w3d.solvergeom == wp.w3d.XYZgeom:
+    #For 3D cartesion geometry only
+    cathode_area = 4.*SOURCE_RADIUS_1*SOURCE_RADIUS_2
+else:
+    #Assume 2D XZ geometry
+    cathode_area = 2.*SOURCE_RADIUS_1*1. # 1 m is the geometric factor scaling the plane of the ignorable coordinate
+
+# If true, position and angle of injected particle are computed analytically rather than interpolated
+# Can be false for all but C-L injection (inject=2)
+wp.w3d.l_inj_exact = False
+
+#Specify particles to be injected each step
+PTCL_PER_STEP = {{ simulationGrid_particles_per_step }}
+wp.top.npinject = PTCL_PER_STEP
+
+# Set the top.linj_rectangle flag so that injection uses the same geometry
+wp.top.linj_rectangle = (wp.w3d.solvergeom == wp.w3d.XZgeom or wp.w3d.solvergeom == wp.w3d.XYZgeom)
+
+#Determine an appropriate time step based upon estimated final velocity
+vzfinal = np.sqrt(2.*abs(vacuum_level)*np.abs(beam.charge)/beam.mass)+beam_beta*constants.c
+wp.top.dt = dz/vzfinal
+
+if vzfinal*wp.top.dt > dz:
+    print("Time step dt = {:.3e}s does not constrain motion to a single cell".format(wp.top.dt))
+
+
+{% if simulation_egun_mode == '1' %}
+
+#specify thermal properties
+beam.vthz     = np.sqrt(CATHODE_TEMP*kb_J/beam.mass)
+beam.vthperp  = np.sqrt(CATHODE_TEMP*kb_J/beam.mass)
+wp.top.lhalfmaxwellinject = 1 #inject z velocities as half Maxwellian
+
+wp.top.inject = 1
+wp.top.npinject = min(1000, wp.top.npinject)
+beam.ibeam = sources.j_rd(CATHODE_TEMP, CATHODE_PHI) * cathode_area
+beam.a0     = SOURCE_RADIUS_1
+beam.b0     = SOURCE_RADIUS_2
+beam.ap0      = .0e0
+beam.bp0      = .0e0
+wp.w3d.l_inj_exact = True
+
+#set the ssnpid
+wp.top.ssnpid = 1
+
+{% else -%}
+
+if USER_INJECT == 1:
+    # Constant current density - beam transverse velocity fixed to zero, very small longitduinal velocity
+{% if is3D %}
+    #Set injection flag
+    wp.top.inject = 1              # 1 means constant; 2 means space-charge limited injection;# 6 means user-specified
+
+    wp.top.npinject = PTCL_PER_STEP
+
+    USER_CURRENT = {{ beam_beam_current }}
+    beam.ibeam = USER_CURRENT
+    beam.a0     = SOURCE_RADIUS_1
+    beam.b0     = SOURCE_RADIUS_2
+
+    beam.ap0 = .0e0
+    beam.bp0 = .0e0
+
+    wp.w3d.l_inj_exact = True
+
+    # Specify thermal properties
+    beam.vthz = np.sqrt(4. * kb_J / beam.mass)
+    beam.vthperp = 0.0
+    wp.top.lhalfmaxwellinject = 1  # inject z velocities as half Maxwellian
+{% else %}
+    #Set injection flag
+    wp.top.inject = 6               # 1 means constant; 2 means space-charge limited injection;# 6 means user-specified
+
+    USER_CURRENT = {{ beam_beam_current }}
+    beam.ibeam = USER_CURRENT
+    beam.a0     = SOURCE_RADIUS_1
+    beam.b0     = SOURCE_RADIUS_2
+
+    #sources.constant_current(beam, CHANNEL_WIDTH, Z_PART_MIN, ptcl_per_step)
+    dz = (wp.w3d.zmmax - wp.w3d.zmmin) / wp.w3d.nz
+    myInjector = injectors.UserInjectors(beam, wp.w3d, None, CATHODE_TEMP, CHANNEL_WIDTH, PTCL_PER_STEP, zmin_scale=dz/Z_PART_MIN)
+    wp.installuserinjection(myInjector.inject_constant)
+{% endif %}
+
+if USER_INJECT == 2:
+{% if is3D %}
+    CURRENT_MODIFIER = 0.5  # Factor to multiply CL current by when setting beam current
+    # Constant current density - beam transverse velocity fixed to zero, very small longitduinal velocity
+
+    # Set injection flag
+    wp.top.inject = 1  # 1 means constant; 2 means space-charge limited injection;# 6 means user-specified
+    wp.top.npinject = PTCL_PER_STEP
+
+    #Compute Child-Langmuir limit for this setup A/m^2
+    cl_limit = sources.cl_limit(CATHODE_PHI, ANODE_WF, GRID_BIAS, PLATE_SPACING)
+
+    #Compute actual current for emitter area
+    beam_current = cl_limit * cathode_area
+
+    beam.ibeam = beam_current * CURRENT_MODIFIER
+
+    beam.a0 = SOURCE_RADIUS_1
+    beam.b0 = SOURCE_RADIUS_1
+    beam.ap0 = .0e0
+    beam.bp0 = .0e0
+
+    wp.w3d.l_inj_exact = True
+
+    # Initial velocity settings (5% of c)
+    vrms = np.sqrt(1 - 1 / (0.05 / 511e3 + 1) ** 2) * 3e8
+    wp.top.vzinject = vrms
+{% else %}
+    # space charge limited injection using Child-Langmuir computation of cold limit
+
+    #Set injection flag
+    wp.top.inject = 2               # 1 means constant; 2 means space-charge limited injection;# 6 means user-specified
+
+    beam_current = sources.cl_limit(CATHODE_PHI, ANODE_WF, GRID_BIAS, PLATE_SPACING)*cathode_area
+    beam.ibeam = beam_current
+    beam.a0     = SOURCE_RADIUS_1
+    beam.b0     = SOURCE_RADIUS_2
+    wp.w3d.l_inj_exact = True
+{% endif %}
+
+elif USER_INJECT == 3:
+    # Thermionic injection according to Richardson Dushmann
+
+    wp.top.inject = 1
+    wp.w3d.l_inj_exact = True
+
+    # Specify thermal properties and compute current
+    beam.vthz = np.sqrt(CATHODE_TEMP * kb_J / beam.mass)
+    beam.vthperp = np.sqrt(CATHODE_TEMP * kb_J / beam.mass)
+    wp.top.lhalfmaxwellinject = 1  # inject z velocities as half Maxwellian
+    beam_current = sources.j_rd(CATHODE_TEMP, CATHODE_PHI) * cathode_area  # steady state current in Amps
+
+    #specify other beam properties
+    beam.ibeam = beam_current
+    beam.npinject = PTCL_PER_STEP
+    beam.a0 = SOURCE_RADIUS_1
+    beam.b0 = SOURCE_RADIUS_1
+    beam.ap0 = .0e0
+    beam.bp0 = .0e0
+
+elif USER_INJECT == 4:
+    def schottky_emission():
+        #injection specification for installation
+
+        global num_particles_res
+
+        Ez = solverE.getez()
+        if wp.w3d.solvergeom == wp.w3d.XYZgeom:
+            Ez_mean = np.mean(Ez[:, :, 0])
+        else:
+            Ez_mean = np.mean(Ez[:, 0])
+
+        beta = 27 #field enhancement factor
+
+        if wp.w3d.inj_js == beam.js:
+            delta_w = 0.
+            if Ez_mean < 0.:
+                delta_w = np.sqrt(beta * constants.elementary_charge ** 3 * np.abs(Ez_mean) / (4 * np.pi * constants.epsilon_0))
+
+            rd_current = AR * CATHODE_TEMP ** 2 * np.exp(
+                - (CATHODE_PHI * constants.elementary_charge - delta_w) / (CATHODE_TEMP * kb_J)) * cathode_area
+            electrons_per_second = rd_current / constants.elementary_charge
+            electrons_per_step = electrons_per_second * wp.top.dt
+            float_num_particles = electrons_per_step / beam.sw
+            num_particles = int(float_num_particles + num_particles_res + np.random.rand())
+            num_particles_res += float_num_particles - num_particles
+
+            # --- Create the particles on the surface
+            x = -beam.a0 + 2 * beam.a0 * np.random.rand(num_particles)
+            y = -beam.b0 + 2 * beam.b0 * np.random.rand(num_particles)
+            vz = np.random.rand(num_particles)
+            vz = np.maximum(1e-14 * np.ones_like(vz), vz);
+            vz = beam.vthz * np.sqrt(-2.0 * np.log(vz))
+
+    # Field enhanced thermionic emission calculated via a Schottky correction
+
+    wp.w3d.l_inj_exact = True
+    wp.w3d.l_inj_user_particles_v = True
+
+    # Schottky model
+    wp.top.inject = 1
+    wp.top.ninject = 1
+    wp.top.lhalfmaxwellinject = 1  # inject z velocities as half Maxwellian
+    wp.top.zinject = np.asarray([Z_PART_MIN])
+    wp.top.ainject = np.asarray([SOURCE_RADIUS_1])
+    wp.top.binject = np.asarray([SOURCE_RADIUS_2])
+
+    electric_field = 0
+    delta_w = np.sqrt(constants.elementary_charge ** 3 * electric_field / (4 * np.pi * constants.epsilon_0))
+    A0 = 1.20173e6
+    lambdaR = 0.5 #Richardson constant adjustment
+    AR = A0*lambdaR
+
+    beam.a0 = SOURCE_RADIUS_1
+    beam.b0 = SOURCE_RADIUS_2
+    beam.ap0 = .0e0
+    beam.bp0 = .0e0
+    beam.vthz = np.sqrt(CATHODE_TEMP * kb_J / beam.mass)
+    beam.vthperp = np.sqrt(CATHODE_TEMP * kb_J / beam.mass)
+
+    # use Richardson current to estimate particle weight
+    rd_current = AR * CATHODE_TEMP ** 2 * np.exp(- (CATHODE_PHI * constants.elementary_charge) / (CATHODE_TEMP * kb_J)) * cathode_area
+    electrons_per_second = rd_current / constants.elementary_charge
+    electrons_per_step = electrons_per_second * wp.top.dt
+    beam.sw = electrons_per_step / PTCL_PER_STEP
+
+    num_particles_res = 0
+    wp.installuserparticlesinjection(schottky_emission)
+
+{% endif -%}
+
+wp.derivqty()
+
+#------
+
+# Set up fieldsolver
+wp.f3d.mgtol = 1e-6 # Multigrid solver convergence tolerance, in volts. 1 uV is default in Warp.
+if wp.w3d.solvergeom == wp.w3d.XYZgeom:
+    solverE = wp.MultiGrid3D()
+else:
+    solverE = wp.MultiGrid2D()
+wp.registersolver(solverE)
+
+#------
+
+# --- Emitter settings
+extractor_voltage = vacuum_level
+# --- Anode Location
+zplate = Z_MAX # --- plate location
+
+conductors = [
+{% for c in conductors %}
+{% if c.conductor_type.type == 'stl' %}
+    # add scale when available in rswarp
+    stlconductor.STLconductor("{{ c.conductor_type.file }}", voltage={{ c.conductor_type.voltage }}, xcent={{ c.xCenter }}, ycent={{ c.yCenter }}, zcent={{ c.zCenter }}, raytri_scheme="watertight", verbose="on", normalization_factor=dz, condid={{ c.id }}),
+{% else %}
+    wp.Box({{ c.conductor_type.xLength }}, {{ c.conductor_type.yLength }}, {{ c.conductor_type.zLength }}, voltage={{ c.conductor_type.voltage }}, xcent={{ c.xCenter }}, ycent={{ c.yCenter }}, zcent={{ c.zCenter }}, permittivity={{ c.conductor_type.permittivity }}, condid={{ c.id }}),
+{% endif %}
+{% endfor %}
+]
+
+stl_conductors = {
+{% for c in conductors %}
+{% if c.conductor_type.type == 'stl' %}
+    {{ c.id }}: {
+        'f': '{{ c.conductor_type.file }}',
+        'cx': {{ c.xCenter }},
+        'cy': {{ c.yCenter }},
+        'cz': {{ c.zCenter }},
+        's': {{ c.conductor_type.scale }}
+    },
+{% endif %}
+{% endfor %}
+}
+
+reflectors = [
+{% for c in conductors %}
+    {
+        'reflectorType': '{{ c.conductor_type.reflectorType }}',
+        'reflectorProbability': {{ c.conductor_type.reflectorProbability }},
+    },
+{% endfor %}
+]
+
+# Install reflecting conductors regardless of voltage
+for c_idx, c in enumerate(conductors):
+    r = reflectors[c_idx]
+    if c.voltage != 0 or r['reflectorType'] != 'none':
+        wp.installconductor(c, dfill=wp.largepos)
+
+max_c_id = max([c.condid for c in conductors]) if len(conductors) > 0 else 0
+
+# Create source conductors
+source_condid = max_c_id + 1
+source = wp.ZPlane(zcent=wp.w3d.zmmin, zsign=-1., voltage=0., condid=source_condid)
+wp.installconductor(source, dfill=wp.largepos)
+
+# Create ground plate
+plate_condid = max_c_id + 2
+plate = wp.ZPlane(voltage=extractor_voltage, zcent=zplate, condid=plate_condid)
+wp.installconductor(plate, dfill=wp.largepos)
+
+scraper = wp.ParticleScraper([source, plate] + conductors, lcollectlpdata=True, lsaveintercept={{ saveIntercept }})
+
+{% if anode_reflectorType != 'none' %}
+particlereflector.installparticlereflector(
+    particlereflector.ParticleReflector(
+        scraper=scraper,
+        conductor=plate,
+        spref=wp.Species(type=wp.Electron, name='Electron'),
+        srefprob={{ anode_reflectorProbability if anode_reflectorType == 'specular' else 0 }},
+        drefprob={{ anode_reflectorProbability if anode_reflectorType == 'diffuse' else 0 }},
+        refscheme='uniform',
+    ),
+)
+{% endif %}
+
+{% if cathode_reflectorType != 'none' %}
+particlereflector.installparticlereflector(
+    particlereflector.ParticleReflector(
+        scraper=scraper,
+        conductor=source,
+        spref=wp.Species(type=wp.Electron, name='Electron'),
+        srefprob={{ cathode_reflectorProbability if cathode_reflectorType == 'specular' else 0 }},
+        drefprob={{ cathode_reflectorProbability if cathode_reflectorType == 'diffuse' else 0 }},
+        refscheme='uniform',
+    )
+)
+{% endif %}
+
+for r_idx, r in enumerate(reflectors):
+    c = conductors[r_idx]
+    if r['reflectorType'] != 'none':
+        particlereflector.installparticlereflector(
+            particlereflector.ParticleReflector(
+                scraper=scraper,
+                conductor=c,
+                spref=wp.Species(type=wp.Electron, name='Electron'),
+                srefprob=r['reflectorProbability'] if r['reflectorType'] == 'specular' else 0,
+                drefprob=r['reflectorProbability'] if r['reflectorType'] == 'diffuse' else 0,
+                refscheme='uniform',
+            )
+        )
+
+#------
+
+can_write_files = wp.comm_world.rank == 0
+
+
+def array_to_list(value):
+    if isinstance(value, array.array):
+        return list(value)
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, list):
+        return [array_to_list(v) for v in value]
+    return value
+
+
+def dict_to_h5(d, hf, path=None):
+    if path is None:
+        path = ''
+    try:
+        for i in range(len(d)):
+            try:
+                p = '{}/{}'.format(path, i)
+                hf.create_dataset(p, data=d[i])
+            except TypeError:
+                dict_to_h5(d[i], hf, path=p)
+    except KeyError:
+        for k in d:
+            p = '{}/{}'.format(path, k)
+            try:
+                hf.create_dataset(p, data=d[k])
+            except TypeError:
+                dict_to_h5(d[k], hf, path=p)
+
+
+{% if not isOptimize %}
+particleperiod = {{ particlePeriod }}
+particle_diagnostic_0 = ParticleDiagnostic(period=particleperiod, top=wp.top, w3d=wp.w3d,
+                                           species={species.name: species for species in wp.listofallspecies},
+                                           comm_world=wp.comm_world, lparallel_output=False, write_dir=diag_dir[:-5])
+fieldperiod = {{ particlePeriod }}
+efield_diagnostic_0 = FieldDiagnostic.ElectrostaticFields(solver=solverE, top=wp.top, w3d=wp.w3d, comm_world=wp.comm_world,
+                                                          period=fieldperiod)
+
+wp.installafterstep(particle_diagnostic_0.write)
+wp.installafterstep(efield_diagnostic_0.write)
+{% endif %}
+
+#------

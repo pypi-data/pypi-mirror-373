@@ -1,0 +1,67 @@
+
+#prevent GIST from starting upon setup
+wp.top.lprntpara = False
+wp.top.lpsplots = False
+
+wp.top.verbosity = 1 # Reduce solver verbosity
+solverE.mgverbose = 1 #further reduce output upon stepping - prevents websocket timeouts in Jupyter notebook
+
+# removed, issue #798
+# #Adjusting the multigrid parameter here improves convergence speed
+# omega = 2./(1. + np.sin(np.pi/min(NUM_X+1,NUM_Z+1)))
+# solverE.mgparam = omega
+
+solverE.mgmaxiters = 12000 #rough approximation needed for initial solve to converge
+wp.package("w3d")
+wp.generate()
+
+# need to reset it or the step() below will take forever
+solverE.mgmaxiters = 100
+
+#------
+
+potential = wp.getphi(bcast=0)
+if can_write_files:
+    hf = h5py.File('potential.h5', 'w')
+    dict_to_h5(potential, hf, path='potential')
+    hf.close()
+
+#------
+
+#Grab Ez from the solver and average over the transverse (x) plane
+Ez = wp.getselfe(comp='z', bcast=0)
+
+if can_write_files:
+    flat_Ez = np.mean(Ez,0)
+    if wp.w3d.solvergeom == wp.w3d.XYZgeom:
+        flat_Ez = np.mean(flat_Ez,0)
+
+    #Generate an interpolating function for smooth particle integration
+    Ez_approx = scipy_interp1d(zmesh,flat_Ez, kind='cubic')
+
+    #Integrate the particle motion subject to initial conditions specified by the simulation
+    tof_expected = steps_expected = None
+    try:
+        tof_expected = sources.compute_expected_time(beam, CATHODE_TEMP, Ez_approx, Z_MIN, Z_MAX, wp.top.dt)
+        steps_expected = tof_expected/wp.top.dt
+    except ValueError as e:
+        pass
+    except AssertionError as e:
+        pass
+
+    # average over the transverse (x) plane
+    flat_Phi = -1.*np.mean(potential,0) #Needs to be made negative
+
+    #Generate an interpolating function for smooth particle integration
+    Phi_approx = scipy_interp1d(zmesh,flat_Phi, kind='cubic')
+
+    e_cross = sources.compute_crossing_fraction(CATHODE_TEMP, Phi_approx, zmesh)
+
+    with open('{{ estimateFile }}', 'w') as f:
+        f.write(json.dumps({
+            'tof_expected': tof_expected,
+            'steps_expected': steps_expected,
+            'e_cross': e_cross,
+        }, allow_nan=False))
+
+wp.step({{ stepSize }})

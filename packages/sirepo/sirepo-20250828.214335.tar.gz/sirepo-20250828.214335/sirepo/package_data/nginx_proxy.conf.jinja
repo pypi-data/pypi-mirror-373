@@ -1,0 +1,64 @@
+daemon off;
+worker_processes 1;
+# use "debug" instead of "info" for noisy debugging
+error_log /dev/stderr info;
+pid {{ run_dir }}/nginx.pid;
+include /usr/share/nginx/modules/*.conf;
+
+events {
+    worker_connections 32;
+}
+
+http {
+    # We have to define all of these paths because we are running nginx as a non-privileged user.
+    # nginx default paths expect write level privs on files only writable by root.
+    # So, we have to define our own paths in a place writable by us (vagrant).
+    client_body_temp_path {{ run_dir }}/client_body_temp;
+    proxy_temp_path {{ run_dir }}/proxy_temp;
+    fastcgi_temp_path {{ run_dir }}/fastcgi_temp;
+    uwsgi_temp_path {{ run_dir }}/uwsgi_temp;
+    scgi_temp_path {{ run_dir }}/scgi_temp;
+    client_max_body_size 200m;
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+        '$status $body_bytes_sent "$http_referer" '
+        '"$http_user_agent" "$http_x_forwarded_for"';
+    access_log /dev/stdout main;
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    proxy_http_version 1.1;
+    proxy_next_upstream error timeout invalid_header http_500 http_502 http_503 http_504;
+    proxy_read_timeout 600s;
+    proxy_send_timeout 600s;
+    proxy_connect_timeout 600s;
+    proxy_redirect off;
+    proxy_set_header Host $host:$server_port;
+    proxy_set_header Proxy "";
+    proxy_set_header Via $remote_addr;
+    proxy_set_header X-Real-Ip $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_cache_bypass $http_upgrade;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+    server {
+        listen {{ ip }}:{{ nginx_proxy_port }};
+        root /usr/share/nginx/html;
+        {% if jupyterhub_root  %}
+        location /{{ jupyterhub_root }}/hub/logout {
+            return 301 /auth-logout;
+        }
+        location /{{ jupyterhub_root }}/ {
+            proxy_pass http://127.0.0.1:{{ jupyterhub_port }};
+        }
+        {% endif %}
+        location / {
+            proxy_pass http://127.0.0.1:{{ port }};
+        }
+    }
+}

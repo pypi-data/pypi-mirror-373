@@ -1,0 +1,35 @@
+{% include "radia_util.py" %}
+
+# ** Begin **
+g_id, id_map = _build_radia_geom()
+
+print(f"Solving {g_id}...")
+res = radia.Solve(g_id, {{ solvePrec }}, {{ solveMaxIter }}, {{ solveMethod }})
+print(f"done: {res[3]} steps ({1000 * res[0]}ms); max |M| {res[1]} A/m; max |H| {res[2]} A/m")
+
+print("Dumping to {{ dmpOutputFile }}")
+with open("{{ dmpOutputFile }}", "wb") as f:
+    f.write(dump_bin(g_id))
+
+# ** Field Calculations **
+print("Calculating Fields")
+m = get_magnetization(g_id)
+
+{% if fieldPoints %}
+field_points = {{ fieldPoints }}
+{% for fieldType in POINT_FIELD_TYPES %}
+{{ fieldType.lower() }} = get_field(g_id, "{{ fieldType }}", field_points)
+{% endfor %}
+{% endif %}
+
+{% for fp in fieldPaths %}
+{% if fp.type == "line" or fp.type == "axis" %}
+# {{ fp.name }}
+p1 = {{ fp.begin }}
+p2 = {{ fp.end }}
+{% for fieldType in INTEGRABLE_FIELD_TYPES %}
+{{ fieldType.lower() }} = field_integral(g_id, "{{ fieldType }}", p1, p2)
+{% endfor %}
+{% endif %}
+{% endfor %}
+
