@@ -1,0 +1,195 @@
+#!python
+# Copyright 2019-2022 DADoES, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License in the root directory in the "LICENSE" file or at:
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+import argparse
+import sys
+import anatools
+from anatools.lib.print import print_color
+from anatools.anaclient.editor import _select_editor
+from anatools.anaclient._menu import _arrow_select, paginate_select
+
+
+def create_server(client):
+    """Interactive flow to create a new server for a workspace.
+
+    Uses arrow-key navigation (↑/↓ + Enter) instead of numeric prompts.
+    """
+    # ---------------- Organization selection ----------------
+    organizations = client.get_organizations()
+    if not organizations:
+        print_color("No organizations available.", "ff0000")
+        return
+    if len(organizations) == 1:
+        organization = organizations[0]
+    else:
+        org_names = [o["name"] for o in organizations]
+        if len(org_names) > 5:
+            first_view = org_names[:5] + ["More…"]
+            sel = _arrow_select(first_view, title="Select an organization to start a server for:")
+            if sel == "More…":
+                sel = paginate_select(org_names, title="Select an organization:")
+        else:
+            sel = _arrow_select(org_names, title="Select an organization:")
+        organization = next(o for o in organizations if o["name"] == sel)
+
+    # ---------------- Workspace selection -------------------
+    workspaces = client.get_workspaces(organizationId=organization["organizationId"])
+    if not workspaces:
+        print_color("No workspaces available for selected organization.", "ff0000")
+        return
+    if len(workspaces) == 1:
+        workspace = workspaces[0]
+    else:
+        ws_names = [w["name"] for w in workspaces]
+        if len(ws_names) > 5:
+            first_view = ws_names[:5] + ["More…"]
+            sel = _arrow_select(first_view, title="Select a workspace to start a server for:")
+            if sel == "More…":
+                sel = paginate_select(ws_names, title="Select a workspace:")
+        else:
+            sel = _arrow_select(ws_names, title="Select a workspace:")
+        workspace = next(w for w in workspaces if w["name"] == sel)
+
+    # ---------------- Instance type selection ----------------
+    instance_map = {
+        "CPU": "t3.xlarge",
+        "GPU": "g6e.xlarge",
+        "Custom…": "custom"
+    }
+    instance_label = _arrow_select(list(instance_map.keys()), title="Select a server type:")
+    if instance_map[instance_label] == "custom":
+        instance = input("Enter the custom instance type: ").strip()
+    else:
+        instance = instance_map[instance_label]
+
+    # ---------------- Launch editor -------------------------
+    client.create_server(
+        organizationId=workspace["organizationId"],
+        workspaceId=workspace["workspaceId"],
+        instance=instance,
+    )
+    editor_selector(client)
+    
+
+def show_launch_urls(client, editorId):
+    """Display launch URLs for Browser, Windsurf, Cursor and VSCode."""
+    servers = client.get_servers(serverId=editorId)
+    if not servers:
+        print_color(f"Server {editorId} not found.", "ff0000")
+        return
+    
+    server = servers[0]
+    if server['status']['state'] != 'running':
+        print_color(f"\n⚠️  Server {editorId} is not running (state: {server['status']['state']})", "ffaa00")
+        return
+    
+    url = server.get('url', '')
+    serverPath = server.get('serverPath', '/workspace/')
+    host = url.replace('https://', '')
+    
+    print(f"\n🚀 Launch options for server {server.get('name', editorId)}:\n")
+    print(f"  🌐 Browser:  {url}")
+    print(f"  🌊 Windsurf: windsurf://vscode-remote/ssh-remote+{editorId}@{host}:443{serverPath}")
+    print(f"  🔷 Cursor:   cursor://vscode-remote/ssh-remote+{editorId}@{host}:443{serverPath}")
+    print(f"  📘 VSCode:   vscode://vscode-remote/ssh-remote+{editorId}@{host}:443{serverPath}")
+    print()
+
+def editor_selector(client):
+    while True:
+        selection = _select_editor(client, action_name='manage')
+        if not selection:
+            return
+        editorId, state = selection
+        options = ['Rename', 'Delete']
+        if state in ('running', 'starting'): options = ['Launch', 'Rename', 'Stop', 'Delete']
+        elif state in ('stopped'): options = ['Start', 'Rename', 'Delete']
+        action = _arrow_select(options, title=f"Select action for {editorId} ({state})")
+        client.interactive = False
+        if action == 'Launch': show_launch_urls(client, editorId)
+        elif action == 'Start': client.start_server(serverId=editorId)
+        elif action == 'Stop': client.stop_server(serverId=editorId)
+        elif action == 'Rename': 
+            new_name = input("Enter new name for the server: ").strip()
+            if new_name:
+                client.edit_server(serverId=editorId, name=new_name)
+                print_color(f"Server renamed to: {new_name}", "00ff00")
+            else:
+                print_color("No name provided, skipping rename.", "ffaa00")
+        elif action == 'Delete': client.delete_server(serverId=editorId)
+
+
+parser = argparse.ArgumentParser(
+    description="""
+Create a server for a workspace on the Rendered.ai Platform.
+    interactive experience:     anaserver
+    fetch all servers:          anaserver --fetch
+    create a new server:        anaserver --create
+    stop an server:             anaserver --stop serverId
+    start a server:             anaserver --start serverId
+    delete a server:            anaserver --delete serverId
+""",
+    formatter_class=argparse.RawDescriptionHelpFormatter
+)
+parser.add_argument('--email', type=str, default=None)
+parser.add_argument('--password', type=str, default=None)
+parser.add_argument('--environment', type=str, default=None)
+parser.add_argument('--endpoint', type=str, default=None)
+parser.add_argument('--local', action='store_true')
+parser.add_argument('--verbose', action='store_true')
+parser.add_argument('--version', action='store_true')
+# additional command flags
+parser.add_argument('--create', action='store_true', help='Create a new server')
+parser.add_argument('--fetch', action='store_true', help='Fetch all servers')
+parser.add_argument('--start', type=str, default=None, metavar='EDITOR_ID', help='Start a stopped server')
+parser.add_argument('--stop', type=str, default=None, metavar='EDITOR_ID', help='Stop a running server')
+parser.add_argument('--delete', type=str, default=None, metavar='EDITOR_ID', help='Delete an server')
+args = parser.parse_args()
+if args.version: print(f'anaserver {anatools.__version__}'); sys.exit(1)
+if args.verbose: verbose = 'debug'
+else: verbose = False
+interactive = False
+if args.email and args.password is None: interactive = True
+    
+client = anatools.client(
+    email=args.email, 
+    password=args.password,
+    environment=args.environment,
+    endpoint=args.endpoint,
+    local=args.local,
+    interactive=interactive,
+    verbose=verbose)
+
+try:
+    if args.fetch:  editor_selector(client)
+    if args.create: create_server(client)
+    if args.start:  client.start_server(args.start)
+    if args.stop:   client.stop_server(client, args.stop)
+    if args.delete: client.delete_server(args.delete)
+
+    # ---------------------- Interactive default experience ----------------------
+    # If the user did not provide any specific action flags, launch the interactive UI
+    if not any([
+        args.create,
+        args.fetch,
+        args.start,
+        args.stop,
+        args.delete
+    ]):
+        options = ["Create a server","Manage existing servers"]
+        sel = _arrow_select(options, title="What would you like to do?")
+        if sel == options[0]:  create_server(client)
+        elif sel == options[1]: editor_selector(client)
+        else: print_color('Invalid choice, returning to session list.', 'ff0000')
+except KeyboardInterrupt:
+    sys.exit(0)

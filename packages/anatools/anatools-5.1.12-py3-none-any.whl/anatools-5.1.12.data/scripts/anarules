@@ -1,0 +1,151 @@
+#!python
+# Copyright 2019-2022 DADoES, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License in the root directory in the "LICENSE" file or at:
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+import argparse
+import sys
+import os
+import anatools
+
+
+parser = argparse.ArgumentParser(
+    description="""
+Builds workspace rules for an editor on the Rendered.ai Platform.
+    generate rules for all ides:    anarules
+    specify the workspace ID:       anarules --workspaceId workspaceId
+    specify the output path (for
+    cursor and vscode):             anarules --path path
+    include service rules:          anarules --services
+    generate rules for theia:       anarules --theia
+    generate rules for windsurf:    anarules --windsurf
+    generate rules for cursor:      anarules --cursor
+    generate rules for vscode:      anarules --vscode
+    generate rules for claude:      anarules --claude
+    generate rules for gemini:      anarules --gemini
+""",
+    formatter_class=argparse.RawDescriptionHelpFormatter
+)
+parser.add_argument('--email', type=str, default=None)
+parser.add_argument('--password', type=str, default=None)
+parser.add_argument('--environment', type=str, default=None)
+parser.add_argument('--endpoint', type=str, default=None)
+parser.add_argument('--local', action='store_true')
+parser.add_argument('--verbose', action='store_true')
+parser.add_argument('--version', action='store_true')
+# additional command flags
+parser.add_argument('--path', type=str, default=os.getcwd())
+parser.add_argument('--workspace', type=str, default=None)
+parser.add_argument('--theia', action='store_true', default=False)
+parser.add_argument('--windsurf', action='store_true', default=False)
+parser.add_argument('--cursor', action='store_true', default=False)
+parser.add_argument('--vscode', action='store_true', default=False)
+parser.add_argument('--claude', action='store_true', default=False)
+parser.add_argument('--gemini', action='store_true', default=False)
+parser.add_argument('--services', action='store_true', default=False)
+args = parser.parse_args()
+if args.version: print(f'anarules {anatools.__version__}'); sys.exit(1)
+if args.verbose: verbose = 'debug'
+else: verbose = False
+interactive = False
+if args.email and args.password is None: interactive = True
+if not args.theia and not args.windsurf and not args.cursor and not args.vscode and not args.claude and not args.gemini:
+    args.theia = True
+    args.windsurf = True
+    args.cursor = True
+    args.vscode = True
+    args.claude = True
+    args.gemini = True
+
+client = anatools.client(
+    email=args.email, 
+    password=args.password,
+    environment=args.environment,
+    endpoint=args.endpoint,
+    local=args.local,
+    interactive=interactive,
+    verbose=verbose)
+
+# Compile the platform, user, organization and workspace rules
+rules = ""
+platform_rules = client.get_platform_rules()
+if platform_rules: rules += f"# Platform Rules\n{platform_rules}\n\n"
+user_rules = client.get_user_rules()
+if user_rules: rules += f"# User Rules\n{user_rules}\n\n"
+if args.workspace is None and os.environ.get("RENDEREDAI_WORKSPACE_ID", None) != None: args.workspace = os.environ.get("RENDEREDAI_WORKSPACE_ID")
+if args.workspace is not None: 
+    client.set_workspace(args.workspace)
+    organization_rules = client.get_organization_rules(organizationId=client.organization)
+    if organization_rules: rules += f"# Organization Rules\nOrganization ID: {client.organization}\n{organization_rules}\n\n"
+    workspace_rules = client.get_workspace_rules(workspaceId=client.workspace)
+    if workspace_rules: rules += f"# Workspace Rules\nWorkspace ID: {client.workspace}\n{workspace_rules}\n\n"
+    rules += "# Workspace Volumes\n"
+    for volume in client.get_volumes(workspaceId=client.workspace):
+        rules += f"*{volume['name']}*:\n\tVolume ID: {volume['volumeId']}\n\tDescription: {volume['description']}\n\tVolume Path: /workspaces/volumes/{volume['sanitizedName']}/\n"
+    rules += "\n# Workspace Services\n"
+    if args.services: all_service_rules = []
+    for service in client.get_services(workspaceId=client.workspace):
+        rules += f"*{service['name']}*:\n\tService ID: {service['serviceId']}\n\tDescription: {service['description']}\n"
+        if args.services:
+            service_rules = client.get_service_rules(serviceId=service['serviceId'])
+            if service_rules: all_service_rules += f"# {service['name']} Service Rules\n{service_rules}\n\n"
+    if args.services:
+        rules += f"\n{all_service_rules}"
+
+# Write the rules to the respective agent directories
+if args.theia:
+    filepath = os.path.expanduser('~/.theia/prompt-templates/universal-system-default.prompttemplate')
+    if not os.path.exists(os.path.dirname(filepath)): os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    theia_rules = """
+You are Tyrell, an agent that helps deep tech engineers get their job done. You are really good at tool calling and rely heavily on them. You are especially good at using your MCP tools.
+Be careful when using your tools and do not mix Content and parts. When making file changes, make them small so they are more effective.
+
+## Current Context
+Some files and other pieces of data may have been added by the user to the context of the chat. If any have, the details can be found below.
+
+# MCP Tools
+{{contextDetails}}
+{{prompt:mcp_raiservices-local_tools}}
+{{prompt:mcp_anatools_tools}}
+{{prompt:mcp_graph_tools}}
+{{prompt:mcp_filesystem_tools}}
+{{prompt:mcp_terminal_tools}}
+{{prompt:mcp_sequential-thinking_tools}}
+
+IMPORTANT: when using file system calls, you should make small changes. big changes can prevent tool calls from working properly.
+IMPORTANT: DO NOT MIX Content and Parts! You will get this error if you do: Mixing Content and Parts is not supported, please group the parts into a the appropriate Content objects and specify the roles for them
+IMPORTANT: You MUST be especially careful with the filesystem MCP server as you often get Mix Content and Parts errors with it.
+
+""" + rules
+    with open(filepath, 'w') as mdfile: mdfile.write(theia_rules)
+if args.windsurf:
+    filepath = os.path.expanduser('~/.codeium/windsurf/memories/global_rules.md')
+    if not os.path.exists(os.path.dirname(filepath)): os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    with open(filepath, 'w') as mdfile: mdfile.write(rules)
+if args.cursor:
+    filepath = os.path.join(args.path, '.cursor', 'rules', 'workspace.mdc')
+    if not os.path.exists(os.path.dirname(filepath)): os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    cursor_rules = """---\nalwaysApply: true\n---\n\n""" + rules
+    with open(filepath, 'w') as mdfile: mdfile.write(cursor_rules)
+if args.vscode:
+    filepath = os.path.join(args.path, '.github', 'instructions', 'workspace.instructions.md')
+    if not os.path.exists(os.path.dirname(filepath)): os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    vscode_rules = """---\napplyTo: '**'\n---\n\n""" + rules
+    with open(filepath, 'w') as mdfile: mdfile.write(vscode_rules)
+if args.claude:
+    filepath = os.path.expanduser('~/.claude/CLAUDE.md')
+    if not os.path.exists(os.path.dirname(filepath)): os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    with open(filepath, 'w') as mdfile: mdfile.write(rules)
+if args.gemini:
+    filepath = os.path.expanduser('~/.gemini/GEMINI.md')
+    if not os.path.exists(os.path.dirname(filepath)): os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    with open(filepath, 'w') as mdfile: mdfile.write(rules)

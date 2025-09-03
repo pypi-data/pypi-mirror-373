@@ -1,0 +1,122 @@
+#!python
+# Copyright 2019-2022 DADoES, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License in the root directory in the "LICENSE" file or at:
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+import argparse
+import json
+import os
+import sys
+import anatools
+from anatools.lib.channel import Channel, find_channelfile
+from anatools.lib.service import Service, find_servicefile
+from anatools.lib.print import print_color
+from anatools.lib.mount import mount_loop, unmount_data
+
+
+parser = argparse.ArgumentParser(
+    description="""
+Mount volumes from the Rendered.ai Platform.
+    mount channel volumes:  anamount
+                            anamount --channel channelName
+    mount single volume:    anamount --volumes volumeId
+    mount many volumes:     anamount --volumes volumeId1,volumeId2
+    mount single workspace: anamount --workspace workspaceId
+    mount many workspaces:  anamount --workspaces workspaceId1,workspaceId2
+    unmount volumes:        anamount --unmount
+    mount to specific path: anamount --path /data
+""",
+    formatter_class=argparse.RawDescriptionHelpFormatter
+)
+parser.add_argument('--channel', type=str, default=None, help='The name of the channel.')
+parser.add_argument('--service', type=str, default=None, help='The name of the service.')
+parser.add_argument('--volumes', type=str, default=None, help='A list of volumeIds to mount, i.e. --volumes volumeId1,volumeId2.')
+parser.add_argument('--workspaces', type=str, default=None, help='A list of workspaceIds to mount, i.e. --workspaces workspaceId1,workspaceId2.')
+parser.add_argument('--path', default=os.getcwd(), help='The path to mount the volumes to, i.e /data/volumes/, defaults to the current working directory.')
+parser.add_argument('--unmount', action='store_true')
+parser.add_argument('--unmountall', action='store_true')
+parser.add_argument('--email', type=str, default=None)
+parser.add_argument('--password', type=str, default=None)
+parser.add_argument('--environment', type=str, default=None)
+parser.add_argument('--endpoint', type=str, default=None)
+parser.add_argument('--local', action='store_true', default=False)
+parser.add_argument('--verbose', action='store_true', default=False)
+parser.add_argument('--version', action='store_true', default=False)
+parser.add_argument('--mountexec', type=str, default='goofys')
+parser.add_argument('--mountname', action='store_true', default=False)
+args = parser.parse_args()
+if args.version: print(f'anamount {anatools.__version__}'); sys.exit(1)
+if args.verbose: verbose = 'debug'
+else: verbose = False
+interactive = False
+if args.email and args.password is None: interactive = True
+
+workspaces = []
+volumes = []
+if args.workspaces:
+    try: workspaces.extend([ws.strip() for ws in args.workspaces.replace('[', '').replace(']', '').split(',')])
+    except: print('Failed to parse --workspaces input, expecting a list of workspaceIds.'); sys.exit(1)
+if args.volumes:
+    try: volumes.extend([v.strip() for v in args.volumes.replace('[', '').replace(']', '').split(',')])
+    except: print('Failed to parse --volumes input, expecting a list of volumeIds.'); sys.exit(1)
+else:
+    if args.channel is None: args.channel = find_channelfile()
+    if args.channel:
+        channel = Channel(args.channel)
+        for package in channel.packages.keys():
+            if channel.packages[package] is None: continue
+            if 'volumes' in channel.packages[package]:
+                for volumeId in channel.packages[package]['volumes'].keys():
+                    if volumeId != 'local': volumes.append(channel.packages[package]['volumes'][volumeId])
+    if args.service is None: args.service = find_servicefile()
+    if args.service:
+        service = Service(args.service)
+        for volume in service.volumes: volumes.append(volume)
+workspaces = list(set(workspaces))
+workspacedata = {}
+volumes = list(set(volumes))
+volumedata = {}
+
+if args.unmountall: 
+    if os.path.exists(os.path.join(os.path.expanduser('~'), '.renderedai', '.mounts.json')):
+        with open(os.path.join(os.path.expanduser('~'), '.renderedai', '.mounts.json'), 'r') as f: mounts = json.load(f)
+        unmount_data(mounts['volumes'].keys(), mounts['workspaces'].keys())
+        sys.exit(0)
+elif len(workspaces) == 0 and len(volumes) == 0: print_color('No mount targets specified, please specify --channel, --service, --volumes or --workspaces.', 'error'); sys.exit(1)
+elif args.unmount: unmount_data(volumes, workspaces); sys.exit(0)
+
+client = anatools.client(
+    email=args.email, 
+    password=args.password,
+    environment=args.environment,
+    endpoint=args.endpoint,
+    local=args.local,
+    interactive=interactive,
+    verbose=verbose)
+
+for workspaceId in workspaces:
+    workspace = client.get_workspaces(workspaceId=workspaceId)
+    if workspace is False:
+        print_color(f'Unable to mount workspace {workspaceId}, permission denied.', 'error')
+        workspaces.remove(workspaceId)
+    else: workspacedata[workspaceId] = workspace[0]
+for volumeId in volumes: 
+    if volumeId not in volumedata:
+        volume_data = client.get_volumes(volumeId=volumeId)
+        if not volume_data:
+            print_color(f'Unable to mount volume {volumeId}, permission denied or volume not found.', 'error')
+        elif volume_data[0]['permission'] not in ['read', 'write']:
+            print_color(f'Unable to mount volume {volumeId}, insufficient permissions (view-only).', 'error')
+        else:
+            volumedata[volumeId] = volume_data[0]
+print_color(f'This process to mount Volumes will remain open to refresh Volumes, killing this process with CTRL+C or otherwise will unmount Volumes.', 'warning')
+mount_loop(client, workspacedata, volumedata, args.path, args.mountexec, args.mountname, args.verbose)

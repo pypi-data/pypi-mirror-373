@@ -1,0 +1,185 @@
+#!python
+# Copyright 2019-2022 DADoES, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License in the root directory in the "LICENSE" file or at:
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+import os
+import argparse
+import importlib
+import shutil
+import json
+import anatools
+import sys
+from anatools.lib.channel import Channel, find_channelfile
+from anatools.lib.service import Service, find_servicefile
+
+
+def print_color(text, color):
+    r,g,b = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
+    coloresc = '\033[{};2;{};{};{}m'.format(38, r, g, b)
+    resetesc = '\033[0m'
+    print(coloresc + text + resetesc)
+
+
+parser = argparse.ArgumentParser(
+    description="""
+A set of utility functions used to generate channel or service schema information and documenation.
+    generate a channel or service schema:   anautils
+    specify the channel file:               anautils --channel channelfile
+    specify the service file:               anautils --service servicefile
+    generate channel documentation:         anautils --mode docs
+    generate node documentation:            anautils --mode help
+""",
+    formatter_class=argparse.RawDescriptionHelpFormatter
+)
+parser.add_argument('--channel', type=str, default=None)
+parser.add_argument("--service", type=str, default=None)
+parser.add_argument("--mode", type=str, choices=["schema", "docs", "help"], default="schema")
+parser.add_argument("--output", type=str, default=os.getcwd())
+parser.add_argument('--version', action='store_true')
+args = parser.parse_args()
+if args.version: print(f'anautils {anatools.__version__}'); sys.exit(1)
+
+# create the channel
+if args.channel is None and args.service is None: 
+    args.channel = find_channelfile()
+    args.service = find_servicefile()
+    if args.channel is None and args.service is None: raise Exception('No channel or service file was specified or found.')
+if not os.path.exists(args.output): raise Exception(f"No output directory {args.output} exists.")
+
+if args.channel:
+    if os.path.splitext(args.channel)[1] == '': args.channel = args.channel + ".yml"
+    channel = Channel(args.channel)
+
+    if args.mode == 'schema':
+        full_conf = channel.schemas.copy()
+        node_list = []
+        for item_name in full_conf:
+            # don't include VolumeFile or VolumeDirectory nodes in node_data.json 
+            if item_name != "VolumeFile" and item_name != "VolumeDirectory":
+                full_conf[item_name]["name"]=item_name
+                node_list.append(full_conf[item_name])
+                if not isinstance(full_conf[item_name]["inputs"], list):
+                    raise Exception(f"Error in '{item_name}' schema - inputs must be a list")
+                if not isinstance(full_conf[item_name]["outputs"], list):
+                    raise Exception(f"Error in '{item_name}' schema - outputs must be a list")
+
+        # write the schema to the node_data.json file
+        with open(os.path.join(args.output, 'node_data.json'), 'w') as outfile:
+            json.dump(node_list, outfile, indent=2 )
+
+        # display the node menu to the user
+        print('The Node Menu for this Channel will be as follows on the Rendered.ai Platform:\n')
+        menu = {}
+        for node in node_list:
+            if 'category' not in node: node['category'] = 'undefined'
+            if 'subcategory' not in node: node['subcategory'] = 'undefined'
+            if 'color' not in node: node['color'] = '000000'
+            if node['category'] not in menu: menu[node['category']] = {}
+            if node['subcategory'] not in menu[node['category']]: menu[node['category']][node['subcategory']] = []
+            menu[node['category']][node['subcategory']].append({'name': node['name'], 'color': node['color']})
+        for cat in menu:
+            print(cat)
+            for subcat in menu[cat]:
+                print(f'  {subcat}')
+                for node in menu[cat][subcat]:
+                    print_color(f'    - {node["name"]}', node['color'].replace('#','') )
+
+    if args.mode == 'docs':
+        filename = os.path.join(args.output, 'channel.md')
+        print(f"Writing starter documentation to {filename}...")
+        with open(filename, 'w') as docfile:
+            # title
+            docfile.write(f"# {channel.name} Channel\n*Description of the channel.*\n\n")
+            # graph requirements
+            docfile.write("## Graph Requirements\n*Describe any requirements needed for running a graph, for example nodes that need to be connected in a certain order.*\n\n")
+            # nodes table
+            docfile.write("## Channel Nodes\nThe following nodes are available in the channel:\n")
+            docfile.write("| Name | Inputs | Outputs | Description |\n|---|---|---|---|\n")
+            for node in channel.schemas:
+                inputs = ""
+                for i in range(len(channel.schemas[node]['inputs'])):
+                    inputs += f"{channel.schemas[node]['inputs'][i]['name']}"
+                    if i < len(channel.schemas[node]['inputs'])-1: inputs += "<br />"
+                if inputs == "": inputs = "-"
+                outputs = ""
+                for i in range(len(channel.schemas[node]['outputs'])):
+                    outputs += f"{channel.schemas[node]['outputs'][i]['name']}"
+                    if i < len(channel.schemas[node]['outputs'])-1: outputs += "<br />"
+                if outputs == "": outputs = "-"
+                description = "-"
+                if 'tooltip' in channel.schemas[node]: description = channel.schemas[node]['tooltip']
+                docfile.write(f"| {node} | {inputs} | {outputs} | {description} |\n")
+        print("done.")
+
+    if args.mode == 'help':
+        if args.output == ".":
+            # Be explicit about where output should go. We don't want to accidentally delete the channel documentation directory"
+            raise Exception("Error - Current directory not allowed for help output.")
+        try:
+            # there could be a docs directory left over from a previous run
+            shutil.rmtree(os.path.join(args.output, "docs"))
+        except:
+            pass
+        print(f"Writing help documentation to {os.path.join(args.output, 'docs')}...")
+
+        # assume we're running from the channel root directory and copy the channel docs
+        try:
+            shutil.copytree("./docs", os.path.join(args.output, "docs", "channel"))
+        except FileNotFoundError:
+            print("Warning - no channel documentation directory found")
+
+        package_dir={}
+        for package_name in channel.packages:
+            try:
+                package = importlib.import_module(package_name)
+            except:
+                raise Exception(f"Error importing package {package_name}")
+            package_init = package.__file__
+            if package_init is None:
+                raise Exception(f"Package {package.__name__} is missing __init__.py")
+            package_dir[package_name] = os.path.dirname(os.path.realpath(package_init))
+            docs_src_dir = os.path.join(package_dir[package_name], "docs")
+            docs_dst_dir = os.path.join(args.output, "docs", "packages", package_name)
+            if os.path.isdir(docs_src_dir):
+                shutil.copytree(docs_src_dir, docs_dst_dir, dirs_exist_ok=True)
+        for schema in channel.schemas.values():
+            if "help" in schema:
+                package_name, md_file = schema["help"].split("/", 1)
+                if package_name not in package_dir:
+                    raise Exception(f"Error - Unknown package '{package_name}' for help file {schema['help']}")
+                md_source = os.path.join(package_dir[package_name], "docs", md_file)
+                if not os.path.exists(md_source):
+                    raise Exception(f"Error - File {md_source} does not exist")
+            if "thumbnail" in schema:
+                package_name, thumb_file = schema["thumbnail"].split("/", 1)
+                if package_name not in package_dir:
+                    raise Exception(f"Error - Unknown package '{package_name}' for thumbnail file {schema['thumbnail']}")
+                thumb_source = os.path.join(package_dir[package_name], "docs", thumb_file)
+                if not os.path.exists(thumb_source):
+                    raise Exception(f"Error - File {thumb_source} does not exist")
+            if "preview" in schema:
+                package_name, preview_file = schema["preview"].split("/", 1)
+                if package_name not in package_dir:
+                    raise Exception(f"Error - Unknown package '{package_name}' for preview file {schema['preview']}")
+                preview_source = os.path.join(package_dir[package_name], "docs", preview_file)
+                if not os.path.exists(preview_source):
+                    raise Exception(f"Error - File {preview_source} does not exist")
+        print("Done.")
+
+
+if args.service:
+    service = Service(args.service)
+    if args.mode == 'schema':
+        with open(os.path.join(args.output, 'service_schema.json'), 'w') as outfile:
+            json.dump(service.schemas, outfile, indent=2)
+            
