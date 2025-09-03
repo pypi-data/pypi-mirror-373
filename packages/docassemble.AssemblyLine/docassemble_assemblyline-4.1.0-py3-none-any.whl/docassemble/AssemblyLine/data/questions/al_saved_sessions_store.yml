@@ -1,0 +1,73 @@
+---
+metadata:
+  title: |
+    Saved answer set
+  description: |
+    An interview that is the target for saving and loading answer sets.
+
+    Note: answer sets are not encrypted by default.
+  tags:
+    - Answer_set
+---
+modules:
+  - docassemble.ALToolbox.misc
+  - .sessions
+---
+mandatory: True
+code: |
+  multi_user = True
+---
+features:
+  css:
+    - docassemble.ALToolbox:collapse_template.css
+  question help button: True
+  navigation back button: False
+---
+mandatory: True
+question: |
+  Saved answer set
+  % if all_variables(special='titles').get('sub'):
+  : ${ all_variables(special='titles').get('sub') }
+  % endif
+  ${ action_button_html(url_ask(["al_sessions_snapshot_new_label", {"recompute": ["al_sessions_rename_session"]}]), icon="edit", label="Rename", color="secondary") }
+subquestion: |
+  
+  &nbsp; | &nbsp;
+  -------|---------
+  User or client | ${ bold(users.complete_elements()) if defined('users') else ''}
+  Opposing party | ${ bold(other_parties.complete_elements()) if defined('other_parties') else '' }
+  Page   | ${ get_interview_metadata(current_context().filename, current_context().session).get('steps') }
+  Answered questions | ${ get_interview_metadata(current_context().filename, current_context().session).get('answer_count') }
+  Export | <a class="btn btn-primary btn-sm btn-secondary" href="${ export_interview_variables().url_for(attachment=True) }" role="button"><i class="far fa-file-code"></i> Export in JSON format</a>
+  % if get_config('debug') or user_has_privilege('admin', 'developer'):
+  Developer information | ${ collapse_template(preview_variables) }
+  % endif
+  
+
+  You can re-use the answers in this answer set by visiting a new form and selecting
+  "Load answer set" from the main menu.
+
+  ${ action_button_html(interview_url(i=f"{current_context().current_package}:data/questions/interview_list.yml", label="List in progress forms", color="link", size="md")) } ${ action_button_html(get_config("assembly line",{}).get("new form url", url_of("dispatch")), label="List available forms", icon="list", color="primary", size="md") }
+---
+id: rename answer
+question: |
+  Rename answer set
+fields:
+  - New name: al_sessions_snapshot_new_label
+    default: |
+      ${ all_variables(special='titles').get('sub') }
+continue button label: |
+  :save: Save changes
+---
+code: |
+  rename_interview_answers(current_context().filename, current_context().session, new_name = al_sessions_snapshot_new_label)
+  log("New name saved", "success")
+  al_sessions_rename_session = True
+---
+template: preview_variables
+subject: |
+  Preview variables and values
+content: |
+  <pre>
+  ${ verbatim(json.dumps(all_variables(), sort_keys=True, indent=4)) }
+  </pre>

@@ -1,0 +1,209 @@
+#############################################
+# Contains code to do various actions that
+# belong in YAML and not .py files
+# 1. Email file to court TODO: does this really belong here?
+# 2. Signature flow
+##########################################################
+# Code to handle emailing court
+---
+modules:
+  - .sign
+---
+# Placeholder
+objects:
+  - court_emails: DADict.using(auto_gather=False, gathered=True)
+  ################### Backwards compatibility ####################################
+  - user_has_saved_answers: DAEmpty # For people who forked the pre-2.11.0 intro screen  
+---
+code: |
+  ready_to_email
+  prevent_going_back()
+  email_status
+  form_delivery_complete = True
+---
+code: |
+  court_email = court_emails.get(trial_court.name,None)
+  if not court_email:
+    found_email = False
+  else:
+    found_email = True
+---
+code: |
+  bcc_failsafe = court_emails.get('Failsafe Address',None)
+---
+comment: |
+  You are encouraged to overwrite these emails during testing!
+code: |
+  dev_email_to_use = "massaccess@suffolk.edu"
+  dev_bcc_email = "quinten@lemmalegal.com"
+---
+need:
+  - bcc_failsafe
+  - email_to_court_template
+  - court_email
+  - dev_email_to_use
+  - dev_bcc_email
+  - should_cc_user
+code: |
+  if will_send_to_real_court():
+    email_to_use = court_email
+    bcc_email = bcc_failsafe
+  else:
+    email_to_use = dev_email_to_use
+    bcc_email = dev_bcc_email
+  
+  # temporary for testing
+  # email_to_use = "massaccess@suffolk.edu"
+
+  if task_not_yet_performed('send email'):
+    log(f"Court email is {court_email}, sending email to {email_to_use}")
+    email_success = False
+    if should_cc_user:
+      log('Sending email to ' + email_to_use + ' and ccing ' + cc_email + ' for ' + str(users) + ' bcc to ' + bcc_email)
+      email_success = send_email(to=email_to_use, template=email_to_court_template, task='send email', 
+                                 cc=cc_email, bcc=bcc_email, attachments=al_final_form_to_file.as_pdf_list(key='final'))
+    else:
+      log('Sending email to ' + email_to_use + ' and no cc ' + ' for ' + str(users) + ' bcc to ' + bcc_email)
+      email_success = send_email(to=email_to_use, template=email_to_court_template, task='send email', 
+                                 attachments=al_final_form_to_file.as_pdf_list(key='final'), bcc=bcc_email)
+    mark_task_as_performed('send email')
+  sent_email_to_court = True
+---
+##############################################################
+# new attachment handling code
+---
+objects:
+  - al_cover_page: ALDocument.using(title="Cover page", filename="cover_page", has_addendum=False, enabled=True)
+---
+# This is the *default* version of both objects as an example.
+# You will ALWAYS want to have your own version of these object blocks
+# in your own code.
+objects:
+  - al_court_bundle: ALDocumentBundle.using(filename="court_forms.pdf", title="Forms to download and deliver to court", elements=[])
+  - al_user_bundle: ALDocumentBundle.using(filename="court_forms.pdf", title="Forms to download for your own reference", elements=[])
+---
+objects:
+  - al_final_form_to_file: ALDocumentBundle.using(elements=[al_cover_page, al_court_bundle], filename=al_court_bundle.filename, title=al_court_bundle.title)
+---
+sets: al_num_package_pages
+code: |
+  # Gets the number of pages, plus the first cover page
+  # TODO(brycew): figure out a better way to estimate the number of pages,
+  # including addendum, without generating a full file
+  al_num_package_pages = al_court_bundle.as_pdf(key='preview').num_pages() + 1
+---
+code: |
+  # You can define this in the interview's code block.
+  # Should be a list.
+  al_download_titles = al_court_bundle.get_titles()
+---
+code: |
+  # This is a fallback package title to avoid errors on new forms
+  # It defines package_title as the metadata title.
+  # You may want a better form title for most interviews
+  package_title = all_variables(special='metadata').get('title','').rstrip()
+---
+attachment:
+  variable name: al_cover_page[i]
+  docx template file: general_cover_sheet.docx
+---
+#################################################################
+# Signature code  
+---
+# Triggers some questions to ask for signatures on either desktop or mobile
+# Allows sending via text/email
+id: basic questions signature flow control
+code: |
+  # Three branches:
+  # 1. Decided to sign on the PC
+  # 2. Sent someone a link to sign the form
+  # 3. Used the QR code
+  saw_signature_choice
+  # Branch 1: PC
+  if signature_choice == "sign_after_printing":
+    for signature in signature_fields:
+      define(signature, DAEmpty())
+  elif signature_choice == "typed_signature":
+    for signature in signature_fields:
+      # Signature fields are strings like "users[0].signature". If the string ends in .signature, remove that and replace with .typed_signature, only at the end of the string
+      if signature.endswith('signature'):
+        typed_signature = signature[:-9] + 'typed_signature'
+        define(signature, DAFile(signature, filename="signature.png"))
+        value(signature).initialize()
+        create_signature(value(typed_signature), value(signature).path(), signature_prefix = al_typed_signature_prefix, font_name = al_typed_signature_font)
+      else:
+        log("Signature field " + signature + " does not end with .signature, not creating typed signature")
+  elif signature_choice in ['this device', 'this_device']:
+    for signature in signature_fields:
+      value(signature)    
+  # Check for Branch 2 or 3
+  elif signature_choice == 'phone':
+    saw_signature_qrcode
+    # User will click next. link_cell will only be defined if they chose the texting option
+    if showifdef("link_cell") and task_not_yet_performed('send signature link'): 
+      # They used the text option
+      send_sms(task='send signature link', to=link_cell,template=interview_link)
+      signature_wait_screen
+      for signature in signature_fields:
+        value(signature)
+    else: # Branch 3: They used the QR Code. No special screen, just continue
+      for signature in signature_fields:
+        value(signature)
+    # Show the follow-up if they sent the link to their phone by QR or by SMS
+    if device() and (device().is_mobile or device().is_touch_capable):
+      signature_phone_followup
+  basic_questions_signature_flow = True
+---
+code: |
+  # Sometimes we have values that can be set from interview_metadata.
+  # They don't always work, but interview author can override.
+  
+  # Some interviews have multiple interview_metadata keys. Look in the 1st one
+  first_form_key = next(iter(interview_metadata),'')
+  if isinstance(interview_metadata.get(first_form_key,{}), dict):
+    first_form = interview_metadata.get(first_form_key,{})
+  else:
+    first_form = {}
+  del(first_form_key)
+---
+depends on:
+  - user_ask_role
+code: |
+  # DEPRECATED as of 2.17.1. Won't be removed, but you shouldn't reference this
+  # variable in your code. Use `user_ask_role` instead.
+  # If the author hasn't explicitly defined it in the interview_order block,
+  # define user_role to be either "defendant" or "plaintiff",
+  # either by checking interview_metadata or asking the user.
+  # The only valid values for user_role are "plaintiff" and "defendant".
+  
+  # We will check for the "typical_role" key.
+  # Some older wizarded code doesn't define `typical_role`, so fall back
+  # to "unknown" if the key is not present.
+  # first_form is the first entry in interview_metadata
+  if not first_form.get("typical_role", 'unknown') == 'unknown':
+    user_role = first_form.get("typical_role")
+  else:
+    # If the user role was set to "unknown" at the time wizard run
+    user_role = user_ask_role
+---
+# HTML for interviews using ALKiln tests at ALKiln
+# Necessary for servers that set their `restrict input variables` config value to `True`
+# If you are using al_package_unstyled.yml, copy it into your `default screen parts: post`
+template: alkiln_trigger_html
+content: |
+  <div data-variable="${ encode_name(str( current_context().variable )) }" id="trigger" aria-hidden="true" style="display: none;"></div>
+---
+# HTML for interviews using ALKiln tests at ALKiln versions 5.9.0 and above.
+# Necessary for interviews that use docassemble generic objects or index variables
+# If you are using al_package_unstyled.yml, copy it into your `default screen parts: post`
+template: alkiln_proxy_html
+content: |
+  <div id="alkiln_proxy_var_values"
+  data-generic_object="${ encode_name(str( x.instanceName if defined('x') else '' )) }"
+  % for letter in [ 'i', 'j', 'k', 'l', 'm', 'n' ]:
+  data-index_var_${ letter }="${ encode_name(str( value( letter ) if defined( letter ) else '' )) }"
+  % endfor
+  aria-hidden="true" style="display: none;"></div>
+---
+code: |
+  al_sessions_additional_variables_to_filter = []
