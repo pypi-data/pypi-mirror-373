@@ -1,0 +1,156 @@
+# --- Distributed bootstrap (auto-rendezvous) ---
+# If FLOW_DISTRIBUTED_AUTO is set, perform lightweight rendezvous to assign ranks
+if [ "${FLOW_DISTRIBUTED_AUTO:-}" = "1" ]; then
+  # Respect explicit user-provided wiring
+  if [ -n "${FLOW_NODE_RANK:-}" ] && [ -n "${FLOW_NUM_NODES:-}" ] && [ -n "${FLOW_MAIN_IP:-}" ]; then
+    echo "[rendezvous] User-provided FLOW_* detected; skipping auto rendezvous"
+  else
+    echo "[rendezvous] Starting distributed bootstrap"
+    # Discover private IP
+    if command -v hostname >/dev/null 2>&1; then
+      PRIVATE_IP=$(hostname -I | awk '{print $1}') || PRIVATE_IP=""
+    fi
+    if [ -z "${PRIVATE_IP:-}" ]; then
+      PRIVATE_IP=$(ip route get 1.1.1.1 | awk '{print $7; exit}') || true
+    fi
+    echo "[rendezvous] Private IP: ${PRIVATE_IP:-unknown}"
+
+    # Provider API metadata (injected by provider)
+    API_URL="${_FLOW_MITHRIL_API_URL:-https://api.mithril.ai}"
+    API_KEY="${_FLOW_MITHRIL_API_KEY:-}"
+    PROJECT_ID="${_FLOW_MITHRIL_PROJECT:-}"
+    RESERVATION_ID="${_FLOW_RESERVATION_ID:-}"
+
+    # Prefer provider-injected instance ID; otherwise try cloud metadata; fallback to hostname
+    if [ -n "${_FLOW_INSTANCE_ID:-}" ]; then
+      INSTANCE_ID="${_FLOW_INSTANCE_ID}"
+    else
+      INSTANCE_ID=$(curl -s --max-time 1 http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || hostname)
+    fi
+    echo "[rendezvous] Instance ID: ${INSTANCE_ID}"
+
+    if [ -n "$API_KEY" ] && [ -n "$PROJECT_ID" ] && [ -n "$INSTANCE_ID" ]; then
+      DEADLINE=$(( $(date +%s) + ${FLOW_RDV_TIMEOUT_SEC:-600} ))
+      BACKOFF=1
+      while [ $(date +%s) -lt $DEADLINE ]; do
+        # Determine reservation ID if not provided
+        if [ -z "$RESERVATION_ID" ]; then
+          SELF_JSON=$(curl -s -H "Authorization: Bearer $API_KEY" "$API_URL/v2/instances?id=$INSTANCE_ID") || SELF_JSON="{}"
+          RESERVATION_ID=$(echo "$SELF_JSON" | python3 - <<'PY'
+import sys, json
+data=json.load(sys.stdin)
+insts = data.get('data', []) if isinstance(data, dict) else []
+inst = insts[0] if insts else {}
+rid = inst.get('reservation_id') or inst.get('reservation') or inst.get('reservationId') or ''
+print(rid)
+PY
+)
+        fi
+
+        # Fetch peers: prefer reservation peers when available; otherwise fall back to spot bids
+        if [ -n "$RESERVATION_ID" ]; then
+          INST_JSON=$(curl -s -H "Authorization: Bearer $API_KEY" "$API_URL/v2/reservations/$RESERVATION_ID/instances") || INST_JSON="{}"
+          RDV_OUT=$(echo "$INST_JSON" | python3 - <<'PY'
+import sys, json, os
+data=json.load(sys.stdin)
+instances = data if isinstance(data, list) else data.get('data', [])
+iid = os.environ.get('INSTANCE_ID')
+def to_id(x):
+    if isinstance(x, str):
+        return x
+    if isinstance(x, dict):
+        return x.get('instance_id') or x.get('fid') or x.get('id') or ''
+    return ''
+ids = [to_id(it) for it in instances if to_id(it)]
+if ids and iid in ids:
+    print(' '.join(ids))
+    print(ids.index(iid))
+    print(len(ids))
+else:
+    print('')
+    print('-1')
+    print('0')
+PY
+)
+        else
+          # Fetch bids for the project
+          BIDS_JSON=$(curl -s -H "Authorization: Bearer $API_KEY" "$API_URL/v2/spot/bids?project=$PROJECT_ID") || BIDS_JSON="{}"
+          # Extract instance list for our bid, our index, and expected count
+          RDV_OUT=$(echo "$BIDS_JSON" | python3 - <<'PY'
+import sys, json, os
+data=json.load(sys.stdin)
+bids = data if isinstance(data, list) else data.get('data', [])
+iid = os.environ.get('INSTANCE_ID')
+def to_id(x):
+    if isinstance(x, str):
+        return x
+    if isinstance(x, dict):
+        return x.get('instance_id') or x.get('fid') or x.get('id') or ''
+    return ''
+for b in bids:
+    insts = b.get('instances', []) or []
+    ids = [to_id(it) for it in insts if to_id(it)]
+    if iid in ids:
+        expected = b.get('instance_quantity') or len(ids)
+        # Print space-joined ids, our index, expected count
+        print(' '.join(ids))
+        print(ids.index(iid))
+        print(expected)
+        sys.exit(0)
+print('')
+print('-1')
+print('0')
+PY
+)
+        fi
+        NODE_IDS=$(echo "$RDV_OUT" | sed -n '1p')
+        NODE_INDEX=$(echo "$RDV_OUT" | sed -n '2p')
+        EXPECTED=$(echo "$RDV_OUT" | sed -n '3p')
+
+        CURRENT_COUNT=0
+        if [ -n "$NODE_IDS" ]; then
+          for _id in $NODE_IDS; do CURRENT_COUNT=$((CURRENT_COUNT+1)); done
+        fi
+
+        if [ "$NODE_INDEX" -ge 0 ] && [ "$CURRENT_COUNT" -gt 0 ]; then
+          echo "[rendezvous] Discovered $CURRENT_COUNT/$EXPECTED nodes (index=$NODE_INDEX)"
+          if [ "$CURRENT_COUNT" -ge "$EXPECTED" ] && [ "$EXPECTED" -gt 0 ]; then
+            # Deterministic leader selection: sort IDs lexicographically
+            SORTED_IDS=$(echo "$NODE_IDS" | tr ' ' '\n' | sort | tr '\n' ' ' | sed 's/ $//')
+            # Compute our rank in the sorted order (0-based)
+            FLOW_NODE_RANK=$(echo "$SORTED_IDS" | tr ' ' '\n' | nl -v0 | awk -v iid="$INSTANCE_ID" '$2==iid{print $1; exit}')
+            if [ -z "$FLOW_NODE_RANK" ]; then FLOW_NODE_RANK="0"; fi
+            export FLOW_NODE_RANK
+            # Determine leader as the first in sorted order
+            LEADER_ID=$(echo "$SORTED_IDS" | awk '{print $1}')
+            # Fetch leader private IP (reservation-aware)
+            if [ -n "$RESERVATION_ID" ]; then
+              LEADER_JSON=$(curl -s -H "Authorization: Bearer $API_KEY" "$API_URL/v2/instances?id=$LEADER_ID") || LEADER_JSON="{}"
+            else
+              LEADER_JSON=$(curl -s -H "Authorization: Bearer $API_KEY" "$API_URL/v2/spot/instances?id=$LEADER_ID") || LEADER_JSON="{}"
+            fi
+            LEADER_IP=$(echo "$LEADER_JSON" | python3 - <<'PY'
+import sys, json
+data=json.load(sys.stdin)
+insts = data.get('data', []) if isinstance(data, dict) else []
+print((insts[0] if insts else {}).get('private_ip',''))
+PY
+)
+            export FLOW_NUM_NODES="$EXPECTED"
+            export FLOW_MAIN_IP="$LEADER_IP"
+            export MASTER_ADDR="$FLOW_MAIN_IP"
+            export MASTER_PORT="${MASTER_PORT:-29500}"
+            echo "[rendezvous] Assigned Rank=$FLOW_NODE_RANK NumNodes=$FLOW_NUM_NODES Leader=$FLOW_MAIN_IP"
+            break
+          fi
+        else
+          echo "[rendezvous] Waiting for bid discovery..."
+        fi
+        sleep $BACKOFF
+        if [ $BACKOFF -lt ${FLOW_RDV_BACKOFF_MAX:-10} ]; then BACKOFF=$((BACKOFF*2)); fi
+      done
+    else
+      echo "[rendezvous] Missing API credentials or instance ID; skipping"
+    fi
+  fi
+fi

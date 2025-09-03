@@ -1,0 +1,65 @@
+#!/bin/bash
+set -euo pipefail
+CONFIG="/var/lib/flow/task-runtime.conf"
+[ -f "$CONFIG" ] && source "$CONFIG" || true
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [runtime_limit] $*"; }
+
+log "Max runtime reached; initiating graceful shutdown"
+docker stop -t 30 main 2>/dev/null || true
+sleep 10
+
+INSTANCE_ID=$(curl -s --max-time 5 http://169.254.169.254/latest/meta-data/instance-id || hostname)
+JSON=$(curl -sS --max-time 20 -H "Authorization: Bearer $MITHRIL_API_KEY" "$MITHRIL_API_URL/v2/spot/bids?project=$MITHRIL_PROJECT" || true)
+
+TASK_ID="unknown"
+if command -v jq >/dev/null 2>&1; then
+  TASK_ID=$(echo "$JSON" | jq -r --arg IID "$INSTANCE_ID" --arg NAME "${TASK_NAME:-}" '
+    (.. | objects | select(has("instances")))? as $x |
+    ($x.instances[]? | select(.instance_id == $IID) | $x.fid) //
+    ((.data // .)[]? | select(.name == $NAME and .fid != null) | .fid) //
+    "unknown"
+  ')
+else
+  TASK_ID=$( INSTANCE_ID="$INSTANCE_ID" TASK_NAME="${TASK_NAME:-}" python3 - <<'PY' 2>/dev/null || echo unknown
+import os,sys,json
+try:
+  data=json.load(sys.stdin)
+except Exception:
+  print("unknown"); sys.exit(0)
+items=data if isinstance(data,list) else data.get("data",[])
+iid=os.environ.get("INSTANCE_ID","")
+name=os.environ.get("TASK_NAME","")
+fid="unknown"
+for x in items:
+  for inst in (x.get("instances") or []):
+    if inst.get("instance_id")==iid:
+      fid = x.get("fid") or "unknown"
+      break
+  if fid!="unknown":
+    break
+if fid=="unknown" and name:
+  for x in items:
+    if x.get("name")==name:
+      fid = x.get("fid") or "unknown"
+      break
+print(fid)
+PY
+  )
+fi
+
+if [ "$TASK_ID" != "unknown" ]; then
+  log "Cancelling task $TASK_ID"
+  for attempt in 1 2 3 4 5; do
+    CODE=$(curl -sS -o /dev/null -w "%{http_code}" -X DELETE \
+      -H "Authorization: Bearer $MITHRIL_API_KEY" \
+      -H "Content-Type: application/json" \
+      "$MITHRIL_API_URL/v2/spot/bids/$TASK_ID" --max-time 30 || true)
+    if [ "$CODE" = "200" ] || [ "$CODE" = "204" ] || [ "$CODE" = "202" ]; then
+      log "Cancelled task $TASK_ID successfully"
+      break
+    fi
+    sleep $((attempt * attempt))
+  done
+else
+  log "Could not resolve TASK_ID from provider API; skipping remote cancel"
+fi

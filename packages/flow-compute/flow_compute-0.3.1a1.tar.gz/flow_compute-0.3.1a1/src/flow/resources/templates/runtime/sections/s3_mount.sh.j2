@@ -1,0 +1,38 @@
+# S3 mounting via s3fs
+echo "Setting up S3 mounts"
+
+# Install s3fs
+[[ ensure_s3fs_cmd ]]
+if ! command -v s3fs >/dev/null 2>&1; then
+  echo "WARNING: s3fs is not available; skipping S3 mounts"
+  exit 0
+fi
+
+# Ensure FUSE allows other users if needed by -o allow_other
+if [ -f /etc/fuse.conf ] && ! grep -q '^user_allow_other' /etc/fuse.conf; then
+    echo 'user_allow_other' >> /etc/fuse.conf || true
+fi
+
+# Prepare credentials for s3fs
+USE_IAM_ROLE="false"
+if [ -n "${AWS_ACCESS_KEY_ID:-}" ] && [ -n "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+    echo "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" > /tmp/s3fs_passwd
+    chmod 600 /tmp/s3fs_passwd
+    if [ -n "${AWS_SESSION_TOKEN:-}" ]; then
+        # s3fs reads session token from environment when using passwd_file
+        export AWSSESSIONTOKEN="${AWS_SESSION_TOKEN}"
+    fi
+else
+    # No explicit credentials; attempt IAM role on instance
+    USE_IAM_ROLE="true"
+fi
+
+[[ mount_commands ]]
+
+# Verify S3 mounts
+echo "S3 mounts configured:"
+mount | grep s3fs
+
+# Clean up credential file
+rm -f /tmp/s3fs_passwd || true
+
