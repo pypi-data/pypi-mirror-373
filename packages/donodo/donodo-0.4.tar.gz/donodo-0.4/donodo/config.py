@@ -1,0 +1,2 @@
+
+deposition_compression = "gz"
