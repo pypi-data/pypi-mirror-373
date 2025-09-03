@@ -1,0 +1,233 @@
+// This is a specification of the syntax of the Viv action language, declared in a variant of extended Backus--Naur
+// form (EBNF) that is associated with the parsing expression grammar (PEG) formalism. More specifically, it is in
+// the format expected by the Arpeggio Python library (version 2.0.0).
+
+
+// The top-level nonterminal combines include declarations with action and trope definitions, in any order
+
+file = (include / trope / action)* EOF
+
+
+// Include declaration
+
+include = "include" filename
+filename = '"' (!'"' ((r'(\w+)' / r'.')))* '"' /
+           "'" (!"'" ((r'(\w+)' / r'.')))* "'"
+
+
+// Action definition
+
+action = action_header action_body
+action_header = special_action_tag? "action" name parent_action_declaration? ":"
+parent_action_declaration = "from" name
+action_body = (
+    (&"gloss" gloss)? /
+    (&"report" report)? /
+    (&"saliences" saliences)? /
+    (&"associations" associations)? /
+    (&"embargoes" embargoes)? /
+    (&"tags" tags_field / &"join" tags_field)? /
+    (&"roles" roles / &"join" roles)? /
+    (&"preconditions" preconditions / &"join" preconditions)? /
+    (&"scratch" scratch / &"join" scratch)? /
+    (&"effects" effects / &"join" effects)? /
+    (&"reactions" reactions / &"join" reactions)?
+)#
+
+// Trope definition
+
+trope = "trope" name trope_role_names? ":" statements
+trope_role_names = "with" name ("," name)*
+
+
+// Main components of Viv definitions
+
+special_action_tag = "special"
+gloss = "gloss" ":" string
+report = "report" ":" templated_text
+tags_field = child_join_operator? "tags" ":" tags
+tags = tag ("," tag)*
+tag = token
+roles = child_join_operator? "roles" ":" role+
+role = role_renaming / (number_range? binding_rate_directive? role_name binding_pool_directive? ":" role_labels)
+role_renaming = role_name "<<" role_name
+number_range = number ("-" number)?
+role_name = name ""
+binding_pool_directive = binding_pool_from_directive / binding_pool_is_directive
+binding_pool_from_directive = "from" expression
+binding_pool_is_directive = "is" expression
+role_labels = role_label ("," role_label)*
+role_label = "initiator" / "partner" / "recipient" / "bystander" / "location" /
+             "symbol" / "absent" / "action" / "item" / "precast" / build_directive
+build_directive = "build" "(" build_directive_entity_recipe ")"
+build_directive_entity_recipe = object
+binding_rate_directive = chance_directive / mean_directive
+chance_directive = "[" "-"? r"[0-9]+(\.[0-9]+)?" "%" "]"
+mean_directive = "[" "~" "-"? r"[0-9]+(\.[0-9]+)?" "]"
+preconditions = child_join_operator? "preconditions" ":" statements
+child_join_operator = "join"
+scratch = child_join_operator? "scratch" ":" statements
+effects = child_join_operator? "effects" ":" statements
+reactions = child_join_operator? "reactions" ":" (conditional / loop / reaction)+
+reaction = "queue" reaction_action_name ":" reaction_options
+reaction_action_name = name
+reaction_options = (bindings / urgent? / priority? / kill_code? / when? / where? / abandonment_conditions?)#
+bindings = "bindings" ":" binding+
+binding = (name ":" reference) / loop
+urgent = "urgent" ":" expression
+priority = "priority" ":" expression
+kill_code = "kill_code" ":" expression
+where = "where" ":" expression
+when = "when" (when_action_timestamp_anchor / when_hearing_timestamp_anchor)  ":" time_expression
+when_action_timestamp_anchor = "from action"
+when_hearing_timestamp_anchor = "from hearing"
+time_expression = time_statement ("," time_statement)?
+time_statement = before_time_statement / after_time_statement / between_time_statement
+before_time_statement = "before" (time_period / time)
+after_time_statement = "after" (time_period / time)
+between_time_statement = "between" time_period "and" time_period / "between" time "and" time
+time_period = (number / number_word) ("minutes" / "hours" / "days" / "weeks" / "months" / "years" /
+                                      "minute" / "hour" / "day" / "week" / "month" / "year" )
+number_word = "one" / "two" / "three" / "four" / "five" / "six" / "seven" / "eight" / "nine" /
+              "ten" / "eleven" / "twelve"
+time = hh (":" mm)? ("pm" / "am" / "PM" / "AM")
+hh = r"[0-9]{1,2}"
+mm = r"[0-9]{2}"
+abandonment_conditions = "abandon" ":" statements
+
+salience_associations_local_variable_name = "c"
+
+saliences = (child_join_operator? "saliences" saliences_default_value) /
+            (child_join_operator? "saliences" "for" local_variable_sigil salience_associations_local_variable_name saliences_default_value saliences_body?)
+saliences_default_value = "default" (enum / number)
+saliences_body = ":" statement+
+
+associations = (child_join_operator? "associations" associations_default_value) /
+               (child_join_operator? "associations" "for" local_variable_sigil salience_associations_local_variable_name associations_default_value associations_body?)
+associations_default_value = "default" tags
+associations_body = ":" associations_statements
+associations_statements = associations_statement+
+associations_statement = associations_conditional / associations_loop / tags
+associations_conditional = associations_conditional_branches ("else:" associations_conditional_alternative)? "end"
+associations_conditional_branches = "if" associations_conditional_branch ("elif" associations_conditional_branch)*
+associations_conditional_branch = condition ":" associations_conditional_consequent
+associations_conditional_consequent = associations_scoped_statements ""
+associations_conditional_alternative = associations_scoped_statements ""
+associations_loop =
+    "loop" unary_expression "as" local_variable_reference ":"
+        associations_scoped_statements
+    "end"
+associations_scoped_statements = (!"end" !"else:" associations_statement)+
+
+embargoes = child_join_operator? "embargoes" ":" embargo+
+embargo = embargo_roles? embargo_time_period embargo_location?
+embargo_roles = !embargo_time_period role_name ("," role_name)*
+embargo_time_period = ("for" time_period) / "forever"
+embargo_location = "here" ""
+trope_fit_expression = trope_fit_expression_args &"fits" "fits" name
+trope_fit_expression_args = reference ("," reference)*
+name = (!reserved r"[A-Za-z_][A-Za-z0-9\-_]*")
+reserved = "loop" / "gloss" / "roles" / "preconditions" / "effects" / "reactions" / "saliences" /
+           "priority" / "kill_code" / "abandon" / "if" / "else" / "end" / "action" / "when" /
+           "where" / "associations" / "special" / "default" / "urgent" / "type" / "__causes__" /
+           "__groups__" / "__action__" / "join" / "tags" / "embargoes" / "here" / "include" /
+           "report" / "trope" / "fits" / "with" / "scratch"
+
+
+// High-level language features
+
+comment = r"\/\/[^\n]*"
+role_reference = role_reference_sigil name
+role_reference_sigil = "@"
+local_variable_reference = local_variable_sigil name
+local_variable_sigil = "$$"
+global_variable_reference = global_variable_sigil name
+global_variable_sigil = "$"
+role_unpacking = role_unpacking_sigil name
+role_unpacking_sigil = "*"
+adapter_function_call = "~" name "(" args? ")" eval_fail_safe_marker?
+args = expression ("," expression)*
+statements = statement+
+statement = conditional / loop / reaction / expression / literal
+conditional = conditional_branches ("else:" alternative)? "end"
+conditional_branches = "if" conditional_branch ("elif" conditional_branch)*
+conditional_branch = condition ":" consequent
+condition = expression
+consequent = scoped_statements ""
+alternative = scoped_statements ""
+scoped_statements = (!"end" !"else:" statement)+
+loop = "loop" unary_expression "as" local_variable_reference ":" scoped_statements "end"
+
+
+// General expressions
+
+expression = assignment_expression / arithmetic_expression / logical_expression / unary_expression
+assignment_expression = &"{" &assignment_lvalue_start "{" assignment_lvalue assignment_operator expression "}" /
+                        assignment_lvalue assignment_operator expression
+assignment_lvalue = role_anchored_reference / local_variable_anchored_reference
+assignment_lvalue_start = role_reference_sigil / local_variable_sigil / global_variable_sigil
+arithmetic_expression = "{" unary_expression arithmetic_operator expression "}" /
+                        unary_expression arithmetic_operator expression
+logical_expression = disjunction ''
+disjunction = conjunction ("||" conjunction)* /
+              negation? "{" conjunction ("||" conjunction)+ "}" !"&&"
+conjunction = ("{" expression "}" / relational_expression) ("&&" logical_expression)* /
+              negation? "{" ("{" expression "}" / relational_expression) ("&&" logical_expression)+ "}"
+relational_expression = negation? "{" unary_expression relational_operator unary_expression "}" /
+		     			unary_expression relational_operator unary_expression /
+		     			unary_expression
+unary_expression = negation? "{" simple_unary_expression "}" / negation? simple_unary_expression
+simple_unary_expression = object / chance_expression / trope_fit_expression / adapter_function_call /
+                          list / role_anchored_reference / local_variable_anchored_reference /
+                          role_unpacking / literal
+chance_expression = "-"? r"[0-9]+(\.[0-9]+)?" "%"
+negation = "!"
+assignment_operator = "+=" / "-=" / "*=" / "/=" / "=" / "append" / "remove"
+relational_operator = "==" / "!=" / "<=" / ">=" / "<" / ">" / "in"
+arithmetic_operator = "+" / "-" !">" / "*" / "/"
+literal = enum / string / number / boolean / null_type
+
+
+// References
+
+reference = role_anchored_reference / local_variable_anchored_reference
+role_anchored_reference = (role_reference / global_variable_reference) reference_path?
+local_variable_anchored_reference = local_variable_reference reference_path?
+reference_path = (reference_path_property_name / reference_path_pointer / reference_path_lookup)+
+reference_path_property_name = "." property_name eval_fail_safe_marker?
+reference_path_pointer = "->" property_name eval_fail_safe_marker?
+reference_path_lookup = "[" expression "]" eval_fail_safe_marker?
+property_name = r"[a-zA-Z0-9_]+"
+eval_fail_safe_marker = "?" ""
+
+
+// Data structures
+
+list = "[" (expression ("," expression)*)? "]"
+object = &"{" &object_key_start "{" (key_value_pair ("," key_value_pair)*)? "}"
+object_key_start = '"' / "'" / r"[A-Za-z_]"
+key_value_pair = key ":" value
+key = string / bare_key
+bare_key = r"[A-Za-z_][A-Za-z0-9_\-]*"
+value = expression ''
+
+
+// Literals
+
+number = sign? r"[0-9]*" point r"[0-9]+" / sign? r"[0-9]+" point?
+sign = '-' / '+'
+point = "." / "."  // There must be multiple rules to get the point itself to surface
+string = '"' (!'"' (reference / space / character))* '"' /
+         "'" (!"'" (reference / space / character))* "'"
+character = r'[^"\'{@*$]+'
+space = r"[ \t]+"
+token = !reserved r"[A-Za-z_][A-Za-z0-9\-_]*"
+boolean = "true" / "false"
+null_type = "null"
+enum = ('-' / '+')? enum_token
+enum_token = r'(##|#)[A-Za-z_][A-Za-z0-9\-_]*'
+templated_text = '"' (!'"' template_gap / template_frame_component_double_quote)+ '"' /
+                 "'" (!"'" template_gap / template_frame_component_single_quote)+ "'"
+template_frame_component_double_quote = r'[^"{]+'
+template_frame_component_single_quote = r"[^'{]+"
+template_gap = "{" (reference / role_unpacking) "}"
