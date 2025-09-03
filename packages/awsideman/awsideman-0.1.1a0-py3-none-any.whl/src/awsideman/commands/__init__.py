@@ -1,0 +1,41 @@
+"""Command modules for awsideman."""
+
+from . import (
+    access_review,
+    assignment,
+    bulk,
+    cache,
+    clone,
+    config,
+    copy,
+    group,
+    org,
+    permission_cloning,
+    permission_set,
+    profile,
+    rollback,
+    sso,
+    status,
+    templates,
+    user,
+)
+
+__all__ = [
+    "profile",
+    "sso",
+    "user",
+    "group",
+    "permission_set",
+    "permission_cloning",
+    "assignment",
+    "org",
+    "cache",
+    "bulk",
+    "status",
+    "access_review",
+    "rollback",
+    "clone",
+    "config",
+    "copy",
+    "templates",
+]
