@@ -1,0 +1,244 @@
+import os
+import sys
+import importlib
+import torch as th
+import xarray as xr
+import numpy as np
+import pandas as pd
+import json
+
+import wxbtool.config as config
+
+from wxbtool.nn.lightning import LightningModel
+from wxbtool.data.dataset import WxDataset
+from wxbtool.util.plotter import plot
+from datetime import datetime, timedelta
+
+
+if th.cuda.is_available():
+    accelerator = "gpu"
+    th.set_float32_matmul_precision("medium")
+elif th.backends.mps.is_available():
+    accelerator = "cpu"
+else:
+    accelerator = "cpu"
+
+
+def main(context, opt):
+    try:
+        os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpu
+        sys.path.insert(0, os.getcwd())
+        mdm = importlib.import_module(opt.module, package=None)
+        model = LightningModel(mdm.model, opt=opt)
+
+        # Load the model checkpoint if provided
+        if opt.load:
+            checkpoint = th.load(opt.load)
+            model.load_state_dict(checkpoint["state_dict"])
+
+        # Set the model to evaluation mode
+        model.eval()
+
+        parser_time = datetime.strptime(opt.datetime, "%Y-%m-%d")
+
+        # Load the dataset
+        dataset = WxDataset(
+            root=model.model.setting.root,  # WXBHOME_PATH
+            resolution=model.model.setting.resolution,
+            years=[
+                parser_time.year
+            ],  # the year thar your date belongs to, must be Iterable
+            vars=model.model.setting.vars,
+            levels=model.model.setting.levels,
+            input_span=model.model.setting.input_span,
+            pred_shift=model.model.setting.pred_shift,
+            pred_span=model.model.setting.pred_span,
+            step=model.model.setting.step,
+        )
+
+        # Find the index of the specific datetime
+        sample_var = model.model.setting.vars[0]
+        sample_path = os.path.join(
+            config.root,
+            sample_var,
+            f"{sample_var}_{parser_time.year}_{model.model.setting.resolution}.nc",
+        )
+        sample_data = xr.open_dataarray(sample_path)
+        day_of_year = int(parser_time.strftime("%j"))
+        datetime_index = sample_data.time.values.tolist().index(float(day_of_year - 1))
+
+        # Get the input data for the specific datetime
+        inputs, targets, _ = dataset[datetime_index]
+
+        # Convert inputs to torch tensors
+        inputs = {
+            k: th.tensor(
+                v[: model.model.setting.input_span, :, :], dtype=th.float32
+            ).unsqueeze(0)
+            for k, v in inputs.items()
+        }  # 只取input_span范围
+        targets = {
+            k: th.tensor(v, dtype=th.float32).unsqueeze(0) for k, v in targets.items()
+        }
+
+        inputs = model.model.get_inputs(**inputs)
+        targets = model.model.get_targets(
+            **targets
+        )  # targets必须也得get一次，norm后，才能和compute_drmse适配
+
+        # Perform inference
+        with th.no_grad():
+            results = model(**inputs)
+
+        for variable in model.model.setting.vars_out:
+            model.mseByVar[variable] = dict()
+            model.compute_rmse_by_time(targets, results, variable)
+
+        new_dict = {}
+        for var, epoch_dict in model.mseByVar.items():
+            days_dict = epoch_dict.get(
+                0, {}
+            )  # 取出 epoch=0 这一层, eval下epoch全部都是0
+            new_dict[var] = days_dict.copy()
+            new_dict[var] = {
+                (parser_time + timedelta(days=d)).strftime("%Y-%m-%d"): v
+                for d, v in new_dict[var].items()
+            }  # 把天数转成具体日期
+
+        results = model.model.get_forcast(**results)
+
+        # Save the output
+        output_dir = f"output/{opt.datetime}"
+        os.makedirs(output_dir, exist_ok=True)
+        file_name = f"{opt.module.split('.')[-1]}.{opt.output}"
+        output_path = os.path.join(output_dir, file_name)
+
+        if opt.output.endswith("png"):
+            for var, data in results.items():
+                if var == "t2m":
+                    plot(
+                        var, open(output_path, mode="wb"), data.squeeze().cpu().numpy()
+                    )
+        elif opt.output.endswith("nc"):
+            if len(model.model.setting.vars_out) > 1:
+                ds = xr.DataArray(
+                    None,
+                    dims=("vars", "time", "lat", "lon"),
+                    coords={
+                        "time": pd.date_range(
+                            start=opt.datetime,
+                            periods=model.model.setting.input_span
+                            + model.model.setting.pred_span,
+                            freq="D",
+                        ),
+                        "vars": model.model.setting.vars_out,
+                        "lat": model.model.setting.get_latitude_array(),
+                        "lon": model.model.setting.get_longitude_array(),
+                    },
+                )
+                for var in model.model.setting.vars_out:
+                    lat_size, lon_size = model.model.setting.spatial_shape
+                    ds.loc[var] = results[var].reshape(-1, lat_size, lon_size)
+            else:
+                lat_size, lon_size = model.model.setting.spatial_shape
+                ds = xr.DataArray(
+                    results["t2m"].reshape(lat_size, lon_size),
+                    coords={
+                        "lat": model.model.setting.get_latitude_array(),
+                        "lon": model.model.setting.get_longitude_array(),
+                    },
+                    dims=["lat", "lon"],
+                )
+            ds.to_netcdf(output_path)
+            with open(os.path.join(output_dir, "var_day_rmse.json"), "w") as f:
+                json.dump(new_dict, f)
+        else:
+            raise ValueError("Unsupported output format. Use either png or nc.")
+
+    except ImportError as e:
+        exc_info = sys.exc_info()
+        print(e)
+        print("failure when loading model")
+        import traceback
+
+        traceback.print_exception(*exc_info)
+        del exc_info
+        sys.exit(-1)
+
+
+def main_gan(context, opt):
+    try:
+        os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpu
+        sys.path.insert(0, os.getcwd())
+        mdm = importlib.import_module(opt.module, package=None)
+        generator = mdm.generator
+
+        # Load the model checkpoint if provided
+        if opt.load:
+            checkpoint = th.load(opt.load)
+            generator.load_state_dict(checkpoint["state_dict"])
+
+        # Set the model to evaluation mode
+        generator.eval()
+
+        # Load the dataset
+        dataset = WxDataset(
+            root=generator.setting.root,
+            resolution=generator.setting.resolution,
+            years=generator.setting.years_test,
+            vars=generator.setting.vars,
+            levels=generator.setting.levels,
+            input_span=generator.setting.input_span,
+            pred_shift=generator.setting.pred_shift,
+            pred_span=generator.setting.pred_span,
+            step=generator.setting.step,
+        )
+
+        # Find the index of the specific datetime
+        datetime_index = np.where(dataset.time == np.datetime64(opt.datetime))[0][0]
+
+        # Get the input data for the specific datetime
+        inputs, _ = dataset[datetime_index]
+
+        # Convert inputs to torch tensors
+        inputs = {
+            k: th.tensor(v, dtype=th.float32).unsqueeze(0) for k, v in inputs.items()
+        }
+
+        # Perform GAN inference
+        results = []
+        with th.no_grad():
+            for _ in range(opt.samples):
+                noise = th.randn_like(inputs["data"][:, :1, :, :], dtype=th.float32)
+                inputs["noise"] = noise
+                result = generator(**inputs)
+                results.append(result["data"].cpu().numpy())
+
+        # Save the output
+        if opt.output.endswith(".png"):
+            for i, data in enumerate(results):
+                plot(
+                    f"sample_{i}",
+                    open(f"{opt.output}_{i}.png", mode="wb"),
+                    data.squeeze(),
+                )
+        elif opt.output.endswith(".nc"):
+            ds = xr.Dataset(
+                {
+                    f"sample_{i}": (("time", "lat", "lon"), data.squeeze())
+                    for i, data in enumerate(results)
+                }
+            )
+            ds.to_netcdf(opt.output)
+        else:
+            raise ValueError("Unsupported output format. Use either png or nc.")
+
+    except ImportError as e:
+        exc_info = sys.exc_info()
+        print(e)
+        print("failure when loading model")
+        import traceback
+
+        traceback.print_exception(*exc_info)
+        del exc_info
+        sys.exit(-1)
