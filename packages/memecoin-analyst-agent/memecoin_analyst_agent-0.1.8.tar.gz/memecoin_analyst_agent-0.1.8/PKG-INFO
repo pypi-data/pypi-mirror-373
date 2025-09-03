@@ -1,0 +1,166 @@
+Metadata-Version: 2.4
+Name: memecoin-analyst-agent
+Version: 0.1.8
+Summary: Memecoin Smart Trading Analyst Agent with MCP server for Alibaba Cloud Bailian
+Author: Memecoin Trading Team
+License: MIT
+Project-URL: Homepage, https://github.com/memecoin-trading/agent
+Keywords: mcp,agent,memecoin,bsc,web3,analysis
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: langchain>=0.1.0
+Requires-Dist: langchain-openai>=0.1.0
+Requires-Dist: langchain-community>=0.1.0
+Requires-Dist: openai>=1.0.0
+Requires-Dist: requests>=2.28.0
+Requires-Dist: httpx>=0.24.0
+Requires-Dist: aiohttp>=3.8.0
+Requires-Dist: pydantic>=2.0.0
+
+# 6551 Monitor Assistant v5.3
+
+后端直连新网站专属 WebSocket 源，实时消费推送，进行用户/关键词匹配并将命中的代币地址发送到 Sigma Bot。Chrome 插件不再必须，只保留为可选 UI。
+
+**🌐 跨平台支持：完全兼容 Windows、macOS 和 Linux 系统**
+
+## Core Features
+
+- **Real-time Monitoring**: Multiple DOM monitoring strategies to ensure no content is missed.
+- **Intelligent Matching**: Case-insensitive keyword matching with a customizable mapping table.
+- **Terminal Broadcasting**: Color-coded terminal output with sound alerts.
+- **Desktop Notifications**: Native Chrome notification system.
+- **Real-time Statistics**: Match history and statistical information.
+- **Cross-platform**: Supports Windows, macOS, and Linux.
+
+## System Architecture
+
+Website Push Data → Direct WebSocket Consumer (Backend) → Matching Engine (T0/T1/CHANGE_IMAGE) → Telegram (Sigma Bot)
+
+## File Structure
+
+v4/
+├── chrome_extension/           # Chrome extension files
+│   ├── manifest.json          # Extension manifest
+│   ├── content.js             # Content script (DOM monitoring)
+│   ├── injected.js            # Page injection script
+│   ├── background.js          # Background service worker
+│   ├── popup.html             # Extension popup interface
+│   ├── popup.js               # Popup interaction logic
+│   └── icons/                 # Extension icon directory
+├── terminal_server.py          # Terminal broadcast service
+├── requirements.txt            # Python dependencies
+├── token_mapping.json          # Keyword mapping table
+└── README.md                  # Instructions for use
+
+## Quick Start
+
+### 1. Environment Preparation
+
+- Ensure Python 3.8+ is installed.
+- 可选：Chrome 仅用于 UI，不影响核心功能。
+
+**跨平台兼容性检查：**
+```bash
+# 运行兼容性检查（推荐首次运行前执行）
+python platform_check.py
+```
+
+### 2. Install Python Dependencies
+
+cd v4
+pip install -r requirements.txt
+
+### 3. Configure Keyword Mapping
+
+Edit the `token_mapping.json` file.
+
+### 4. Start Terminal Service
+
+**Windows:**
+```cmd
+start_monitor.bat
+# 或直接运行: python terminal_server.py
+```
+
+**macOS/Linux:**
+```bash
+./start_monitor.sh
+# 或直接运行: python3 terminal_server.py
+```
+
+### 5. (Optional) Install Chrome Extension
+
+1. Open Chrome browser.
+2. Visit `chrome://extensions/`.
+3. Enable "Developer mode" in the top right corner.
+4. Click "Load unpacked".
+5. Select the `v4/chrome_extension` directory.
+
+### 6. Configure Source
+
+编辑 `config.ini` 增加 `[Source] ws_url`，例如：
+
+```
+[Source]
+ws_url = wss://x1.apidance.pro/userWs?uuid=YOUR_UUID
+```
+
+1. Visit `https://6551.io/twitterMonitor` in Chrome.
+2. Complete any human verification on the site.
+3. Click the extension icon in the Chrome toolbar.
+4. Click "Start Monitoring" in the popup.
+
+## Monitoring Mechanism
+
+后端直连新源：
+- WebSocket 长连，自动重连/心跳
+- 解析 `msg_type` 与 `payload`，支持 `new_tweet/update_tweet/pin/follow/new_description/new_avatar` 等
+- **权限控制**：T0_KEYS 只能由 T0_users 触发；T1_KEYS 可由 T0_users 或 T1_users 触发
+- **推文类型**：支持交互内容三重检查（用户评论+被评论内容+被评论用户名）
+- **follow 类型**：检查被关注用户 `screen_name`，遵循权限控制
+- **new_description**：非空新值匹配关键字；空值时用 `screen_name.upper()` 匹配 `CHANGE_IMAGE`
+- **new_avatar**：检查用户 `screen_name.upper()` 是否匹配 `CHANGE_IMAGE`
+
+## API Endpoints
+
+The terminal service provides the following HTTP API:
+
+| Endpoint         | Method | Function                  |
+|------------------|--------|---------------------------|
+| /                | GET    | Service status and stats  |
+| /health          | GET    | Health check              |
+| /reload_config   | GET    | Reload config files       |
+| /ws              | WS     | (兼容) 旧插件调试通道      |
+
+## Troubleshooting
+
+### Common Issues
+
+- **Terminal service fails to start**: Check if the port is occupied or if dependencies are missing.
+- **WS 未连接**：检查 `config.ini:[Source] ws_url` 是否配置正确，终端日志有连接状态。
+- **No monitoring response**: Ensure you are on the correct website and check the browser console for logs.
+
+### Platform-Specific Issues
+
+**Windows:**
+- **中文乱码**: 确保使用 Windows Terminal 或在命令提示符中运行 `chcp 65001`
+- **Python 命令不可用**: 尝试使用 `py` 命令替代 `python`
+- **权限问题**: 以管理员身份运行命令提示符
+
+**macOS:**
+- **权限问题**: 运行 `chmod +x start_monitor.sh` 添加执行权限
+- **Python 版本**: 确保使用 `python3` 命令
+
+**Linux:**
+- **依赖缺失**: 运行 `sudo apt update && sudo apt install python3-pip`
+- **权限问题**: 使用 `chmod +x *.sh` 添加脚本执行权限
+
+## Security Notice
+
+- This tool is for monitoring public content only.
+- Ensure the accuracy of token addresses to avoid financial loss.
+- It is recommended to test in a non-production environment before official use.
+
+## License
+
+This project is for learning and research purposes only. Users assume all risks associated with its use.
