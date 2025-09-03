@@ -1,0 +1,506 @@
+Metadata-Version: 2.4
+Name: cfy
+Version: 0.1.0.post13
+Summary: Modern Python configuration management system with CLI override support
+Project-URL: Homepage, https://github.com/JAMESVEITCH/cfy
+Project-URL: Documentation, https://github.com/JAMESVEITCH/cfy#readme
+Project-URL: Source, https://github.com/JAMESVEITCH/cfy
+Project-URL: Issues, https://github.com/JAMESVEITCH/cfy/issues
+Author-email: James Veitch <james@example.com>
+License: MIT
+Keywords: cli,configuration,environment,fastapi,pydantic,settings
+Classifier: Development Status :: 4 - Beta
+Classifier: Framework :: FastAPI
+Classifier: Framework :: Pydantic
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.12
+Requires-Dist: fastapi>=0.116.1
+Requires-Dist: pydantic-settings>=2.1.0
+Requires-Dist: pydantic>=2.5.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: pyyaml>=6.0.1
+Requires-Dist: rich>=13.7.0
+Requires-Dist: tomli-w>=1.0.0
+Requires-Dist: typer>=0.9.0
+Provides-Extra: dev
+Requires-Dist: asyncpg>=0.29.0; extra == 'dev'
+Requires-Dist: black>=23.12.1; extra == 'dev'
+Requires-Dist: fastapi>=0.109.0; extra == 'dev'
+Requires-Dist: fastapi>=0.116.1; extra == 'dev'
+Requires-Dist: httpx>=0.26.0; extra == 'dev'
+Requires-Dist: hypothesis>=6.92.0; extra == 'dev'
+Requires-Dist: ipython>=8.19.0; extra == 'dev'
+Requires-Dist: mypy>=1.8.0; extra == 'dev'
+Requires-Dist: pre-commit>=3.6.0; extra == 'dev'
+Requires-Dist: pytest-asyncio>=0.21.1; extra == 'dev'
+Requires-Dist: pytest-cov>=4.1.0; extra == 'dev'
+Requires-Dist: pytest>=7.4.4; extra == 'dev'
+Requires-Dist: redis>=5.0.0; extra == 'dev'
+Requires-Dist: ruff>=0.1.11; extra == 'dev'
+Requires-Dist: uvicorn[standard]>=0.27.0; extra == 'dev'
+Provides-Extra: examples
+Requires-Dist: ipykernel>=6.30.1; extra == 'examples'
+Requires-Dist: pip>=25.2; extra == 'examples'
+Provides-Extra: fastapi
+Requires-Dist: asyncpg>=0.29.0; extra == 'fastapi'
+Requires-Dist: fastapi>=0.109.0; extra == 'fastapi'
+Requires-Dist: redis>=5.0.0; extra == 'fastapi'
+Requires-Dist: uvicorn[standard]>=0.27.0; extra == 'fastapi'
+Provides-Extra: test
+Requires-Dist: fastapi>=0.116.1; extra == 'test'
+Requires-Dist: httpx>=0.26.0; extra == 'test'
+Requires-Dist: hypothesis>=6.92.0; extra == 'test'
+Requires-Dist: pytest-asyncio>=0.21.1; extra == 'test'
+Requires-Dist: pytest-cov>=4.1.0; extra == 'test'
+Requires-Dist: pytest>=7.4.4; extra == 'test'
+Description-Content-Type: text/markdown
+
+# cfy (Config For You)
+
+A modern, type-safe Python configuration library with support for multiple sources, validation, and environment-specific overrides.
+
+[![Python Version](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+## Features
+
+- 🔧 **Multi-source configuration**: YAML, JSON, TOML, environment variables, CLI arguments
+- 🔒 **Type-safe validation**: Pydantic v2 models with schema enforcement
+- 🔐 **Secret management**: Secure handling with encryption support
+- 🔄 **Dynamic reloading**: Watch files and reload configuration automatically
+- 📝 **Variable interpolation**: Template substitution with `${VAR}` syntax
+- 🚀 **FastAPI integration**: Built-in dependency injection and middleware
+- 🎨 **Beautiful CLI**: Rich terminal interface for validation and inspection
+- ⚡ **Performance optimized**: Caching, lazy loading, and monitoring
+
+
+## Installation
+
+```bash
+pip install cfy
+```
+
+For development installation:
+```bash
+git clone https://github.com/yourusername/cfy.git
+cd cfy
+pip install -e ".[dev]"
+```
+
+## Examples
+
+Explore our comprehensive examples to learn PyConfig:
+
+- 📚 **[Interactive Jupyter Notebooks](examples/)** - Step-by-step tutorials
+- 📁 **[Example Configuration Files](examples/configs/)** - Ready-to-use templates
+
+## Quickstart
+
+### Basic Usage
+
+```python
+from cfy import BaseConfiguration, ConfigurationLoader
+from pydantic import Field
+from pydantic_settings import SettingsConfigDict
+
+# Define your configuration schema
+class AppConfig(BaseConfiguration):
+    app_name: str = Field(default="MyApp", description="Application name")
+    debug: bool = Field(default=False, description="Debug mode")
+    port: int = Field(default=8000, description="Server port")
+    database_url: str = Field(default="postgresql://localhost/myapp", description="Database connection URL")
+
+    # Configure environment variable loading
+    model_config = SettingsConfigDict(
+        env_prefix="APP_",  # Load from APP_* environment variables
+        env_file=".env"     # Load from .env file
+    )
+
+# Create loader (app_name is now optional - auto-generates if not provided)
+loader = ConfigurationLoader()  # Auto-generates app name from context
+# Or explicitly specify app_name for production use
+# loader = ConfigurationLoader(app_name="myapp")
+
+# Load configuration using the loader
+config = loader.load(AppConfig)
+
+# Access configuration
+print(f"Starting {config.app_name} on port {config.port}")
+print(f"Database: {config.database_url}")
+```
+
+### Configuration Files
+
+**config.yaml:**
+```yaml
+app_name: "MyApp"
+port: 8000
+database_url: "postgresql://localhost/myapp"
+```
+
+**config.prod.yaml:**
+```yaml
+debug: false
+database_url: "${DATABASE_URL}"  # Use environment variable
+```
+
+**.env:**
+```bash
+APP_DEBUG=false
+DATABASE_URL=postgresql://prod-server/myapp
+APP_SECRET_KEY=${file:/run/secrets/app_key}  # Load from file
+```
+
+### Variable Interpolation
+
+cfy supports multiple interpolation patterns:
+
+```python
+from cfy import ConfigInterpolator
+
+# Create interpolator
+interpolator = ConfigInterpolator()
+
+# Environment variable substitution
+config = {
+    "database": "${DATABASE_URL}",
+    "api_key": "${env:API_KEY}",
+    "timeout": "${TIMEOUT:30}",  # With default value
+}
+
+# Cross-reference other config values
+config = {
+    "base_url": "https://api.example.com",
+    "endpoint": "${config:base_url}/v1/users"
+}
+
+# File content substitution
+config = {
+    "ssl_cert": "${file:/etc/ssl/cert.pem}",
+    "secrets": "${file:/run/secrets/app.json}"
+}
+
+# Apply interpolation
+result = interpolator.interpolate(config)
+```
+
+### Nested Configuration
+
+```python
+from cfy import BaseConfiguration, ConfigurationLoader
+from pydantic import Field
+from pydantic_settings import SettingsConfigDict
+from typing import List, Optional
+
+class DatabaseConfig(BaseConfiguration):
+    host: str = Field(default="localhost")
+    port: int = Field(default=5432)
+    name: str = Field(default="myapp")
+    user: str = Field(default="user")
+    password: str = Field(default="password", exclude=True)  # Exclude from serialization
+
+    model_config = SettingsConfigDict(env_prefix="DB_")
+
+class ServerConfig(BaseConfiguration):
+    host: str = Field(default="0.0.0.0")
+    port: int = Field(default=8000)
+    workers: int = Field(default=4)
+
+    model_config = SettingsConfigDict(env_prefix="SERVER_")
+
+class AppConfig(BaseConfiguration):
+    name: str = Field(default="MyApp")
+    version: str = Field(default="1.0.0")
+    server: ServerConfig = Field(default_factory=ServerConfig)
+    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    features: List[str] = Field(default_factory=list)
+    metadata: Optional[dict] = Field(default=None)
+
+    model_config = SettingsConfigDict(env_prefix="APP_")
+
+# Create loader and load nested configuration
+loader = ConfigurationLoader(config_paths=["nested_config.yaml"])  # app_name is optional
+# Or with explicit app_name: ConfigurationLoader(app_name="myapp", config_paths=["nested_config.yaml"])
+config = loader.load(AppConfig)
+
+# Access nested values
+print(f"Database: {config.database.host}:{config.database.port}")
+print(f"Server: {config.server.workers} workers")
+```
+
+### Secret Management
+
+```python
+from cfy import SecretManager
+from pydantic import SecretStr
+import os
+
+# Set up test secrets in environment
+os.environ['SECRET_API_KEY'] = 'your-api-key-here'
+os.environ['SECRET_DB_PASSWORD'] = 'your-db-password-here'
+
+# Initialize secret manager
+secrets = SecretManager()
+
+# Load secrets from environment variables
+api_key = secrets.get_secret_env('SECRET_API_KEY', required=False)
+db_password = secrets.get_secret_env('SECRET_DB_PASSWORD', required=False)
+
+print(f"API Key type: {type(api_key).__name__}")  # SecretStr
+print(f"Password type: {type(db_password).__name__}")  # SecretStr
+
+# Access secret values (only when needed)
+print(f"API Key value: {api_key.get_secret_value()}")
+
+# Mask secrets for logging
+masked_key = secrets.mask_secret(api_key, show_chars=4)
+print(f"Masked API Key: {masked_key}")  # "****-here"
+```
+
+### Dynamic Configuration Reloading
+
+```python
+from cfy import ConfigurationLoader
+import asyncio
+
+loader = ConfigurationLoader()
+
+# Watch for configuration changes
+async def watch_config():
+    async for config in loader.watch_config(
+        AppConfig,
+        sources=["config.yaml"],
+        interval=5.0  # Check every 5 seconds
+    ):
+        print(f"Configuration updated: {config.app_name}")
+        # Reconfigure your application
+
+# Run the watcher
+asyncio.run(watch_config())
+```
+
+### CLI Interface
+
+PyConfig includes a rich CLI for configuration management:
+
+```bash
+# Validate configuration
+cfy validate config.yaml --schema AppConfig
+
+# Inspect configuration with syntax highlighting
+cfy inspect config.yaml
+
+# Convert between formats
+cfy convert config.yaml config.json
+
+# Generate JSON schema
+cfy generate-schema AppConfig > schema.json
+
+# Check secrets
+cfy secrets check config.yaml
+
+# Monitor performance
+cfy performance config.yaml
+```
+
+### FastAPI Integration
+
+```python
+from fastapi import FastAPI, Depends
+from cfy.integrations.fastapi import (
+    ConfigDependency,
+    FastAPIConfigMiddleware,
+    create_config_dependency
+)
+from cfy import BaseConfiguration, ConfigurationLoader
+from pydantic import Field
+from pydantic_settings import SettingsConfigDict
+
+class AppConfig(BaseConfiguration):
+    app_name: str = Field(default="TestApp")
+    version: str = Field(default="1.0.0")
+
+    model_config = SettingsConfigDict(env_prefix="APP_")
+
+app = FastAPI()
+
+# Add configuration middleware
+app.add_middleware(FastAPIConfigMiddleware, config_class=AppConfig)
+
+# Create custom loader (optional)
+loader = ConfigurationLoader(config_paths=["config.yaml"])  # app_name auto-generated
+# Or with explicit app_name: ConfigurationLoader(app_name="myapp", config_paths=["config.yaml"])
+
+# Create configuration dependency
+get_config = create_config_dependency(AppConfig, loader=loader)
+
+# Use in endpoints
+@app.get("/")
+async def root(config: AppConfig = Depends(get_config)):
+    return {"app": config.app_name, "version": config.version}
+
+# Test the configuration
+if __name__ == "__main__":
+    config = get_config()
+    print(f"App: {config.app_name} v{config.version}")
+```
+
+## Advanced Features
+
+### Custom Validation
+
+```python
+from pydantic import BaseModel, field_validator, model_validator, Field
+
+class AppConfig(BaseModel):
+    port: int = Field(default=8080)
+    workers: int = Field(default=4)
+
+    @field_validator("port")
+    @classmethod
+    def validate_port(cls, v):
+        if not 1 <= v <= 65535:
+            raise ValueError("Port must be between 1 and 65535")
+        return v
+
+    @model_validator(mode="after")
+    def validate_workers(self):
+        if self.workers > 10 and self.port < 1024:
+            raise ValueError("High worker count requires non-privileged port")
+        return self
+
+# Test validation
+config = AppConfig(port=8080, workers=4)
+print(f"Valid config: port={config.port}, workers={config.workers}")
+
+# This will raise a ValueError
+try:
+    invalid_config = AppConfig(port=70000, workers=4)
+except ValueError as e:
+    print(f"Validation error: {e}")
+```
+
+### Performance Monitoring
+
+```python
+from cfy.utils import PerformanceMonitor
+
+monitor = PerformanceMonitor()
+
+# Track configuration operations
+with monitor.track("load_config"):
+    config = loader.load_config(AppConfig, sources=["config.yaml"])
+
+# Get metrics
+metrics = monitor.get_metrics()
+print(f"Load time: {metrics['load_config']['avg_duration']:.3f}s")
+```
+
+### Caching
+
+```python
+from cfy.utils import ConfigCache
+
+# Create cache with TTL
+cache = ConfigCache(ttl=300, max_size=100)
+
+# Cache configuration
+config = cache.get_or_load(
+    "app_config",
+    lambda: loader.load_config(AppConfig, sources=["config.yaml"])
+)
+```
+
+## Configuration Sources Priority
+
+Configuration sources are loaded in the following priority order (highest to lowest):
+
+1. CLI arguments
+2. Environment variables
+3. `.env` files
+4. Environment-specific config files (e.g., `config.prod.yaml`)
+5. Base configuration files (e.g., `config.yaml`)
+6. Default values in configuration class
+
+## Environment Variables
+
+PyConfig automatically loads environment variables based on your configuration schema:
+
+```python
+from pydantic_settings import SettingsConfigDict
+
+class AppConfig(BaseConfiguration):
+    model_config = SettingsConfigDict(
+        env_prefix="APP_",  # Prefix for environment variables
+        env_nested_delimiter="__"  # Delimiter for nested fields
+    )
+
+# These environment variables will be loaded:
+# APP_DEBUG=true
+# APP_PORT=8080
+# APP_DATABASE__HOST=localhost
+# APP_DATABASE__PORT=5432
+```
+
+## Testing
+
+cfy provides utilities for testing configuration-dependent code:
+
+```python
+import pytest
+from cfy.testing import config_fixture
+
+@pytest.fixture
+def app_config():
+    return config_fixture(
+        AppConfig,
+        overrides={
+            "debug": True,
+            "database.host": "test-db"
+        }
+    )
+
+def test_my_app(app_config):
+    assert app_config.debug is True
+    assert app_config.database.host == "test-db"
+```
+
+## Best Practices
+
+1. **Use type hints**: Always define types for configuration fields
+2. **Validate early**: Validate configuration at application startup
+3. **Secure secrets**: Never commit secrets to version control
+4. **Environment-specific files**: Use separate files for different environments
+5. **Document fields**: Add descriptions to configuration fields
+6. **Use interpolation**: Leverage variable substitution for flexibility
+7. **Monitor performance**: Track configuration loading performance
+8. **Cache when appropriate**: Cache expensive configuration operations
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Support
+
+For bugs, questions, and feature requests, please open an issue on GitHub.
+
+## Acknowledgments
+
+- Built with [Pydantic](https://pydantic-docs.helpmanual.io/) for validation
+- CLI powered by [Typer](https://typer.tiangolo.com/) and [Rich](https://rich.readthedocs.io/)
+- Inspired by best practices from the Python community
