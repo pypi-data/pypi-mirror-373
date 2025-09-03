@@ -1,0 +1,93 @@
+from typing import (
+    Optional,
+)
+
+from django.conf import (
+    settings,
+)
+
+from educommon.utils.seqtools import (
+    make_chunks,
+)
+from edu_function_tools.general import (
+    EduRunnableObject,
+)
+
+from edu_rdm_integration.core.consts import (
+    REGIONAL_DATA_MART_INTEGRATION_EXPORTING_DATA,
+)
+from edu_rdm_integration.rdm_models.models import (
+    RegionalDataMartModelEnum,
+)
+
+from {{ strategy.runner_class_module }} import (
+    {{ strategy.runner_class_name }},
+)
+
+from {{ function_python_path }}.functions import (
+    {{ camel_case_function_name }}Function,
+)
+from {{ function_python_path }}.helpers import (
+    {{ camel_case_function_name }}RunnerHelper,
+)
+from {{ function_python_path }}.results import (
+    {{ camel_case_function_name }}RunnerResult,
+)
+from {{ function_python_path }}.validators import (
+    {{ camel_case_function_name }}RunnerValidator,
+)
+
+
+class {{ camel_case_function_name }}Runner({{ strategy.runner_class_name }}):
+    """Ранер функции "{{ function_verbose_name }}"."""
+
+    @classmethod
+    def _prepare_uuid(cls) -> Optional[str]:
+        """Получение UUID класса. Используется при регистрации сущности в базе данных.
+
+        Если ничего не возвращает, то регистрация в БД не будет произведена.
+        """
+        return '{{ strategy.runner_uuid }}'
+
+    @classmethod
+    def _prepare_verbose_name(cls) -> str:
+        """Полное наименование для дальнейшей регистрации и отображения пользователю."""
+        return 'Ранер функции "{{ function_verbose_name }}"'
+
+    @classmethod
+    def _prepare_tags(cls) -> list[str]:
+        """Список тегов, по которым сущность можно будет осуществлять поиск."""
+        tags = [
+            REGIONAL_DATA_MART_INTEGRATION_EXPORTING_DATA,
+        ]
+
+        return tags
+
+    @classmethod
+    def _prepare_runnable_classes(cls) -> Optional[list[type[EduRunnableObject]]]:
+        """Возвращает список классов запускаемых объектов, которые будут ставиться в очередь на исполнение."""
+        return [{{ camel_case_function_name }}Function]
+
+    def _prepare_helper_class(self) -> type[{{ camel_case_function_name }}RunnerHelper]:
+        """Возвращает класс помощника ранера функции."""
+        return {{ camel_case_function_name }}RunnerHelper
+
+    def _prepare_validator_class(self) -> type[{{ camel_case_function_name }}RunnerValidator]:
+        """Возвращает класс валидатора ранера функции."""
+        return {{ camel_case_function_name }}RunnerValidator
+
+    def _prepare_result_class(self) -> type[{{ camel_case_function_name }}RunnerResult]:
+        """Возвращает класс результата ранера функции."""
+        return {{ camel_case_function_name }}RunnerResult
+
+    def _prepare_model_ids_chunks(self, *args, model_ids_map=None, **kwargs):
+        """Формирование чанков идентификаторов записей моделей для дальнейшей работы в рамках функций."""
+        if model_ids_map:
+            model_ids_chunks = make_chunks(
+                iterable=model_ids_map[RegionalDataMartModelEnum.],
+                size=settings.RDM_EXPORT_CHUNK_SIZE,
+            )
+        else:
+            model_ids_chunks = ()
+
+        return model_ids_chunks
