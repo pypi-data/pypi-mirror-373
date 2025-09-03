@@ -1,0 +1,655 @@
+from __future__ import annotations
+
+import datetime
+import warnings
+from collections.abc import Iterator, Sequence
+from typing import Any, ClassVar, Literal, overload
+
+from cognite.client import CogniteClient
+from cognite.client import data_modeling as dm
+from cognite.client.data_classes.data_modeling.instances import InstanceAggregationResultList, InstanceSort
+
+from wind_turbine._api._core import (
+    DEFAULT_LIMIT_READ,
+    DEFAULT_CHUNK_SIZE,
+    instantiate_classes,
+    Aggregations,
+    NodeAPI,
+    SequenceNotStr,
+)
+from wind_turbine.data_classes._core import (
+    DEFAULT_INSTANCE_SPACE,
+    DEFAULT_QUERY_LIMIT,
+    QueryBuildStepFactory,
+    QueryBuilder,
+    QueryExecutor,
+    QueryUnpacker,
+    ViewPropertyId,
+)
+from wind_turbine.data_classes._data_sheet import (
+    DataSheetQuery,
+    _DATASHEET_PROPERTIES_BY_FIELD,
+    _create_data_sheet_filter,
+)
+from wind_turbine.data_classes import (
+    DomainModel,
+    DomainModelCore,
+    DomainModelWrite,
+    ResourcesWriteResult,
+    DataSheet,
+    DataSheetWrite,
+    DataSheetFields,
+    DataSheetList,
+    DataSheetWriteList,
+    DataSheetTextFields,
+)
+
+
+class DataSheetAPI(NodeAPI[DataSheet, DataSheetWrite, DataSheetList, DataSheetWriteList]):
+    _view_id = dm.ViewId("sp_pygen_power", "DataSheet", "1")
+    _properties_by_field: ClassVar[dict[str, str]] = _DATASHEET_PROPERTIES_BY_FIELD
+    _class_type = DataSheet
+    _class_list = DataSheetList
+    _class_write_list = DataSheetWriteList
+
+    def __init__(self, client: CogniteClient):
+        super().__init__(client=client)
+
+    @overload
+    def retrieve(
+        self,
+        external_id: str | dm.NodeId | tuple[str, str],
+        space: str = DEFAULT_INSTANCE_SPACE,
+    ) -> DataSheet | None: ...
+
+    @overload
+    def retrieve(
+        self,
+        external_id: SequenceNotStr[str | dm.NodeId | tuple[str, str]],
+        space: str = DEFAULT_INSTANCE_SPACE,
+    ) -> DataSheetList: ...
+
+    def retrieve(
+        self,
+        external_id: str | dm.NodeId | tuple[str, str] | SequenceNotStr[str | dm.NodeId | tuple[str, str]],
+        space: str = DEFAULT_INSTANCE_SPACE,
+    ) -> DataSheet | DataSheetList | None:
+        """Retrieve one or more data sheets by id(s).
+
+        Args:
+            external_id: External id or list of external ids of the data sheets.
+            space: The space where all the data sheets are located.
+
+        Returns:
+            The requested data sheets.
+
+        Examples:
+
+            Retrieve data_sheet by id:
+
+                >>> from wind_turbine import WindTurbineClient
+                >>> client = WindTurbineClient()
+                >>> data_sheet = client.data_sheet.retrieve(
+                ...     "my_data_sheet"
+                ... )
+
+        """
+        return self._retrieve(
+            external_id,
+            space,
+        )
+
+    def search(
+        self,
+        query: str,
+        properties: DataSheetTextFields | SequenceNotStr[DataSheetTextFields] | None = None,
+        description: str | list[str] | None = None,
+        description_prefix: str | None = None,
+        directory: str | list[str] | None = None,
+        directory_prefix: str | None = None,
+        is_uploaded: bool | None = None,
+        mime_type: str | list[str] | None = None,
+        mime_type_prefix: str | None = None,
+        name: str | list[str] | None = None,
+        name_prefix: str | None = None,
+        min_uploaded_time: datetime.datetime | None = None,
+        max_uploaded_time: datetime.datetime | None = None,
+        external_id_prefix: str | None = None,
+        space: str | list[str] | None = None,
+        limit: int = DEFAULT_LIMIT_READ,
+        filter: dm.Filter | None = None,
+        sort_by: DataSheetFields | SequenceNotStr[DataSheetFields] | None = None,
+        direction: Literal["ascending", "descending"] = "ascending",
+        sort: InstanceSort | list[InstanceSort] | None = None,
+    ) -> DataSheetList:
+        """Search data sheets
+
+        Args:
+            query: The search query,
+            properties: The property to search, if nothing is passed all text fields will be searched.
+            description: The description to filter on.
+            description_prefix: The prefix of the description to filter on.
+            directory: The directory to filter on.
+            directory_prefix: The prefix of the directory to filter on.
+            is_uploaded: The is uploaded to filter on.
+            mime_type: The mime type to filter on.
+            mime_type_prefix: The prefix of the mime type to filter on.
+            name: The name to filter on.
+            name_prefix: The prefix of the name to filter on.
+            min_uploaded_time: The minimum value of the uploaded time to filter on.
+            max_uploaded_time: The maximum value of the uploaded time to filter on.
+            external_id_prefix: The prefix of the external ID to filter on.
+            space: The space to filter on.
+            limit: Maximum number of data sheets to return. Defaults to 25.
+                Set to -1, float("inf") or None to return all items.
+            filter: (Advanced) If the filtering available in the above is not sufficient,
+                you can write your own filtering which will be ANDed with the filter above.
+            sort_by: The property to sort by.
+            direction: The direction to sort by, either 'ascending' or 'descending'.
+            sort: (Advanced) If sort_by and direction are not sufficient, you can write your own sorting.
+                This will override the sort_by and direction. This allows you to sort by multiple fields and
+                specify the direction for each field as well as how to handle null values.
+
+        Returns:
+            Search results data sheets matching the query.
+
+        Examples:
+
+           Search for 'my_data_sheet' in all text properties:
+
+                >>> from wind_turbine import WindTurbineClient
+                >>> client = WindTurbineClient()
+                >>> data_sheets = client.data_sheet.search(
+                ...     'my_data_sheet'
+                ... )
+
+        """
+        filter_ = _create_data_sheet_filter(
+            self._view_id,
+            description,
+            description_prefix,
+            directory,
+            directory_prefix,
+            is_uploaded,
+            mime_type,
+            mime_type_prefix,
+            name,
+            name_prefix,
+            min_uploaded_time,
+            max_uploaded_time,
+            external_id_prefix,
+            space,
+            filter,
+        )
+        return self._search(
+            query=query,
+            properties=properties,
+            filter_=filter_,
+            limit=limit,
+            sort_by=sort_by,  # type: ignore[arg-type]
+            direction=direction,
+            sort=sort,
+        )
+
+    @overload
+    def aggregate(
+        self,
+        aggregate: Aggregations | dm.aggregations.MetricAggregation,
+        group_by: None = None,
+        property: DataSheetFields | SequenceNotStr[DataSheetFields] | None = None,
+        query: str | None = None,
+        search_property: DataSheetTextFields | SequenceNotStr[DataSheetTextFields] | None = None,
+        description: str | list[str] | None = None,
+        description_prefix: str | None = None,
+        directory: str | list[str] | None = None,
+        directory_prefix: str | None = None,
+        is_uploaded: bool | None = None,
+        mime_type: str | list[str] | None = None,
+        mime_type_prefix: str | None = None,
+        name: str | list[str] | None = None,
+        name_prefix: str | None = None,
+        min_uploaded_time: datetime.datetime | None = None,
+        max_uploaded_time: datetime.datetime | None = None,
+        external_id_prefix: str | None = None,
+        space: str | list[str] | None = None,
+        limit: int = DEFAULT_LIMIT_READ,
+        filter: dm.Filter | None = None,
+    ) -> dm.aggregations.AggregatedNumberedValue: ...
+
+    @overload
+    def aggregate(
+        self,
+        aggregate: SequenceNotStr[Aggregations | dm.aggregations.MetricAggregation],
+        group_by: None = None,
+        property: DataSheetFields | SequenceNotStr[DataSheetFields] | None = None,
+        query: str | None = None,
+        search_property: DataSheetTextFields | SequenceNotStr[DataSheetTextFields] | None = None,
+        description: str | list[str] | None = None,
+        description_prefix: str | None = None,
+        directory: str | list[str] | None = None,
+        directory_prefix: str | None = None,
+        is_uploaded: bool | None = None,
+        mime_type: str | list[str] | None = None,
+        mime_type_prefix: str | None = None,
+        name: str | list[str] | None = None,
+        name_prefix: str | None = None,
+        min_uploaded_time: datetime.datetime | None = None,
+        max_uploaded_time: datetime.datetime | None = None,
+        external_id_prefix: str | None = None,
+        space: str | list[str] | None = None,
+        limit: int = DEFAULT_LIMIT_READ,
+        filter: dm.Filter | None = None,
+    ) -> list[dm.aggregations.AggregatedNumberedValue]: ...
+
+    @overload
+    def aggregate(
+        self,
+        aggregate: (
+            Aggregations
+            | dm.aggregations.MetricAggregation
+            | SequenceNotStr[Aggregations | dm.aggregations.MetricAggregation]
+        ),
+        group_by: DataSheetFields | SequenceNotStr[DataSheetFields],
+        property: DataSheetFields | SequenceNotStr[DataSheetFields] | None = None,
+        query: str | None = None,
+        search_property: DataSheetTextFields | SequenceNotStr[DataSheetTextFields] | None = None,
+        description: str | list[str] | None = None,
+        description_prefix: str | None = None,
+        directory: str | list[str] | None = None,
+        directory_prefix: str | None = None,
+        is_uploaded: bool | None = None,
+        mime_type: str | list[str] | None = None,
+        mime_type_prefix: str | None = None,
+        name: str | list[str] | None = None,
+        name_prefix: str | None = None,
+        min_uploaded_time: datetime.datetime | None = None,
+        max_uploaded_time: datetime.datetime | None = None,
+        external_id_prefix: str | None = None,
+        space: str | list[str] | None = None,
+        limit: int = DEFAULT_LIMIT_READ,
+        filter: dm.Filter | None = None,
+    ) -> InstanceAggregationResultList: ...
+
+    def aggregate(
+        self,
+        aggregate: (
+            Aggregations
+            | dm.aggregations.MetricAggregation
+            | SequenceNotStr[Aggregations | dm.aggregations.MetricAggregation]
+        ),
+        group_by: DataSheetFields | SequenceNotStr[DataSheetFields] | None = None,
+        property: DataSheetFields | SequenceNotStr[DataSheetFields] | None = None,
+        query: str | None = None,
+        search_property: DataSheetTextFields | SequenceNotStr[DataSheetTextFields] | None = None,
+        description: str | list[str] | None = None,
+        description_prefix: str | None = None,
+        directory: str | list[str] | None = None,
+        directory_prefix: str | None = None,
+        is_uploaded: bool | None = None,
+        mime_type: str | list[str] | None = None,
+        mime_type_prefix: str | None = None,
+        name: str | list[str] | None = None,
+        name_prefix: str | None = None,
+        min_uploaded_time: datetime.datetime | None = None,
+        max_uploaded_time: datetime.datetime | None = None,
+        external_id_prefix: str | None = None,
+        space: str | list[str] | None = None,
+        limit: int = DEFAULT_LIMIT_READ,
+        filter: dm.Filter | None = None,
+    ) -> (
+        dm.aggregations.AggregatedNumberedValue
+        | list[dm.aggregations.AggregatedNumberedValue]
+        | InstanceAggregationResultList
+    ):
+        """Aggregate data across data sheets
+
+        Args:
+            aggregate: The aggregation to perform.
+            group_by: The property to group by when doing the aggregation.
+            property: The property to perform aggregation on.
+            query: The query to search for in the text field.
+            search_property: The text field to search in.
+            description: The description to filter on.
+            description_prefix: The prefix of the description to filter on.
+            directory: The directory to filter on.
+            directory_prefix: The prefix of the directory to filter on.
+            is_uploaded: The is uploaded to filter on.
+            mime_type: The mime type to filter on.
+            mime_type_prefix: The prefix of the mime type to filter on.
+            name: The name to filter on.
+            name_prefix: The prefix of the name to filter on.
+            min_uploaded_time: The minimum value of the uploaded time to filter on.
+            max_uploaded_time: The maximum value of the uploaded time to filter on.
+            external_id_prefix: The prefix of the external ID to filter on.
+            space: The space to filter on.
+            limit: Maximum number of data sheets to return. Defaults to 25.
+                Set to -1, float("inf") or None to return all items.
+            filter: (Advanced) If the filtering available in the above is not sufficient, you can write
+                your own filtering which will be ANDed with the filter above.
+
+        Returns:
+            Aggregation results.
+
+        Examples:
+
+            Count data sheets in space `my_space`:
+
+                >>> from wind_turbine import WindTurbineClient
+                >>> client = WindTurbineClient()
+                >>> result = client.data_sheet.aggregate("count", space="my_space")
+
+        """
+
+        filter_ = _create_data_sheet_filter(
+            self._view_id,
+            description,
+            description_prefix,
+            directory,
+            directory_prefix,
+            is_uploaded,
+            mime_type,
+            mime_type_prefix,
+            name,
+            name_prefix,
+            min_uploaded_time,
+            max_uploaded_time,
+            external_id_prefix,
+            space,
+            filter,
+        )
+        return self._aggregate(
+            aggregate=aggregate,
+            group_by=group_by,  # type: ignore[arg-type]
+            properties=property,  # type: ignore[arg-type]
+            query=query,
+            search_properties=search_property,  # type: ignore[arg-type]
+            limit=limit,
+            filter=filter_,
+        )
+
+    def histogram(
+        self,
+        property: DataSheetFields,
+        interval: float,
+        query: str | None = None,
+        search_property: DataSheetTextFields | SequenceNotStr[DataSheetTextFields] | None = None,
+        description: str | list[str] | None = None,
+        description_prefix: str | None = None,
+        directory: str | list[str] | None = None,
+        directory_prefix: str | None = None,
+        is_uploaded: bool | None = None,
+        mime_type: str | list[str] | None = None,
+        mime_type_prefix: str | None = None,
+        name: str | list[str] | None = None,
+        name_prefix: str | None = None,
+        min_uploaded_time: datetime.datetime | None = None,
+        max_uploaded_time: datetime.datetime | None = None,
+        external_id_prefix: str | None = None,
+        space: str | list[str] | None = None,
+        limit: int = DEFAULT_LIMIT_READ,
+        filter: dm.Filter | None = None,
+    ) -> dm.aggregations.HistogramValue:
+        """Produces histograms for data sheets
+
+        Args:
+            property: The property to use as the value in the histogram.
+            interval: The interval to use for the histogram bins.
+            query: The query to search for in the text field.
+            search_property: The text field to search in.
+            description: The description to filter on.
+            description_prefix: The prefix of the description to filter on.
+            directory: The directory to filter on.
+            directory_prefix: The prefix of the directory to filter on.
+            is_uploaded: The is uploaded to filter on.
+            mime_type: The mime type to filter on.
+            mime_type_prefix: The prefix of the mime type to filter on.
+            name: The name to filter on.
+            name_prefix: The prefix of the name to filter on.
+            min_uploaded_time: The minimum value of the uploaded time to filter on.
+            max_uploaded_time: The maximum value of the uploaded time to filter on.
+            external_id_prefix: The prefix of the external ID to filter on.
+            space: The space to filter on.
+            limit: Maximum number of data sheets to return.
+                Defaults to 25. Set to -1, float("inf") or None to return all items.
+            filter: (Advanced) If the filtering available in the above is not sufficient,
+                you can write your own filtering which will be ANDed with the filter above.
+
+        Returns:
+            Bucketed histogram results.
+
+        """
+        filter_ = _create_data_sheet_filter(
+            self._view_id,
+            description,
+            description_prefix,
+            directory,
+            directory_prefix,
+            is_uploaded,
+            mime_type,
+            mime_type_prefix,
+            name,
+            name_prefix,
+            min_uploaded_time,
+            max_uploaded_time,
+            external_id_prefix,
+            space,
+            filter,
+        )
+        return self._histogram(
+            property,
+            interval,
+            query,
+            search_property,  # type: ignore[arg-type]
+            limit,
+            filter_,
+        )
+
+    def select(self) -> DataSheetQuery:
+        """Start selecting from data sheets."""
+        return DataSheetQuery(self._client)
+
+    def _build(
+        self,
+        filter_: dm.Filter | None,
+        limit: int | None,
+        retrieve_connections: Literal["skip", "identifier", "full"],
+        sort: list[InstanceSort] | None = None,
+        chunk_size: int | None = None,
+    ) -> QueryExecutor:
+        builder = QueryBuilder()
+        factory = QueryBuildStepFactory(builder.create_name, view_id=self._view_id, edge_connection_property="end_node")
+        builder.append(
+            factory.root(
+                filter=filter_,
+                sort=sort,
+                limit=limit,
+                max_retrieve_batch_limit=chunk_size,
+                has_container_fields=True,
+            )
+        )
+        return builder.build()
+
+    def iterate(
+        self,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        description: str | list[str] | None = None,
+        description_prefix: str | None = None,
+        directory: str | list[str] | None = None,
+        directory_prefix: str | None = None,
+        is_uploaded: bool | None = None,
+        mime_type: str | list[str] | None = None,
+        mime_type_prefix: str | None = None,
+        name: str | list[str] | None = None,
+        name_prefix: str | None = None,
+        min_uploaded_time: datetime.datetime | None = None,
+        max_uploaded_time: datetime.datetime | None = None,
+        external_id_prefix: str | None = None,
+        space: str | list[str] | None = None,
+        filter: dm.Filter | None = None,
+        limit: int | None = None,
+        cursors: dict[str, str | None] | None = None,
+    ) -> Iterator[DataSheetList]:
+        """Iterate over data sheets
+
+        Args:
+            chunk_size: The number of data sheets to return in each iteration. Defaults to 100.
+            description: The description to filter on.
+            description_prefix: The prefix of the description to filter on.
+            directory: The directory to filter on.
+            directory_prefix: The prefix of the directory to filter on.
+            is_uploaded: The is uploaded to filter on.
+            mime_type: The mime type to filter on.
+            mime_type_prefix: The prefix of the mime type to filter on.
+            name: The name to filter on.
+            name_prefix: The prefix of the name to filter on.
+            min_uploaded_time: The minimum value of the uploaded time to filter on.
+            max_uploaded_time: The maximum value of the uploaded time to filter on.
+            external_id_prefix: The prefix of the external ID to filter on.
+            space: The space to filter on.
+            filter: (Advanced) If the filtering available in the above is not sufficient,
+                you can write your own filtering which will be ANDed with the filter above.
+            limit: Maximum number of data sheets to return. Defaults to None, which will return all items.
+            cursors: (Advanced) Cursor to use for pagination. This can be used to resume an iteration from a
+                specific point. See example below for more details.
+
+        Returns:
+            Iteration of data sheets
+
+        Examples:
+
+            Iterate data sheets in chunks of 100 up to 2000 items:
+
+                >>> from wind_turbine import WindTurbineClient
+                >>> client = WindTurbineClient()
+                >>> for data_sheets in client.data_sheet.iterate(chunk_size=100, limit=2000):
+                ...     for data_sheet in data_sheets:
+                ...         print(data_sheet.external_id)
+
+            Iterate data sheets in chunks of 100 sorted by external_id in descending order:
+
+                >>> from wind_turbine import WindTurbineClient
+                >>> client = WindTurbineClient()
+                >>> for data_sheets in client.data_sheet.iterate(
+                ...     chunk_size=100,
+                ...     sort_by="external_id",
+                ...     direction="descending",
+                ... ):
+                ...     for data_sheet in data_sheets:
+                ...         print(data_sheet.external_id)
+
+            Iterate data sheets in chunks of 100 and use cursors to resume the iteration:
+
+                >>> from wind_turbine import WindTurbineClient
+                >>> client = WindTurbineClient()
+                >>> for first_iteration in client.data_sheet.iterate(chunk_size=100, limit=2000):
+                ...     print(first_iteration)
+                ...     break
+                >>> for data_sheets in client.data_sheet.iterate(
+                ...     chunk_size=100,
+                ...     limit=2000,
+                ...     cursors=first_iteration.cursors,
+                ... ):
+                ...     for data_sheet in data_sheets:
+                ...         print(data_sheet.external_id)
+
+        """
+        warnings.warn(
+            "The `iterate` method is in alpha and is subject to breaking changes without prior notice.", stacklevel=2
+        )
+        filter_ = _create_data_sheet_filter(
+            self._view_id,
+            description,
+            description_prefix,
+            directory,
+            directory_prefix,
+            is_uploaded,
+            mime_type,
+            mime_type_prefix,
+            name,
+            name_prefix,
+            min_uploaded_time,
+            max_uploaded_time,
+            external_id_prefix,
+            space,
+            filter,
+        )
+        yield from self._iterate(chunk_size, filter_, limit, "skip", cursors=cursors)
+
+    def list(
+        self,
+        description: str | list[str] | None = None,
+        description_prefix: str | None = None,
+        directory: str | list[str] | None = None,
+        directory_prefix: str | None = None,
+        is_uploaded: bool | None = None,
+        mime_type: str | list[str] | None = None,
+        mime_type_prefix: str | None = None,
+        name: str | list[str] | None = None,
+        name_prefix: str | None = None,
+        min_uploaded_time: datetime.datetime | None = None,
+        max_uploaded_time: datetime.datetime | None = None,
+        external_id_prefix: str | None = None,
+        space: str | list[str] | None = None,
+        limit: int = DEFAULT_LIMIT_READ,
+        filter: dm.Filter | None = None,
+        sort_by: DataSheetFields | Sequence[DataSheetFields] | None = None,
+        direction: Literal["ascending", "descending"] = "ascending",
+        sort: InstanceSort | list[InstanceSort] | None = None,
+    ) -> DataSheetList:
+        """List/filter data sheets
+
+        Args:
+            description: The description to filter on.
+            description_prefix: The prefix of the description to filter on.
+            directory: The directory to filter on.
+            directory_prefix: The prefix of the directory to filter on.
+            is_uploaded: The is uploaded to filter on.
+            mime_type: The mime type to filter on.
+            mime_type_prefix: The prefix of the mime type to filter on.
+            name: The name to filter on.
+            name_prefix: The prefix of the name to filter on.
+            min_uploaded_time: The minimum value of the uploaded time to filter on.
+            max_uploaded_time: The maximum value of the uploaded time to filter on.
+            external_id_prefix: The prefix of the external ID to filter on.
+            space: The space to filter on.
+            limit: Maximum number of data sheets to return.
+                Defaults to 25. Set to -1, float("inf") or None to return all items.
+            filter: (Advanced) If the filtering available in the above is not sufficient,
+                you can write your own filtering which will be ANDed with the filter above.
+            sort_by: The property to sort by.
+            direction: The direction to sort by, either 'ascending' or 'descending'.
+            sort: (Advanced) If sort_by and direction are not sufficient, you can write your own sorting.
+                This will override the sort_by and direction. This allowos you to sort by multiple fields and
+                specify the direction for each field as well as how to handle null values.
+
+        Returns:
+            List of requested data sheets
+
+        Examples:
+
+            List data sheets and limit to 5:
+
+                >>> from wind_turbine import WindTurbineClient
+                >>> client = WindTurbineClient()
+                >>> data_sheets = client.data_sheet.list(limit=5)
+
+        """
+        filter_ = _create_data_sheet_filter(
+            self._view_id,
+            description,
+            description_prefix,
+            directory,
+            directory_prefix,
+            is_uploaded,
+            mime_type,
+            mime_type_prefix,
+            name,
+            name_prefix,
+            min_uploaded_time,
+            max_uploaded_time,
+            external_id_prefix,
+            space,
+            filter,
+        )
+        sort_input = self._create_sort(sort_by, direction, sort)  # type: ignore[arg-type]
+        return self._list(limit=limit, filter=filter_, sort=sort_input)

@@ -1,0 +1,2 @@
+DEFAULT_QUERY_LIMIT = 5
+DEFAULT_INSTANCE_SPACE = "sp_omni_instances"

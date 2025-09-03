@@ -1,0 +1,664 @@
+from __future__ import annotations
+
+{% if data_class.has_primitive_field_of_type((dm.Timestamp, dm.Date)) %}
+import datetime
+{% endif %}
+import warnings
+from collections.abc import Iterator, Sequence
+from typing import Any, ClassVar, Literal, overload
+
+from cognite.client import CogniteClient
+from cognite.client import data_modeling as dm
+from cognite.client.data_classes.data_modeling.instances import InstanceAggregationResultList, InstanceSort
+
+from {{ top_level_package }}._api._core import (
+    DEFAULT_LIMIT_READ,
+    DEFAULT_CHUNK_SIZE,
+    instantiate_classes,
+    Aggregations,
+    {% if data_class.is_writable %}
+    NodeAPI,
+    {% else %}
+    NodeReadAPI,
+    {% endif %}
+    SequenceNotStr,
+)
+from {{ top_level_package }}.data_classes._core import (
+    {% if has_default_instance_space %}
+    DEFAULT_INSTANCE_SPACE,
+    {% endif %}
+    DEFAULT_QUERY_LIMIT,
+    QueryBuildStepFactory,
+    QueryBuilder,
+    QueryExecutor,
+    QueryUnpacker,
+    ViewPropertyId,
+)
+from {{ top_level_package }}.data_classes.{{ data_class.file_name }} import (
+    {{ data_class.query_cls_name }},
+    {% if not data_class.has_only_one_to_many_edges and data_class.has_field_of_type(ft.BasePrimitiveField) %}
+    {{ data_class.properties_dict_name }},
+    {%  endif %}
+    {{ data_class.filter_name }},
+)
+from {{ top_level_package }}.data_classes import (
+    DomainModel,
+    DomainModelCore,
+    DomainModelWrite,
+    ResourcesWriteResult,
+    {{ data_class.read_name }},
+    {% if data_class.is_writable %}
+    {{ data_class.write_name }},
+    {% endif %}
+    {{ data_class.field_names }},
+    {{ data_class.read_list_name }},
+    {% if data_class.is_writable %}
+    {{ data_class.write_list_name }},
+    {% endif %}
+    {{ data_class.text_field_names }},
+    {% for edge_data_class in edge_data_classes %}
+    {{ edge_data_class.read_name }},
+    {{ edge_data_class.write_name }},
+    {{ edge_data_class.read_list_name }},
+    {% endfor %}
+    {% for dependency in data_class.dependencies_with_edge_destinations %}
+    {% if dependency.read_name != data_class.read_name  %}
+    {{ dependency.read_name }},
+    {% endif %}
+    {% endfor %}
+    {% for child in data_class.direct_children %}
+    {{ child.read_name }},
+    {% endfor %}
+)
+{% for class_ in edge_apis %}
+{% if class_.field.is_write_field %}
+from {{ top_level_package }}._api.{{ class_.file_name }} import {{ class_.name }}
+{% endif %}
+{% endfor %}
+
+
+class {{ api_class.name }}({% if data_class.is_writable %}NodeAPI{% else %}NodeReadAPI{% endif %}[{{ data_class.read_name }}{% if data_class.is_writable %}, {{ data_class.write_name }}{% endif %}, {{ data_class.read_list_name }}{% if data_class.is_writable %}, {{ data_class.write_list_name }}{% endif %}]):
+    _view_id = dm.ViewId("{{ data_class.view_id.space }}", "{{ data_class.view_id.external_id }}", "{{ data_class.view_id.version }}")
+    _properties_by_field: ClassVar[dict[str, str]] = {% if not data_class.has_only_one_to_many_edges and data_class.has_field_of_type(ft.BasePrimitiveField) %}{{ data_class.properties_dict_name }}{% else %}{% raw %}{}{% endraw %}{% endif +%}
+    {% if data_class.direct_children %}
+    _direct_children_by_external_id: ClassVar[dict[str, type[DomainModel]]] = {{'{'}}
+        {% for child in data_class.direct_children %}
+        "{{ child.view_id.external_id }}": {{ child.read_name }},
+        {% endfor %}
+    {{'}'}}
+    {% endif %}
+    _class_type = {{ data_class.read_name }}
+    _class_list = {{ data_class.read_list_name }}
+    {% if data_class.is_writable %}
+    _class_write_list = {{ data_class.write_list_name }}
+    {% endif %}
+
+    def __init__(self, client: CogniteClient):
+        super().__init__(client=client)
+
+        {% for edge_api in edge_apis %}
+        {% if edge_api.field.is_write_field %}
+        self.{{ edge_api.parent_attribute }} = {{ edge_api.name }}(client)
+        {% endif %}
+        {% endfor %}
+
+    @overload
+    def retrieve(
+        self,
+        external_id: str | dm.NodeId | tuple[str, str],
+        space: str{% if has_default_instance_space %} = DEFAULT_INSTANCE_SPACE{% endif %},
+        {% if data_class.direct_children %}
+        as_child_class: SequenceNotStr[{{ data_class.direct_children_literal }}] | None = None,
+        {% endif %}
+        {% if data_class.has_field_of_type(ft.BaseConnectionField) %}
+        retrieve_connections: Literal["skip", "identifier", "full"] = "skip",
+        {% endif %}
+    ) -> {{ data_class.read_name }} | None: ...
+
+    @overload
+    def retrieve(
+        self,
+        external_id: SequenceNotStr[str | dm.NodeId | tuple[str, str]],
+        space: str{% if has_default_instance_space %} = DEFAULT_INSTANCE_SPACE{% endif %},
+        {% if data_class.direct_children %}
+        as_child_class: SequenceNotStr[{{ data_class.direct_children_literal }}] | None = None,
+        {% endif %}
+        {% if data_class.has_field_of_type(ft.BaseConnectionField) %}
+        retrieve_connections: Literal["skip", "identifier", "full"] = "skip",
+        {% endif %}
+    ) -> {{ data_class.read_list_name }}: ...
+
+    def retrieve(
+        self,
+        external_id: str | dm.NodeId | tuple[str, str] | SequenceNotStr[str | dm.NodeId | tuple[str, str]],
+        space: str{% if has_default_instance_space %} = DEFAULT_INSTANCE_SPACE{% endif %},
+        {% if data_class.direct_children %}
+        as_child_class: SequenceNotStr[{{ data_class.direct_children_literal }}] | None = None,
+        {% endif %}
+        {% if data_class.has_field_of_type(ft.BaseConnectionField) %}
+        retrieve_connections: Literal["skip", "identifier", "full"] = "skip",
+        {% endif %}
+    ) -> {{ data_class.read_name }} | {{ data_class.read_list_name }} | None:
+        """Retrieve one or more {{data_class.doc_list_name}} by id(s).
+
+        Args:
+            external_id: External id or list of external ids of the {{ data_class.doc_list_name }}.
+            space: The space where all the {{ data_class.doc_list_name }} are located.
+            {% if data_class.direct_children %}
+            as_child_class: If you want to retrieve the {{ data_class.doc_list_name }} as a child class,
+                you can specify the child class here. Note that if one node has properties in
+                multiple child classes, you will get duplicate nodes in the result.
+            {% endif %}
+            {% if data_class.has_connection_with_target %}
+            {{ retrieve_connections_doc }}
+            {% endif %}
+
+        Returns:
+            The requested {{ data_class.doc_list_name }}.
+
+        Examples:
+
+            Retrieve {{ data_class.variable }} by id:
+
+                >>> from {{ top_level_package }} import {{ client_name }}
+                >>> client = {{ client_name }}()
+                >>> {{ data_class.variable }} = client.{{ api_class.parent_attribute }}.retrieve(
+                ...     "my_{{ data_class.variable }}"
+                ... )
+
+        """
+        return self._retrieve(
+            external_id,
+            space,
+            {% if data_class.has_field_of_type(ft.BaseConnectionField) %}
+            retrieve_connections=retrieve_connections,
+            {% endif %}
+            {% if data_class.direct_children %}
+            as_child_class=as_child_class
+            {% endif %}
+        )
+
+    def search(
+        self,
+        query: str,
+        properties: {{ data_class.text_field_names }} | SequenceNotStr[{{ data_class.text_field_names }}] | None = None,
+        {% for parm in list_method.parameters %}
+        {{ parm.name }}: {{ parm.annotation }} = {{ parm.default }},
+        {% endfor %}
+        limit: int = DEFAULT_LIMIT_READ,
+        filter: dm.Filter | None = None,
+        sort_by: {{ data_class.field_names }} | SequenceNotStr[{{ data_class.field_names }}] | None = None,
+        direction: Literal["ascending", "descending"] = "ascending",
+        sort: InstanceSort | list[InstanceSort] | None = None,
+    ) -> {{ data_class.read_list_name }}:
+        """Search {{ data_class.doc_list_name }}
+
+        Args:
+            query: The search query,
+            properties: The property to search, if nothing is passed all text fields will be searched.
+            {% for parm in list_method.parameters %}
+            {{ parm.name }}: {{ parm.description }}
+            {% endfor %}
+            limit: Maximum number of {{ data_class.doc_list_name }} to return. Defaults to 25.
+                Set to -1, float("inf") or None to return all items.
+            filter: (Advanced) If the filtering available in the above is not sufficient,
+                you can write your own filtering which will be ANDed with the filter above.
+            sort_by: The property to sort by.
+            direction: The direction to sort by, either 'ascending' or 'descending'.
+            sort: (Advanced) If sort_by and direction are not sufficient, you can write your own sorting.
+                This will override the sort_by and direction. This allows you to sort by multiple fields and
+                specify the direction for each field as well as how to handle null values.
+
+        Returns:
+            Search results {{ data_class.doc_list_name}} matching the query.
+
+        Examples:
+
+           Search for 'my_{{ data_class.variable }}' in all text properties:
+
+                >>> from {{ top_level_package }} import {{ client_name }}
+                >>> client = {{ client_name }}()
+                >>> {{ data_class.variable_list }} = client.{{ api_class.parent_attribute }}.search(
+                ...     'my_{{ data_class.variable }}'
+                ... )
+
+        """
+        filter_ = {{ data_class.filter_name }}(
+            self._view_id,
+            {% for parm in list_method.parameters %}
+            {{ parm.name }},
+            {% endfor %}
+            filter,
+        )
+        return self._search(
+            query=query,
+            properties=properties,
+            filter_=filter_,
+            limit=limit,
+            sort_by=sort_by,  # type: ignore[arg-type]
+            direction=direction,
+            sort=sort,
+        )
+
+    @overload
+    def aggregate(
+        self,
+        aggregate: Aggregations | dm.aggregations.MetricAggregation,
+        group_by: None = None,
+        property: {{ data_class.field_names }} | SequenceNotStr[{{ data_class.field_names }}] | None = None,
+        {% if data_class.has_primitive_field_of_type(dm.Text) %}
+        query: str | None = None,
+        search_property: {{ data_class.text_field_names }} | SequenceNotStr[{{ data_class.text_field_names }}] | None = None,
+        {% endif %}
+        {% for parm in list_method.parameters %}
+        {{ parm.name }}: {{ parm.annotation }} = {{ parm.default }},
+        {% endfor %}
+        limit: int = DEFAULT_LIMIT_READ,
+        filter: dm.Filter | None = None,
+    ) -> dm.aggregations.AggregatedNumberedValue: ...
+
+    @overload
+    def aggregate(
+        self,
+        aggregate: SequenceNotStr[Aggregations | dm.aggregations.MetricAggregation],
+        group_by: None = None,
+        property: {{ data_class.field_names }} | SequenceNotStr[{{ data_class.field_names }}] | None = None,
+        {% if data_class.has_primitive_field_of_type(dm.Text) %}
+        query: str | None = None,
+        search_property: {{ data_class.text_field_names }} | SequenceNotStr[{{ data_class.text_field_names }}] | None = None,
+        {% endif %}
+        {% for parm in list_method.parameters %}
+        {{ parm.name }}: {{ parm.annotation }} = {{ parm.default }},
+        {% endfor %}
+        limit: int = DEFAULT_LIMIT_READ,
+        filter: dm.Filter | None = None,
+    ) -> list[dm.aggregations.AggregatedNumberedValue]: ...
+
+    @overload
+    def aggregate(
+        self,
+        aggregate: Aggregations
+        | dm.aggregations.MetricAggregation
+        | SequenceNotStr[Aggregations | dm.aggregations.MetricAggregation],
+        group_by: {{ data_class.field_names }} | SequenceNotStr[{{ data_class.field_names }}],
+        property: {{ data_class.field_names }} | SequenceNotStr[{{ data_class.field_names }}] | None = None,
+        {% if data_class.has_primitive_field_of_type(dm.Text) %}
+        query: str | None = None,
+        search_property: {{ data_class.text_field_names }} | SequenceNotStr[{{ data_class.text_field_names }}] | None = None,
+        {% endif %}
+        {% for parm in list_method.parameters %}
+        {{ parm.name }}: {{ parm.annotation }} = {{ parm.default }},
+        {% endfor %}
+        limit: int = DEFAULT_LIMIT_READ,
+        filter: dm.Filter | None = None,
+    ) -> InstanceAggregationResultList: ...
+
+    def aggregate(
+        self,
+        aggregate: Aggregations
+        | dm.aggregations.MetricAggregation
+        | SequenceNotStr[Aggregations | dm.aggregations.MetricAggregation],
+        group_by: {{ data_class.field_names }} | SequenceNotStr[{{ data_class.field_names }}] | None = None,
+        property: {{ data_class.field_names }} | SequenceNotStr[{{ data_class.field_names }}] | None = None,
+        {% if data_class.has_primitive_field_of_type(dm.Text) %}
+        query: str | None = None,
+        search_property: {{ data_class.text_field_names }} | SequenceNotStr[{{ data_class.text_field_names }}] | None = None,
+        {% endif %}
+        {% for parm in list_method.parameters %}
+        {{ parm.name }}: {{ parm.annotation }} = {{ parm.default }},
+        {% endfor %}
+        limit: int = DEFAULT_LIMIT_READ,
+        filter: dm.Filter | None = None,
+    ) -> (
+        dm.aggregations.AggregatedNumberedValue
+        | list[dm.aggregations.AggregatedNumberedValue]
+        | InstanceAggregationResultList
+    ):
+        """Aggregate data across {{ data_class.doc_list_name }}
+
+        Args:
+            aggregate: The aggregation to perform.
+            group_by: The property to group by when doing the aggregation.
+            property: The property to perform aggregation on.
+            {% if data_class.has_primitive_field_of_type(dm.Text) %}
+            query: The query to search for in the text field.
+            search_property: The text field to search in.
+            {% endif %}
+            {% for parm in list_method.parameters %}
+            {{ parm.name }}: {{ parm.description }}
+            {% endfor %}
+            limit: Maximum number of {{ data_class.doc_list_name }} to return. Defaults to 25.
+                Set to -1, float("inf") or None to return all items.
+            filter: (Advanced) If the filtering available in the above is not sufficient, you can write
+                your own filtering which will be ANDed with the filter above.
+
+        Returns:
+            Aggregation results.
+
+        Examples:
+
+            Count {{ data_class.doc_list_name }} in space `my_space`:
+
+                >>> from {{ top_level_package }} import {{ client_name }}
+                >>> client = {{ client_name }}()
+                >>> result = client.{{ api_class.parent_attribute }}.aggregate("count", space="my_space")
+
+        """
+
+        filter_ = {{ data_class.filter_name }}(
+            self._view_id,
+            {% for parm in list_method.parameters %}
+            {{ parm.name }},
+            {% endfor %}
+            filter,
+        )
+        return self._aggregate(
+            aggregate=aggregate,
+            group_by=group_by,  # type: ignore[arg-type]
+            properties=property,  # type: ignore[arg-type]
+            {% if data_class.has_primitive_field_of_type(dm.Text) %}
+            query=query,
+            search_properties=search_property,  # type: ignore[arg-type]
+            {% else %}
+            query=None,
+            search_properties=None,
+            {% endif %}
+            limit=limit,
+            filter=filter_,
+        )
+
+    def histogram(
+        self,
+        property: {{ data_class.field_names }},
+        interval: float,
+        {% if data_class.has_primitive_field_of_type(dm.Text) %}
+        query: str | None = None,
+        search_property: {{ data_class.text_field_names }} | SequenceNotStr[{{ data_class.text_field_names }}] | None = None,
+        {% endif %}
+        {% for parm in list_method.parameters %}
+        {{ parm.name }}: {{ parm.annotation }} = {{ parm.default }},
+        {% endfor %}
+        limit: int = DEFAULT_LIMIT_READ,
+        filter: dm.Filter | None = None,
+    ) -> dm.aggregations.HistogramValue:
+        """Produces histograms for {{ data_class.doc_list_name }}
+
+        Args:
+            property: The property to use as the value in the histogram.
+            interval: The interval to use for the histogram bins.
+            {% if data_class.has_primitive_field_of_type(dm.Text) %}
+            query: The query to search for in the text field.
+            search_property: The text field to search in.
+            {% endif %}
+            {% for parm in list_method.parameters %}
+            {{ parm.name }}: {{ parm.description }}
+            {% endfor %}
+            limit: Maximum number of {{ data_class.doc_list_name }} to return.
+                Defaults to 25. Set to -1, float("inf") or None to return all items.
+            filter: (Advanced) If the filtering available in the above is not sufficient,
+                you can write your own filtering which will be ANDed with the filter above.
+
+        Returns:
+            Bucketed histogram results.
+
+        """
+        filter_ = {{ data_class.filter_name }}(
+            self._view_id,
+            {% for parm in list_method.parameters %}
+            {{ parm.name }},
+            {% endfor %}
+            filter,
+        )
+        return self._histogram(
+            property,
+            interval,
+            {% if data_class.has_primitive_field_of_type(dm.Text) %}
+            query,
+            search_property,  # type: ignore[arg-type]
+            {% else %}
+            None,
+            None,
+            {% endif %}
+            limit,
+            filter_,
+        )
+
+    def select(self) -> {{ data_class.query_cls_name }}:
+        """Start selecting from {{ data_class.doc_list_name}}."""
+        return {{ data_class.query_cls_name }}(self._client)
+
+    def _build(
+        self,
+        filter_: dm.Filter | None,
+        limit: int | None,
+        retrieve_connections: Literal["skip", "identifier", "full"],
+        sort: list[InstanceSort] | None = None,
+        chunk_size: int | None = None,
+    ) -> QueryExecutor:
+        builder = QueryBuilder()
+        factory = QueryBuildStepFactory(builder.create_name, view_id=self._view_id, edge_connection_property="end_node")
+        builder.append(factory.root(
+            filter=filter_,
+            {% if data_class.has_field_of_type(ft.BasePrimitiveField) %}
+            sort=sort,
+            {% endif %}
+            limit=limit,
+            max_retrieve_batch_limit=chunk_size,
+            {% if data_class.has_container_fields %}
+            has_container_fields=True,
+            {% else %}
+            has_container_fields=False,
+            {% endif %}
+        ))
+        {% if data_class.has_edges %}
+        if retrieve_connections == "identifier" or retrieve_connections == "full":
+        {% endif %}
+        {% for field in data_class.fields_of_type(ft.BaseConnectionField) %}
+        {% if field.is_edge %}
+            builder.extend(
+                factory.from_edge(
+                    {{field.destination_class.read_name }}._view_id,
+                    "{{ field.edge_direction}}",
+                    ViewPropertyId(self._view_id, "{{ field.prop_name }}"),
+                    include_end_node=retrieve_connections == "full",
+                    {% if field.destination_class.has_container_fields %}
+                    has_container_fields=True,
+                    {% else %}
+                    has_container_fields=False,
+                    {% endif %}
+                    {% if field.edge_class %}
+                    edge_view={{ field.edge_class.read_name }}._view_id,
+                    {% endif %}
+                )
+            )
+        {% endif %}
+        {% endfor %}
+{% if data_class.has_direct_or_reverse_relation_with_target %}
+        if retrieve_connections == "full":
+            {% for field in data_class.fields_of_type(ft.BaseConnectionField) %}
+            {% if field.is_reverse_direct_relation %}
+            builder.extend(
+            factory.from_reverse_relation(
+                {{field.destination_class.read_name }}._view_id,
+                through={{ field.through_object_str }},
+                {% if field.reverse_property.is_one_to_many %}
+                connection_type="reverse-list",
+                {% else %}
+                connection_type=None,
+                {% endif %}
+                connection_property=ViewPropertyId(self._view_id, "{{ field.prop_name }}"),
+                {% if field.destination_class.has_container_fields %}
+                has_container_fields=True,
+                {% else %}
+                has_container_fields=False,
+                {% endif %}
+                )
+            )
+            {% endif %}
+            {% endfor %}
+            {% for field in data_class.fields_of_type(ft.BaseConnectionField) %}
+            {% if field.is_direct_relation and field.destination_class %}
+            builder.extend(
+                factory.from_direct_relation(
+                    {{field.destination_class.read_name }}._view_id,
+                    ViewPropertyId(self._view_id, "{{ field.prop_name }}"),
+                    {% if field.destination_class.has_container_fields %}
+                    has_container_fields=True,
+                    {% else %}
+                    has_container_fields=False,
+                    {% endif %}
+                )
+            )
+            {% endif %}
+            {% endfor %}
+{% endif %}
+        return builder.build()
+
+    def iterate(
+        self,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        {% for parm in list_method.parameters %}
+        {{ parm.name }}: {{ parm.annotation }} = {{ parm.default }},
+        {% endfor %}
+        filter: dm.Filter | None = None,
+        {% if data_class.has_field_of_type(ft.BaseConnectionField) %}
+        retrieve_connections: Literal["skip", "identifier", "full"] = "skip",
+        {% endif %}
+        limit: int | None = None,
+        cursors: dict[str, str | None] | None = None,
+    ) -> Iterator[{{ data_class.read_list_name }}]:
+        """Iterate over {{ data_class.doc_list_name }}
+
+        Args:
+            chunk_size: The number of {{ data_class.doc_list_name }} to return in each iteration. Defaults to 100.
+            {% for parm in list_method.parameters %}
+            {{ parm.name }}: {{ parm.description }}
+            {% endfor %}
+            filter: (Advanced) If the filtering available in the above is not sufficient,
+                you can write your own filtering which will be ANDed with the filter above.
+            {% if data_class.has_connection_with_target %}
+            {{ retrieve_connections_doc }}
+            {% endif %}
+            limit: Maximum number of {{ data_class.doc_list_name }} to return. Defaults to None, which will return all items.
+            cursors: (Advanced) Cursor to use for pagination. This can be used to resume an iteration from a
+                specific point. See example below for more details.
+
+        Returns:
+            Iteration of {{ data_class.doc_list_name}}
+
+        Examples:
+
+            Iterate {{ data_class.doc_list_name }} in chunks of 100 up to 2000 items:
+
+                >>> from {{ top_level_package }} import {{ client_name }}
+                >>> client = {{ client_name }}()
+                >>> for {{ data_class.variable_list }} in client.{{ api_class.parent_attribute }}.iterate(chunk_size=100, limit=2000):
+                ...     for {{  data_class.variable }} in {{ data_class.variable_list }}:
+                ...         print({{ data_class.variable }}.external_id)
+
+            Iterate {{ data_class.doc_list_name }} in chunks of 100 sorted by external_id in descending order:
+
+                >>> from {{ top_level_package }} import {{ client_name }}
+                >>> client = {{ client_name }}()
+                >>> for {{ data_class.variable_list }} in client.{{ api_class.parent_attribute }}.iterate(
+                ...     chunk_size=100,
+                ...     sort_by="external_id",
+                ...     direction="descending",
+                ... ):
+                ...     for {{  data_class.variable }} in {{ data_class.variable_list }}:
+                ...         print({{ data_class.variable }}.external_id)
+
+            Iterate {{ data_class.doc_list_name }} in chunks of 100 and use cursors to resume the iteration:
+
+                >>> from {{ top_level_package }} import {{ client_name }}
+                >>> client = {{ client_name }}()
+                >>> for first_iteration in client.{{ api_class.parent_attribute }}.iterate(chunk_size=100, limit=2000):
+                ...     print(first_iteration)
+                ...     break
+                >>> for {{ data_class.variable_list }} in client.{{ api_class.parent_attribute }}.iterate(
+                ...     chunk_size=100,
+                ...     limit=2000,
+                ...     cursors=first_iteration.cursors,
+                ... ):
+                ...     for {{  data_class.variable }} in {{ data_class.variable_list }}:
+                ...         print({{ data_class.variable }}.external_id)
+
+        """
+        warnings.warn(
+            "The `iterate` method is in alpha and is subject to breaking changes without prior notice.", stacklevel=2
+        )
+        filter_ = {{ data_class.filter_name }}(
+            self._view_id,
+            {% for parm in list_method.parameters %}
+            {{ parm.name }},
+            {% endfor %}
+            filter,
+        )
+        yield from self._iterate(chunk_size, filter_, limit, {% if data_class.has_connection_with_target %}retrieve_connections{% else %}"skip"{% endif %}, cursors=cursors)
+
+    def list(
+        self,
+        {% for parm in list_method.parameters %}
+        {{ parm.name }}: {{ parm.annotation }} = {{ parm.default }},
+        {% endfor %}
+        limit: int = DEFAULT_LIMIT_READ,
+        filter: dm.Filter | None = None,
+        {% if data_class.has_field_of_type(ft.BasePrimitiveField) %}
+        sort_by: {{ data_class.field_names }} | Sequence[{{ data_class.field_names }}] | None = None,
+        direction: Literal["ascending", "descending"] = "ascending",
+        sort: InstanceSort | list[InstanceSort] | None = None,
+        {% endif %}
+        {% if data_class.has_field_of_type(ft.BaseConnectionField) %}
+        retrieve_connections: Literal["skip", "identifier", "full"] = "skip",
+        {% endif %}
+    ) -> {{ data_class.read_list_name }}:
+        """List/filter {{ data_class.doc_list_name }}
+
+        Args:
+            {% for parm in list_method.parameters %}
+            {{ parm.name }}: {{ parm.description }}
+            {% endfor %}
+            limit: Maximum number of {{ data_class.doc_list_name }} to return.
+                Defaults to 25. Set to -1, float("inf") or None to return all items.
+            filter: (Advanced) If the filtering available in the above is not sufficient,
+                you can write your own filtering which will be ANDed with the filter above.
+            {% if data_class.has_field_of_type(ft.BasePrimitiveField) %}
+            sort_by: The property to sort by.
+            direction: The direction to sort by, either 'ascending' or 'descending'.
+            sort: (Advanced) If sort_by and direction are not sufficient, you can write your own sorting.
+                This will override the sort_by and direction. This allowos you to sort by multiple fields and
+                specify the direction for each field as well as how to handle null values.
+            {% endif %}
+            {% if data_class.has_connection_with_target %}
+            {{ retrieve_connections_doc }}
+            {% endif %}
+
+        Returns:
+            List of requested {{ data_class.doc_list_name}}
+
+        Examples:
+
+            List {{ data_class.doc_list_name }} and limit to 5:
+
+                >>> from {{ top_level_package }} import {{ client_name }}
+                >>> client = {{ client_name }}()
+                >>> {{ data_class.variable_list }} = client.{{ api_class.parent_attribute }}.list(limit=5)
+
+        """
+        filter_ = {{ data_class.filter_name }}(
+            self._view_id,
+            {% for parm in list_method.parameters %}
+            {{ parm.name }},
+            {% endfor %}
+            filter,
+        )
+        {% if data_class.has_field_of_type(ft.BasePrimitiveField) %}
+        sort_input =  self._create_sort(sort_by, direction, sort)  # type: ignore[arg-type]
+        {% endif %}
+{% if data_class.has_connection_with_target %}
+        if retrieve_connections == "skip":
+            return self._list(limit=limit,  filter=filter_{% if data_class.has_field_of_type(ft.BasePrimitiveField) %}, sort=sort_input{% endif %})
+        return self._query(filter_, limit, retrieve_connections, {% if data_class.has_field_of_type(ft.BasePrimitiveField) %}sort_input{% else %}None{% endif %}, "list")
+        {% else %}
+        return self._list(limit=limit,  filter=filter_{% if data_class.has_field_of_type(ft.BasePrimitiveField) %}, sort=sort_input{% endif %})
+        {% endif %}
