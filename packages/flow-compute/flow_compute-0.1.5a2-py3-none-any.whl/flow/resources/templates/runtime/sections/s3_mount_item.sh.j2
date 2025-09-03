@@ -1,0 +1,38 @@
+# Mount S3: [[ bucket ]]/[[ path ]] -> [[ target ]]
+echo "Mounting S3 bucket [[ bucket ]] to [[ target ]]"
+
+# Create mount point
+mkdir -p "[[ target ]]"
+
+# Determine auth options
+S3FS_AUTH_OPTS=""
+if [ "${USE_IAM_ROLE}" = "true" ]; then
+    S3FS_AUTH_OPTS="-o iam_role=auto"
+else
+    S3FS_AUTH_OPTS="-o passwd_file=/tmp/s3fs_passwd"
+fi
+
+# Determine read/write option (default read-only)
+RW_OPT="-o ro"
+if [ "${S3_MOUNTS_RW_ALL:-}" = "1" ] || [ "${S3_MOUNT_[[ index ]]_RW:-}" = "1" ]; then
+    RW_OPT=""  # allow writes
+fi
+
+# Mount with s3fs
+s3fs "[[ s3_path ]]" "[[ target ]]" \
+    ${S3FS_AUTH_OPTS} \
+    ${RW_OPT} \
+    -o allow_other \
+    -o use_cache=/tmp/s3fs_cache \
+    -o retries=5 \
+    -o connect_timeout=10 \
+    -o readwrite_timeout=30
+
+# Verify mount
+if mountpoint -q "[[ target ]]"; then
+    echo "Successfully mounted S3 to [[ target ]]"
+else
+    echo "ERROR: Failed to mount S3 to [[ target ]]" >&2
+    exit 1
+fi
+
