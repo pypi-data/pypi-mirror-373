@@ -1,0 +1,92 @@
+WITH rc_cte AS (
+        SELECT COUNT(*) AS ROW_COUNT FROM {{ fully_qualified_name }} {% if has_where_clause %} WHERE {{ where_clause }} {% endif %}
+)
+    SELECT
+        TRIM(C.ColumnName) AS COLUMN_VALIDATED,
+        ROW_NUMBER() OVER (PARTITION BY C.DatabaseName, C.TableName ORDER BY C.ColumnId) AS ORDINAL_POSITION,
+        CASE TRIM(C.ColumnType)
+            WHEN 'A1' THEN 'ARRAY'
+            WHEN 'AN' THEN 'MULTI-DIMENSIONAL ARRAY'
+            WHEN 'AT' THEN 'TIME'
+            WHEN 'BF' THEN 'BYTE'
+            WHEN 'BO' THEN 'BLOB'
+            WHEN 'BV' THEN 'VARBYTE'
+            WHEN 'CF' THEN 'CHAR'
+            WHEN 'CO' THEN 'CLOB'
+            WHEN 'CV' THEN 'VARCHAR'
+            WHEN 'D'  THEN 'DECIMAL'
+            WHEN 'DA' THEN 'DATE'
+            WHEN 'DH' THEN 'INTERVAL DAY TO HOUR'
+            WHEN 'DM' THEN 'INTERVAL DAY TO MINUTE'
+            WHEN 'DS' THEN 'INTERVAL DAY TO SECOND'
+            WHEN 'DY' THEN 'INTERVAL DAY'
+            WHEN 'F'  THEN 'FLOAT'
+            WHEN 'HM' THEN 'INTERVAL HOUR TO MINUTE'
+            WHEN 'HS' THEN 'INTERVAL HOUR TO SECOND'
+            WHEN 'HR' THEN 'INTERVAL HOUR'
+            WHEN 'I'  THEN 'INTEGER'
+            WHEN 'I1' THEN 'BYTEINT'
+            WHEN 'I2' THEN 'SMALLINT'
+            WHEN 'I8' THEN 'BIGINT'
+            WHEN 'JN' THEN 'JSON'
+            WHEN 'MI' THEN 'INTERVAL MINUTE'
+            WHEN 'MO' THEN 'INTERVAL MONTH'
+            WHEN 'MS' THEN 'INTERVAL MINUTE TO SECOND'
+            WHEN 'N'  THEN 'NUMBER'
+            WHEN 'PD' THEN 'PERIOD(DATE)'
+            WHEN 'PM' THEN 'PERIOD(TIMESTAMP WITH TIME ZONE)'
+            WHEN 'PS' THEN 'PERIOD(TIMESTAMP)'
+            WHEN 'PT' THEN 'PERIOD(TIME)'
+            WHEN 'PZ' THEN 'PERIOD(TIME WITH TIME ZONE)'
+            WHEN 'SC' THEN 'INTERVAL SECOND'
+            WHEN 'SZ' THEN 'TIMESTAMP WITH TIME ZONE'
+            WHEN 'TS' THEN 'TIMESTAMP'
+            WHEN 'TZ' THEN 'TIME WITH TIME ZONE'
+            WHEN 'UT' THEN TRIM(C.ColumnUDTName)
+            WHEN 'XM' THEN 'XML'
+            WHEN 'YM' THEN 'INTERVAL YEAR TO MONTH'
+            WHEN 'YR' THEN 'INTERVAL YEAR'
+            ELSE TRIM(C.ColumnType)  -- Fallback to original type if not matched
+        END AS DATA_TYPE,
+        CASE
+            WHEN TRIM(C.ColumnType) IN ('CF', 'CV', 'CO', 'DH', 'DM', 'DS', 'DY', 'HM', 'HS', 'HR', 'MI', 'MS', 'SC', 'YM', 'YR', 'PD', 'PM', 'PS', 'PT', 'PZ') THEN C.ColumnLength
+            ELSE NULL
+        END AS CHARACTER_MAXIMUM_LENGTH,
+        CASE
+            WHEN TRIM(C.ColumnType) IN ('I', 'I1', 'I2', 'I8') THEN 38  -- Integer types get precision 38
+            WHEN TRIM(C.ColumnType) IN ('D', 'N') THEN  -- Decimal/Numeric types
+                CASE
+                    WHEN C.DecimalTotalDigits = -128 THEN 38  -- Use 38 when null (-128)
+                    ELSE C.DecimalTotalDigits  -- Use actual precision
+                END
+            ELSE NULL  -- Other types get null precision
+        END AS NUMERIC_PRECISION,
+        CASE
+            WHEN TRIM(C.ColumnType) IN ('I', 'I1', 'I2', 'I8') THEN 0  -- Integer types get scale 0
+            WHEN TRIM(C.ColumnType) IN ('D', 'N') THEN  -- Decimal/Numeric types
+                CASE
+                    WHEN C.DecimalFractionalDigits = -128 THEN NULL  -- Use null when -128
+                    ELSE C.DecimalFractionalDigits  -- Use actual scale
+                END
+            ELSE NULL  -- Other types get null scale
+        END AS NUMERIC_SCALE,
+        CASE
+            WHEN C.Nullable = 'Y' THEN 'YES'
+            ELSE 'NO'
+        END AS IS_NULLABLE,
+        rc.ROW_COUNT
+   FROM DBC.Columns C
+CROSS JOIN rc_cte rc
+WHERE TRIM(C.TableName) = '{{ object_name }}'
+AND TRIM(C.DatabaseName) = '{{ object_schema }}'
+{% if columns %}
+    {% if use_as_exclude_list %}
+    AND TRIM(C.ColumnName) NOT IN (
+    {% else %}
+    AND TRIM(C.ColumnName) IN (
+    {% endif %}
+        {% for column in columns %}
+            '{{ column }}'{% if not loop.last %}, {% endif %}
+        {% endfor %}
+    )
+{% endif %}

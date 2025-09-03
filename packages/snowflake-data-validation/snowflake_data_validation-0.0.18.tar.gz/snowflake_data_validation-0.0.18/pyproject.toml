@@ -1,0 +1,157 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[project]
+authors = [
+  {name = "Snowflake, Inc.", email = "snowflake-python-libraries-dl@snowflake.com"},
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Environment :: Other Environment",
+  "Intended Audience :: Developers",
+  'Intended Audience :: Education',
+  "Intended Audience :: Information Technology",
+  "Intended Audience :: System Administrators",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: SQL",
+  "Topic :: Database",
+  "Topic :: Software Development",
+  "Topic :: Software Development :: Libraries",
+  "Topic :: Software Development :: Libraries :: Application Frameworks",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+]
+dependencies = [
+  "deepdiff>=8.0.0",
+  "snowflake-snowpark-python>=1.29.1",
+  "snowflake-connector-python>=3.14.0",
+  "pandas>=2.2.3",
+  "toml>=0.10.2",
+  "jinja2>=3.1.6",
+  "pydantic>=2.0",
+  "pydantic-yaml>=1.4.0",
+  "typing-extensions>=4.13.2",
+  "typer>=0.15.3",
+]
+description = "Snowflake Data Validation"
+dynamic = ['version']
+keywords = [
+  'Snowflake',
+  'analytics',
+  'cloud',
+  'database',
+  'db',
+  'data',
+  'validation',
+]
+license = {text = "Apache License, Version 2.0"}
+name = "snowflake-data-validation"
+readme = "README.md"
+requires-python = '>=3.9,<3.14'
+
+[project.scripts]
+sdv = "snowflake.snowflake_data_validation.main_cli:data_validation_app"
+snowflake-data-validation = "snowflake.snowflake_data_validation.main_cli:data_validation_app"
+
+[project.optional-dependencies]
+all = ["snowflake-data-validation[development,sqlserver,teradata,redshift]"]
+development = [
+  "pytest>=8.3.3",
+  "pytest-cov>=6.0.0",
+  "pytest-mock>=3.14.1",
+  "coverage>=7.6.7",
+  "twine==5.1.1",
+  "hatchling>=1.26.3",
+  "pre-commit>=4.0.1",
+  "setuptools>=70.0.0",
+  "deepdiff>=8.0.0",
+]
+sqlserver = [
+  "pyodbc>=5.2.0",
+]
+teradata = [
+  "teradatasql>=17.20.0.0",
+]
+redshift = [
+  "redshift-connector>=2.1.8",
+]
+
+[project.urls]
+"Bug Tracker" = "https://github.com/snowflakedb/migrations-data-validation/issues"
+"Source code" = "https://github.com/snowflakedb/migrations-data-validation/"
+
+[tool.hatch.version]
+path = "src/snowflake/snowflake_data_validation/__version__.py"
+pattern = '^__version__ = "(?P<version>.*)"'
+source = "regex"
+
+[tool.setuptools.packages.find]
+include = ["snowflake.snowflake_data_validation"]
+where = ["src/"]
+
+[tool.hatch.build]
+dev-mode-dirs = ['src']
+directory = 'snowflake-data-validation'
+
+[[tool.hatch.sources]]
+dir = "src/snowflake/snowflake_data_validation"
+name = "snowflake-data-validation"
+type = "package"
+
+[tool.hatch.build.targets.wheel]
+directory = "dist"
+packages = [
+  "src/snowflake",
+]
+
+[tool.hatch.build.targets.sdist]
+directory = "dist"
+exclude = ["/.github", "/.idea"]
+include = [
+  'src/**',
+  'README.md',
+  'LICENSE',
+  'tests/**',
+  "pyproject.toml",
+]
+
+[tool.hatch.envs.default]
+features = ["development", "sqlserver", "teradata", "redshift"]
+python = "3.12"
+
+[tool.hatch.envs.test]
+
+[tool.hatch.envs.test_all]
+template = 'test'
+
+[[tool.hatch.envs.test_all.matrix]]
+python = ['3.9', '3.10', '3.11', '3.12', '3.13']
+
+[tool.coverage.paths]
+src = ["src"]
+tests = ["tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "if __name__ == .__main__.:",
+]
+
+[tool.hatch.envs.linter.scripts]
+check = [
+  "echo 'Running linting checks...' && ruff check --config=../ruff.toml --statistics --verbose . || (echo '❌ LINTING FAILED: Please fix the above linting issues before proceeding. Use \"ruff check --config=../ruff.toml --fix .\" to auto-fix some issues, or fix them manually.' && exit 1)",
+]
+
+[tool.hatch.envs.test.scripts]
+check = [
+  'python -m pip install --upgrade pip -q && pip list',
+  'pytest -vvv --junitxml=tests/outcome/test-results.xml --cov=. --cov-branch --cov-config=tests/.coveragerc --cov-report=xml:tests/outcome/coverage-{matrix:python:{env:PYTHON_VERSION:unset}}.xml --cov-report=term --cov-report=html:tests/outcome/coverage-{matrix:python:{env:PYTHON_VERSION:unset}}.html --cov-report=json:tests/outcome/coverage-{matrix:python:{env:PYTHON_VERSION:unset}}.json tests --ignore=tests/integration',
+]
+
+coverage = [
+  'pwd && ls -la tests/outcome',
+  'python ../.github/scripts/test_get_coverage.py tests/outcome/coverage-{matrix:python:{env:PYTHON_VERSION:unset}}.json --threshold={env:COVERAGE_THRESHOLD:10}',
+]
