@@ -1,0 +1,134 @@
+[build-system]
+requires = ["scikit-build-core"]
+build-backend = "scikit_build_core.build"
+
+[project]
+version = "3.0.3"
+name = "karabo.cpp"
+description = "Karabo's C++ API and Python bindings thereof"
+readme = "README.md"
+requires-python = "==3.12.*"
+license = "MPL-2.0"
+keywords = ["Karabo", "SCADA", "async", "control system"]
+authors = [{ name = "European XFEL GmbH", email = "opensource@xfel.eu" }]
+maintainers = [
+  { name = "S. Hauf", email = "steffen.hauf@xfel.eu" },
+  { name = "D. Goeries", email = "dennis.goeries@xfel.eu" },
+]
+
+# Classifiers help users find your project by categorizing it.
+#
+# For a list of valid classifiers, see https://pypi.org/classifiers/
+classifiers = [
+  # How mature is this project? Common values are
+  #   3 - Alpha
+  #   4 - Beta
+  #   5 - Production/Stable
+  "Development Status :: 5 - Production/Stable",
+
+  # Indicate who your project is intended for
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+]
+
+# This field lists other packages that your project depends on to run.
+# Any package you put here will be installed by pip when your project is
+# installed, so they must be valid existing projects.
+#
+# For an analysis of this field vs pip's requirements files see:
+# https://packaging.python.org/discussions/install-requires-vs-requirements/
+dependencies = [
+  "karabo-native==3.0.3",
+  ]
+
+
+[project.optional-dependencies]
+# dev = ["check-manifest"]
+# test = ["coverage"]
+
+# List URLs that are relevant to your project
+#
+# This field corresponds to the "Project-URL" and "Home-Page" metadata fields:
+# https://packaging.python.org/specifications/core-metadata/#project-url-multiple-use
+# https://packaging.python.org/specifications/core-metadata/#home-page-optional
+#
+# Examples listed include a pattern for specifying where the package tracks
+# issues, where the source is hosted, where to say thanks to the package
+# maintainers, and where to support the project financially. The key is
+# what's used to render the link text on PyPI.
+[project.urls]
+"Homepage" = "https://github.com/European-XFEL/Karabo"
+"Bug Reports" = "https://github.com/European-XFEL/Karabo/issues"
+#"Funding" = "https://donate.pypi.org"
+# "Say Thanks!" = "mailto://opensource@xfel.eu"
+"Source" = "https://github.com/European-XFEL/Karabo"
+
+# The following would provide a command line executable called `sample`
+# which executes the function `main` from this package when invoked.
+# [project.scripts]
+
+[tool.scikit-build]
+cmake.build-type = "Release"
+build.verbose = true
+logging.level = "INFO"
+
+# numpy dependency here, but be version-matched further down.
+build.requires = [
+  "numpy==2.0.1",
+  "pybind11[global]==2.13.2",
+  "pybind11-stubgen==2.5.1",
+  ]
+
+# avoid default
+search.site-packages = false
+wheel.install-dir = "karabo_cpp"
+
+[tool.scikit-build.wheel.packages]
+"karabo_cpp/shims" = "python/src/shims"
+"karabind" = "python/src/karabind"
+
+[tool.scikit-build.cmake.define]
+CMAKE_PREFIX_PATH = "/project/extern/build"
+BUILD_UNIT_TESTING = false
+BUILD_LONG_RUN_TESTING = false
+GEN_CODE_COVERAGE = false
+CMAKE_TOOLCHAIN_FILE = "/project/extern/build/conan_toolchain/conan_toolchain.cmake"
+Python3_ROOT_DIR = ""
+Python3_EXECUTABLE = ""
+Python3_NumPy_INCLUDE_DIR = ""
+
+
+[project.scripts]
+'karabo-cppserver' = 'karabo_cpp.shims.entrypoints:karabo_cppserver'
+'karabo-brokermessagelogger' = 'karabo_cpp.shims.entrypoints:karabo_brokermessagelogger'
+'karabo-brokerrates' = 'karabo_cpp.shims.entrypoints:karabo_brokerrates'
+
+[tool.cibuildwheel]
+# change this if docker is available (and podman not)
+container-engine = "podman"
+
+# Karabo required a GCC and glibc version that support C++20
+# The usual manylinux2014 version is to old for this (it's Centos7 based).
+# We thus use manylinux_x_y, with glibc version 2.28.
+# Quay.io hosts the pypa refence builds.
+archs = ["x86_64"]
+skip = "*-musllinux*"  # the daemontools don't compile on musllinux so we skip it here as well
+manylinux-x86_64-image = "quay.io/pypa/manylinux_2_28_x86_64"
+manylinux-pypy_x86_64-image = "quay.io/pypa/manylinux_2_28_x86_64"
+manylinux-aarch64-image = "quay.io/pypa/manylinux_2_28_aarch64"
+manylinux-pypy_aarch64-image = "quay.io/pypa/manylinux_2_28_aarch64"
+
+# we need a few things to happen before building karabo.cpp:
+# 1) set-up a working conan enviornment, and have numpy headers available.
+# 2) prepare a minimal extern/bin environment in which the Karabo's extern/build.sh file can run.
+# 3) build external libraries using Conan.
+#
+# Additionally, openssl requires PERL to configure. We need to ensure a full
+# installation is available.
+before-all = "dnf -y install perl gettext"
+before-build = "pip3 install conan==2.19.0 && pip3 install numpy==2.0.1 && python -c 'from prepare_extern import prepare; prepare()' && /project/extern/build.sh /project/extern/build ALL"
+
+test-requires = ["pytest"]
+# these are minimally required for a C++ server to start
+before-test = "mkdir /karabo && mkdir /karabo/var && mkdir /karabo/var/data && mkdir /karabo/plugins && pip install karabo.native==3.0.3 --index-url 'https://gitlab-ci-token:glcbt-64_ywxqxzTszQXmxeVm8idj@git.xfel.eu/api/v4/projects/5003/packages/pypi/simple' --extra-index-url https://pypi.org"
+test-command = "KARABO=/karabo KARABO_BROKER=amqp://xfel:karabo@exfl-broker-1:5672 pytest {project}/wheel_tests"

@@ -1,0 +1,168 @@
+# This file is part of Karabo.
+#
+# http://www.karabo.eu
+#
+# Copyright (C) European XFEL GmbH Schenefeld. All rights reserved.
+#
+# Karabo is free software: you can redistribute it and/or modify it under
+# the terms of the MPL-2 Mozilla Public License.
+#
+# You should have received a copy of the MPL-2 Public License along with
+# Karabo. If not, see <https://www.mozilla.org/en-US/MPL/2.0/>.
+#
+# Karabo is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or
+# FITNESS FOR A PARTICULAR PURPOSE.
+# Copyright (c) 2007 Ian Bicking and Contributors
+# Copyright (c) 2009 Ian Bicking, The Open Planning Project
+# Copyright (c) 2011-2015 The virtualenv developers
+#
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+#
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+# LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+# OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+# WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+# This file must be used with "source bin/activate" *from bash*
+# you cannot run it directly
+
+deactivate () {
+    # reset old environment variables
+    if [ -n "$_OLD_KARABO_PATH" ] ; then
+        PATH="$_OLD_KARABO_PATH"
+        export PATH
+        unset _OLD_KARABO_PATH
+    fi
+    if [ -n "$_OLD_PKG_CONFIG_PATH" ] ; then
+        PKG_CONFIG_PATH="$_OLD_PKG_CONFIG_PATH"
+        export PKG_CONFIG_PATH
+        unset _OLD_PKG_CONFIG_PATH
+    fi
+    if [ -n "$_OLD_KARABO_PYTHONHOME" ] ; then
+        PYTHONHOME="$_OLD_KARABO_PYTHONHOME"
+        export PYTHONHOME
+        unset _OLD_KARABO_PYTHONHOME
+    fi
+
+    # run the custom deactivate script if present
+    if [ -e "$KARABO/var/data/env_scripts/deactivate.sh" ] ; then
+        source $KARABO/var/data/env_scripts/deactivate.sh
+    fi
+
+    # remove .karabo/karaboFramework file
+    if [ -e "$HOME/.karabo/karaboFramework" ] ; then
+        rm -f "$HOME/.karabo/karaboFramework"
+    fi
+
+    # This should detect bash and zsh, which have a hash command that must
+    # be called to get it to forget past commands.  Without forgetting
+    # past commands the $PATH changes we made may not be respected
+    if [ -n "$BASH" -o -n "$ZSH_VERSION" ] ; then
+        hash -r
+    fi
+
+    if [ ! "$1" = "nondestructive" ] ; then
+        # Self destruct!
+        pushd "$KARABO/var/environment" >/dev/null
+        for var in $(ls)
+        do
+           unset $var
+        done
+        popd >/dev/null
+        unset -f deactivate
+    fi
+    unset KARABO
+    unset MPLBACKEND
+}
+
+# unset irrelevant variables
+deactivate nondestructive
+
+KARABO="__VENV_DIR__"
+export KARABO
+export MPLBACKEND=TkAgg
+
+# If no environment exists, copy default one
+if [ ! -e "$KARABO/var/environment" ]
+then
+  # E.g. first call to 'activate'. in a fresh development area
+  cp -r "$KARABO/environment.in" "$KARABO/var/environment"
+  echo Default environment copied to "\$KARABO/var/environment"
+fi
+
+pushd "$KARABO/var/environment" >/dev/null
+for var in $(ls)
+do
+   export $var="$(cat $var)"
+done
+popd >/dev/null
+
+_OLD_KARABO_PATH="$PATH"
+PATH="$KARABO/bin:$KARABO/extern/bin:$PATH"
+export PATH
+
+_OLD_PKG_CONFIG_PATH="$PKG_CONFIG_PATH"
+PKG_CONFIG_PATH="$KARABO/lib/pkgconfig:$KARABO/extern/lib/pkgconfig:$PKG_CONFIG_PATH"
+export PKG_CONFIG_PATH
+
+# for backward compatibility (and NetBeans) set the path in .karabo/karaboFramework
+mkdir -p $HOME/.karabo
+echo $KARABO > $HOME/.karabo/karaboFramework
+
+# unset PYTHONHOME if set
+# this will fail if PYTHONHOME is set to the empty string (which is bad anyway)
+# could use `if (set -u; : $PYTHONHOME) ;` in bash
+if [ -n "$PYTHONHOME" ] ; then
+    _OLD_KARABO_PYTHONHOME="$PYTHONHOME"
+    unset PYTHONHOME
+fi
+
+# run the custom activate script if present
+if [ -e "$KARABO/var/data/env_scripts/activate.sh" ] ; then
+    source $KARABO/var/data/env_scripts/activate.sh
+fi
+
+# This should detect bash and zsh, which have a hash command that must
+# be called to get it to forget past commands.  Without forgetting
+# past commands the $PATH changes we made may not be respected
+if [ -n "$BASH" -o -n "$ZSH_VERSION" ] ; then
+    hash -r
+fi
+
+karabo_complete () {
+    karabo-check &> /dev/null # will start the supervisor - if not running
+    #             list servers | get names       | concatenate     | strip color codes
+    completions=$(karabo-check | cut -d ':' -f 1 | paste -sd ' ' - | sed -e 's/\x1b\[[0-9;]*m//g')
+    local cur=${COMP_WORDS[COMP_CWORD]}
+    COMPREPLY=($(compgen -W "${completions}" -- "${cur}"))
+}
+
+# Enable zsh's bash compatibility mode to use bash's autocompletion functions
+if [ -n "$ZSH_VERSION" ] ; then
+    autoload bashcompinit
+    bashcompinit
+fi
+
+if [ -n "$BASH"  -o -n "$ZSH_VERSION" ]; then
+    complete -W"--help -h" -F karabo_complete karabo-check
+    complete -W"--help -h" -F karabo_complete karabo-start
+    complete -W"--help -h"  -F karabo_complete karabo-stop
+    complete -W"--help -h -l -dx .svscan -u -d -o -x" -F karabo_complete karabo-kill
+    complete -W"--help -h" -F karabo_complete karabo-remove-deviceserver
+    complete -W"--help -h" -F karabo_complete karabo-gterm
+    complete -W"--help -h" -F karabo_complete karabo-xterm
+    complete -W"--help -h" -F karabo_complete karabo-less
+fi

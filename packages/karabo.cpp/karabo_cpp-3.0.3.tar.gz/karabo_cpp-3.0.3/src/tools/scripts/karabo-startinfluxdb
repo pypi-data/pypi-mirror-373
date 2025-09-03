@@ -1,0 +1,61 @@
+#!/bin/bash
+# This file is part of Karabo.
+#
+# http://www.karabo.eu
+#
+# Copyright (C) European XFEL GmbH Schenefeld. All rights reserved.
+#
+# Karabo is free software: you can redistribute it and/or modify it under
+# the terms of the MPL-2 Mozilla Public License.
+#
+# You should have received a copy of the MPL-2 Public License along with
+# Karabo. If not, see <https://www.mozilla.org/en-US/MPL/2.0/>.
+#
+# Karabo is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or
+# FITNESS FOR A PARTICULAR PURPOSE.
+
+# check the InfluxDb docker image
+IMAGE=influxdb:1.7.8
+CONTAINER=karabo_influxdb
+
+# check if the image is already available
+docker images $IMAGE --format "{{.Repository}}:{{.Tag}}" | grep $IMAGE > /dev/null
+if [[ $? -ne 0 ]]; then
+    # pull in case we miss this image
+    docker pull $IMAGE
+    if [[ $? -ne 0 ]]; then
+        echo "ERROR: is docker installed?"
+        exit 1
+    fi
+fi
+
+INFLUX_DATA_DIR=$KARABO/var/data/influx_data
+mkdir -p $INFLUX_DATA_DIR
+
+# unfortunately docker ps will always return 0, so we need to grep the output
+docker ps --filter name=$CONTAINER | grep $CONTAINER > /dev/null
+if [[ $? -eq 0 ]]; then
+    # already running, exit quietly
+    exit 0
+fi
+
+docker ps --all --filter name=$CONTAINER | grep $CONTAINER > /dev/null
+# if no container from the image is running, start it.
+if [[ $? -ne 0 ]]; then
+    docker run -d -p 8086:8086 -p 8083:8083 -e INFLUXDB_ADMIN_ENABLED=true -v $INFLUX_DATA_DIR:/var/lib/influxdb --name $CONTAINER $IMAGE > /dev/null
+else
+    docker start $CONTAINER > /dev/null
+fi
+
+
+if [[ $? -eq 0 ]]; then
+    echo "------------------------------------------"
+    echo "Influx DB container was started."
+    echo "You can access the backend at: http://localhost:8086"
+    exit 0
+else
+    echo "------------------------------------------"
+    echo "Error Starting the Influx DB container"
+    exit 1
+fi
