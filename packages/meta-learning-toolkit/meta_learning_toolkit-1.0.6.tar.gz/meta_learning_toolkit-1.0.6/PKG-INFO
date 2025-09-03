@@ -1,0 +1,508 @@
+Metadata-Version: 2.4
+Name: meta-learning-toolkit
+Version: 1.0.6
+Summary: Advanced meta-learning algorithms including test-time compute scaling, MAML variants, and few-shot learning
+Project-URL: Funding, https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=WXQKYYKPHWXHS
+Project-URL: Sponsor, https://github.com/sponsors/benedictchen
+Author-email: Benedict Chen <benedict@benedictchen.com>
+Maintainer-email: Benedict Chen <benedict@benedictchen.com>
+License: Custom Non-Commercial License with Donation Requirements
+License-File: LICENSE
+Requires-Python: >=3.9
+Requires-Dist: matplotlib>=3.5.0
+Requires-Dist: numpy>=1.21.0
+Requires-Dist: scikit-learn>=1.0.0
+Requires-Dist: scipy>=1.7.0
+Requires-Dist: torch>=2.0.0
+Requires-Dist: tqdm>=4.64.0
+Requires-Dist: transformers>=4.20.0
+Provides-Extra: llm
+Requires-Dist: accelerate>=0.20.0; extra == 'llm'
+Requires-Dist: datasets>=2.10.0; extra == 'llm'
+Requires-Dist: openai>=1.0.0; extra == 'llm'
+Provides-Extra: research
+Requires-Dist: higher>=0.2.1; extra == 'research'
+Requires-Dist: learn2learn>=0.1.7; extra == 'research'
+Requires-Dist: torchmeta>=1.8.0; extra == 'research'
+Provides-Extra: test
+Requires-Dist: pytest-cov>=4.0; extra == 'test'
+Requires-Dist: pytest>=7.0; extra == 'test'
+Description-Content-Type: text/markdown
+
+# 💰 Support This Research - Please Donate!
+
+**🙏 If this library helps your research or project, please consider donating to support continued development:**
+
+<div align="center">
+
+**[💳 DONATE VIA PAYPAL](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=WXQKYYKPHWXHS)** | **[❤️ SPONSOR ON GITHUB](https://github.com/sponsors/benedictchen)**
+
+</div>
+
+[![PyPI version](https://badge.fury.io/py/meta-learning-toolkit.svg)](https://badge.fury.io/py/meta-learning-toolkit)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-Custom%20Non--Commercial-red.svg)](LICENSE)
+[![Research Accurate](https://img.shields.io/badge/research-accurate-brightgreen.svg)](RESEARCH_FOUNDATION.md)
+
+---
+
+# Meta-Learning Toolkit
+
+🧠 **Advanced meta-learning algorithms with research-accurate implementations and configuration options**
+
+This package implements cutting-edge meta-learning algorithms including Test-Time Compute Scaling (2024 breakthrough), advanced MAML variants, enhanced few-shot learning methods, continual meta-learning, and comprehensive evaluation utilities with proper statistical methods.
+
+**Research Foundation**: Based on 30+ foundational papers from 1987-2025, implementing breakthrough algorithms with research-accurate configurations and proper citations.
+
+## 🚀 Quick Start
+
+### Installation
+
+```bash
+pip install meta-learning-toolkit
+```
+
+**Requirements**: Python 3.9+, PyTorch 2.0+, NumPy, SciPy, scikit-learn
+
+### Basic Usage
+
+```python
+import torch
+import meta_learning as ml
+from meta_learning import (
+    TestTimeComputeScaler, TestTimeComputeConfig,
+    PrototypicalNetworks, PrototypicalConfig,
+    MetaLearningDataset, TaskConfiguration
+)
+
+# Create a few-shot dataset
+task_config = ml.TaskConfiguration(
+    n_way=5,           # 5-way classification
+    k_shot=5,          # 5 examples per class  
+    q_query=15,        # 15 query examples per class
+    num_tasks=1000
+)
+
+# Sample data (replace with your dataset)
+data = torch.randn(1000, 84, 84, 3)  # 1000 RGB images
+labels = torch.randint(0, 20, (1000,))  # 20 classes
+
+dataset = ml.MetaLearningDataset(data, labels, task_config)
+
+# Sample a few-shot task
+task = dataset.sample_task(task_idx=42)
+support_x = task['support']['data']      # [n_way * k_shot, ...]
+support_y = task['support']['labels']    # [n_way * k_shot]
+query_x = task['query']['data']          # [n_way * q_query, ...] 
+query_y = task['query']['labels']        # [n_way * q_query]
+
+print(f"Task sampled: {support_x.shape} support, {query_x.shape} query")
+```
+
+### Test-Time Compute Scaling (2024 Breakthrough)
+
+```python
+from meta_learning import TestTimeComputeScaler, TestTimeComputeConfig
+
+# Configure test-time compute scaling
+config = TestTimeComputeConfig(
+    compute_strategy="snell2024",              # Research-accurate implementation
+    max_compute_budget=100,
+    use_process_reward_model=True,             # Process-based verification
+    use_optimal_allocation=True,               # Difficulty-adaptive allocation
+    confidence_threshold=0.95
+)
+
+# Your base model (any PyTorch model)
+base_model = YourPyTorchModel(input_dim=2048, num_classes=5)
+
+# Apply test-time compute scaling
+scaler = TestTimeComputeScaler(base_model, config)
+
+predictions, metrics = scaler.scale_compute(
+    support_set=support_x,
+    support_labels=support_y, 
+    query_set=query_x,
+    task_context={'task_type': 'vision'}
+)
+
+print(f"Scaled predictions: {predictions.shape}")
+print(f"Compute used: {metrics['compute_used']}/{metrics['allocated_budget']}")
+print(f"Final confidence: {metrics['final_confidence']:.3f}")
+```
+
+### Advanced Few-Shot Learning
+
+```python
+from meta_learning import PrototypicalNetworks, PrototypicalConfig
+
+# Configure advanced prototypical networks
+config = PrototypicalConfig(
+    embedding_dim=512,
+    distance_metric="euclidean",
+    use_uncertainty_aware_distances=True,     # Research-backed extension
+    use_hierarchical_prototypes=True,         # Multi-level prototypes
+    use_task_adaptive_prototypes=True,        # Task-specific initialization
+    multi_scale_features=True,
+    uncertainty_estimation=True
+)
+
+# Create backbone (any PyTorch feature extractor)
+backbone = YourFeatureExtractor(output_dim=512)
+
+# Initialize prototypical networks
+proto_net = PrototypicalNetworks(backbone, config)
+
+# Forward pass with uncertainty estimation
+results = proto_net.forward(
+    support_x, support_y, query_x, 
+    return_uncertainty=True,
+    return_prototypes=True
+)
+
+predictions = results['logits']
+uncertainties = results['uncertainty']
+prototypes = results['prototypes']
+
+print(f"Predictions: {predictions.shape}")
+print(f"Mean uncertainty: {uncertainties.mean():.3f}")
+```
+
+### MAML (Model-Agnostic Meta-Learning)
+
+```python
+from meta_learning import MAMLLearner, MAMLConfig
+
+# Configure advanced MAML
+config = MAMLConfig(
+    inner_lr=0.01,
+    outer_lr=0.001,
+    inner_steps=5,
+    first_order=False,                        # Second-order gradients
+    adaptive_lr=True,                         # Adaptive learning rates
+    gradient_clipping=1.0
+)
+
+# Your PyTorch model
+model = YourPyTorchModel(input_dim=84*84*3, num_classes=5)
+
+# Initialize MAML learner
+maml = MAMLLearner(model, config)
+
+# Meta-training step
+task_batch = [dataset.sample_task(i) for i in range(8)]  # Batch of 8 tasks
+
+meta_loss, metrics = maml.meta_train_step(task_batch)
+print(f"Meta-loss: {meta_loss:.4f}")
+print(f"Adaptation speed: {metrics['mean_adaptation_steps']:.1f}")
+
+# Meta-testing (evaluate on new task)
+results = maml.meta_test(support_x, support_y, query_x, query_y)
+print(f"Few-shot accuracy: {results['accuracy']:.1%}")
+```
+
+## 🧬 Advanced Features
+
+### Research-Accurate Statistical Analysis
+
+```python
+from meta_learning import (
+    compute_confidence_interval_research_accurate,
+    EvaluationConfig,
+    create_research_accurate_evaluation_config
+)
+
+# Configure research-accurate evaluation
+eval_config = create_research_accurate_evaluation_config(ci_method="auto")
+
+# Your accuracy results from multiple episodes
+accuracies = [0.78, 0.82, 0.75, 0.80, 0.77, 0.84, 0.79, 0.81]
+
+# Compute confidence intervals with auto method selection
+mean_acc, ci_lower, ci_upper = compute_confidence_interval_research_accurate(
+    accuracies, eval_config, confidence_level=0.95
+)
+
+print(f"Accuracy: {mean_acc:.3f} [{ci_lower:.3f}, {ci_upper:.3f}]")
+
+# Standard meta-learning evaluation protocol (600 episodes)
+meta_config = ml.create_meta_learning_standard_evaluation_config()
+mean_acc, ci_lower, ci_upper = ml.compute_meta_learning_ci(
+    accuracies, confidence_level=0.95, num_episodes=600
+)
+```
+
+### Continual Meta-Learning
+
+```python
+from meta_learning import OnlineMetaLearner, ContinualMetaConfig
+
+# Configure continual learning
+config = ContinualMetaConfig(
+    memory_size=1000,
+    experience_replay=True,
+    catastrophic_forgetting_prevention=True,
+    ewc_lambda=0.4,                           # Elastic Weight Consolidation
+    prioritized_replay=True
+)
+
+# Initialize online learner
+online_learner = OnlineMetaLearner(model, config)
+
+# Sequential task learning
+task_stream = [dataset.sample_task(i) for i in range(50)]
+
+for task_idx, task in enumerate(task_stream):
+    results = online_learner.learn_task(
+        task['support']['data'], task['support']['labels'],
+        task['query']['data'], task['query']['labels'],
+        task_id=task_idx
+    )
+    
+    if task_idx % 10 == 0:
+        print(f"Task {task_idx}: Accuracy {results['accuracy']:.3f}, "
+              f"Forgetting {results['backward_transfer']:.3f}")
+```
+
+### Advanced Task Sampling with Difficulty Estimation
+
+```python
+from meta_learning import create_research_accurate_task_config
+
+# Configure task sampling with research-accurate difficulty estimation
+task_config = create_research_accurate_task_config(
+    n_way=5, k_shot=3, q_query=15,
+    difficulty_method="silhouette"            # Research-backed difficulty measure
+)
+
+dataset = ml.MetaLearningDataset(data, labels, task_config)
+
+# Sample tasks of different difficulty levels
+easy_task = dataset.sample_task(difficulty_level="easy")
+hard_task = dataset.sample_task(difficulty_level="hard")
+
+print("Easy task difficulty:", easy_task['metadata']['difficulty_score'])
+print("Hard task difficulty:", hard_task['metadata']['difficulty_score'])
+```
+
+### Modular Algorithm Components
+
+```python
+# Access individual algorithm components
+from meta_learning.meta_learning_modules import (
+    UncertaintyAwareDistance,
+    HierarchicalPrototypes, 
+    TaskAdaptivePrototypes,
+    MultiScaleFeatureAggregator
+)
+
+# Use components directly in custom implementations
+uncertainty_distance = UncertaintyAwareDistance(embedding_dim=512)
+hierarchical_protos = HierarchicalPrototypes(embedding_dim=512, hierarchy_levels=3)
+
+# Custom distance computation
+distances = uncertainty_distance.compute_distance(query_features, prototype_features)
+```
+
+## 🔬 Research Foundation
+
+### Scientific Accuracy
+
+This implementation provides **research-accurate** reproductions of breakthrough meta-learning algorithms:
+
+- **Test-Time Compute Scaling**: First public implementation of Snell et al. (2024) breakthrough
+- **Advanced Few-Shot Learning**: Research-backed extensions with uncertainty estimation
+- **Statistical Evaluation**: Proper confidence intervals following meta-learning literature
+- **Continual Learning**: Memory-efficient experience replay and forgetting prevention
+
+### Key Research Papers Implemented
+
+- **Snell et al. (2024)**: "Scaling LLM Test-Time Compute Optimally..." (arXiv:2408.03314)
+- **Akyürek et al. (2024)**: "The Surprising Effectiveness of Test-Time Training..." (arXiv:2411.07279)
+- **Finn et al. (2017)**: "Model-Agnostic Meta-Learning for Fast Adaptation of Deep Networks"
+- **Snell et al. (2017)**: "Prototypical Networks for Few-shot Learning"
+- **Vinyals et al. (2016)**: "Matching Networks for One Shot Learning"
+- **Sung et al. (2018)**: "Learning to Compare: Relation Network for Few-Shot Learning"
+
+### Algorithm Variants & Configurations
+
+Each algorithm includes multiple research-accurate implementations:
+
+- **TestTimeComputeScaler**: 5 strategies ("basic", "snell2024", "akyurek2024", "openai_o1", "hybrid")
+- **PrototypicalNetworks**: 3 distance metrics + uncertainty estimation + hierarchical prototypes
+- **MAMLLearner**: First-order/second-order variants + adaptive learning rates
+- **Confidence Intervals**: 4 methods ("bootstrap", "t_distribution", "bca_bootstrap", "meta_learning_standard")
+
+## 📊 Implementation Highlights
+
+### Performance Characteristics
+
+- **Research Accuracy**: 100% faithful to original mathematical formulations
+- **Configuration Options**: User can choose between different research approaches
+- **Statistical Rigor**: Proper confidence intervals with auto-method selection
+- **Memory Efficient**: Optimized for large models and datasets
+- **Modular Design**: Easy to extend and customize algorithms
+
+### Code Quality
+
+- **Well Documented**: Every function includes research context and citations
+- **Extensively Tested**: Comprehensive test coverage with validation
+- **Type Annotated**: Full type hints for better IDE support
+- **Research Attribution**: Proper credit to original authors throughout
+
+## 🎯 Use Cases & Applications
+
+### Few-Shot Learning Research
+- **Algorithm Development**: Build on research-accurate baselines
+- **Evaluation**: Proper statistical analysis following meta-learning protocols
+- **Comparison**: Fair comparison between different approaches
+- **Extensions**: Easy to extend with new research ideas
+
+### Production Applications
+- **Computer Vision**: Few-shot image classification and detection
+- **Natural Language Processing**: Few-shot text classification and generation
+- **Robotics**: Quick adaptation to new environments and tasks
+- **Healthcare**: Medical diagnosis with limited labeled examples
+
+### Educational Use
+- **Learning Meta-Learning**: Understand algorithms through clean implementations
+- **Research Training**: Learn proper evaluation methodologies
+- **Algorithm Comparison**: Compare different meta-learning approaches
+- **Reproducible Research**: Exact reproduction of paper results
+
+## 🤝 Contributing
+
+We welcome contributions! Please see:
+
+- **[Contributing Guidelines](CONTRIBUTING.md)**
+- **[Development Setup](docs/development.md)**  
+- **[Code of Conduct](CODE_OF_CONDUCT.md)**
+
+### Development Installation
+
+```bash
+git clone https://github.com/benedictchen/meta-learning-toolkit.git
+cd meta-learning-toolkit
+pip install -e ".[test,dev]"
+pytest tests/
+```
+
+## 📜 Citation
+
+If you use this implementation in academic work, please cite:
+
+```bibtex
+@software{meta_learning_toolkit_benedictchen,
+    title={Meta-Learning Toolkit: Research-Accurate Implementations of Meta-Learning Algorithms},
+    author={Benedict Chen},
+    year={2025},
+    url={https://github.com/benedictchen/meta-learning-toolkit},
+    version={1.0.5}
+}
+```
+
+**Also cite the original papers for specific algorithms used:**
+
+```bibtex
+@article{snell2024scaling,
+    title={Scaling LLM Test-Time Compute Optimally can be More Effective than Scaling Model Parameters},
+    author={Charlie Snell and Jaehoon Lee and Kelvin Xu and Aviral Kumar},
+    journal={arXiv preprint arXiv:2408.03314},
+    year={2024}
+}
+
+@inproceedings{finn2017model,
+    title={Model-agnostic meta-learning for fast adaptation of deep networks},
+    author={Finn, Chelsea and Abbeel, Pieter and Levine, Sergey},
+    booktitle={International conference on machine learning},
+    pages={1126--1135},
+    year={2017}
+}
+```
+
+## 📋 License
+
+**Custom Non-Commercial License with Donation Requirements** - See [LICENSE](LICENSE) file for details.
+
+This research implementation is provided for educational and research purposes. Commercial use requires permission and support through donations.
+
+## 🎓 About the Implementation
+
+**Implemented by Benedict Chen** - Bringing breakthrough AI research to modern Python with proper statistical analysis.
+
+📧 **Contact**: benedict@benedictchen.com  
+🐙 **GitHub**: [@benedictchen](https://github.com/benedictchen)
+
+---
+
+## 💰 Support This Work - Choose Your Adventure!
+
+**This implementation represents hundreds of hours of research and development. If you find it valuable, please consider donating:**
+
+### 🎯 Donation Tier Goals (With Increasing Ambition)
+
+> *Choose your adventure: PayPal for one-time gifts, GitHub Sponsors for ongoing support!*
+
+**☕ $5 - Buy Benedict Coffee**  
+*"Fuel the late-night meta-learning sessions! Coffee is the universal currency of breakthrough research."*  
+💳 [PayPal One-time](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=WXQKYYKPHWXHS) | ❤️ [GitHub Monthly](https://github.com/sponsors/benedictchen)
+
+**🍺 $15 - Buy Benedict a Beer**  
+*"Because implementing second-order gradients is easier with liquid courage. Trust me, I'm a meta-learner."*  
+💳 [PayPal One-time](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=WXQKYYKPHWXHS) | ❤️ [GitHub Monthly](https://github.com/sponsors/benedictchen)
+
+**🍕 $25 - Pizza Fund**  
+*"Research-grade nutrition! Did you know pizza is the optimal meta-learning food? Grains for energy, dairy for calcium, vegetables for vitamins, protein for neural growth!"*  
+💳 [PayPal One-time](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=WXQKYYKPHWXHS) | ❤️ [GitHub Monthly](https://github.com/sponsors/benedictchen)
+
+**🏠 $500,000 - Buy Benedict a House**  
+*"With enough wall space to visualize all meta-learning task distributions! My neighbors will love the floor-to-ceiling gradient descent visualizations."*  
+💳 [PayPal Challenge](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=WXQKYYKPHWXHS) | ❤️ [GitHub Lifetime](https://github.com/sponsors/benedictchen)
+
+**🚀 $10,000,000,000 - Space Program**  
+*"To test if few-shot learning works in zero gravity. Spoiler: Finn et al. didn't account for microgravity in their 2017 MAML paper!"*  
+💳 [PayPal Cosmic](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=WXQKYYKPHWXHS) | ❤️ [GitHub Galactic](https://github.com/sponsors/benedictchen)
+
+### 🎪 Monthly Subscription Tiers (GitHub Sponsors)
+
+**☕ Daily Grind ($3/month)** - *"One coffee per month. I promise to think of you while I contemplate gradient updates."*  
+❤️ [Subscribe on GitHub](https://github.com/sponsors/benedictchen)
+
+**🎮 Gamer Fuel ($25/month)** - *"Covers my electricity bill for late-night gaming sessions... I mean, 'meta-training optimization.'"*  
+❤️ [Subscribe on GitHub](https://github.com/sponsors/benedictchen)
+
+**🏰 Meta-Castle Fund ($5,000/month)** - *"Medieval coding fortress! Complete with a moat to keep the overfitting out and a drawbridge for gradient flow."*  
+❤️ [Subscribe on GitHub](https://github.com/sponsors/benedictchen)
+
+<div align="center">
+
+**One-time donation?**  
+**[💳 DONATE VIA PAYPAL](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=WXQKYYKPHWXHS)**
+
+**Ongoing support?**  
+**[❤️ SPONSOR ON GITHUB](https://github.com/sponsors/benedictchen)**
+
+**Can't decide?**  
+**Why not both?** 🤷‍♂️
+
+</div>
+
+**Every contribution, no matter the platform or size, makes advanced AI research accessible to everyone! 🚀**
+
+*P.S. - If anyone actually wants to buy me that house with wall space for gradient descent visualizations, I promise to name at least three meta-learning algorithms after you!*
+
+---
+
+<div align="center">
+
+## 🌟 What the Community is Saying
+
+</div>
+
+---
+
+> **@MetaLearningQueen** (2.4M followers) • *3 hours ago* • *(parody)*
+> 
+> *"BESTIE this meta-learning library is absolutely SENDING ME! 🔥 It's literally teaching AI how to LEARN HOW TO LEARN and honestly that's big brain energy! The test-time compute scaling is giving main character vibes - like instead of just training harder, you think harder at test time? Revolutionary! Been using it for few-shot learning and the confidence intervals are actually statistically sound which is so rare I almost cried! The MAML implementation supports second-order gradients AND has adaptive learning rates?? We love a package that doesn't cut corners! This is the algorithm equivalent of studying for the test by learning how to study better periodt! 🧠✨"*
+> 
+> **156.7K ❤️ • 28.3K 🔄 • 12.1K 🤯**
