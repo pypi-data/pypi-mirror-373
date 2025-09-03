@@ -1,0 +1,74 @@
+#!/bin/env bash
+echo "Cleaning environment $CLEANED_ENV"
+[ -z "$CLEANED_ENV" ] && exec /bin/env -i CLEANED_ENV="Done" HOME=${HOME} SHELL=/bin/bash /bin/bash -l "$0" "$@"
+
+# setup_script_path.txt is created by setupSoftware.py
+# and contains the path to the setupPackage.sh script
+file_pref=$1
+file=$2
+inputDir=$3
+source `cat ${file}`
+# fix NUMBA so that it does not overall the host
+export NUMEXPR_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+export NUMBA_NUM_THREADS=1
+export NUMBA_THREADING_LAYER="workqueue"  # to suppress warning about TBB
+
+# fix NUMBA and ASTROPY cache directory
+export NUMBA_CACHE_DIR=$PWD/.numba_cache
+export XDG_CONFIG_HOME=$PWD/.astropy_config
+export XDG_CACHE_HOME=$PWD/.astropy_cache
+mkdir -p $NUMBA_CACHE_DIR $XDG_CONFIG_HOME $XDG_CACHE_HOME
+
+# get arguments for ctapipe
+shift
+shift
+shift
+OPTIONS="$@"
+echo "OPTIONS:"
+echo ${OPTIONS}
+# need package scripts and configuration file
+cp -R $CTAPIPE_DIR/config/* .
+
+# get input file list
+infilelist=( `find -L . -name "*.simtel.zst"` )
+
+echo "Input file list"
+echo ${infilelist[@]}
+
+# prepare output directory
+mkdir Data
+
+# verify we have everything
+ls -lhtra ./ ./Data
+
+for input_file in "${infilelist[@]}"; do
+
+    # define output file names
+    output_file=`basename $input_file | sed -e s/".simtel.zst"/".DL2.h5"/`
+    process_log_file=`basename $output_file | sed -e s/".DL2.h5"/".DL2.process.log"/`
+    prov_log_file=`basename $output_file | sed -e s/".DL2.h5"/".DL2.prov.log"/`
+    # process files
+    cmd="ctapipe-process ${OPTIONS} \
+        --input $input_file \
+        --output $output_file \
+        --Tool.provenance_log=$prov_log_file \
+        --log-file=$process_log_file"
+    echo
+    echo $cmd
+    eval $cmd
+    echo
+    # tar log and prov files
+    log_and_prov=`basename $output_file | sed -e s/".DL2.h5"/".DL2.log_and_prov.tgz"/`
+    tar zcf $log_and_prov $process_log_file $prov_log_file
+done
+
+# mv h5 to Data
+mv *.h5 ./Data
+
+# mv logs to Data
+mv *.log_and_prov.tgz ./Data
+
+# check Data content
+ls -lhtra ./Data

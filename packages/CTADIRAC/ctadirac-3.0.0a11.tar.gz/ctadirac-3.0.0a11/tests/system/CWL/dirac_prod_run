@@ -1,0 +1,420 @@
+#!/bin/bash
+# setup_script_path.txt is created by setupSoftware.py
+# and contains the path to the setupPackage.sh script
+file=$1
+shift
+source `cat ${file}`
+
+export NSHOW=10
+
+# Create directory structure
+# These paths have been defined with respect to $PWD
+echo "Creating $MCDATA_PATH $CORSIKA_DATA $SIM_TELARRAY_DATA"
+mkdir -p $MCDATA_PATH
+mkdir -p $CORSIKA_DATA
+mkdir -p $SIM_TELARRAY_DATA
+
+# This script is for running a prod-6 simulation for either Paranal or La Palma array layout.
+
+if [ "$1" = "--help" ]; then
+   echo "Run a Paranal (CTA-South) or La Palma (CTA-North) array layout simulation with"
+   echo "prod-6 configurations for a given site, primary type, azimuth, and zenith angle."
+   echo ""
+   echo "Syntax: $0 [ option ] site primary from_direction zenith_angle"
+   echo "   Site must be Paranal or LaPalma (default: Paranal)"
+   echo "   Primary can be any of gamma,gamma-diffuse,electron,proton,helium,... (default: gamma)"
+   echo "   From_direction can be any of North,South,East,West (default: South)"
+   echo "   Default zenith_angle is 20 deg."
+   echo ""
+   echo "Options:"
+   echo "   -B or --align-b-field : Turn off geomagnetic field declination"
+   echo "   --year nnnn : Evaluate geomagnetic field for given year (assuming 2025 by default)"
+   echo "   --with-magic : Include MAGIC telescopes (LaPalma only)"
+   echo "   --with-scts :   Include SCT telescopes at non-Alpha MST positions (Paranal only)"
+   echo "   --with-all-scts : Include SCT telescopes at all MST positions (Paranal only)"
+   echo "   --without-multipipe : Write directly into an output file, without multipipe_corsika."
+   echo "   --atmprof-old : Use the same atmospheric profile as in prod3b."
+   echo "   --atmprof-winter : Use the ECMWF-based atmospheric profile for the winter season (default)."
+   echo "   --atmprof-summer : Use the ECMWF-based atmospheric profile for the summer season."
+   echo "   --atmprof-intermediate : Use the intermediate season profile (only available for North site)."
+   echo "   --nsb-scaling f : Scale nightsky background by given factor over zenith-angle-dependent"
+   echo "                and telescope-specific dark-sky values."
+   echo "                This does not apply to the extra moonlight variants."
+   echo "   --with-moon (or --with-halfmoon) : In addition to dark also use -DHALFMOON variant."
+   echo "   --full-moon : In addition to dark and -DHALFMOON variant, also try -DFULLMOON variant"
+   echo "                where that is available in the multipipe set-up (works on SST and SCT only)."
+   echo "   --sequential : Instruct multipipe_corsika to use sequential mode."
+   echo "   --divergent : Set telescopes to observer in divergent mode."
+   echo ""
+   echo "There are also a number of environment variables which can be used to control"
+   echo "the number of showers, the energy spectrum and core positions:"
+   echo "   NSHOW ESLOPE EMIN [TeV] EMAX [TeV] NSCAT CSCAT [m] VIEWCONE [deg]"
+   echo ""
+   exit
+fi
+
+if [ -x ${HOME}/bin/init_batch_job ]; then
+   . ${HOME}/bin/init_batch_job
+fi
+
+defs="${PROD6_CORSIKA_DEFS}"
+extra="${PROD6_CORSIKA_EXTRA}"
+extra_defs="${extra_defs} ${EXTRA_DEFS} ${PROD6_SIMTEL_DEFS}"
+
+year=""
+with_magic=""
+with_scts=""
+divergent=""
+
+run="0"
+start_run="0"
+
+# Use a loop to avoid dependence on order of options.
+for ((i=0; i<18; i++)); do
+   if [ "$1" = "--start_run" ]; then
+      start_run=$(seq $2 $2)
+      shift
+      shift
+   fi
+   if [ "$1" = "--run" ]; then
+      run=$(seq $2 $2)
+      run=$(( start_run + run ))
+      shift
+      shift
+   fi
+   if [ "$1" = "--align-b-field" -o "$1" = "-B" ]; then
+      shift
+      extra="${extra} -DALIGN_B_FIELD"
+   elif [ "$1" = "--year" ]; then
+      year="$2"
+      shift
+      shift
+   elif [ "$1" = "--with-magic" ]; then
+      with_magic=1
+      shift
+   elif [ "$1" = "--with-scts" -o "$1" = "--with-sct" ]; then
+      with_scts=1
+      shift
+   elif [ "$1" = "--with-all-scts" ]; then
+      with_scts=2
+      shift
+   elif [ "$1" = "--with-moon" -o "$1" = "--with-halfmoon" -o "$1" = "--with-half-moon" ]; then
+      export MOONLIGHT=1
+      shift
+   elif [ "$1" = "--full-moon" -o "$1" = "--with-fullmoon" -o "$1" = "--with-full-moon" ]; then
+      export MOONLIGHT=2
+      shift
+   elif [ "$1" = "--nsb-scaling" ]; then
+      export nsb_scaling="$2"
+      shift
+      shift
+   elif [ "$1" = "--multipipe-suffix" ]; then
+      export SIMTEL_MULTI_CFG_SUFFIX="$2"
+      shift
+      shift
+   elif [ "$1" = "--without-multipipe" ]; then
+      extra="${extra} -DWITHOUT_MULTIPIPE"
+      shift
+   elif [ "$1" = "--atmprof-old" ]; then
+      extra="${extra} -DATMPROF_OLD"
+      shift
+   elif [ "$1" = "--atmprof-winter" ]; then
+      extra="${extra} -DATMPROF_WINTER"
+      shift
+   elif [ "$1" = "--atmprof-summer" ]; then
+      extra="${extra} -DATMPROF_SUMMER"
+      shift
+   elif [ "$1" = "--atmprof-intermediate" ]; then
+      extra="${extra} -DATMPROF_INTERMEDIATE"
+      shift
+   elif [ "$1" = "--sequential" ]; then
+      export CORSIKA_MULTIPLEX_SEQUENTIAL=1
+      shift
+   elif [ "$1" = "--divergent" ]; then
+      extra="${extra} -DDIVERGENT"
+      divergent=" in divergent pointing mode."
+      shift
+   fi
+done
+
+prod6site="Paranal"
+if [ ! -z "${PROD6_SITE}" ]; then
+   prod6site="${PROD6_SITE}"
+fi
+if [ ! -z "$1" ]; then
+   prod6site="$1"
+   shift
+fi
+if [ "${prod6site}" = "paranal" -o "${prod6site}" = "PARANAL" ]; then
+   prod6site="Paranal"
+fi
+if [ "${prod6site}" = "lapalma" -o "${prod6site}" = "LAPALMA" -o "${prod6site}" = "La Palma" ]; then
+   prod6site="LaPalma"
+fi
+export PROD6_SITE="${prod6site}"
+
+if [ "$prod6site" = "Paranal" -a "${with_scts}" = "1" ]; then
+   extra="${extra} -DWITH_SCTS"
+   export extra_suffix2="${extra_suffix2}+scts"
+elif [ "$prod6site" = "Paranal" -a "${with_scts}" = "2" ]; then
+   extra="${extra} -DWITH_ALL_SCTS"
+   export extra_suffix2="${extra_suffix2}+all-scts"
+fi
+if [ "$prod6site" = "LaPalma" -a "${with_magic}" = "1" ]; then
+   extra="${extra} -DWITH_MAGIC"
+   export extra_suffix2="${extra_suffix2}+magic"
+fi
+if [ ! -z "$year" ]; then
+   if [ $(($year-2010)) -gt 0 -a $(($year-2030)) -lt 0 ]; then
+      extra="${extra} -DYEAR=${year}"
+   else
+      echo "Invalid year $year gets ignored"
+      year=""
+   fi
+fi
+
+prod6primary="gamma"
+if [ ! -z "${PROD6_PRIMARY}" ]; then
+   prod6primary="${PROD6_PRIMARY}"
+fi
+if [ ! -z "$1" ]; then
+   prod6primary="$1"
+   shift
+fi
+export PROD6_PRIMARY="${prod6primary}"
+
+prod6pointing="South"
+if [ ! -z "${PROD6_POINTING}" ]; then
+   prod6pointing="${PROD6_POINTING}"
+fi
+if [ ! -z "$1" ]; then
+   prod6pointing="$1"
+   shift
+fi
+export PROD6_POINTING="${prod6pointing}"
+
+prod6zenith="20"
+if [ ! -z "${PROD6_ZENITH}" ]; then
+   prod6zenith="${PROD6_ZENITH}"
+fi
+if [ ! -z "$1" ]; then
+   prod6zenith="$1"
+   shift
+fi
+export PROD6_ZENITH="${prod6zenith}"
+
+# Top-level path under which we normally installed everything
+if [ -z "${CTA_PATH}" ]; then
+   if [ -d "lp-baseline/sim_telarray" -a "${prod6site}" = "LaPalma" ]; then
+      export CTA_PATH_LP="$(pwd -P)/lp-baseline" # Less memory with just 19 telescopes
+   elif [ -d "pa-baseline/sim_telarray" ]; then
+      export CTA_PATH="$(pwd -P)/pa-baseline"
+   elif [ -d "demo/sim_telarray" ]; then
+      export CTA_PATH="$(pwd -P)/demo"
+   elif [ -d "sim_telarray" ]; then
+      export CTA_PATH="$(pwd -P)"
+   fi
+fi
+
+input_tmpl="INPUTS_CTA_PROD6-${prod6site}-template-${prod6zenith}deg"
+site_type="CTA-South"
+prod_base="INPUTS_CTA_PROD6-${prod6site}"
+
+case "$prod6site" in
+   Paranal)
+      defs="${defs} -DSITE_PARANAL -DCTA_SOUTH"
+      export extra_defs="${extra_defs} -DSITE_PARANAL -DCTA_SOUTH"
+      site_type="CTA-South"
+      ;;
+   LaPalma)
+      defs="${defs} -DSITE_LAPALMA -DCTA_NORTH"
+      export extra_defs="${extra_defs} -DSITE_LAPALMA -DCTA_NORTH"
+      site_type="CTA-North"
+      # If we have a dedicated set of binaries, use those.
+      if [ "${CTA_PATH_LP}" != "" ]; then
+         CTA_PATH="${CTA_PATH_LP}"
+      fi
+      ;;
+   *)
+      echo "Undefined or unknown Prod-6 site $prod6site"
+      exit 1
+      ;;
+esac
+
+case "$prod6primary" in
+   gamma|g)
+      defs="${defs} -DPRIMARY_GAMMA"
+      prod6primary="gamma"
+      ;;
+   gamma-diffuse|gamma_diffuse|diffuse)
+      defs="${defs} -DPRIMARY_GAMMA_DIFFUSE"
+      prod6primary="gamma_diffuse"
+      ;;
+   electron|e)
+      defs="${defs} -DPRIMARY_ELECTRON"
+      prod6primary="electron"
+      ;;
+   proton|p)
+      defs="${defs} -DPRIMARY_PROTON"
+      prod6primary="proton"
+      ;;
+   Helium|helium|He|he)
+      defs="${defs} -DPRIMARY_HELIUM"
+      prod6primary="helium"
+      ;;
+   Nitrogen|nitrogen|N|n)
+      defs="${defs} -DPRIMARY_NITROGEN"
+      prod6primary="nitrogen"
+      ;;
+   Silicon|silicon|Si|si)
+      defs="${defs} -DPRIMARY_SILICON"
+      prod6primary="silicon"
+      ;;
+   Iron|iron|Fe|fe)
+      defs="${defs} -DPRIMARY_IRON"
+      prod6primary="iron"
+      ;;
+   *)
+      echo "Undefined primary type $prod6primary"
+      exit 1
+      ;;
+esac
+
+case "$prod6pointing" in
+   North|north|N)
+      defs="${defs} -DFROM_NORTH"
+      prod6pointing="North"
+      ;;
+   South|south|S)
+      defs="${defs} -DFROM_SOUTH"
+      prod6pointing="South"
+      ;;
+   East|east|E)
+      defs="${defs} -DFROM_EAST"
+      prod6pointing="East"
+      ;;
+   West|west|W)
+      defs="${defs} -DFROM_WEST"
+      prod6pointing="West"
+      ;;
+   *)
+      echo "Undefined pointing direction $prod6pointing"
+      exit 1
+      ;;
+esac
+
+#. examples_common.sh
+
+echo ""
+echo "This is a prod-6 ${prod6site} run with primaries of type ${prod6primary} from ${prod6pointing} at z=${prod6zenith} deg${divergent}."
+if [ "$prod6site" = "Paranal" -a "${with_scts}" = "1" ]; then
+   echo "The Schwarzschild-Couder Telescopes (SCTs) are to be included at non-Alpha MST positions."
+   defs="${defs} -DWITH_SCTS"
+   export extra_defs="${extra_defs} -DWITH_SCTS"
+elif [ "$prod6site" = "Paranal" -a "${with_scts}" = "2" ]; then
+   echo "The Schwarzschild-Couder Telescopes (SCTs) are to be included at all MST positions."
+   defs="${defs} -DWITH_SCTS -DWITH_ALL_SCTS"
+   export extra_defs="${extra_defs} -DWITH_SCTS -DWITH_ALL_SCTS"
+elif [ "$prod6site" = "LaPalma" -a "${with_magic}" = "1" ]; then
+   echo "The MAGIC telescopes are to be included."
+   defs="${defs} -DWITH_MAGIC"
+   export extra_defs="${extra_defs} -DWITH_MAGIC"
+fi
+if [ ! -z "$year" ]; then
+   echo "The geomagnetic field on site should be evaluated for the year $year ."
+fi
+echo ""
+
+cd ${CORSIKA_DATA} || exit 1
+
+inputs_tmp="inputs.tmp.${HOSTNAME}.$$.${prod6site}.${prod6primary}.${prod6pointing}.${prod6zenith}"
+
+if [ ! -z "${NSHOW}" ]; then
+   defs="${defs} -DNSHOW=${NSHOW}"
+fi
+if [ ! -z "${ESLOPE}" ]; then
+   defs="${defs} -DESLOPE=${ESLOPE}"
+fi
+if [ ! -z "${EMIN}" ]; then
+   defs="${defs} -DEMIN=${EMIN}"
+fi
+if [ ! -z "${EMAX}" ]; then
+   defs="${defs} -DEMAX=${EMAX}"
+fi
+if [ ! -z "${NSCAT}" ]; then
+   defs="${defs} -DNSCAT=${NSCAT}"
+fi
+if [ ! -z "${CSCAT}" ]; then
+   defs="${defs} -DCSCAT=${CSCAT}"
+fi
+if [ ! -z "${VIEWCONE}" ]; then
+   defs="${defs} -DVIEWCONE=${VIEWCONE}"
+fi
+if [ ! -z "${CERSIZ}" ]; then
+   defs="${defs} -DCERSIZ=${CERSIZ}"
+fi
+
+if [ ! -r "${CORSIKA_PATH}/${input_tmpl}" ]; then
+   echo "Fatal: Cannot read CORSIKA inputs template '${CORSIKA_PATH}/${input_tmpl}'."
+   exit 1
+fi
+if [ ! -x "${SIM_TELARRAY_PATH}/bin/pfp" ]; then
+   echo "Fatal: Cannot execute pre-processor '${SIM_TELARRAY_PATH}/bin/pfp'."
+   exit 1
+fi
+
+# Note: preprocessing with cpp would also work but pfp is less intrusive (retains comments, no '# nn' lines added).
+${SIM_TELARRAY_PATH}/bin/pfp -V -I"${CORSIKA_PATH}" $defs $extra - < ${CORSIKA_PATH}/${input_tmpl} \
+   > "$inputs_tmp"
+
+${SIM_TELARRAY_PATH}/bin/corsika_autoinputs \
+  --run ${CORSIKA_PATH}/corsika \
+  -R $run \
+  -p ${CORSIKA_DATA} \
+  "$inputs_tmp" > /dev/null 2>&1 || exit 1
+
+echo "Waiting 30 seconds for output pipes to get finished ..."
+sleep 30
+
+rm "$inputs_tmp"
+
+echo ""
+echo "CTA Prod-6 run for site $prod6site, primary $prod6primary, showers coming from $prod6pointing, zenith angle $prod6zenith${divergent} complete."
+echo ""
+echo "Renaming output DATA files"
+echo $PWD
+for data_file in $(find $SIM_TELARRAY_DATA -iname "*.simtel.zst")
+do
+  new_name=$(basename $data_file)
+  echo "Renaming: mv $data_file ../$new_name"
+  mv $data_file ../$new_name
+done
+
+echo
+echo "Packing together output Log and Histogram files"
+
+
+for nsb in dark moon fullmoon
+do
+  log_files=$(find $SIM_TELARRAY_DATA -iname "*-$nsb*.log*")
+  for log_file in $log_files
+  do
+    if [ -f "$log_file" ]; then
+      if [ ! -z "$divergent" -a "$divergent" != ""  ]; then
+        label_tmp=${log_file#*'divergent-'}
+        label="${label_tmp%"-$nsb"*}-$nsb"
+      else
+        label=$nsb
+      fi
+
+      hist_file=$(find $SIM_TELARRAY_DATA -iname "*-$label*.hdata*")
+      info_file_name=$(basename $log_file | sed -e s/"log.gz"/"log_hist.tar"/)
+      mv $log_file .
+      mv $hist_file .
+      cmd="tar cf ../$info_file_name $(basename $log_file) $(basename $hist_file)"
+      echo $cmd
+      eval $cmd
+
+    fi
+  done
+done
