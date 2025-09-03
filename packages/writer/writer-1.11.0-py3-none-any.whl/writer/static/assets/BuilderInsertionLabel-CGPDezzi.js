@@ -1,0 +1,1 @@
+import{_ as s,o as t,f as n,J as o}from"./index-BDMDATBU.js";const r={},a={class:"BuilderInsertionLabel"};function c(e,d){return t(),n("div",a,[o(e.$slots,"default",{},void 0,!0)])}const _=s(r,[["render",c],["__scopeId","data-v-9cd536ed"]]);export{_ as default};
