@@ -1,0 +1,128 @@
+on: [push, pull_request]
+
+name: Tests and linting
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            wasm/node_modules
+            wasm/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+      - run: cargo test
+
+  lints:
+    name: Lints
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Run cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: Run cargo clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Run cargo fmt (python)
+        run: cargo fmt --all -- --check
+        working-directory: ./python
+
+      - name: Run cargo clippy (python)
+        run: cargo clippy -- -D warnings
+        working-directory: ./python
+
+      - name: Run cargo fmt (wasm)
+        run: cargo fmt --all -- --check
+        working-directory: ./wasm
+
+      - name: Run cargo clippy (wasm)
+        run: cargo clippy -- -D warnings
+        working-directory: ./wasm
+
+  flatbuffers:
+    name: Check FlatBuffers generated file
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+      - name: Install unzip
+        run: sudo apt update && sudo apt install unzip
+      - name: Get flatc
+        run: wget https://github.com/google/flatbuffers/releases/download/v25.2.10/Linux.flatc.binary.g++-13.zip && unzip Linux.flatc.binary.g++-13.zip
+      - name: Generate rust code from schema
+        run: ./flatc --rust schema/lrs.fbs
+      - name: Ensure same output as commited
+        run: diff src/lrs_generated.rs lrs_generated.rs
+
+  reuse:
+    name: REUSE
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: REUSE Compliance Check
+        uses: fsfe/reuse-action@v4
+
+  version:
+    name: Check binding's versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check versions
+        run: python check_versions.py
+
+  python-build:
+    name: Build python release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          args: --release
+          working-directory: './python'
+  
+  python-test:
+    name: Test python bindings
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: './python'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install dependencies
+        run: uv sync
+      - name: Install liblrs
+        run: uv run maturin develop
+      - name: Run the tests
+        run: uv run pytest
+
+  wasm:
+    name: Build wasm release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: npm install
+        working-directory: ./wasm
+      - name: Build
+        run: npm run build
+        working-directory: ./wasm        
