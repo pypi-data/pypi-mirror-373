@@ -1,0 +1,823 @@
+import torch
+from torch import nn
+from torch.nn.functional import one_hot
+
+import foldeverything.model.layers.initialize as init
+from foldeverything.data import const
+from foldeverything.model.layers.confidence_utils import GaussianSmearing
+from foldeverything.model.layers.miniformer import MiniformerModule
+from foldeverything.model.layers.pairformer import PairformerModule
+from foldeverything.model.modules.transformers import DiffusionTransformer
+from foldeverything.model.modules.encoders import RelativePositionEncoder
+from foldeverything.model.modules.utils import LinearNoBias
+from foldeverything.model.layers.transition import Transition
+from foldeverything.model.modules.encoders import PairwiseConditioning
+
+
+class AffinityModulePairSingle(nn.Module):
+    """Algorithm 31"""
+
+    def __init__(
+        self,
+        token_s,
+        token_z,
+        pairformer_args: dict,
+        transformer_args: dict,
+        no_trunk_feats=False,
+        num_dist_bins=64,
+        use_gaussian=False,
+        token_level_confidence=True,
+        use_miniformer=False,
+        max_dist=22,
+        add_s_to_z_prod=False,
+        add_s_input_to_s=False,
+        use_s_diffusion=False,
+        add_z_input_to_z=False,
+        maximum_bond_distance=0,
+        confidence_prediction=False,
+        confidence_args: dict = None,
+        affinity_prediction=False,
+        affinity_args: dict = None,
+        use_cross_transformer: bool = False,
+        compute_pae: bool = False,
+        imitate_trunk=False,
+        full_embedder_args: dict = None,
+        msa_args: dict = None,
+        compile_pairformer=False,
+        samples_axial_attention=False,
+        multiplicity_averaging_input=False,
+        expand_to_atom_level=False,
+        use_s_chem_features=False,
+        embed_atom_ligand=False,
+    ):
+        super().__init__()
+        self.no_trunk_feats = no_trunk_feats
+        self.use_s_diffusion = use_s_diffusion
+        self.max_num_atoms_per_token = 23
+        self.use_gaussian = use_gaussian
+        self.no_update_s = pairformer_args.get("no_update_s", False)
+        if use_gaussian:
+            self.gaussian_basis = GaussianSmearing(
+                start=2, stop=max_dist, num_gaussians=num_dist_bins
+            )
+            self.dist_bin_pairwise_linear = nn.Linear(num_dist_bins, token_z)
+            init.gating_init_(self.dist_bin_pairwise_linear.weight)
+            init.bias_init_zero_(self.dist_bin_pairwise_linear.bias)
+        else:
+            boundaries = torch.linspace(2, max_dist, num_dist_bins - 1)
+            self.register_buffer("boundaries", boundaries)
+            self.dist_bin_pairwise_embed = nn.Embedding(num_dist_bins, token_z)
+            init.gating_init_(self.dist_bin_pairwise_embed.weight)
+        s_input_dim = (
+            token_s + 2 * const.num_tokens + 1 + len(const.pocket_contact_info)
+        )
+
+        self.add_s_to_z_prod = add_s_to_z_prod
+        if add_s_to_z_prod:
+            self.s_to_z_prod_in1 = LinearNoBias(s_input_dim, token_z)
+            self.s_to_z_prod_in2 = LinearNoBias(s_input_dim, token_z)
+            self.s_to_z_prod_out = LinearNoBias(token_z, token_z)
+            init.gating_init_(self.s_to_z_prod_out.weight)
+
+        self.s_norm = nn.LayerNorm(token_s + s_input_dim)
+        self.s_linear = LinearNoBias(token_s + s_input_dim, token_s)
+        self.z_norm = nn.LayerNorm(token_z)
+        self.z_linear = LinearNoBias(token_z, token_z)
+
+        self.add_s_input_to_s = add_s_input_to_s
+
+        self.add_z_input_to_z = add_z_input_to_z
+        if add_z_input_to_z:
+            self.rel_pos = RelativePositionEncoder(token_z)
+            self.token_bonds = nn.Linear(
+                1 if maximum_bond_distance == 0 else maximum_bond_distance + 2,
+                token_z,
+                bias=False,
+            )
+            self.token_bonds_type = nn.Embedding(len(const.bond_types) + 1, token_z)
+        self.pairwise_conditioner = PairwiseConditioning(
+            token_z=token_z,
+            dim_token_rel_pos_feats=token_z,
+            num_transitions=2,
+        )
+
+        self.use_s_chem_features = use_s_chem_features
+        self.embed_atom_ligand = embed_atom_ligand
+
+        if use_s_chem_features:
+            self.emb_3_aromatic = nn.Embedding(2, token_s)
+            self.emb_5_aromatic = nn.Embedding(2, token_s)
+            self.emb_6_aromatic = nn.Embedding(2, token_s)
+            self.emb_7_aromatic = nn.Embedding(2, token_s)
+            self.emb_8_aromatic = nn.Embedding(2, token_s)
+            self.emb_num_aromatic_rings = nn.Embedding(5, token_s)
+            self.emb_degree = nn.Embedding(7, token_s)
+            self.emb_imp_valence = nn.Embedding(7, token_s)
+            self.emb_exp_valence = nn.Embedding(7, token_s)
+            self.emb_conn_hs = nn.Embedding(4, token_s)
+            self.emb_hybrid = nn.Embedding(9, token_s)
+
+        if self.embed_atom_ligand:
+            self.emb_ref_element = LinearNoBias(128, token_s)
+        self.emb_res_type = LinearNoBias(const.num_tokens, token_s)
+        self.emb_ligand_mask = LinearNoBias(2, token_s)
+        self.use_pairformer = pairformer_args["num_blocks"] > 0
+        if self.use_pairformer:
+            pairformer_class = MiniformerModule if use_miniformer else PairformerModule
+            self.pairformer_stack = pairformer_class(
+                token_s,
+                token_z,
+                samples_axial_attention=samples_axial_attention,
+                **pairformer_args,
+            )
+
+        self.single_transitions_a = nn.ModuleList([])
+        self.single_transitions_a.append(
+            Transition(
+                dim=token_s, hidden=4 * token_s, out_dim=transformer_args["token_s"]
+            )
+        )
+        self.single_transitions_a.append(
+            Transition(
+                dim=transformer_args["token_s"],
+                hidden=4 * transformer_args["token_s"],
+                out_dim=transformer_args["token_s"],
+            )
+        )
+
+        self.single_transitions_s = nn.ModuleList([])
+        self.single_transitions_s.append(
+            Transition(
+                dim=token_s, hidden=4 * token_s, out_dim=transformer_args["token_s"]
+            )
+        )
+        self.single_transitions_s.append(
+            Transition(
+                dim=transformer_args["token_s"],
+                hidden=4 * transformer_args["token_s"],
+                out_dim=transformer_args["token_s"],
+            )
+        )
+
+        self.compute_transition_z = transformer_args["token_z"] != token_z
+        if self.compute_transition_z:
+            self.pair_transition_z = Transition(
+                dim=token_z, hidden=4 * token_z, out_dim=transformer_args["token_z"]
+            )
+
+        self.diffusion_transformer = DiffusionTransformer(
+            depth=transformer_args["num_blocks"],
+            heads=transformer_args["num_heads"],
+            dim=transformer_args["token_s"],
+            dim_single_cond=transformer_args["token_s"],
+            dim_pairwise=transformer_args["token_z"],
+            activation_checkpointing=transformer_args["activation_checkpointing"],
+        )
+        self.multiplicity_averaging_input = multiplicity_averaging_input
+        self.affinity_prediction = affinity_prediction
+        if affinity_prediction:
+            if use_cross_transformer:
+                self.affinity_heads = AffinityHeadsTransformer(
+                    transformer_args["token_s"],
+                    **affinity_args,
+                )
+            else:
+                self.affinity_heads = AffinityHeads(
+                    transformer_args["token_s"],
+                    **affinity_args,
+                )
+
+    def forward(
+        self,
+        s_inputs,  # Float['b n ts']
+        s,  # Float['b n ts']
+        z,  # Float['b n n tz']
+        x_pred,  # Float['bm m 3']
+        feats,
+        pred_distogram_logits,
+        multiplicity=1,
+        s_diffusion=None,
+        run_sequentially=False,
+    ):
+        effective_multiplicity = (
+            1 if self.multiplicity_averaging_input else multiplicity
+        )
+        s = self.s_linear(self.s_norm(torch.cat([s, s_inputs], dim=-1)))
+        if self.use_s_chem_features:
+            s = s + self.emb_3_aromatic(feats["is_3_aromatic"])
+            s = s + self.emb_5_aromatic(feats["is_5_aromatic"])
+            s = s + self.emb_6_aromatic(feats["is_6_aromatic"])
+            s = s + self.emb_7_aromatic(feats["is_7_aromatic"])
+            s = s + self.emb_8_aromatic(feats["is_8_aromatic"])
+            s = s + self.emb_num_aromatic_rings(feats["num_aromatic_rings"])
+            s = s + self.emb_degree(feats["degree"])
+            s = s + self.emb_imp_valence(feats["imp_valence"])
+            s = s + self.emb_exp_valence(feats["exp_valence"])
+            s = s + self.emb_conn_hs(feats["conn_hs"])
+            s = s + self.emb_hybrid(feats["hybrid"])
+
+        if self.embed_atom_ligand:
+            ref_elements = self.emb_ref_element(
+                torch.bmm(
+                    feats["token_to_rep_atom"].float(), feats["ref_element"].float()
+                )
+            ) * feats["ligand_affinity_mask"].float().unsqueeze(-1)
+            s = s + ref_elements
+
+        s = s + self.emb_res_type(feats["res_type"].float())
+        s = s + self.emb_ligand_mask(
+            one_hot(feats["ligand_affinity_mask"].long(), num_classes=2).float()
+        )
+
+        s = s.repeat_interleave(effective_multiplicity, 0)
+
+        z = self.z_linear(self.z_norm(z))
+        if self.add_z_input_to_z:
+            relative_position_encoding = self.rel_pos(feats)
+            z = z + relative_position_encoding
+            z = z + self.token_bonds(feats["token_bonds"].float())
+            z = z + self.token_bonds_type(feats["type_bonds"].long())
+
+        z = z.repeat_interleave(effective_multiplicity, 0)
+        if self.add_s_to_z_prod:
+            z = z + self.s_to_z_prod_out(
+                self.s_to_z_prod_in1(s_inputs)[:, :, None, :]
+                * self.s_to_z_prod_in2(s_inputs)[:, None, :, :]
+            )
+        token_to_rep_atom = feats["token_to_rep_atom"]
+        token_to_rep_atom = token_to_rep_atom.repeat_interleave(multiplicity, 0)
+        if len(x_pred.shape) == 4:
+            B, mult, N, _ = x_pred.shape
+            x_pred = x_pred.reshape(B * mult, N, -1)
+        else:
+            BM, N, _ = x_pred.shape
+            B = BM // multiplicity
+            mult = multiplicity
+        x_pred_repr = torch.bmm(token_to_rep_atom.float(), x_pred)
+        d = torch.cdist(x_pred_repr, x_pred_repr)
+        if self.multiplicity_averaging_input and multiplicity > 1:
+            distogram = []
+            for i in range(B):
+                x_pred_repr_chunk = x_pred_repr[i * mult : (i + 1) * mult]
+                d_chunk = torch.cdist(x_pred_repr_chunk, x_pred_repr_chunk)
+                if self.use_gaussian:
+                    distogram.append(
+                        self.dist_bin_pairwise_linear(
+                            self.gaussian_basis(d_chunk)
+                        ).mean(dim=0, keepdim=True)
+                    )
+                else:
+                    distogram.append(
+                        self.dist_bin_pairwise_embed(
+                            (d_chunk.unsqueeze(-1) > self.boundaries).sum(dim=-1).long()
+                        ).mean(dim=0, keepdim=True)
+                    )
+            distogram = torch.cat(distogram, dim=0)
+        else:
+            if self.use_gaussian:
+                distogram = self.dist_bin_pairwise_linear(self.gaussian_basis(d))
+            else:
+                distogram = (d.unsqueeze(-1) > self.boundaries).sum(dim=-1).long()
+                distogram = self.dist_bin_pairwise_embed(distogram)
+            if self.multiplicity_averaging_input and multiplicity > 1:
+                B, N, N, DZ = distogram.shape
+                distogram = distogram.view(
+                    B // multiplicity, multiplicity, N, N, DZ
+                ).mean(dim=1)
+
+        z = z + self.pairwise_conditioner(z_trunk=z, token_rel_pos_feats=distogram)
+
+        mask = feats["token_pad_mask"].repeat_interleave(effective_multiplicity, 0)
+        pair_mask = mask[:, :, None] * mask[:, None, :]
+
+        if self.use_pairformer:
+            s, z = self.pairformer_stack(
+                s,
+                z,
+                mask=mask,
+                pair_mask=pair_mask,
+                multiplicity=effective_multiplicity,
+            )
+
+        for i, transition in enumerate(self.single_transitions_a):
+            if i == 0:  # noqa: SIM108, SIM108, SIM108, SIM108, SIM108
+                a = transition(s)
+            else:
+                a = a + transition(a)
+
+        for i, transition in enumerate(self.single_transitions_s):
+            if i == 0:  # noqa: SIM108, SIM108, SIM108, SIM108, SIM108
+                s = transition(s)
+            else:
+                s = s + transition(s)
+
+        if self.compute_transition_z:
+            z = self.pair_transition_z(z)
+
+        s = self.diffusion_transformer(
+            s, a, z, mask=mask, multiplicity=effective_multiplicity
+        )
+
+        out_dict = {}
+
+        # affinity heads
+        if self.affinity_prediction:
+            if self.multiplicity_averaging_input and multiplicity > 1:
+                B, N, N = d.shape
+                d = d.view(B // multiplicity, multiplicity, N, N).mean(dim=1)
+            out_dict.update(
+                self.affinity_heads(
+                    s=s, d=d, feats=feats, multiplicity=effective_multiplicity
+                )
+            )
+        return out_dict
+
+
+class AffinityHeads(nn.Module):
+    def __init__(
+        self,
+        token_s,
+        aggregation_heads,
+        interface_cutoff=10,
+        multiplicity_averaging=False,
+        predict_affinity_value=False,
+        predict_affinity_binary=False,
+        conditioning_activity_type=False,
+        num_activity_types=2,
+        groups={},
+        val_groups={},
+    ):
+        super().__init__()
+        self.aggregation_heads = aggregation_heads
+        input_size = token_s * len([a for a in aggregation_heads if a[-1] == "s"])
+        self.interface_cutoff = interface_cutoff
+        self.multiplicity_averaging = multiplicity_averaging
+        self.predict_affinity_value = predict_affinity_value
+        self.predict_affinity_binary = predict_affinity_binary
+        self.conditioning_activity_type = conditioning_activity_type
+        if self.conditioning_activity_type:
+            self.activity_type_embed = nn.Embedding(num_activity_types, input_size)
+            input_size += 1
+        if predict_affinity_value:
+            self.to_affinity_pred_value = nn.Linear(input_size, 1)
+        if predict_affinity_binary:
+            self.to_affinity_pred_score = LinearNoBias(input_size, 1)
+            self.to_affinity_logits_binary = nn.Linear(1, 1)
+            with torch.no_grad():
+                self.to_affinity_logits_binary.weight.fill_(1.0)
+                self.to_affinity_logits_binary.bias.fill_(0.0)
+        # MLP with unput size input_size and 3 layers
+        # with 2 hidden layers of size input_size and output layer of size 1
+        self.affinity_out_mlp = nn.Sequential(
+            nn.Linear(input_size, input_size),
+            nn.ReLU(),
+            nn.Linear(input_size, input_size),
+            nn.ReLU(),
+        )
+
+    def forward(
+        self,
+        s,
+        d,
+        feats,
+        multiplicity=1,
+    ):
+        if self.multiplicity_averaging and multiplicity > 1:
+            B, N, DS = s.shape
+            s = s.view(B // multiplicity, multiplicity, N, DS).mean(dim=1)
+            effective_multiplicity = 1
+        else:
+            effective_multiplicity = multiplicity
+
+        # NOTE: ligand_affinity_mask is a ranodm asym_id mask if no ligand (for confidence)
+        lig_mask = (
+            feats["ligand_affinity_mask"]
+            .repeat_interleave(effective_multiplicity, 0)
+            .unsqueeze(-1)
+        )
+        mask = (
+            feats["token_pad_mask"]
+            .repeat_interleave(effective_multiplicity, 0)
+            .unsqueeze(-1)
+        )
+
+        lig_mask = lig_mask * mask
+        rec_mask = (1 - lig_mask) * mask
+
+        pair_mask = (
+            mask[:, :, None]
+            * mask[:, None, :]
+            * (1 - torch.eye(mask.shape[1], device=mask.device))
+            .unsqueeze(0)
+            .unsqueeze(-1)
+        )
+        lig_pair_mask = (
+            lig_mask[:, :, None]
+            * lig_mask[:, None, :]
+            * (1 - torch.eye(mask.shape[1], device=mask.device))
+            .unsqueeze(0)
+            .unsqueeze(-1)
+        )
+        rec_pair_mask = (
+            rec_mask[:, :, None]
+            * rec_mask[:, None, :]
+            * (1 - torch.eye(mask.shape[1], device=mask.device))
+            .unsqueeze(0)
+            .unsqueeze(-1)
+        )
+        cross_pair_mask = pair_mask - lig_pair_mask - rec_pair_mask
+
+        if self.multiplicity_averaging and multiplicity > 1:
+            inter_pair_mask = (d.unsqueeze(-1) < self.interface_cutoff).view(
+                B // multiplicity, multiplicity, N, N, 1
+            ).float().mean(dim=1) * cross_pair_mask
+        else:
+            inter_pair_mask = (
+                d.unsqueeze(-1) < self.interface_cutoff
+            ) * cross_pair_mask
+        inter_mask = torch.max(inter_pair_mask, dim=1).values
+
+        outputs = []
+
+        if "lig_s" in self.aggregation_heads:
+            outputs.append(
+                torch.sum(s * lig_mask, dim=1) / (torch.sum(lig_mask, dim=1) + 1e-7)
+            )
+        if "lig_sum_s" in self.aggregation_heads:
+            outputs.append(torch.sum(s * lig_mask, dim=1))
+        if "rec_s" in self.aggregation_heads:
+            outputs.append(
+                torch.sum(s * rec_mask, dim=1) / (torch.sum(rec_mask, dim=1) + 1e-7)
+            )
+
+        if "lig_inter_s" in self.aggregation_heads:
+            outputs.append(
+                torch.sum(s * inter_mask * lig_mask, dim=1)
+                / (torch.sum(inter_mask * lig_mask, dim=1) + 1e-7)
+            )
+
+        if "rec_inter_s" in self.aggregation_heads:
+            outputs.append(
+                torch.sum(s * inter_mask * rec_mask, dim=1)
+                / (torch.sum(inter_mask * rec_mask, dim=1) + 1e-7)
+            )
+
+        g = torch.cat(outputs, dim=-1)
+
+        if self.conditioning_activity_type:
+            activity_type = (
+                feats["activity_type"]
+                .reshape(-1)
+                .repeat_interleave(effective_multiplicity, 0)
+            )
+            activity_type_emb = self.activity_type_embed(activity_type)
+            g = torch.cat([g * activity_type_emb, activity_type.unsqueeze(-1)], dim=-1)
+
+        g = self.affinity_out_mlp(g)
+
+        if self.predict_affinity_value:
+            affinity_pred_value = self.to_affinity_pred_value(g)
+
+        if self.predict_affinity_binary:
+            affinity_pred_score = self.to_affinity_pred_score(g)
+            affinity_logits_binary = self.to_affinity_logits_binary(affinity_pred_score)
+
+        out_dict = {}
+        if self.predict_affinity_value:
+            out_dict["affinity_pred_value"] = affinity_pred_value
+        if self.predict_affinity_binary:
+            out_dict["affinity_pred_score"] = affinity_pred_score
+            out_dict["affinity_logits_binary"] = affinity_logits_binary
+
+        return out_dict
+
+
+class AffinityHeadsTransformer(nn.Module):
+    def __init__(
+        self,
+        token_s,
+        aggregation_heads,
+        interface_cutoff=10,
+        multiplicity_averaging=False,
+        predict_affinity_value=False,
+        predict_affinity_binary=False,
+        conditioning_activity_type=False,
+        num_activity_types=2,
+        groups={},
+        val_groups={},
+    ):
+        super().__init__()
+        self.aggregation_heads = aggregation_heads
+        self.groups = groups
+        input_size = token_s * len([a for a in aggregation_heads if a[-1] == "s"])
+        self.interface_cutoff = interface_cutoff
+        self.multiplicity_averaging = multiplicity_averaging
+        self.predict_affinity_value = predict_affinity_value
+        self.predict_affinity_binary = predict_affinity_binary
+        self.conditioning_activity_type = conditioning_activity_type
+        if self.conditioning_activity_type:
+            self.activity_type_embed = nn.Embedding(num_activity_types, input_size)
+            input_size += 1
+        if predict_affinity_value:
+            self.to_affinity_pred_value = nn.Linear(input_size, 1)
+            self.to_affinity_pred_value_group = nn.Linear(input_size, 1)
+        if predict_affinity_binary:
+            self.to_affinity_pred_score = LinearNoBias(input_size, 1)
+            self.to_affinity_logits_binary = nn.Linear(1, 1)
+            with torch.no_grad():
+                self.to_affinity_logits_binary.weight.fill_(1.0)
+                self.to_affinity_logits_binary.bias.fill_(0.0)
+
+        # MLP with unput size input_size and 3 layers
+        # with 2 hidden layers of size input_size and output layer of size 1
+        self.affinity_out_mlp = nn.Sequential(
+            nn.Linear(input_size, input_size),
+            nn.ReLU(),
+            nn.Linear(input_size, input_size),
+            nn.ReLU(),
+        )
+        self.linear_affinity_true = LinearNoBias(1, input_size)
+        self.gaussian_basis = GaussianSmearing(start=-5, stop=3, num_gaussians=128)
+        self.linear_affinity_true_gaussian = LinearNoBias(128, input_size)
+
+        self.linear_mask = LinearNoBias(1, input_size)
+        self.linear_sign_mask = LinearNoBias(1, input_size)
+        self.norm_pre_transformer = nn.LayerNorm(input_size)
+        self.cross_transformer = DiffusionTransformer(
+            depth=12, heads=8, dim=input_size, pair_bias_attn=False
+        )
+
+    def forward(
+        self,
+        s,
+        d,
+        feats,
+        multiplicity=1,
+    ):
+        if self.multiplicity_averaging and multiplicity > 1:
+            B, N, DS = s.shape
+            s = s.view(B // multiplicity, multiplicity, N, DS).mean(dim=1)
+            effective_multiplicity = 1
+        else:
+            effective_multiplicity = multiplicity
+
+        # NOTE: ligand_affinity_mask is a ranodm asym_id mask if no ligand (for confidence)
+        lig_mask = (
+            feats["ligand_affinity_mask"]
+            .repeat_interleave(effective_multiplicity, 0)
+            .unsqueeze(-1)
+        )
+        mask = (
+            feats["token_pad_mask"]
+            .repeat_interleave(effective_multiplicity, 0)
+            .unsqueeze(-1)
+        )
+
+        lig_mask = lig_mask * mask
+        rec_mask = (1 - lig_mask) * mask
+
+        pair_mask = (
+            mask[:, :, None]
+            * mask[:, None, :]
+            * (1 - torch.eye(mask.shape[1], device=mask.device))
+            .unsqueeze(0)
+            .unsqueeze(-1)
+        )
+        lig_pair_mask = (
+            lig_mask[:, :, None]
+            * lig_mask[:, None, :]
+            * (1 - torch.eye(mask.shape[1], device=mask.device))
+            .unsqueeze(0)
+            .unsqueeze(-1)
+        )
+        rec_pair_mask = (
+            rec_mask[:, :, None]
+            * rec_mask[:, None, :]
+            * (1 - torch.eye(mask.shape[1], device=mask.device))
+            .unsqueeze(0)
+            .unsqueeze(-1)
+        )
+        cross_pair_mask = pair_mask - lig_pair_mask - rec_pair_mask
+
+        if self.multiplicity_averaging and multiplicity > 1:
+            inter_pair_mask = (d.unsqueeze(-1) < self.interface_cutoff).view(
+                B // multiplicity, multiplicity, N, N, 1
+            ).float().mean(dim=1) * cross_pair_mask
+        else:
+            inter_pair_mask = (
+                d.unsqueeze(-1) < self.interface_cutoff
+            ) * cross_pair_mask
+        inter_mask = torch.max(inter_pair_mask, dim=1).values
+
+        outputs = []
+
+        if "lig_s" in self.aggregation_heads:
+            outputs.append(
+                torch.sum(s * lig_mask, dim=1) / (torch.sum(lig_mask, dim=1) + 1e-7)
+            )
+        if "lig_sum_s" in self.aggregation_heads:
+            outputs.append(torch.sum(s * lig_mask, dim=1))
+        if "rec_s" in self.aggregation_heads:
+            outputs.append(
+                torch.sum(s * rec_mask, dim=1) / (torch.sum(rec_mask, dim=1) + 1e-7)
+            )
+
+        if "lig_inter_s" in self.aggregation_heads:
+            outputs.append(
+                torch.sum(s * inter_mask * lig_mask, dim=1)
+                / (torch.sum(inter_mask * lig_mask, dim=1) + 1e-7)
+            )
+
+        if "rec_inter_s" in self.aggregation_heads:
+            outputs.append(
+                torch.sum(s * inter_mask * rec_mask, dim=1)
+                / (torch.sum(inter_mask * rec_mask, dim=1) + 1e-7)
+            )
+
+        g = torch.cat(outputs, dim=-1)
+
+        if self.conditioning_activity_type:
+            activity_type = (
+                feats["activity_type"]
+                .reshape(-1)
+                .repeat_interleave(effective_multiplicity, 0)
+            )
+            activity_type_emb = self.activity_type_embed(activity_type)
+            g = torch.cat([g * activity_type_emb, activity_type.unsqueeze(-1)], dim=-1)
+
+        g = self.affinity_out_mlp(g)
+
+        # TODO: add transformers
+        affinity_values_true = feats["affinity"].reshape(-1, 1)
+        if self.training:
+            tot_groups = sum(self.groups.values()) - self.groups[0]
+
+            affinity_values_true_masked = (
+                affinity_values_true.reshape(1, -1)
+                * feats["mask_known_cross_transformer"]
+            ).unsqueeze(-1)
+            g_input_concat = (
+                g.unsqueeze(0)
+                + self.linear_sign_mask(
+                    (1 - feats["activity_qualifier_mask"].unsqueeze(0))
+                    * feats["mask_known_cross_transformer"].unsqueeze(-1)
+                )
+                + self.linear_affinity_true(affinity_values_true_masked)
+                + self.linear_mask(feats["mask_known_cross_transformer"].unsqueeze(-1))
+                + self.linear_affinity_true_gaussian(
+                    self.gaussian_basis(affinity_values_true.reshape(-1)).unsqueeze(0)
+                    * feats["mask_known_cross_transformer"].unsqueeze(-1)
+                )
+            )
+            g_input_concat = self.norm_pre_transformer(g_input_concat)
+            g_new = self.cross_transformer(
+                g_input_concat,
+                g_input_concat,
+                mask=feats["mask_attn_cross_transformer"],
+            )
+
+            if self.predict_affinity_value:
+                affinity_pred_value_all = self.to_affinity_pred_value_group(g_new)
+                affinity_pred_value = affinity_pred_value_all[
+                    feats["mask_unknown_cross_transformer"].bool()
+                ].reshape(-1, tot_groups)
+                affinity_pred_value_0 = self.to_affinity_pred_value(g).reshape(-1, 1)
+                affinity_pred_value = torch.cat(
+                    [
+                        affinity_pred_value_0,
+                        affinity_pred_value + affinity_pred_value_0,
+                    ],
+                    dim=1,
+                )
+            if self.predict_affinity_binary:
+                affinity_pred_score = self.to_affinity_pred_score(g).reshape(-1, 1)
+                affinity_logits_binary = self.to_affinity_logits_binary(
+                    affinity_pred_score
+                ).reshape(-1, 1)
+
+            out_dict = {}
+            if self.predict_affinity_value:
+                out_dict["affinity_pred_value"] = affinity_pred_value
+            if self.predict_affinity_binary:
+                out_dict["affinity_pred_score"] = affinity_pred_score
+                out_dict["affinity_logits_binary"] = affinity_logits_binary
+
+            return out_dict
+        else:
+            unique_idx_cross_transformer = feats["unique_idx_cross_transformer"]
+            affinity_template_mask = feats["affinity_template_mask"]
+            unique_idx_cross_transformer_unique = (
+                unique_idx_cross_transformer.unique().tolist()
+            )
+            B = len(unique_idx_cross_transformer_unique)
+
+            mask_attn_concat = []
+            mask_unknown_concat = []
+            g_input_concat = []
+            g_raw_input_concat = []
+            idx_B_to_pred_value = {}
+            idx_B_to_pred_score = {}
+            idx_B_to_logits_binary = {}
+
+            for i in range(B):
+                idx_cross_transformer = unique_idx_cross_transformer_unique[i]
+                mask_unique_idx_cross_transformer = (
+                    unique_idx_cross_transformer == idx_cross_transformer
+                ).float()
+
+                # sample a list of K elements from the elements that are true in mask_same_aid
+                mask_attn = mask_unique_idx_cross_transformer.unsqueeze(0).squeeze(-1)
+
+                mask_known = affinity_template_mask * mask_unique_idx_cross_transformer
+
+                mask_unknown = (
+                    1 - affinity_template_mask
+                ) * mask_unique_idx_cross_transformer
+
+                affinity_values_true_masked = affinity_values_true * mask_known
+                g_concat = (
+                    g
+                    + self.linear_sign_mask(
+                        (1 - feats["activity_qualifier_mask"]) * mask_known
+                    )
+                    + self.linear_affinity_true(affinity_values_true_masked)
+                    + self.linear_mask(mask_known)
+                    + self.linear_affinity_true_gaussian(
+                        self.gaussian_basis(affinity_values_true.squeeze(-1))
+                        * mask_known
+                    )
+                )
+
+                group = int(mask_unique_idx_cross_transformer.sum().item())
+                idx_unknown = torch.where(mask_unknown.reshape(-1))[0].item()
+                affinity_pred_value_0 = self.to_affinity_pred_value(
+                    g[idx_unknown]
+                ).unsqueeze(0)
+                affinity_pred_score_0 = self.to_affinity_pred_score(
+                    g[idx_unknown]
+                ).unsqueeze(0)
+                affinity_logits_binary_0 = self.to_affinity_logits_binary(
+                    affinity_pred_score_0
+                ).unsqueeze(0)
+                idx_B_to_pred_score[i] = affinity_pred_score_0
+                idx_B_to_logits_binary[i] = affinity_logits_binary_0
+                if group == 1:
+                    idx_B_to_pred_value[i] = affinity_pred_value_0
+                    continue
+                mask_attn_concat.append(mask_attn)
+                mask_unknown_concat.append(mask_unknown.squeeze(-1).unsqueeze(0))
+                g_input_concat.append(g_concat.unsqueeze(0))
+                g_raw_input_concat.append(g.unsqueeze(0))
+
+            if len(mask_attn_concat) > 0:
+                mask_attn_concat = torch.cat(mask_attn_concat, dim=0)
+                mask_unknown_concat = torch.cat(mask_unknown_concat, dim=0)
+                g_input_concat = torch.cat(g_input_concat, dim=0)
+                g_raw_input_concat = torch.cat(g_raw_input_concat, dim=0)
+                g_input_concat = self.norm_pre_transformer(g_input_concat)
+                g_new = self.cross_transformer(
+                    g_input_concat,
+                    g_input_concat,
+                    mask=mask_attn_concat,
+                )
+
+            if self.predict_affinity_value:
+                if len(mask_attn_concat) > 0:
+                    affinity_pred_value_all = self.to_affinity_pred_value_group(
+                        g_new
+                    ) + self.to_affinity_pred_value(g_raw_input_concat)
+                    affinity_pred_value = affinity_pred_value_all[
+                        mask_unknown_concat.bool()
+                    ]
+                affinity_pred_value_list = []
+                count = 0
+                for i in range(B):
+                    if i in idx_B_to_pred_value:
+                        affinity_pred_value_list.append(idx_B_to_pred_value[i])
+                    else:
+                        affinity_pred_value_list.append(
+                            affinity_pred_value[count : count + 1]
+                        )
+                        count += 1
+                affinity_pred_value = torch.cat(affinity_pred_value_list, dim=0)
+
+            if self.predict_affinity_binary:
+                affinity_pred_score_list = []
+                affinity_pred_binary_list = []
+                for i in range(B):
+                    if i in idx_B_to_pred_score:
+                        affinity_pred_score_list.append(idx_B_to_pred_score[i])
+                        affinity_pred_binary_list.append(idx_B_to_logits_binary[i])
+                    else:
+                        raise Exception
+                affinity_pred_score = torch.cat(affinity_pred_score_list, dim=0)
+                affinity_logits_binary = torch.cat(affinity_pred_binary_list, dim=0)
+
+            out_dict = {}
+            if self.predict_affinity_value:
+                out_dict["affinity_pred_value"] = affinity_pred_value
+            if self.predict_affinity_binary:
+                out_dict["affinity_pred_score"] = affinity_pred_score
+                out_dict["affinity_logits_binary"] = affinity_logits_binary
+
+            return out_dict
