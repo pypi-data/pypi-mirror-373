@@ -1,0 +1,240 @@
+# GraphQL-to-SQL JSON Transformer
+
+This package allows you to write GraphQL-style queries against a PostgreSQL database and automatically converts them into SQL queries that return nested JSON results.
+
+### It is especially useful for:
+
+* **Organizations** that want to query relational data sources (PostgreSQL) using GraphQL-like queries, without needing to set up a full GraphQL server.
+* **Developers & data engineers** who work with analytics pipelines, ETL processes, or APIs and want an easy way to express complex relational queries in a GraphQL-like syntax.
+* **Teams** that want **GraphQL as a query interface** for their data warehouse but keep execution in **SQL (PostgreSQL)** for performance and compatibility.
+
+
+### Key Features
+
+* **GraphQL-style input**: Accepts GraphQL query strings directly as input.
+* **Automatic SQL generation**: Converts nested selections, filters, joins, and lists into PostgreSQL SQL queries.
+* **JSON output**: Returns query results as nested JSON objects for direct consumption in APIs or applications.
+* **Join handling**: Supports `LEFT`, `RIGHT`, `INNER`, `FULL`, and `CROSS` joins defined via GraphQL arguments.
+* **Filter support**: Handles comparison operators (`eq`, `ne`, `lt`, `gt`, `le`, `ge`) and list-based filters.
+* **Date handling**: Automatically parses and casts date strings into `TIMESTAMP`.
+* **Integration ready**: Returns results as Python dictionaries (via Pandas + JSON), suitable for APIs, ETL, or downstream analytics.
+
+### Installation
+
+```
+pip install gqlbridge
+```
+
+### Environment Variables
+
+Before running queries, configure your PostgreSQL connection using environment variables:
+
+```
+export DB_HOST=your-db-host
+export DB_PORT=your-db-port
+export DB_NAME=your-database
+export DB_USER=your-username
+export DB_PASSWORD=your-password
+```
+
+### How Queries Work
+
+Queries are written in GraphQL style, but instead of hitting a GraphQL API, this package translates them into PostgreSQL and executes them against PostgreSQL.
+
+General Structure query
+
+```json
+query {
+  project(eq:"demo_project") {
+    id
+    name
+    description
+  }
+}
+```
+
+* `project` → **Outer table** (the main table you are selecting from).
+* `eq:"demo_project"` → **Filter condition** (`WHERE project = 'demo_project'`).
+* `id, name, description` → **Columns** to select.
+
+#### Joins
+
+This package supports joins between tables using GraphQL arguments.
+
+#### Example with Joins
+
+```json
+query {
+  project(eq:"demo_project") {
+    id
+    name
+    description
+
+    join_table1(left: {id: "eq-project_id"}, title: {eq:"Bug Fix"}) {
+      id
+      title
+    }
+
+    join_table2(left: {id: "eq-project_id"}) {
+      id
+      project_id
+    }
+  }
+}
+
+```
+
+#### Explanation:
+
+1. **Outer Table**
+   * `project` is the **main table**.
+   * The filter `eq:"demo_project"` applies as a SQL `WHERE` clause.
+2. **Join Tables**
+   * `join_table1` and `join_table2` represent tables joined with `project`.
+   * `left` specifies the **join type** (`LEFT JOIN`).
+   * Supported join types: `left`, `right`, `inner`, `full`, `cross`.
+3. **Join Condition (`id: "eq-project_id"`)**
+   * This means:
+     * `id` belongs to the **main table** (`project`).
+     * `project_id` belongs to the **join table** (`join_table1` or `join_table2`).
+   * Interpreted as:
+
+     `project.id = join_table1.project_id
+     `
+4. **Filters on Join Table**
+   * `title: {eq:"Bug Fix"}` applies as a `WHERE` filter inside the join.
+
+---
+
+#### JSON Fields
+
+If a column in the database stores **JSON data**, you can request nested fields using GraphQL notation.
+
+#### Example: Extracting JSON
+
+```json
+query {
+  project(eq:"demo_project") {
+    id
+    metadata {
+      name
+      version
+    }
+  }
+}
+```
+
+This extracts `metadata.name` and `metadata.version` from the `metadata` JSON column.
+
+---
+
+#### JSON Lists (`list_items`)
+
+When a JSON field contains a **list (array)**, you must use `list_items` to expand it.
+
+### Example: JSON Array
+
+```json
+query {
+  project(eq:"demo_project") {
+    id
+    metadata {
+      name
+      tags {
+        list_items {
+          key
+          value
+        }
+      }
+    }
+  }
+}
+```
+
+* `metadata.tags` is a **list field**.
+* `list_items` tells the query engine to expand the array elements.
+* Equivalent SQL logic uses `jsonb_array_elements`.
+
+---
+
+#### End-to-End Example
+
+### Input Query
+
+```json
+query {
+  project(eq:"demo_project") {
+    id
+    name
+    description
+
+    join_table1(left: {id: "eq-project_id"}, title: {eq:"Bug Fix"}) {
+      id
+      title
+    }
+
+    join_table2(left: {id: "eq-project_id"}) {
+      id
+      project_id
+    }
+
+    metadata {
+      name
+      tags {
+        list_items {
+          key
+          value
+        }
+      }
+    }
+  }
+}
+```
+
+### Output JSON
+
+```json
+{
+  "Query1": [
+    {
+      "id": 1,
+      "name": "Demo Project",
+      "description": "A test project",
+      "join_table1": [
+        { "id": 101, "title": "Bug Fix" }
+      ],
+      "join_table2": [
+        { "id": 201, "project_id": 1 }
+      ],
+      "metadata": {
+        "name": "Project Metadata",
+        "tags": [
+          { "key": "priority", "value": "high" },
+          { "key": "status", "value": "active" }
+        ]
+      }
+    }
+  ]
+}
+```
+
+#### Supported Features
+
+* ✅ GraphQL-style query input (string-based).
+* ✅ Automatic translation to PostgreSQL SQL.
+* ✅ Supports **joins** (`LEFT`, `RIGHT`, `INNER`, `FULL`, `CROSS`).
+* ✅ Supports **comparison operators** (`eq`, `ne`, `lt`, `le`, `gt`, `ge`).
+* ✅ Handles **string, numeric, and timestamp filters**.
+* ✅ Extracts and structures **JSON and JSON arrays** with `list_items`.
+* ✅ Returns results as **nested JSON** matching the GraphQL query shape.
+
+#### Audience
+
+* **Data engineers**: Simplify ETL pipelines with GraphQL queries on SQL data.
+* **Backend developers**: Expose data without writing raw SQL.
+* **Organizations**: Provide a query interface for PostgreSQL that feels like GraphQL.
+* **Analysts**: Explore relational data using GraphQL syntax.
+
+#### License
+
+MIT License.
