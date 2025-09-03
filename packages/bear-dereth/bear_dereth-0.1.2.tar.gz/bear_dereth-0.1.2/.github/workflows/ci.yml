@@ -1,0 +1,45 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+    branches:
+    - main
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  LANG: en_US.utf-8
+  LC_ALL: en_US.utf-8
+  PYTHONIOENCODING: UTF-8
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup UV
+      uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+        cache-dependency-glob: pyproject.toml
+        python-version: "3.13" 
+
+    - name: Install Dependencies
+      run: |
+        uv sync
+        source .venv/bin/activate
+
+    - name: Install Nox
+      run: uv tool install nox
+
+    - name: Check the Code Quality
+      run: nox -s ruff_fix
+
+    - name: Check if the code is correctly typed
+      run: nox -s pyright
+      
+    - name: Run Tests
+      run: pytest -v
