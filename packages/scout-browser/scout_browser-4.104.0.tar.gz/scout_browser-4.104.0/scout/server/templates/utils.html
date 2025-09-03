@@ -1,0 +1,267 @@
+{% macro comments_table(institute, case, comments, variant_id=None) %}
+  <table class='table table-bordered table-hover table-condensed'>
+    <thead>
+      <tr>
+	<th>User</th>
+	<th>Comment</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for comment in comments %}
+      <tr>
+      	<td>
+      	  <small>
+      	    <strong> {{ comment.user_name }} </strong>
+      	    on {{ comment.created_at.strftime('%y-%m-%d %H:%M') }}
+      	    {% if comment.level == 'global' %}
+                    <span class='badge bg-info text-white'>GLOBAL</span>
+            {% endif %}
+            {% if comment.created_at < case.updated_at %}
+              <span class='badge bg-warning text-black'>OLD</span>
+            {% endif %}
+      	    {% if comment.created_at < comment.updated_at %}
+              <span class='badge bg-secondary text-white'>edited</span>
+            {% endif %}
+      	  </small>
+      	</td>
+      	<td>
+      	  {{ comment.content }}
+      	</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endmacro %}
+
+
+{% macro variant_related_comments_table(variant, case) %}
+      <table role="presentation" id="panel-table" class="table table-sm" style="background-color: transparent">
+        <thead>
+          <tr>
+            <td colspan=2><strong>Variant-related comments</strong></td>
+          </tr>
+        </thead>
+        <tbody>
+          {% for comment in variant.comments %}
+            <tr>
+              <td style="width:50%;">{{comment.created_at.strftime('%Y-%m-%d')}} {{comment.user_name}}
+                {% if comment.level == 'global' %}
+                  <span class='badge bg-info text-white'>GLOBAL</span>
+                {% endif %}
+                {% if comment.created_at < case.updated_at %}
+                  <span class='badge bg-warning text-white'>OLD</span>
+                {% endif %}
+                {% if comment.created_at < comment.updated_at %}
+                  <span class='badge bg-secondary text-white'>edited</span>
+                {% endif %}
+              </td>
+              <td class="text-break"><strong>{{ comment.content }}</strong></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+{% endmacro %}
+
+{% macro comments_panel(institute, case, current_user, comments, variant_id=None) %}
+      <div class="card">
+        {% set comments = comments|list %}
+        <h6 class="comments-title ms-3 mt-2"><i class="far fa-comments"></i> Comments ({{ comments|length }})</h6>
+         {% if comments|length >0 %}
+            <div class=" card-body">
+              {% set visible_comments= comments[:3]|list %}
+              {% set expandable_comments= comments [3:]|list %}
+              <div class="accordion-item">
+                <div id="visible-comments-content" class="accordion-collapse collapse show" aria-labelledby="expandable-comments-heading">
+                  <div class="accordion-body p-0" >
+                    {% for comment in visible_comments %}
+                    {% set item_index = loop.index %}
+                    {{ single_comment(institute, case, current_user, comment, item_index) }}
+                    {% endfor %}
+                    {% if expandable_comments|length >0 %}
+                    <div class="accordion-item border-0">
+                      <div id="expandable-comments-content" class="accordion-collapse collapse" aria-labelledby="expandable-comments-heading">
+                        <div class="" >
+                          {% for comment in expandable_comments %}
+                          {% set item_index = loop.index %}
+                          {{ single_comment(institute, case, current_user, comment, item_index+3) }}
+                          {% endfor %}
+                        </div>
+                      </div>
+                      <button id="expandable-comments-control" class="accordion-button collapsed" style="background-color:var(--bs-body-bg);color:var(--bs-body-color)" type="button" data-bs-toggle="collapse" data-bs-target="#expandable-comments-content" aria-expanded="false" aria-controls="expandable-comments-content"
+                              onclick="{let thisElement=event.currentTarget; let children= thisElement.querySelectorAll('span'); Array.from(children).forEach(child=> child.classList.toggle('d-none'));}">
+                        <span>See more comments...</span>
+                        <span class="d-none">Minimise comments</span>
+                      </button>
+                    </div>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+            </div> <!-- end of <div class="list-group" -->
+          {% endif %}
+        <div class="card-footer" style="border-radius:inherit;">
+          <form action="{{ url_for('cases.events', institute_id=institute._id, case_name=case.display_name, variant_id=variant_id, _anchor='comments') }}" method="POST">
+            <input type="hidden" name="link" value="{{ url_for('variant.variant', institute_id=institute._id, case_name=case.display_name, variant_id=variant_id) if variant_id else url_for('cases.case', institute_id=institute._id, case_name=case.display_name) }}">
+            <div class="row">
+              <div class="col">
+                <textarea class="form-control" name="content" placeholder="Leave a comment"></textarea>
+              </div>
+            </div>
+            <div class="row mt-3">
+              {% if variant_id %}
+                <div class="col-sm-6">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="level" id="check-level" value="global">
+                    <label class="form-check-label" for="check-level">
+                      Comment globally
+                    </label>
+                  </div>
+                </div>
+              {% endif %}
+              <div class="col-sm-{{ 6 if variant_id else 12 }}">
+                <button class="btn btn-secondary form-control" type="submit">Comment</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+{% endmacro %}
+
+{% macro single_comment(institute, case, current_user, comment, index) %}
+      <div class="row mx-0 p-3 mb-0 {% if index % 2 %}even{% else %}odd{% endif %}">
+          <div class="col-7 text-break">{{ comment.content }}</div>
+          <div class="col-5 text-end">
+            <form method="POST" action="{{ url_for('cases.events', institute_id=institute._id, case_name=case.display_name, event_id=comment._id,_anchor='comments') }}">
+              <small>
+                <strong>{{ comment.user_name }}</strong>
+                on {{ comment.created_at.strftime('%y-%m-%d %H:%M') }}
+                {% if comment.level == 'global' %}
+                  <span class="badge bg-info">GLOBAL</span>
+                {% endif %}
+                {% if comment.created_at < case.updated_at %}
+                  <span class="badge bg-warning">OLD</span>
+                {% endif %}
+                {% if comment.created_at < comment.updated_at %}
+                  <span class='badge bg-secondary'>edited</span>
+                {% endif %}
+                {% if comment.user_id == current_user.email %}
+                  <button class="btn btn-link btn-sm" type="submit" name="remove"><i class="fa fa-times"></i></button>
+                  <button class="btn btn-link btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#editComment_{{index}}"><i class="fa fa-edit"></i></button>
+                {% endif %}
+              </small>
+            </form>
+          </div>
+        </div>
+        {{ edit_comment(institute, case, current_user, comment, index) }}
+{% endmacro %}
+
+{% macro edit_comment(institute, case, current_user, comment, index) %}
+<!-- Edit comment modal -->
+<form method="POST" action="{{ url_for('cases.events', institute_id=institute._id, case_name=case.display_name, event_id=comment._id, _anchor='comments') }}">
+<div class="modal fade" id="editComment_{{index}}" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+<div class="modal-dialog" role="document">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h5 class="modal-title">Edit comment</h5>
+      <button type="button" class="close" data-bs-dismiss="modal" aria-label="Close">
+        <span aria-hidden="true">&times;</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="row">
+        <label for="commentContent">Comment content</label>
+        <textarea class="form-control" name="updatedContent" id="commentContent" required="required">{{comment.content}}</textarea>
+      </div>
+      <div class="row">
+        {% if comment.variant_id %}
+          <div class="col-sm-6">
+            <div class="checkbox">
+              <label>
+                <input type="checkbox" name="level" value="global" {{ "checked" if comment.level == "global"}} >
+                Comment globally
+              </label>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      <button type="submit" class="btn btn-primary" name="edit">Save changes</button>
+    </div>
+  </div>
+</div>
+</div>
+</form>
+{% endmacro %}
+
+{% macro activity_panel(events) %}
+  <div class="card panel-default">
+    <div class="panel-heading"><span class="fa fa-book"></span>&nbsp;Activity</div>
+    <ul class="list-group" style="max-height:400px; overflow-y: scroll;">
+      {% for event in events|sort(attribute="created_at", reverse=True) %}
+        <li class="list-group-item">
+          <strong>{{ event.user_name }}</strong>
+          {{ event.verb }}
+          <a href="{{ event.link }}">{{ event.subject[0:30] }}</a>
+          {% if event.hpo_term %}
+            ({{ event.hpo_term }})
+          {%- endif %}
+          {%-if event.individuals %}, individuals: {{event.individuals|join(', ')}}{% endif %}
+          at <span class="timestamp">{{ event.created_at.strftime('%y-%m-%d %H:%M') }}</span>
+        </li>
+      {% else %}
+        <li class="list-group-item">No activity yet</li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endmacro %}
+
+{% macro pedigree_panel(case) %}
+  <div class="card bg-light panel-default">
+    <div>
+      <div class="table-responsive">
+      {% if case.individuals|length == 1 %}
+        <p>Single sample case: {{ case.individuals.0.display_name }}</p>
+      {% else %}
+        <div class="d-flex justify-content-center align-items-center" >
+            {{ case.madeline_info|safe }}
+        </div>
+      {% endif %}
+      </div>
+    </div>
+  </div>
+{% endmacro %}
+
+{% macro db_table_external_stylesheets() %}
+  <link rel="stylesheet" href="https://cdn.datatables.net/2.2.2/css/dataTables.bootstrap5.min.css" integrity="sha512-pVSTZJo4Kj/eLMUG1w+itkGx+scwF00G5dMb02FjgU9WwF7F/cpZvu1Bf1ojA3iAf8y94cltGnuPV9vwv3CgZw==" referrerpolicy="no-referrer" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/3.2.2/css/buttons.bootstrap5.min.css" integrity="sha512-9Mi4C/wtfinscXIdOGZvqv0ZYvhBUOQCrwqmTZyiYuEgJQHWnXenkYQOC44I3kyh7uaOmz9eNxeMkC8xGBLOWg==" referrerpolicy="no-referrer" crossorigin="anonymous">
+{% endmacro %}
+
+{% macro db_table_external_scripts() %}
+  <script src="https://cdn.datatables.net/2.2.2/js/dataTables.min.js" integrity="sha512-iwuEh+XTZQNzwdjYrqsxyWJXyReKVclGX4D2uGYBGNIR6o0VBwIfeYQv+lQjxmye87K6C6mc7qrqJlCcaeZJhA==" referrerpolicy="no-referrer" crossorigin="anonymous"></script>
+  <script src="https://cdn.datatables.net/2.2.2/js/dataTables.bootstrap5.min.js" integrity="sha512-Cwi0jz7fz7mrX990DlJ1+rmiH/D9/rjfOoEex8C9qrPRDDqwMPdWV7pJFKzhM10gAAPlufZcWhfMuPN699Ej0w==" referrerpolicy="no-referrer" crossorigin="anonymous"></script>
+  <script src="https://cdn.datatables.net/buttons/3.2.2/js/dataTables.buttons.min.js" integrity="sha512-T/4qQRgBJ8Ev6Lk8M943pMIbCpgqtVf5XI77hxe3nQn0f9a0gn/WKXWMbuGv6cpjp9NM8Mc+3/3GnpW+3+TckA==" referrerpolicy="no-referrer" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg==" referrerpolicy="no-referrer" crossorigin="anonymous"></script>
+  <script src="https://cdn.datatables.net/buttons/3.2.2/js/buttons.html5.min.js" integrity="sha512-I86DAquH004N60kPVNHp+9QkC5y61C5ODHj6ewhddXnewOJ31wyOJHNlNEr8NUR3xqtGozfMb557So1pR0uDCA==" referrerpolicy="no-referrer" crossorigin="anonymous"></script>
+  <script src="https://cdn.datatables.net/buttons/3.2.2/js/buttons.bootstrap5.min.js" integrity="sha512-rVAaUqNTbX7lADp767RxnIMvbROobK+gn7SpbbPc+qMUPotgAkSsRhCKF5ziUEquBsdGcv3eOaZK1fIbGwh5CA==" referrerpolicy="no-referrer" crossorigin="anonymous"></script>
+{% endmacro %}
+
+{% macro clickable_table_row_script() %}
+    document.addEventListener("DOMContentLoaded", () => {
+      document.querySelectorAll("table tr[data-href]").forEach(row => {
+        row.addEventListener("click", e => {
+          if (e.target.closest("a, button, input, .no-row-click")) return; // do not trigger on actual links, checkbox etc
+          const url = row.dataset.href;
+          const target = row.dataset.target || "_self";
+
+          // respect ctrl/cmd for manual background open
+          if (e.metaKey || e.ctrlKey) {
+            window.open(url, "_blank");
+          } else {
+            window.open(url, target);
+          }
+        });
+      });
+    });
+{% endmacro %}

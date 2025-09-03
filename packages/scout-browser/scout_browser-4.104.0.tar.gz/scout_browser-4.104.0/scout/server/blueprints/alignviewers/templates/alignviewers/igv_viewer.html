@@ -1,0 +1,241 @@
+{% from "alignviewers/utils.html" import igv_script %}
+
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Scout: Integrative Genomics Viewer</title>
+
+    <!-- jQuery UI CSS -->
+    <link rel="stylesheet" type="text/css"
+          href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.2/themes/smoothness/jquery-ui.css"/>
+
+    <!-- jQuery JS -->
+    <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+    <script type="text/javascript"
+            src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.2/jquery-ui.min.js"></script>
+
+    {{ igv_script() }}
+</head>
+
+<body>
+  <div class="container-fluid" id="igvDiv" style="padding:5px; border:1px solid lightgray"></div>
+</body>
+
+<script type="text/javascript">
+
+  var outLinks = {
+    COSV: "https://cancer.sanger.ac.uk/cosmic/search?q=", // COSMIC variant search
+  };
+
+  $(document).ready(function () {
+      var div = $("#igvDiv")[0],
+              options = {
+                    loadDefaultGenomes: false,
+                    genomeList: "https://raw.githubusercontent.com/igvteam/igv-data/main/genomes/web/genomes.json",
+                    showNavigation: true,
+                    showRuler: true,
+                    {% if display_center_guide %}
+                      showCenterGuide: true,
+                    {% else %}
+                      showCenterGuide: false,
+                    {% endif %}
+                    reference: {
+                        id: "{{ reference_track.id }}",
+                        fastaURL: "{{ reference_track.fastaURL }}",
+                        indexURL: "{{ reference_track.indexURL }}",
+                        cytobandURL: "{{ reference_track.cytobandURL }}",
+                        aliasURL: "{{ reference_track.aliasURL }}"
+                    },
+                    locus: "{{locus}}",
+                    tracks: [
+                      {% for custTrack in custom_tracks %}
+                        {
+                            name: "{{ custTrack.name }}",
+                            type: "{{ custTrack.type }}",
+                            format: "{{ custTrack.format }}",
+                            sourceType: "{{ custTrack.sourceType }}",
+                            url: "{{ custTrack.url|replace('%2F','/') }}",
+                            displayMode: "{{ custTrack.displayMode }}",
+                            visibilityWindow: {{ custTrack.visibilityWindow }},
+                            order: Number.MIN_VALUE,
+                            {% if custTrack.name == "Genes" %}
+                                indexURL: "{{ custTrack.indexURL|replace('%2F','/') }}",
+                                height: 150,
+                            {% endif %}
+                        },
+                      {% endfor %}
+                      {% for custTrack in config_custom_tracks %}
+                        {
+                          name: "{{ custTrack.name }}",
+                          type: "{{ custTrack.type }}",
+                          format: "{{ custTrack.format }}",
+                          height: 70,
+                          {% if "http" in custTrack.url %}
+                            url: "{{ url_for('alignviewers.remote_cors', remote_url=custTrack.url) }}",
+                            {% if custTrack.indexURL %}
+                              indexURL: "{{ url_for('alignviewers.remote_cors', remote_url=custTrack.indexURL) }}",
+                            {% endif %}
+                          {% else %}
+                             url: "{{ url_for('alignviewers.remote_static', file=custTrack.url) }}",
+                             {% if custTrack.indexURL %}
+                              indexURL: "{{ url_for('alignviewers.remote_static', file=custTrack.indexURL) }}",
+                             {% endif %}
+                          {% endif %}
+                        },
+                      {% endfor %}
+                      {% for wtrack in rhocall_wigs %}
+                      {
+                        type: "wig",
+                        name: '{{ wtrack.name }}',
+                        url: '{{ url_for("alignviewers.remote_static", file=wtrack.url) }}',
+                        format: 'bw',
+                        {# indexURL: '{{ url_for("alignviewers.remote_static", file=wtrack.url)  }}', #}
+                        color: "rgb(60, 37, 17)",
+                        min: '{{ wtrack.min }}',
+                        autoscaleGroup: '{{ wtrack.autoscaleGroup }}',
+                        sourceType: 'file'
+                      },
+                      {% endfor %}
+                      {% for btrack in rhocall_beds %}
+                      {
+                        type: "annotation",
+                        name: '{{ btrack.name }}',
+                        url: '{{ url_for("alignviewers.remote_static", file=btrack.url) }}',
+                        format: 'bb',
+                        color: "rgb(65, 31, 30)",
+                        sourceType: 'file'
+                      },
+                      {% endfor %}
+                      {% for track in sample_tracks %}
+                      {
+                        name: "{{ track.name }}",
+                        type: "alignment",
+                        url: "{{ url_for('alignviewers.remote_static', file=track.url) }}",
+                        indexURL: "{{ url_for('alignviewers.remote_static', file=track.indexURL) }}",
+                        sourceType: "file",
+                        groupBy: "tag:HP",
+                        showInsertionText: true,
+                        showDeletionText: true,
+                        showSoftClips: {{track.show_soft_clips | lower }},
+                        format: "{{ track.format }}",
+                        height: "{{track.height}}"
+                      },
+                      {% endfor %}
+                      {% for ttrack in tiddit_coverage_wigs %}
+                      {
+                        type: "wig",
+                        format: 'bw',
+                        name: '{{ ttrack.name }}',
+                        url: '{{ url_for("alignviewers.remote_static", file=ttrack.url) }}',
+                        color: "rgb(40, 0, 13)",
+                        sourceType: 'file'
+                      },
+                      {% endfor %}
+                      {% for maftrack in minor_allele_frequency_wigs %}
+                      {
+                        type: "wig",
+                        format: 'bw',
+                        name: '{{ maftrack.name }}',
+                        url: '{{ url_for("alignviewers.remote_static", file=maftrack.url) }}',
+                        color: "rgb(60, 60, 140)",
+                        sourceType: 'file'
+                      },
+                      {% endfor %}
+                      {% for ptrack in paraphase_alignments %}
+                      {
+                        type: "alignment",
+                        name: "{{ ptrack.name }}",
+                        url: '{{ url_for("alignviewers.remote_static", file=ptrack.url) }}',
+                        format: "{{ ptrack.format }}",
+                        groupBy: "tag:HP",
+                        indexURL: '{{ url_for("alignviewers.remote_static", file=ptrack.indexURL)  }}',
+                        min: '{{ ptrack.min }}',
+                        autoscaleGroup: '{{ ptrack.autoscaleGroup }}',
+                        sourceType: 'file'
+                      },
+                      {% endfor %}
+                      {% for atrack in assembly_alignments %}
+                      {
+                        type: "alignment",
+                        name: "{{ atrack.name }}",
+                        url: '{{ url_for("alignviewers.remote_static", file=atrack.url) }}',
+                        format: "{{ atrack.format }}",
+                        groupBy: "tag:HP",
+                        height: 140,
+                        showCoverage: false,
+                        indexURL: '{{ url_for("alignviewers.remote_static", file=atrack.indexURL)  }}',
+                        min: '{{ atrack.min }}',
+                        autoscaleGroup: '{{ atrack.autoscaleGroup }}',
+                        sourceType: 'file'
+                      },
+                      {% endfor %}
+                      {% for rtrack in upd_regions_beds %}
+                      {
+                        type: 'annotation',
+                        format: 'bb',
+                        name: '{{ rtrack.name }}',
+                        url: '{{ url_for("alignviewers.remote_static", file=rtrack.url) }}',
+                        color: "rgb(0, 204, 102)",
+                        sourceType: 'file'
+                      },
+                      {% endfor %}
+                      {% for strack in upd_sites_beds %}
+                      {
+                        type: "annotation",
+                        format: 'bb',
+                        name: '{{ strack.name }}',
+                        url: '{{ url_for("alignviewers.remote_static", file=strack.url) }}',
+                        color: "rgb(25, 61, 4)",
+                        sourceType: 'file'
+                      },
+                      {% endfor %}
+                  ]
+              };
+      igv.createBrowser(div, options)
+      .then(function (browser) {
+          browser.on('trackclick', function (track, popoverData) {
+
+              var markup = "<table class=\"igv-popover-table\">";
+
+              // Don't show a pop-over when there's no data.
+              if (!popoverData || !popoverData.length) {
+                  return false;
+              }
+
+              popoverData.forEach(function (nameValue) {
+
+              if (nameValue.name) {
+
+                  var value = nameValue.value;
+                  for (var key in outLinks) {
+                    if (nameValue.value.toString().startsWith(key) && nameValue.name.toLowerCase() === 'name') {
+                      value = '<a href="' + outLinks[key] + value + '" target="_blank" rel="noopener noreferrer">' + nameValue.value + '</a>';
+                    }
+                  }
+
+                  markup += "<tr><td class=\"igv-popover-td\">"
+                          + "<span class=\"igv-popover-name\">" + nameValue.name + "</span>&nbsp;"
+                          + "<span class=\"igv-popover-value\">" + value + "</span>"
+                          + "</td></tr>";
+                  }
+                  else {
+                      // not a name/value pair
+                      markup += "<tr><td>" + nameValue.toString() + "</td></tr>";
+                  }
+                });
+
+                markup += "</table>";
+
+              // By returning a string from the trackclick handler we're asking IGV to use our custom HTML in its pop-over.
+              return markup;
+          });
+      });
+  });
+</script>
+
+</html>

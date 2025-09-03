@@ -1,0 +1,238 @@
+{% extends "layout.html" %}
+{% from "utils.html" import clickable_table_row_script, comments_table %}
+{% from "overview/institute_sidebar.html" import institute_actionbar %}
+{% from "variants/components.html" import frequency_cell_general, variant_funct_anno_cell, variant_gene_symbols_cell %}
+{% from "variants/utils.html" import gene_variant_link_href, pagination_footer, pagination_hidden_div, variant_rank_score %}
+
+{% block title %}
+  {{ super() }} - {{ institute.display_name }} - All SNVs and INDELs
+{% endblock %}
+
+{% block css %}
+{{ super() }}
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.14.0-beta3/css/bootstrap-select.min.css" integrity="sha512-g2SduJKxa4Lbn3GW+Q7rNz+pKP9AWMR++Ta8fgwsZRCUsawjPvF/BxSMkGS61VsR9yinGoEgrHPGPn2mrj8+4w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+{% endblock %}
+
+{% block top_nav %}
+  {{ super() }}
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('cases.index') }}">Institutes</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('overview.cases', institute_id=institute._id) }}">{{ institute.display_name }}</a>
+  </li>
+   <li class="nav-item active d-flex align-items-center">
+    <span class="navbar-text">Search variants</span>
+  </li>
+{% endblock %}
+
+{% macro page_content() %}
+<form method="POST" id="filters_form" action="{{url_for('overview.gene_variants', institute_id=institute._id)}}" enctype="multipart/form-data">
+  <div class="container-float">
+   <div class="card mt-3">
+    <div class="card-body"><h5>Filters</h5>{{ filters_form() }}</div>
+   </div>
+  </div>
+
+  <div class="table-responsive" style="padding-top: 25px; overflow-y: auto;">
+    <table class="table table-bordered table-hover">
+<thead>
+        <tr>
+          <th scope="col">Case : Score</th>
+          <th scope="col">Var</th>
+          <th scope="col">Gene</th>
+          <th scope="col">Pop Freq</th>
+          <th scope="col">CADD</th>
+          <th scope="col">Function</th>
+        </tr>
+</thead>
+<tbody>
+    {% for variant in variants %}
+      <tr data-target="_blank" data-href="{{ gene_variant_link_href(variant, variant.institute, variant.case_display_name) }}"
+      {% if variant.dismiss_variant %}
+        class="dismiss">
+      {% else %}
+        >
+      {% endif %}
+            <td class="align-middle">{{ cell_rank(variant) }}</td>
+            <td class="align-middle">{{ pretty_link_no_gene(variant) }} </td>
+            <td class="align-middle">{{ variant_gene_symbols_cell(variant, inherit_palette) }}</td>
+            <td class="align-middle">{{ frequency_cell_general(variant) }}</td>
+            <td class="align-middle">{{ cell_cadd(variant) }}</td>
+            <td class="align-middle">{{ variant_funct_anno_cell(variant) }}</td>
+          </tr>
+        {% endfor %}
+        {% if form.hgnc_symbols.data == [] %}
+        <tr>
+          <td colspan=6>
+            No variants to display
+          </td>
+        </tr>
+        {% elif variants == [] %}
+        <tr>
+          <td colspan=7>
+            No variants matching your query in genes: {{form.hgnc_symbols.data|join(", ")}}.
+            {% if "research" not in form.variant_type.data %}
+              Consider a lower rank score threshold or including research variants.
+            {% endif %}
+          </td>
+        </tr>
+        {% endif %}
+</tbody>
+    </table>
+    {{ pagination_hidden_div(page) }}
+    {{ pagination_footer(more_variants, page) }}
+  </div>
+</form>
+{% endmacro %}
+
+
+{% macro pretty_link_no_gene(variant) %}
+  {% if variant.category == "sv" %}
+    <a href="{{ url_for('variant.sv_variant', institute_id=variant.institute,
+            case_name=variant.case_display_name, variant_id=variant._id) }}" target="_blank">
+       {% if hgvs in variant %}
+        {{ variant.hgvs }}
+       {% else %}
+        {{ variant.sub_category|upper }}({{ variant.chromosome }}{{ variant.cytoband_start }}-{{ variant.end_chrom }}{{ variant.cytoband_end }})
+       {% endif %}
+  {% else %}
+      <a href="{{ url_for('variant.variant', institute_id=variant.institute,
+            case_name=variant.case_display_name, variant_id=variant._id) }}" target="_blank">
+      {% set lines = variant | format_variant_canonical_transcripts %}
+      {% if lines | length > 1 %}
+        {{ lines | join('<br>') | safe }}
+      {% elif lines %}
+        {{ lines[0] }}
+      {% endif %}
+   {% endif %}
+   </a>
+{% endmacro %}
+
+{% macro cell_rank(variant) %}
+   {{ variant.case_display_name }}
+    :
+    <span class="badge bg-info">{{ variant_rank_score(variant) }}</span>
+{% endmacro %}
+
+{% macro cell_cadd(variant) %}
+  <div>
+    <div class="badge bg-primary rounded-pill" data-bs-toggle="tooltip" data-bs-placement="left" data-bs-html="true" title="
+    <div class='text-start'>
+      <strong>Sift</strong>
+      {{ variant.sift_predictions|join(',') }} <br>
+      <strong>PolyPhen</strong>
+      {{ (variant.polyphen_predictions or ['-'])|join(',') }}
+    </div>
+    ">
+    {% if variant.cadd_score %}{{ variant.cadd_score|round(1) }}{% else %}-{% endif %}
+  </div>
+{% endmacro %}
+
+{% macro filters_form() %}
+    {{ form.csrf_token }}
+      <div class="row">
+        <div class="col">
+          {{ form.hgnc_symbols.label(class="control-label") }}
+          {{ form.hgnc_symbols(class="form-control") }}
+        </div>
+        <div class="col col-md-2">
+          {{ form.institute.label(class="control-label") }}
+          {{ form.institute(class="form-control", class="selectpicker", data_style="btn-secondary") }}
+        </div>
+        <div class="col col-md-1">
+          <label class="control-label" for="rank_score">Rank Score</label>
+          <input type="number" class="form-control" id="rank_score" name="rank_score" min="5" value={{form.rank_score.data}}>
+        </div>
+        <div class="col col-md-2">
+          {{ form.variant_type.label(class="control-label") }}
+          {{ form.variant_type(class="form-control", class="selectpicker", data_style="btn-secondary") }}
+        </div>
+        <div class="col col-md-2">
+          {{ form.category.label(class="control-label") }}
+          {{ form.category(class="form-control", class="selectpicker", data_style="btn-secondary") }}
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-6">
+          {{ form.phenotype_terms.label(class="control-label") }}
+          {{ form.phenotype_terms(class="form-control") }}
+        </div>
+        <div class="col-md-2">
+          {{ form.phenotype_groups.label(class="control-label") }}
+          {{ form.phenotype_groups(class="form-control") }}
+        </div>
+        <div class="col-md-2">
+          {{ form.cohorts.label(class="control-label") }}
+          {{ form.cohorts(class="form-control") }}
+        </div>
+        <div class="col-md-2">
+          {{ form.similar_case.label(class="control-label") }}
+          {{ form.similar_case(class="form-control") }}
+        </div>
+      </div>
+      <div class="row justify-content-center mt-3">
+        <div class="col col-md-6">
+          <div class="row">
+            <div class="col">
+              {{ form.filter_variants(class_="btn btn-primary form-control") }}
+            </div>
+            <div class="col">
+              {{ form.filter_export_variants(class_="btn btn-warning form-control") }}
+            </div>
+          </div>
+        </div>
+      </div>
+      {% if result_size %}
+        <div class="row justify-content-center mt-3">
+          Showing {{variants|length}}/{{result_size}} variants
+        </div>
+      {% endif %}
+
+{% endmacro %}
+
+
+{% block content_main %}
+<div class="container-float">
+  <div class="row" id="body-row"> <!--sidebar and main container are on the same row-->
+    {{ institute_actionbar(institute) }} <!-- This is the sidebar -->
+  <div class="col">
+    {{ page_content() }}
+  </div>
+  </div> <!-- end of div id body-row -->
+</div>
+{% endblock %}
+
+
+
+{% block scripts %}
+  {{ super() }}
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.14.0-beta3/js/bootstrap-select.min.js" integrity="sha512-yrOmjPdp8qH8hgLfWpSFhC/+R9Cj9USL8uJxYIveJZGAiedxyIxwNw4RsLDlcjNlIRR4kkHaDHSmNHAkxFTmgg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+  <script>
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+      return new bootstrap.Tooltip(tooltipTriggerEl)
+    })
+
+    var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'))
+    var popoverList = popoverTriggerList.map(function (popoverTriggerEl) {
+      return new bootstrap.Popover(popoverTriggerEl, {container: 'body'})
+    })
+
+    {{ clickable_table_row_script() }}
+
+    $(function () {
+      $('select[multiple]').selectpicker({
+          width: '100%'
+        });
+    })
+
+    document.querySelector("#filters_form").addEventListener("submit", function(e){
+      // Avoid page spinner being stuck on download gene variants
+      $(window).unbind('beforeunload');
+    })
+
+  </script>
+{% endblock %}

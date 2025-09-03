@@ -1,0 +1,130 @@
+
+{% from "utils.html" import comments_table %}
+
+{% macro pin_indicator(variant, case) %}
+  {% if 'suspects' in case and variant._id in case.suspects %}
+    <i class="fa fa-map-pin"></i>
+  {% endif %}
+{% endmacro %}
+
+
+{% macro causative_badge(variant, case) %}
+  {% if 'causatives' in case and variant._id in case.causatives %}
+    <span class="badge bg-success" style="margin-left:1px" data-bs-toggle="tooltip" data-bs-placement="right" title="Causative variant">Causative</span>
+  {% endif %}
+{% endmacro %}
+
+
+{% macro comments_badge(institute, case, variant) %}
+  {% set comment_count = variant.comments | count_cursor %}
+  {% if comment_count > 0 %}
+    {% set comments_content = comments_table(institute, case, variant.comments, variant._id) %}
+    <a href="#"
+       class="badge bg-info"
+       data-bs-toggle="popover"
+       data-bs-placement="right"
+       data-bs-html="true"
+       data-bs-trigger="hover click"
+       data-bs-content="{{ comments_content }}"
+       title=""
+       style="color:white;"
+       >
+      {{ comment_count }}
+      <i class="fa fa-comment"></i>
+      {% if 'GLOBAL' in comments_content %}
+        <i class="fa fa-globe" aria-hidden="true"></i>
+      {% endif %}
+    </a>
+  {% endif %}
+{% endmacro %}
+
+
+{% macro other_tiered_variants(variant_matching_tiered) %}
+  {% if variant_matching_tiered %}
+    <span class="badge bg-dark" data-bs-toggle="popover" data-bs-html="true" data-bs-trigger="hover click"
+          data-bs-title="Previously <b>T</b>iered as"
+          data-bs-content="
+          {% for tier, tiered_info in variant_matching_tiered.items() %}
+            <span class='badge bg-{{tiered_info.label_class}}'>{{tier}} ({{tiered_info.links|length}}x)</span>
+          {% endfor %}">T</span>
+  {% endif %}
+{% endmacro %}
+
+
+{% macro matching_manual_rank(variant) %}
+  {% if variant.matching_ranked %}
+    <span class="badge bg-dark" data-bs-toggle="popover" data-bs-html="true" data-bs-trigger="hover click"
+        data-bs-title="Previously <b>M</b>anually ranked as"
+          data-bs-content="
+          {% for manual_rank, manual_rank_info in variant.matching_ranked.items() %}
+            <div><span class='badge bg-{{ manual_rank_info.label_class }}'>{{manual_rank_info.label}}</span> - {{manual_rank_info.description}} ({{manual_rank_info.links|length}}x)</div>
+          {% endfor %}">M</span>
+  {% endif %}
+{% endmacro %}
+
+{% macro evaluations_badge(evaluations) %}
+  {% if evaluations %}
+    {% set classification_counts = {} %}
+    {% for evaluation in evaluations %}
+      {% set c = evaluation.classification if evaluation.classification is defined else evaluation.ccv_classification %}
+      {% if c %}
+        {% set short = c.short %}
+        {% set label = c.label %}
+        {% set current = classification_counts.get(short, {'count': 0, 'label': label}) %}
+        {% set _ = classification_counts.update({short: {
+          'count': current.count + 1,
+          'label': label
+        }}) %}
+      {% endif %}
+    {% endfor %}
+
+    {% for short, data in classification_counts.items() | sort(attribute='1.count', reverse=true) %}
+      <span class="badge bg-secondary ms-1" data-bs-toggle="tooltip" data-bs-placement="right"
+            title="Previously classified as {{ data.label }} ({{ data.count }} times)">
+        {{ short }} ×{{ data.count }}
+      </span>
+    {% endfor %}
+  {% endif %}
+{% endmacro %}
+
+{% macro dismissals_badge(variant) %}
+  {% if variant.dismissals %}
+      <span class="badge bg-secondary" style="margin-left:1px" data-bs-toggle="tooltip" data-bs-html="true" data-bs-placement="top"
+        title="Previosuly dismissed in {{ variant.dismissals }} other cases. Use with caution: the clinical question may have been different.">
+        {{ variant.dismissals }}
+      </span>
+  {% endif %}
+{% endmacro %}
+
+
+{% macro research_assessments_badge(variant) %}
+  {% if variant.research_assessments %}
+    {% for assessment in (variant.research_assessments or []) %}
+      <span class="badge bg-{{ assessment.display_class }}" data-bs-html="true" data-bs-toggle="tooltip" data-bs-placement="right"
+        title="Research {{ assessment.title }}">
+        {{ assessment.label }}</span>
+    {% endfor %}
+  {% endif %}
+{% endmacro %}
+
+
+{% macro clinical_assessments_badge(variant) %}
+  {% if variant.clinical_assessments %}
+    {% for assessment in (variant.clinical_assessments or []) %}
+      <span class="badge bg-{{ assessment.display_class }}" data-bs-html="true" data-bs-toggle="tooltip" data-bs-placement="right"
+          title="Clinical {{ assessment.title }}">
+          {{ assessment.label }}</span>
+    {% endfor %}
+  {% endif %}
+{% endmacro %}
+
+
+{% macro group_assessments_badge(variant) %}
+  {% if variant.group_assessments %}
+    {% for assessment in (variant.group_assessments or []) %}
+      <span class="badge bg-{{ assessment.display_class }}<b>" data-bs-html="true" data-bs-toggle="tooltip" data-bs-placement="right"
+        title="Cohort {{ assessment.title }}">
+        {{ assessment.label }}</span>
+    {% endfor %}
+  {% endif %}
+{% endmacro %}
