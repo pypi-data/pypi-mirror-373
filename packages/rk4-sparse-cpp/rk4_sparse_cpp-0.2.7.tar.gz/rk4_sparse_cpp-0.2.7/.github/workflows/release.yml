@@ -1,0 +1,108 @@
+name: Build and publish to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*'                 # 例: v1.2.3 でトリガ
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+    # -----------------------------------------------------------------------
+    # 0. タグからバージョン文字列を抽出
+    # -----------------------------------------------------------------------
+    - name: Extract version
+      id: vars
+      run: echo "PKG_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+    # -----------------------------------------------------------------------
+    # 1. ソース & サブモジュール取得
+    # -----------------------------------------------------------------------
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 0
+        fetch-tags: true
+
+    # -----------------------------------------------------------------------
+    # 2. ホスト Python
+    # -----------------------------------------------------------------------
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    # -----------------------------------------------------------------------
+    # 3. ビルドツール導入
+    # -----------------------------------------------------------------------
+    - name: Upgrade pip and install build tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install --upgrade build cibuildwheel==2.23.3
+
+    # -----------------------------------------------------------------------
+    # 4. aarch64 クロスビルド用 QEMU
+    # -----------------------------------------------------------------------
+    - name: Setup QEMU (for aarch64 wheels)
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: all
+
+    # -----------------------------------------------------------------------
+    # 5. Wheel ビルド
+    # -----------------------------------------------------------------------
+    - name: Build wheels
+      env:
+        # パッケージ固有の Pretend Version
+        PKG_VERSION: ${{ env.PKG_VERSION }}
+        CIBW_ENVIRONMENT: |
+          SETUPTOOLS_SCM_PRETEND_VERSION=${{ env.PKG_VERSION }}
+          SETUPTOOLS_SCM_DEBUG=1
+        CIBW_ENVIRONMENT_PASS_LINUX: SETUPTOOLS_SCM_PRETEND_VERSION
+        # 対応アーキテクチャ
+        CIBW_ARCHS_LINUX: "x86_64 aarch64"
+        # Python 3.9+ のみ
+        CIBW_SKIP: "cp36-* cp37-* cp38-* pp*"
+        # manylinux 2.28 ベース
+        CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
+        CIBW_MANYLINUX_AARCH64_IMAGE: "manylinux_2_28"
+        # ログ詳細・並列度
+        CIBW_BUILD_VERBOSITY: "1"
+        CIBW_PARALLEL: "2"
+        # ビルド前 hook
+        CIBW_BEFORE_BUILD: |
+          pip install -U pip
+          pip install "numpy~=2.0" "pybind11>=3.0" "setuptools>=64" "wheel>=0.40"
+      run: cibuildwheel --output-dir dist
+
+    # -----------------------------------------------------------------------
+    # 6. ソース配布 (sdist)
+    # -----------------------------------------------------------------------
+    - name: Build sdist
+      env:
+        SETUPTOOLS_SCM_PRETEND_VERSION: ${{ env.PKG_VERSION }}
+        SETUPTOOLS_SCM_DEBUG: 1
+      run: python -m build --sdist -o dist
+
+    # -----------------------------------------------------------------------
+    # 7. ビルド成果物をアーティファクトとして保存
+    # -----------------------------------------------------------------------
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist
+        path: dist
+
+    # -----------------------------------------------------------------------
+    # 8. PyPI アップロード
+    # -----------------------------------------------------------------------
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}
+        skip-existing: true
