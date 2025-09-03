@@ -1,0 +1,369 @@
+# coex - Code Execution Library
+
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://img.shields.io/badge/tests-passing-green.svg)](tests/)
+
+**coex** is a Python library that executes code snippets using subprocess calls on the host system. It provides secure, multi-language code execution with comprehensive validation and testing capabilities.
+
+## Features
+
+- **Host System Execution**: Uses subprocess to run language tools directly on the host
+- **Security First**: Protection against destructive file operations and malicious code
+- **Multi-Language Support**: Python, JavaScript, Java, C++, C, Go, Rust, and more
+- **Multiple Execution Modes**: Input/output validation, function comparison, simple execution
+- **High Performance**: Direct subprocess execution without container overhead
+- **Robust Error Handling**: Comprehensive error handling and timeout management
+- **Comprehensive Testing**: Extensive test suite with security and integration tests
+
+## Quick Start
+
+### Installation
+
+```bash
+pip install coex
+```
+
+### Prerequisites
+
+- Python 3.8 or higher
+- Language tools installed on host system:
+  - **Java**: `javac` and `java` (OpenJDK 8+ or Oracle JDK)
+  - **JavaScript**: `node` (Node.js 14+)
+  - **C/C++**: `gcc` and `g++` (GCC 7+)
+  - **Go**: `go` (Go 1.16+)
+  - **Rust**: `rustc` (Rust 1.50+)
+- Docker (optional, for sandboxed execution)
+
+### Basic Usage
+
+```python
+import coex
+
+# Method 1: Input/Output validation (explicit mode)
+result = coex.execute(
+    mode="answer",
+    inputs=[0, 1, 2, 3],
+    outputs=[1, 2, 3, 4],
+    code="def add_one(x): return x + 1",
+    language="python"
+)
+# Returns: [1, 1, 1, 1] (boolean array indicating pass/fail for each test case)
+
+# Method 2: Function comparison (explicit mode)
+result = coex.execute(
+    mode="function",
+    answer_fn="def say_hello(): return 'hello world'",
+    code="def hello(): return 'hello world'",
+    language="python"
+)
+# Returns: [1] (boolean indicating if functions return same value)
+
+# Method 3: Backward compatibility (auto-detection)
+result = coex.execute(
+    inputs=[1, 2, 3],
+    outputs=[2, 4, 6],
+    code="def double(x): return x * 2",
+    language="python"
+)
+# Returns: [1, 1, 1] (auto-detects "answer" mode)
+
+# Method 4: Simple execution
+result = coex.execute(code="print('Hello, World!')", language="python")
+# Returns: [1] (boolean indicating successful execution)
+
+# Docker cleanup
+coex.rm_docker()  # Remove cached Docker containers
+```
+
+## Supported Languages
+
+| Language   | File Extension | Docker Image        | Aliases           |
+|------------|----------------|---------------------|-------------------|
+| Python     | `.py`          | `python:3.11-slim`  | `py`              |
+| JavaScript | `.js`          | `node:18-slim`      | `js`              |
+| Java       | `.java`        | `openjdk:11-slim`   |                   |
+| C++        | `.cpp`         | `gcc:latest`        | `c++`, `cxx`      |
+| C          | `.c`           | `gcc:latest`        |                   |
+| Go         | `.go`          | `golang:1.19-slim`  |                   |
+| Rust       | `.rs`          | `rust:slim`         | `rs`              |
+
+## API Reference
+
+### `coex.execute()`
+
+Execute code snippets in isolated Docker environments.
+
+**Parameters:**
+- `inputs` (List[Any], optional): List of input values for testing
+- `outputs` (List[Any], optional): List of expected output values
+- `code` (str, optional): Code to execute
+- `answer_fn` (str, optional): Reference function code for comparison
+- `language` (str, default="python"): Programming language
+- `timeout` (int, optional): Execution timeout in seconds
+- `mode` (str, optional): Execution mode ("answer" for input/output validation, "function" for function comparison, None for auto-detection)
+
+**Returns:**
+- `List[int]`: List of integers (0 or 1) indicating pass/fail for each test case
+
+**Raises:**
+- `SecurityError`: If dangerous code is detected
+- `ValidationError`: If input validation fails
+- `ExecutionError`: If code execution fails
+- `DockerError`: If Docker operations fail
+
+**New in v0.1.0:**
+- **Explicit Mode Parameter**: Use `mode="answer"` or `mode="function"` for explicit execution modes
+- **3-Second Timeout**: Each test case has a 3-second timeout limit
+- **Unique File Naming**: Automatic unique file naming for batch processing support
+
+### `coex.rm_docker()`
+
+Remove all cached Docker containers.
+
+**Parameters:** None
+
+**Returns:** None
+
+## Execution Modes
+
+### 1. Input/Output Validation Mode
+
+Test code against specific input/output pairs:
+
+```python
+inputs = [1, 2, 3, 4, 5]
+outputs = [1, 4, 9, 16, 25]
+code = """
+def square(x):
+    return x * x
+"""
+
+result = coex.execute(inputs=inputs, outputs=outputs, code=code)
+# Tests: square(1)==1, square(2)==4, square(3)==9, etc.
+```
+
+### 2. Function Comparison Mode
+
+Compare two functions to see if they produce the same output:
+
+```python
+answer_fn = """
+def fibonacci(n):
+    if n <= 1:
+        return n
+    return fibonacci(n-1) + fibonacci(n-2)
+"""
+
+code = """
+def fibonacci(n):
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+"""
+
+result = coex.execute(answer_fn=answer_fn, code=code)
+# Compares if both functions return the same value
+```
+
+### 3. Simple Execution Mode
+
+Execute code and check if it runs without errors:
+
+```python
+code = """
+import math
+print(f"Pi is approximately {math.pi:.2f}")
+"""
+
+result = coex.execute(code=code, language="python")
+# Returns [1] if execution succeeds, [0] if it fails
+```
+
+## Security Features
+
+coex includes comprehensive security protection:
+
+### Blocked Operations
+- File system operations (`rm`, `mkdir`, `chmod`, etc.)
+- Network operations (`wget`, `curl`, `ssh`, etc.)
+- System operations (`sudo`, `su`, etc.)
+- Dangerous imports (`os`, `subprocess`, `sys`, etc.)
+- Code evaluation (`eval`, `exec`, `__import__`, etc.)
+
+### Example Security Protection
+
+```python
+dangerous_code = """
+import os
+os.system("rm -rf /")  # This will be blocked!
+"""
+
+result = coex.execute(code=dangerous_code)
+# Returns [0] - execution blocked for security
+```
+
+## Multi-Language Examples
+
+### Python
+```python
+code = """
+def greet(name):
+    return f"Hello, {name}!"
+"""
+result = coex.execute(code=code, language="python")
+```
+
+### JavaScript
+```python
+code = """
+function greet(name) {
+    return `Hello, ${name}!`;
+}
+"""
+result = coex.execute(code=code, language="javascript")
+```
+
+### Java
+```python
+code = """
+public class Greeter {
+    public String greet(String name) {
+        return "Hello, " + name + "!";
+    }
+}
+"""
+result = coex.execute(code=code, language="java")
+```
+
+### C++
+```python
+code = """
+#include <iostream>
+#include <string>
+
+std::string greet(std::string name) {
+    return "Hello, " + name + "!";
+}
+"""
+result = coex.execute(code=code, language="cpp")
+```
+
+## Configuration
+
+### Environment Variables
+
+- `COEX_DOCKER_TIMEOUT`: Docker operation timeout (default: 300 seconds)
+- `COEX_DOCKER_MEMORY_LIMIT`: Container memory limit (default: "512m")
+- `COEX_EXECUTION_TIMEOUT`: Code execution timeout (default: 30 seconds)
+- `COEX_TEMP_DIR`: Temporary directory for files (default: "/tmp/coex")
+- `COEX_DISABLE_SECURITY`: Disable security checks (default: False)
+
+### Custom Configuration
+
+```python
+from coex.config.settings import settings
+
+# Modify settings
+settings.set("execution.timeout", 60)
+settings.set("docker.memory_limit", "1g")
+settings.set("security.enable_security_checks", False)
+```
+
+## Error Handling
+
+coex provides comprehensive error handling:
+
+```python
+try:
+    result = coex.execute(code="invalid syntax", language="python")
+except coex.SecurityError as e:
+    print(f"Security violation: {e}")
+except coex.ValidationError as e:
+    print(f"Validation error: {e}")
+except coex.ExecutionError as e:
+    print(f"Execution failed: {e}")
+except coex.DockerError as e:
+    print(f"Docker error: {e}")
+```
+
+## Performance Tips
+
+1. **Container Reuse**: Containers are cached automatically for better performance
+2. **Batch Operations**: Process multiple test cases in single calls when possible
+3. **Timeout Management**: Set appropriate timeouts for your use case
+4. **Memory Limits**: Adjust memory limits based on your code requirements
+5. **Cleanup**: Use `coex.rm_docker()` to clean up containers when done
+
+## Development
+
+### Running Tests
+
+```bash
+# Install development dependencies
+pip install -e ".[dev]"
+
+# Run all tests
+pytest
+
+# Run specific test categories
+pytest tests/test_security.py -v
+pytest tests/test_integration.py -v -m integration
+
+# Run with coverage
+pytest --cov=coex --cov-report=html
+```
+
+### Code Quality
+
+```bash
+# Format code
+black coex/ tests/
+
+# Lint code
+flake8 coex/ tests/
+
+# Type checking
+mypy coex/
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Add tests for your changes
+5. Ensure all tests pass (`pytest`)
+6. Commit your changes (`git commit -m 'Add amazing feature'`)
+7. Push to the branch (`git push origin feature/amazing-feature`)
+8. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Changelog
+
+### v0.1.0 (Initial Release)
+- Docker-based code execution
+- Multi-language support (Python, JavaScript, Java, C++, C, Go, Rust)
+- Security protection against dangerous operations
+- Input/output validation mode
+- Function comparison mode
+- Simple execution mode
+- Comprehensive test suite
+- Container caching for performance
+- Robust error handling
+
+## Support
+
+- 📖 [Documentation](docs/)
+- 🐛 [Issue Tracker](https://github.com/torchtorchkimtorch/coex/issues)
+- 💬 [Discussions](https://github.com/torchtorchkimtorch/coex/discussions)
+
+## Acknowledgments
+
+- Docker for containerization technology
+- The Python community for excellent tooling and libraries
+- Contributors and testers who helped make this project possible
