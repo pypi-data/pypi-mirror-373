@@ -1,0 +1,1 @@
+Collection of utilities for file, type, and basic logic handling across Python projects.
