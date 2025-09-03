@@ -1,0 +1,76 @@
+set system host-name {{ configuration.hostname }}
+{%- if configuration.domain_name %}
+set system domain-name {{ configuration.domain_name }}
+{%- endif %}
+{%- if configuration.root_password %}
+set system root-authentication encrypted-password "{{ configuration.root_password }}"
+{%- endif %}
+{%- if configuration.users %}
+{%- for user in configuration.users %}
+set system login user {{ user.name }} uid {{ user.uid | default(2000) }}
+set system login user {{ user.name }} class {{ user.class | default('super-user') }}
+set system login user {{ user.name }} authentication encrypted-password "{{ user.password }}"
+{%- endfor %}
+{%- endif %}
+set system services ssh
+{%- if configuration.ntp %}
+{%- for server in configuration.ntp.servers %}
+set system ntp server {{ server }}
+{%- endfor %}
+{%- endif %}
+set system syslog time-format msec
+{%- if configuration.snmp %}
+{%- if configuration.snmp.community %}
+set snmp community {{ configuration.snmp.community }} authorization read-only
+{%- endif %}
+{%- if configuration.snmp.location %}
+set snmp location "{{ configuration.snmp.location }}"
+{%- endif %}
+{%- if configuration.snmp.contact %}
+set snmp contact "{{ configuration.snmp.contact }}"
+{%- endif %}
+{%- endif %}
+{%- if configuration.logging %}
+{%- if configuration.logging.host %}
+set system syslog host {{ configuration.logging.host }} any info
+{%- endif %}
+{%- if configuration.logging.buffer_size %}
+set system syslog file messages any info
+set system syslog file messages size {{ configuration.logging.buffer_size }}
+{%- endif %}
+{%- endif %}
+# Interfaces
+{%- if configuration.interfaces %}
+{%- for interface in configuration.interfaces %}
+set interfaces {{ interface.name }} description "{{ interface.description }}"
+{%- if interface.ipv4 %}
+set interfaces {{ interface.name }} unit 0 family inet address {{ interface.ipv4.address }}/{{ interface.ipv4.prefix_length }}
+{%- endif %}
+{%- if interface.shutdown is defined and interface.shutdown %}
+set interfaces {{ interface.name }} disable
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+{%- if configuration.vlans %}
+{%- for vlan in configuration.vlans %}
+set vlans {{ vlan.name }} vlan-id {{ vlan.id }}
+{%- endfor %}
+{%- endif %}
+{%- if configuration.routing %}
+{%- if configuration.routing.static_routes %}
+{%- for route in configuration.routing.static_routes %}
+set routing-options static route {{ route.network }}/{{ route.prefix }} next-hop {{ route.next_hop }}
+{%- endfor %}
+{%- endif %}
+{%- if configuration.routing.ospf %}
+set protocols ospf router-id {{ configuration.routing.ospf.router_id }}
+{%- if configuration.routing.ospf.areas %}
+{%- for area in configuration.routing.ospf.areas %}
+set protocols ospf area {{ area.id }}
+{%- for network in area.networks %}
+set protocols ospf area {{ area.id }} interface {{ network }}
+{%- endfor %}
+{%- endfor %}
+{%- endif %}
+{%- endif %}
+{%- endif %}

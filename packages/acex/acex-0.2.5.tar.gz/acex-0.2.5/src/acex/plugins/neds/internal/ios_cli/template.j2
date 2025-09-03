@@ -1,0 +1,126 @@
+!
+version 15.1
+service timestamps debug datetime msec
+service timestamps log datetime msec
+no service password-encryption
+{%- if configuration.domain_name %}
+ip domain-name {{ configuration.domain_name }}
+{%- endif %}
+{%- if configuration.cef is not defined or configuration.cef %}
+ip cef
+{%- endif %}
+!
+hostname {{ configuration.hostname }}
+!
+{%- if configuration.enable_secret %}
+enable secret {{ configuration.enable_secret }}
+{%- endif %}
+!
+{%- if configuration.users %}
+{%- for user in configuration.users %}
+username {{ user.name }} privilege {{ user.privilege | default(15) }} secret {{ user.secret }}
+{%- endfor %}
+{%- endif %}
+!
+{%- if configuration.interfaces %}
+{%- for interface in configuration.interfaces %}
+interface {{ interface.name }}
+{%- if interface.description %}
+ description {{ interface.description }}
+{%- endif %}
+{%- if interface.ipv4 %}
+{%- if interface.ipv4.address %}
+ ip address {{ interface.ipv4.address }} {{ interface.ipv4.subnet_mask }}
+{%- endif %}
+{%- endif %}
+{%- if interface.switchport is defined %}
+ switchport
+{%- endif %}
+{%- if interface.vlan is defined %}
+ switchport access vlan {{ interface.vlan }}
+{%- endif %}
+{%- if interface.shutdown is defined and not interface.shutdown %}
+ no shutdown
+{%- elif interface.shutdown is not defined %}
+ no shutdown
+{%- else %}
+ shutdown
+{%- endif %}
+!
+{%- endfor %}
+{%- endif %}
+{%- if configuration.routing %}
+{%- if configuration.routing.static_routes %}
+{%- for route in configuration.routing.static_routes %}
+ip route {{ route.network }} {{ route.mask }} {{ route.next_hop }}
+{%- endfor %}
+{%- endif %}
+{%- if configuration.routing.ospf %}
+router ospf {{ configuration.routing.ospf.process_id | default(1) }}
+{%- if configuration.routing.ospf.router_id %}
+ router-id {{ configuration.routing.ospf.router_id }}
+{%- endif %}
+{%- if configuration.routing.ospf.networks %}
+{%- for network in configuration.routing.ospf.networks %}
+ network {{ network.address }} {{ network.wildcard }} area {{ network.area }}
+{%- endfor %}
+{%- endif %}
+{%- endif %}
+{%- endif %}
+!
+{%- if configuration.vlans %}
+{%- for vlan in configuration.vlans %}
+vlan {{ vlan.id }}
+ name {{ vlan.name }}
+{%- endfor %}
+{%- endif %}
+!
+{%- if configuration.spanning_tree %}
+spanning-tree mode {{ configuration.spanning_tree.mode | default('pvst') }}
+{%- endif %}
+!
+{%- if configuration.snmp %}
+{%- if configuration.snmp.community %}
+snmp-server community {{ configuration.snmp.community }} {{ configuration.snmp.access | default('RO') }}
+{%- endif %}
+{%- if configuration.snmp.location %}
+snmp-server location {{ configuration.snmp.location }}
+{%- endif %}
+{%- if configuration.snmp.contact %}
+snmp-server contact {{ configuration.snmp.contact }}
+{%- endif %}
+{%- endif %}
+!
+{%- if configuration.ntp %}
+{%- for server in configuration.ntp.servers %}
+ntp server {{ server }}
+{%- endfor %}
+{%- endif %}
+!
+{%- if configuration.logging %}
+{%- if configuration.logging.host %}
+logging host {{ configuration.logging.host }}
+{%- endif %}
+logging buffered {{ configuration.logging.buffer_size | default(4096) }}
+{%- endif %}
+!
+line con 0
+ logging synchronous
+ exec-timeout 0 0
+line vty 0 4
+{%- if configuration.users %}
+ login local
+{%- endif %}
+ transport input ssh
+!
+{%- if configuration.ssh %}
+ip ssh version 2
+{%- if configuration.ssh.timeout %}
+ip ssh time-out {{ configuration.ssh.timeout }}
+{%- endif %}
+{%- if configuration.ssh.authentication_retries %}
+ip ssh authentication-retries {{ configuration.ssh.authentication_retries }}
+{%- endif %}
+{%- endif %}
+!
+end
