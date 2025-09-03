@@ -1,0 +1,183 @@
+====================================================================
+Repeat Loops
+====================================================================
+
+A loop is an expression that contains another expression, called the loop
+body, which is to be evaluated zero or more times. All loops contain the
+repeat keyword and return the unique value of Void. Loops can contain
+inner loops to any depth.
+
+The most basic loop is of the form
+ 
+  repeat loopbody
+
+Unless loopbody contains a leave or return expression, the loop repeats
+foreer. The value returned by the loop is the unique value of Void.
+
+FriCAS tries to determine completely the type of every object in a loop
+and then to translate the loop body to Lisp or even to machine code. This
+translation is called compilation.
+
+If FriCAS decides that it cannot compile the loop, it issues a message
+stating the problem and then the following message:
+
+  We will attemp to step through and interpret the code
+
+It is still possible that FriCAS can evalute the loop but in interpret-code
+mode.
+
+====================================================================
+Return in Loops
+====================================================================
+
+A return expression is used to exit a function with a particular value.
+In particular, if a return is in a loop within the function, the loop
+is terminated whenever the return is evaluated. 
+
+  f() ==
+    i := 1
+    repeat
+      if factorial(i) > 1000 then return i
+      i := i + 1
+                      Type: Void
+
+  f()
+                      Type: Void
+
+When factorial(i) is big enough, control passes from inside the loop
+all the way outside the function, returning the value of i (so we think).
+What went wrong? Isn't it obvious that this function should return an
+integer? Well, FriCAS makes no attempt to analyze the structure of a
+loop to determine if it always returns a value because, in general, this
+is impossible. So FriCAS has this simple rule: the type of the function is
+determined by the type of its body, in this case a block. The normal value
+of a block is the value of its last expression, in this case, a loop. And
+the value of every loop is the unique value of Void. So the return type
+of f is Void.
+
+There are two ways to fix this. The best way is for you to tell FriCAS
+what the return type of f is. You do this by giving f a declaration
+
+   f:() -> Integer
+
+prior to calling for its value. This tells FriCAS "trust me -- an integer
+is returned". Another way is to add a dummy expression as follows.
+
+  f() ==
+    i := 1
+    repeat
+      if factorial(i) > 1000 then return i
+      i := i + 1
+    0
+                      Type: Void
+
+Note that the dummy expression will never be evaluated but it is the
+last expression in the function and will determine the return type.
+
+  f()
+   7
+                      Type: PositiveInteger
+
+====================================================================
+leave in loops
+====================================================================
+
+The leave keyword is often more useful in terminating a loop. A
+leave causes control to transfer to the expression immediately following
+the loop. As loops always return the unique value of Void, you cannot
+return a value with leave. That is, leave takes no argument.
+
+  f() ==
+    i := 1
+    repeat
+      if factorial(i) > 1000 then leave
+      i := i + 1
+    i
+                      Type: Void
+
+This example is a modification of the last example in the previous
+section. Instead of using return we'll use leave.
+
+  f()
+   7
+                      Type: PositiveInteger
+
+The loop terminates when factorial(i) gets big enough. The last line
+of the function evaluates to the corresponding "good" value of i
+and the function terminates, returning that value.
+
+You can only use leave to terminate the evaluation of one loop. Lets
+consider a loop within a loop, that is, a loop with a nested loop. 
+First, we initialize two counter variables.
+
+  (i,j) := (1,1)
+   1
+                      Type: PositiveInteger
+
+  repeat
+    repeat
+      if (i + j) > 10 then leave
+      j := j + 1
+    if (i + j) > 10 then leave
+    i := i + 1
+                      Type: Void
+
+Nested loops must have multiple leave expressions at the appropriate
+nesting level. How would you rewrite this so (i + j) > 10 is only
+evaluated once?
+
+====================================================================
+leave vs => in loop bodies
+====================================================================
+
+Compare the following two loops:
+
+  i := 1                      i := 1
+  repeat                      repeat
+    i := i + 1                  i := i + 1
+    i > 3 => i                  if i > 3 then leave
+    output(i)                   output(i)
+
+In the example on the left, the values 2 and 3 for i are displayed but
+then the "=>" does not allow control to reach the call to output again.
+The loop will not terminate until you run out of space or interrupt the
+execution. The variable i will continue to be incremented because the
+"=>" only means to leave the block, not the loop.
+
+In the example on the right, upon reaching 4, the leave will be executed,
+and both the block and the loop will terminate. This is one of the reasons
+why both "=>" and leave are provided. Using a while clase with the "=>"
+lets you simulate the action of leave.
+
+====================================================================
+iterate in loops
+====================================================================
+
+FriCAS provides an iterate expression that skips over the remainder
+of a loop body and starts the next loop execution. We first initialize
+a counter.
+
+  i := 0
+   0
+                      Type: NonNegativeInteger
+
+Display the even integers from 2 to 5:
+
+  repeat
+    i := i + 1
+    if i > 5 then leave
+    if odd?(i) then iterate
+    output(i)
+   2
+   4
+                      Type: Void
+
+Also See: 
+o )help blocks
+o )help if
+o )help while
+o )help for
+o )help suchthat
+o )help parallel
+o )help lists
+
