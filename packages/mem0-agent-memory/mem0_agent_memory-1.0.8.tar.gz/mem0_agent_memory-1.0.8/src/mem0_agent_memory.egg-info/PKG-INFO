@@ -1,0 +1,286 @@
+Metadata-Version: 2.4
+Name: mem0-agent-memory
+Version: 1.0.8
+Summary: MCP server for Mem0 agent memory management with multi-backend support
+Author-email: Arunkumar Selvam <aruninfy123@gmail.com>
+License: MIT
+Project-URL: Homepage, https://github.com/arunkumars-mf/mem0-agent-memory
+Project-URL: Bug Reports, https://github.com/arunkumars-mf/mem0-agent-memory/issues
+Project-URL: Source, https://github.com/arunkumars-mf/mem0-agent-memory
+Project-URL: Citation, https://github.com/arunkumars-mf/mem0-agent-memory/blob/main/CITATION.cff
+Keywords: mem0,mcp,memory,ai,agent,vector-search,faiss,opensearch
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: mcp>=1.13.0
+Requires-Dist: fastmcp>=2.11.0
+Requires-Dist: mem0ai>=0.1.116
+Requires-Dist: boto3>=1.40.0
+Requires-Dist: opensearch-py>=3.0.0
+Requires-Dist: faiss-cpu>=1.12.0
+Dynamic: license-file
+Dynamic: requires-python
+
+# Mem0 Agent Memory
+
+[![PyPI version](https://img.shields.io/pypi/v/mem0-agent-memory.svg)](https://pypi.org/project/mem0-agent-memory/)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/mem0-agent-memory?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/mem0-agent-memory)
+[![PyPI Downloads](https://img.shields.io/pypi/dm/mem0-agent-memory.svg?label=monthly%20downloads)](https://pypi.org/project/mem0-agent-memory/)
+[![Python versions](https://img.shields.io/pypi/pyversions/mem0-agent-memory.svg)](https://pypi.org/project/mem0-agent-memory/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+MCP server for Mem0 agent memory management with multi-backend support.
+
+## Features
+
+- **Multi-backend**: FAISS (local), OpenSearch (AWS), Mem0 Platform (cloud)
+- **AWS Bedrock integration**: Uses Amazon Titan embeddings and Claude 3.5 Haiku for processing
+- **Auto user detection**: Uses system username when no user_id provided
+- **Relevance filtering**: Returns memories with score > 0.7
+- **Complete memory operations**: store, search, list, get, delete, history
+- **Pagination support**: Handle large memory collections efficiently
+- **Recent memory tracking**: Get latest updates for session continuity
+- **Robust error handling**: Graceful fallbacks and clear error messages
+
+## Installation
+
+```bash
+pip install mem0-agent-memory
+```
+
+## Quick Start
+
+```bash
+# Run directly with uvx
+uvx mem0-agent-memory
+
+# Or install and run
+pip install mem0-agent-memory
+python -m mem0_agent_memory
+```
+
+## Configuration
+
+### AWS Configuration
+
+For AWS Bedrock integration (used by default), ensure AWS credentials are configured:
+
+```bash
+# Option 1: AWS CLI configuration
+aws configure
+
+# Option 2: Environment variables
+export AWS_ACCESS_KEY_ID="your-access-key"
+export AWS_SECRET_ACCESS_KEY="your-secret-key"
+export AWS_REGION="us-west-2"
+```
+
+### Environment Variables
+
+```bash
+# FAISS (default - uses .mem0/memory in current directory)
+export FAISS_PATH="/path/to/memory/storage"  # Optional
+
+# OpenSearch
+export OPENSEARCH_HOST="your-opensearch-endpoint"
+export AWS_REGION="us-west-2"
+
+# Mem0 Platform
+export MEM0_API_KEY="your-api-key"
+
+# User/Agent ID (optional - auto-detects if not provided)
+export MEM0_USER_ID="custom-user-id"      # Defaults to system username
+export MEM0_AGENT_ID="custom-agent-id"    # Defaults to workspace name
+```
+
+### MCP Client Setup
+
+#### Amazon Q CLI
+
+Create or edit the MCP configuration file:
+
+**Global Scope:** `~/.aws/amazonq/mcp.json`
+**Local Scope:** `.amazonq/mcp.json` (project-specific)
+
+```json
+{
+  "mcpServers": {
+    "mem0-agent-memory": {
+      "command": "uvx",
+      "args": ["mem0-agent-memory"],
+      "env": {
+        "FAISS_PATH": "/Users/yourname/.mem0/agent",
+        "MEM0_USER_ID": "john",
+        "MEM0_AGENT_ID": "my-project"
+      }
+    }
+  }
+}
+```
+
+#### KIRO
+
+Add to your KIRO MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "mem0-agent-memory": {
+      "command": "uvx",
+      "args": ["mem0-agent-memory"],
+      "env": {
+        "FAISS_PATH": "/Users/yourname/.mem0/agent",
+        "MEM0_USER_ID": "john",
+        "MEM0_AGENT_ID": "my-project"
+      }
+    }
+  }
+}
+```
+
+**Agent Steering:** Use the content from [`docs/KIRO_AGENT_STEERING.md`](docs/KIRO_AGENT_STEERING.md) as your agent steering document to enable memory-first development workflows.
+
+## Tools
+
+- `store_memory(content, user_id?, agent_id?, metadata?)` - Store memory with metadata
+- `search_memories(query, user_id?, agent_id?, limit?, page?, page_size?)` - Search with relevance filtering & pagination
+- `list_memories(user_id?, agent_id?, page?, page_size?)` - List all memories with pagination
+- `get_memory(memory_id)` - Get specific memory by ID
+- `delete_memory(memory_id)` - Delete memory by ID (permanent)
+- `get_memory_history(memory_id)` - Get change history for memory
+- `get_recent_memory(days?, limit?, user_id?, agent_id?)` - Get recent memories for session continuity
+
+## Usage Examples
+
+### Store Memory
+
+**Auto-detect user:**
+```json
+{"content": "User prefers React over Vue"}
+```
+
+**With metadata:**
+```json
+{"content": "API endpoint changed", "metadata": {"type": "technical", "priority": "high"}}
+```
+
+**Specific user:**
+```json
+{"content": "Project deadline is next Friday", "user_id": "john"}
+```
+
+### Search Memories
+
+**Basic search:**
+```json
+{"query": "React preferences"}
+```
+
+**With pagination:**
+```json
+{"query": "API endpoints", "limit": 5, "page": 2}
+```
+
+**Specific user:**
+```json
+{"query": "project status", "user_id": "john"}
+```
+
+### List Memories
+
+**Auto-detect user with pagination:**
+```json
+{"page": 1, "page_size": 10}
+```
+
+**Specific user:**
+```json
+{"user_id": "john", "page": 2, "page_size": 25}
+```
+
+### Get Recent Memories
+
+**Last week (default):**
+```json
+{}
+```
+
+**Last 3 days, limit 5:**
+```json
+{"days": 3, "limit": 5}
+```
+
+**Specific user:**
+```json
+{"days": 7, "user_id": "john"}
+```
+
+### Memory Management
+
+**Get specific memory:**
+```json
+{"memory_id": "cafdf73c-f8c7-4729-b840-e88ce7d8a67c"}
+```
+
+**Get memory history:**
+```json
+{"memory_id": "cafdf73c-f8c7-4729-b840-e88ce7d8a67c"}
+```
+
+**Delete memory (permanent):**
+```json
+{"memory_id": "cafdf73c-f8c7-4729-b840-e88ce7d8a67c"}
+```
+
+## Architecture
+
+### Backend Auto-Detection
+1. **Mem0 Platform**: If `MEM0_API_KEY` is set
+2. **OpenSearch**: If `OPENSEARCH_HOST` is set
+3. **FAISS**: Default fallback (local storage in `.mem0/memory`)
+
+### Auto User/Agent Detection
+When neither `user_id` nor `agent_id` is provided, automatically detects:
+- **`user_id`**: `MEM0_USER_ID` env var → system username
+- **`agent_id`**: `MEM0_AGENT_ID` env var → workspace name (current directory)
+
+This enables dual memories: user memories are personal, agent memories are workspace-specific.
+
+### Relevance Filtering
+Search results automatically filtered to return only memories with relevance score > 0.7, ensuring high-quality results.
+
+### Error Handling
+- Automatic fallback to `/tmp` if FAISS path is not writable
+- Clear error messages for missing dependencies
+- Graceful handling of network issues and invalid parameters
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Citation
+
+If you use this software in your research or project, please cite it as:
+
+```bibtex
+@software{selvam_mem0_agent_memory_2025,
+  author = {Selvam, Arunkumar},
+  title = {Mem0 Agent Memory - MCP Server},
+  url = {https://github.com/arunkumars-mf/mem0-agent-memory},
+  version = {1.0.0},
+  year = {2025}
+}
+```
+
+## License
+
+MIT
