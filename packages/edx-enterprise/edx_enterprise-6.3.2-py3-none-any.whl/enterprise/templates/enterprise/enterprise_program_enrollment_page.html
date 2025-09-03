@@ -1,0 +1,219 @@
+{% extends 'enterprise/base.html' %}
+
+{% load static enterprise %}
+
+{% block extrahead %}
+  <script type="text/javascript" src="{% static 'enterprise/js/program_enrollment_landing_page.js' %}"></script>
+  <script type="text/javascript" src="{% static 'enterprise/js/course_modal.js' %}"></script>
+{% endblock %}
+
+{% block contents %}
+  <div class="enterprise-container">
+    <div class="row">
+      <div class="col-3">
+        <div class="program-type-container">
+          <img class="program-type-logo" src="{{ program_type_logo }}" alt="{{ program_type }}"/>
+          <div class="program-type-description-container">
+            <h2 class="program-type-description-header">{{ program_type_description_header }}</h2>
+            <p class="program-type-description">{{ program_type_description }}</p>
+          </div>
+        </div>
+        <div class="platform-description-container">
+          <h2 class="platform-description-header">{{ platform_description_header }}</h2>
+          <p class="platform-description">{{ platform_description }}</p>
+        </div>
+      </div>
+
+      <div class="col-7 border-left">
+        <main>
+          <div class="program-detail-container">
+            {# Display success, error, warning or info messages #}
+            {% alert_messages messages %}
+
+            {% if is_learner_eligible_for_one_click_purchase %}
+              <h2 class="program-confirmation-title">{{ page_title }}</h2>
+            {% endif %}
+
+            <div class="program-detail">
+              <h2 class="program-title">{{ program_title }}</h2>
+              <h3 class="program-org">{{ organization_text }}</h3>
+              <div class="program-overview">{{ program_overview }}</div>
+              <ul class="program-bullet-points">
+                {# Common bullet points #}
+                <li><span class="bullet-item"><a href="#course-list" class="text-underline">{{ course_count_text }}</a></span></li>
+
+                {# Extra bullet points #}
+                {% for bullet_point in item_bullet_points %}
+                  <li><span class="bullet-item">{{ bullet_point }}</span></li>
+                {% endfor %}
+              </ul>
+
+              {% if is_learner_eligible_for_one_click_purchase %}
+                <div class="program-price">
+                  <strong>{{ purchase_text }}</strong>
+                  {% if is_discounted %}
+                    <strong>
+                      <span class="original-price"><s>{{ program_price }}</s></span> <span class="final-price">{{ program_discounted_price }}</span>
+                    </strong>
+                  {% else %}
+                    <strong>{{ program_price }}</strong>
+                  {% endif %}
+                </div>
+              {% endif %}
+            </div>
+
+            {% if is_learner_eligible_for_one_click_purchase %}
+              <form method="POST">
+                <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}" />
+                <button class="btn btn-primary">{{ confirm_button_text }}</button>
+              </form>
+            {% endif %}
+          </div>
+
+          <div class="program-metadata-container">
+
+            {# What you'll learn #}
+            {% if expected_learning_items|length > 0 %}
+              <div id="what-youll-learn" class="program-metadata-item">
+                <div class="program-metadata-header">
+                  <h3 class="program-metadata-header-text">{{ expected_learning_items_text }}</h3>
+                </div>
+                <ul class="program-bullet-points expandable" data-alwaysshow="{{ expected_learning_items_show_count }}" tabindex="-1">
+                  {% for item in expected_learning_items %}
+                    <li {% if forloop.counter > expected_learning_items_show_count %}hidden{% endif %}>
+                      <span class="bullet-item">{{ item }}</span>
+                    </li>
+                  {% endfor %}
+                </ul>
+                {% if expected_learning_items|length > expected_learning_items_show_count %}
+                  {% expand_button see_more_text 'what-youll-learn' %}
+                {% endif %}
+              </div>
+            {% endif %}
+
+            {# Real Career Impact #}
+            {% if corporate_endorsements|length > 0 %}
+              <div id="real-career-impact" class="program-metadata-item">
+                <div class="program-metadata-header">
+                  <h3 class="program-metadata-header-text">{{ corporate_endorsements_text }}</h3>
+                </div>
+                <div class="endorsement-list-container expandable" data-alwaysshow="{{ corporate_endorsements_show_count }}" tabindex="-1">
+                  {% for endorsement in corporate_endorsements %}
+                    {# Corporation Image #}
+                    <div class="endorsement-container" {% if forloop.counter > corporate_endorsements_show_count %}hidden{% endif %}>
+                      {% if endorsement.image %}
+                        <img class="endorsement-image" src="{{ endorsement.image.src }}" alt="{{ endorsement.image.description }}" />
+                      {% endif %}
+                      {% for individual_endorsement in endorsement.individual_endorsements %}
+                        {# Endorsement Quote #}
+                        <q class="individual-endorsement-quote">{{ individual_endorsement.quote }}</q>
+                        <div class="endorser">
+                          {# Endorser Description #}
+                          <div class="endorser-description-container">
+                            <span class="endorser-description">
+                              {% with endorser=individual_endorsement.endorser position=individual_endorsement.endorser.position %}
+                                &mdash; {{ endorser.given_name }} {{ endorser.family_name }}, {{ position.title }}, {{ position.organization_name }}
+                              {% endwith %}
+                            </span>
+                          </div>
+                        </div>
+                      {% endfor %}
+                    </div>
+                  {% endfor %}
+                </div>
+                {% if corporate_endorsements|length > corporate_endorsements_show_count %}
+                  {% expand_button see_more_text 'real-career-impact' %}
+                {% endif %}
+              </div>
+            {% endif %}
+
+          </div>
+
+          {# Program Summary Box #}
+          <div class="program-summary-container">
+            <div class="program-summary-header">
+              <h2 class="program-summary-header-text">{{ summary_header }}</h2>
+            </div>
+            <table class="program-summary">
+              <tbody>
+
+                {# Courses #}
+                {% if courses %}
+                <tr id="course-list-row">
+                  <th scope="row" class="summary-item">{{ course_count_text }}:</th>
+                  <td class="summary-content" id="course-list">
+                    {% for course in courses %}
+                      <div class="course-item">
+                        {% if course.course_runs.0.is_enrolled %}
+                          {% if course.course_runs.0.upgrade_url == None %}
+                            <span class="enrolled-and-paid-course">
+                              <s>{{ course.title|link_to_modal:forloop.counter0 }}</s>
+                            </span>
+                            <strong>({{ enrolled_in_course_and_paid_text }})</strong>
+                          {% else %}
+                            {{ course.title|link_to_modal:forloop.counter0 }}<br>
+                            <strong>({{ enrolled_in_course_and_unpaid_text }})</strong>
+                          {% endif %}
+                        {% else %}
+                          {{ course.title|link_to_modal:forloop.counter0 }}
+                        {% endif %}
+                        <br>{{ course.weeks_to_complete }}
+                      </div>
+                    {% endfor %}
+                  </td>
+                </tr>
+                <tr class="row-separator" aria-hidden="true"><td colspan="2"><div class="table-row-separator"></div></td></tr>
+                {% endif %}
+
+                {# Price #}
+                {% if program_price and is_learner_eligible_for_one_click_purchase %}
+                <tr id="price-row">
+                  <th scope="row" class="summary-item">{{ price_text }}:</th>
+                  <td class="summary-content">
+                    {{ purchase_text }}
+                    {% if is_discounted %}
+                      <strong>
+                        <span class="original-price"><s>{{ program_price }}</s></span> <span class="final-price">{{ program_discounted_price }}</span>
+                      </strong>
+                    {% else %}
+                      <strong>{{ program_price }}</strong>
+                    {% endif %}
+                  </td>
+                </tr>
+                <tr class="row-separator" aria-hidden="true"><td colspan="2"><div class="table-row-separator"></div></td></tr>
+                {% endif %}
+
+                {# Length #}
+                {% if length_info_text %}
+                <tr id="length-row">
+                  <th scope="row" class="summary-item">{{ length_text }}:</th>
+                  <td class="summary-content">
+                    {{ length_info_text }}
+                  </td>
+                </tr>
+                <tr class="row-separator" aria-hidden="true"><td colspan="2"><div class="table-row-separator"></div></td></tr>
+                {% endif %}
+
+                {# Effort #}
+                {% if effort_info_text %}
+                <tr id="effort-row">
+                  <th scope="row" class="summary-item">{{ effort_text }}:</th>
+                  <td class="summary-content">{{ effort_info_text }}</td>
+                </tr>
+                {% endif %}
+
+              </tbody>
+            </table>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+  {% for course in courses %}
+    {% with index=forloop.counter0 %}
+      {% course_modal course %}
+    {% endwith %}
+  {% endfor %}
+  <div id="see-more-text" aria-hidden="true" hidden>{{ see_more_text }}</div>
+  <div id="see-less-text" aria-hidden="true" hidden>{{ see_less_text }}</div>
+{% endblock %}

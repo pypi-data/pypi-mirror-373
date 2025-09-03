@@ -1,0 +1,107 @@
+{% extends 'enterprise/base.html' %}
+
+{% load static enterprise %}
+
+{% block extrahead %}
+  <script type="text/javascript" src="{% static 'enterprise/js/course_modal.js' %}"></script>
+{% endblock %}
+
+{% block contents %}
+  <div class="enterprise-container">
+    <div class="row no-gutters">
+      <div class="col-3">
+        {% include "enterprise/_enterprise_customer_sidebar.html" %}
+      </div>
+      <div class="col-7 border-left">
+
+        {# Display success, error, warning or info messages #}
+        {% alert_messages messages %}
+
+        {% if course_enrollable %}
+          <h2>{{ confirmation_text }}</h2>
+        {% endif %}
+
+        <div class="media">
+          <div class="thumbnail">
+            <img class="course-image" src="{{ course_image_uri }}" alt="{{ course_title }}"/>
+          </div>
+          <div class="media-content">
+            <div class="course-title">{{ course_title }}</div>
+
+            {% if course_in_future and course_modes|length != 0 %}
+              <div class="course-org">
+                {{ organization_name }}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+        {% if course_modes|length == 0 %}
+          <div class="course-detail">
+            <div class="course-org">
+              {{ organization_name }}
+            </div>
+          </div>
+        {% else %}
+          <div class="course-detail">
+            {% if not course_in_future %}
+              <div class="course-org">
+                {{ organization_name }}
+              </div>
+            {% endif %}
+            <div class="course-info {% if course_in_future %}course-in-future{% endif %}">
+              <i class="fa fa-clock-o" aria-hidden="true"></i>
+              <span>{{ starts_at_text }} {{ course_start_date }} &nbsp;| &nbsp; {{ course_pacing }}</span>
+            </div>
+            {{ course_short_description | striptags }}
+            {{ view_course_details_text|link_to_modal:0 }}
+          </div>
+          {% if course_enrollable %}
+            <form method="POST">
+              <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}" />
+              {% if cohort %}
+              <input type="hidden" name="cohort" value="{{ cohort }}" />
+              {% endif %}
+              {% if catalog %}
+                <input type="hidden" name="catalog" value="{{ catalog }}" />
+              {% endif %}
+              {% if course_modes|length > 1 %}<div class="caption">{{ select_mode_text }}</div>{% endif %}
+              {% for course_mode in course_modes %}
+              <div class="radio-block">
+                <div class="{% if course_modes|length > 1 %}radio{% endif %}">
+                  {% if course_modes|length > 1 %}
+                    <input type="radio" name="course_mode" id="radio{{ forloop.counter0 }}"{% if forloop.first %} checked="checked"{% endif %} value="{{ course_mode.mode }}" />
+                  {% else %}
+                    <input type="hidden" name="course_mode" id="radio{{ forloop.counter0 }}" value="{{ course_mode.mode }}" />
+                  {% endif %}
+                </div>
+
+                <label for="radio{{ forloop.counter0 }}">
+                  <strong class="title">{{ course_mode.title }}</strong>
+                  <span class="price">
+                    {{ price_text }}:
+                    {% if course_mode.final_price and course_mode.original_price != course_mode.final_price %}
+                      {% if hide_course_original_price %}
+                        {{ course_mode.final_price }}
+                      {% else %}
+                        <strike>{{ course_mode.original_price }}</strike> {{ course_mode.final_price }}
+                        <div>{{discount_text|safe }}</div>
+                      {% endif %}
+                    {% else %}
+                      {{ course_mode.original_price }}
+                    {% endif %}
+                  </span>
+                  <span class="description">{{ course_mode.description }}</span>
+                </label>
+              </div>
+              {% endfor %}
+              <button class="btn btn-primary">{{ continue_link_text }}</button>
+            </form>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% with index=0 %}
+    {% course_modal %}
+  {% endwith %}
+{% endblock %}
