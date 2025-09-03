@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+# Allow one concurrent deployment
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test ${{ matrix.py }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        py:
+          - "3.13"
+          - "3.12"
+          - "3.11"
+          - "3.10"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.py }}
+      - uses: dtolnay/rust-toolchain@1.79.0
+      - uses: Swatinem/rust-cache@v2
+      - run: uv sync --extra test --locked
+      - run: uv run pytest --benchmark-disable -vvv --durations=10
+
+  mypy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: dtolnay/rust-toolchain@1.79.0
+      - uses: Swatinem/rust-cache@v2
+      - run: uv sync --extra test --locked
+      - run: make mypy
+      - run: make stubtest
+
+  benchmark:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        # Run on codspeed for walltime and ubuntu for instrumenentation
+        runner: [ ubuntu-latest ] # codspeed-macro,  disable for now till we set up custom runner for more minutes
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: dtolnay/rust-toolchain@1.79.0
+      - uses: Swatinem/rust-cache@v2
+      - run: |
+          export UV_PROJECT_ENVIRONMENT="${pythonLocation}"
+          uv sync --extra test --locked
+      - uses: CodSpeedHQ/action@v3.8.1
+        with:
+          token: ${{ secrets.CODSPEED_TOKEN }}
+          # allow updating snapshots due to indeterministic benchmarks
+          run: pytest -vvv --snapshot-update --durations=10
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: dtolnay/rust-toolchain@1.79.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Install graphviz
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
+      - run: uv sync --extra docs --locked
+      - run: make docs
