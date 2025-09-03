@@ -1,0 +1,1 @@
+import{j as e}from"./index-BRZ4tpHq.js";function m({title:r,description:t}){return e.jsxs("div",{className:"flex flex-col items-center justify-center rounded-lg border p-8 text-center",children:[e.jsx("div",{className:"text-lg font-medium",children:r}),t&&e.jsx("div",{className:"mt-1 text-sm text-muted-foreground",children:t})]})}export{m as E};
