@@ -1,0 +1,929 @@
+{
+    "config": {
+        "abort": {
+            "already_configured": "Tj\u00e4nsten \u00e4r redan konfigurerad",
+            "reauth_successful": "\u00c5terautentisering lyckades",
+            "reconfigure_successful": "Omkonfigureringen lyckades"
+        },
+        "error": {
+            "invalid_api_key": "Ogiltig API-nyckel",
+            "invalid_proxy_url": "{proxy_url_error}",
+            "invalid_trusted_networks": "Ogiltigt betrott n\u00e4tverk: {error_message}",
+            "invalid_url": "URL m\u00e5ste b\u00f6rja med https",
+            "no_url_available": "URL kr\u00e4vs eftersom du inte har konfigurerat en extern URL i Home Assistant"
+        },
+        "step": {
+            "reauth_confirm": {
+                "data": {
+                    "api_key": "API-nyckel"
+                },
+                "data_description": {
+                    "api_key": "API-token f\u00f6r din bot."
+                },
+                "title": "Autentisera Telegram-bot p\u00e5 nytt"
+            },
+            "reconfigure": {
+                "data": {
+                    "platform": "Plattform"
+                },
+                "data_description": {
+                    "platform": "Implementering av Telegram-bot"
+                },
+                "description": "Konfigurera om Telegram-bot",
+                "sections": {
+                    "advanced_settings": {
+                        "data": {
+                            "proxy_url": "Proxy-URL"
+                        },
+                        "data_description": {
+                            "proxy_url": "Proxy-URL om du arbetar bakom en, eventuellt inklusive anv\u00e4ndarnamn och l\u00f6senord. (socks5://anv\u00e4ndarnamn:l\u00f6senord@proxy_ip:proxy_port)"
+                        },
+                        "name": "Avancerade inst\u00e4llningar"
+                    }
+                },
+                "title": "Inst\u00e4llning av Telegram-bot"
+            },
+            "user": {
+                "data": {
+                    "api_key": "API-token",
+                    "platform": "Plattform"
+                },
+                "data_description": {
+                    "api_key": "API-token f\u00f6r din bot.",
+                    "platform": "Implementering av Telegram-bot"
+                },
+                "description": "F\u00f6lj dessa steg f\u00f6r att skapa en Telegram-bot: \n\n1. \u00d6ppna Telegram och starta en chatt med [{botfather_username}]({botfather_url}). \n1. Skicka kommandot `/newbot`. \n1. F\u00f6lj instruktionerna f\u00f6r att skapa din bot och f\u00e5 din API-token.",
+                "sections": {
+                    "advanced_settings": {
+                        "data": {
+                            "proxy_url": "Proxy-URL"
+                        },
+                        "data_description": {
+                            "proxy_url": "Proxy-URL om du arbetar bakom en, eventuellt inklusive anv\u00e4ndarnamn och l\u00f6senord. (socks5://anv\u00e4ndarnamn:l\u00f6senord@proxy_ip:proxy_port)"
+                        },
+                        "name": "Avancerade inst\u00e4llningar"
+                    }
+                }
+            },
+            "webhooks": {
+                "data": {
+                    "trusted_networks": "Betrodda n\u00e4tverk",
+                    "url": "URL"
+                },
+                "data_description": {
+                    "trusted_networks": "Telegram-serverns \u00e5tkomst-ACL som lista. \nStandard: 149.154.160.0/20, 91.108.4.0/22",
+                    "url": "Till\u00e5t att skriva \u00f6ver den externa URL:en fr\u00e5n Home Assistant-konfigurationen f\u00f6r olika inst\u00e4llningar."
+                },
+                "title": "Webhooks n\u00e4tverkskonfiguration"
+            }
+        }
+    },
+    "config_subentries": {
+        "allowed_chat_ids": {
+            "abort": {
+                "already_configured": "Chatt redan konfigurerad"
+            },
+            "error": {
+                "chat_not_found": "Chatt hittades inte"
+            },
+            "initiate_flow": {
+                "user": "L\u00e4gg till till\u00e5tet chatt-ID"
+            },
+            "step": {
+                "user": {
+                    "data": {
+                        "chat_id": "Chatt-ID"
+                    },
+                    "data_description": {
+                        "chat_id": "ID som representerar anv\u00e4ndaren eller gruppchatten dit meddelanden kan skickas."
+                    },
+                    "title": "L\u00e4gg till chatt"
+                }
+            }
+        }
+    },
+    "exceptions": {
+        "allowlist_external_dirs_error": {
+            "message": "Fils\u00f6kv\u00e4gen har inte konfigurerats i allowlist_external_dirs."
+        },
+        "failed_to_load_file": {
+            "message": "Kunde inte l\u00e4sa in fil: {error}"
+        },
+        "failed_to_load_url": {
+            "message": "Kunde inte l\u00e4sa in URL: {error}"
+        },
+        "missing_allowed_chat_ids": {
+            "message": "Inga till\u00e5tna chatt-ID:n hittades. L\u00e4gg till till\u00e5tna chatt-ID:n f\u00f6r {bot_name}."
+        },
+        "missing_config_entry": {
+            "message": "Inga konfigurationsposter hittades eller s\u00e5 misslyckades installationen. V\u00e4nligen konfigurera Telegram Bot f\u00f6rst."
+        },
+        "missing_input": {
+            "message": "{field} kr\u00e4vs."
+        },
+        "multiple_config_entry": {
+            "message": "Flera konfigurationsposter hittades. Ange vilken Telegram-bot som ska anv\u00e4ndas i f\u00e4ltet Konfigurationspost-ID."
+        }
+    },
+    "issues": {
+        "deprecated_yaml": {
+            "description": "Konfigurationen av {integration_title} med YAML tas bort.\n\nDin befintliga YAML-konfiguration har automatiskt importerats till anv\u00e4ndargr\u00e4nssnittet.\n\nTa bort `{domain}`-konfigurationen fr\u00e5n din configuration.yaml-fil och starta om Home Assistant f\u00f6r att \u00e5tg\u00e4rda problemet.",
+            "title": "YAML-konfigurering f\u00f6r {integration_title} tas bort"
+        },
+        "deprecated_yaml_import_issue_error": {
+            "description": "Konfigurering av {integration_title} med hj\u00e4lp av YAML h\u00e5ller p\u00e5 att tas bort, men det uppstod ett fel n\u00e4r din befintliga konfiguration importerades ({telegram_bot}): {error_message}.\nInstallationen kommer inte att forts\u00e4tta.\n\nKontrollera att din {telegram_bot} fungerar korrekt och starta om Home Assistant f\u00f6r att f\u00f6rs\u00f6ka importera igen.\n\nAlternativt kan du ta bort konfigurationen `{domain}` helt fr\u00e5n din configuration.yaml-fil, starta om Home Assistant och l\u00e4gga till {integration_title}-integrationen manuellt.",
+            "title": "YAML-import misslyckades p\u00e5 grund av ogiltig {error_field}"
+        },
+        "deprecated_yaml_import_issue_has_more_platforms": {
+            "description": "Konfigurering av {integration_title} med YAML tas bort.\n\nDen sista posten i din befintliga YAML-konfiguration ({telegram_bot}) har importerats automatiskt till anv\u00e4ndargr\u00e4nssnittet.\n\nTa bort konfigurationen `{domain}` fr\u00e5n din configuration.yaml-fil och starta om Home Assistant f\u00f6r att \u00e5tg\u00e4rda problemet. De andra Telegram-botarna m\u00e5ste konfigureras manuellt i anv\u00e4ndargr\u00e4nssnittet.",
+            "title": "YAML-konfigurering f\u00f6r {integration_title} tas bort"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "parse_mode": "Parsningsl\u00e4ge"
+                },
+                "data_description": {
+                    "parse_mode": "Standardparsningsl\u00e4ge f\u00f6r meddelanden om det inte specifieras explicit i meddelandedata."
+                },
+                "title": "Konfigurera Telegram-bot"
+            }
+        }
+    },
+    "selector": {
+        "parse_mode": {
+            "options": {
+                "html": "HTML",
+                "markdown": "Markdown (\u00e4ldre)",
+                "markdownv2": "MarkdownV2",
+                "plain_text": "Klartext"
+            }
+        },
+        "platforms": {
+            "options": {
+                "broadcast": "Broadcast",
+                "polling": "Polling",
+                "webhooks": "Webhooks"
+            }
+        }
+    },
+    "services": {
+        "answer_callback_query": {
+            "description": "Svarar p\u00e5 en callback-fr\u00e5ga som st\u00e4lls genom att klicka p\u00e5 en tangentbordsknapp online. Svaret visas f\u00f6r anv\u00e4ndaren som en avisering h\u00f6gst upp p\u00e5 chattsk\u00e4rmen eller som en varning.",
+            "fields": {
+                "callback_query_id": {
+                    "description": "Unikt ID f\u00f6r \u00e5teruppringningssvaret.",
+                    "name": "Callback query-ID"
+                },
+                "config_entry_id": {
+                    "description": "Den konfigurationspost som representerar den Telegram-bot som ska svara p\u00e5 callback-fr\u00e5gan.",
+                    "name": "ID f\u00f6r konfigurationspost"
+                },
+                "message": {
+                    "description": "Oformaterat meddelandetext i aviseringen.",
+                    "name": "Meddelande"
+                },
+                "show_alert": {
+                    "description": "Visa en permanent avisering.",
+                    "name": "Visa varning"
+                },
+                "timeout": {
+                    "description": "Timeout f\u00f6r att skicka svaret (i sekunder).",
+                    "name": "Timeout f\u00f6r l\u00e4sning"
+                }
+            },
+            "name": "Svara callback query"
+        },
+        "delete_message": {
+            "description": "Raderar ett tidigare skickat meddelande.",
+            "fields": {
+                "chat_id": {
+                    "description": "ID f\u00f6r den chatt d\u00e4r meddelandet ska raderas.",
+                    "name": "Chatt-ID"
+                },
+                "config_entry_id": {
+                    "description": "Den konfigurationspost som representerar den Telegram-bot som ska ta bort meddelandet.",
+                    "name": "ID f\u00f6r konfigurationspost"
+                },
+                "message_id": {
+                    "description": "ID f\u00f6r det meddelande som ska raderas.",
+                    "name": "Meddelande-ID"
+                }
+            },
+            "name": "Radera meddelande"
+        },
+        "edit_caption": {
+            "description": "Redigerar bildtexten i ett tidigare skickat meddelande.",
+            "fields": {
+                "caption": {
+                    "description": "Meddelandetexten i aviseringen.",
+                    "name": "Bildtext"
+                },
+                "chat_id": {
+                    "description": "ID f\u00f6r den chatt d\u00e4r bildtexten ska redigeras.",
+                    "name": "Chatt-ID"
+                },
+                "config_entry_id": {
+                    "description": "Den konfigurationspost som representerar den Telegram-bot som ska redigera bildtexten.",
+                    "name": "ID f\u00f6r konfigurationspost"
+                },
+                "inline_keyboard": {
+                    "description": "Kommaseparerad lista \u00f6ver rader med kommandon f\u00f6r att skapa ett anpassat inline-tangentbord med knappar och tillh\u00f6rande callback-data.",
+                    "name": "Inline-tangentbord"
+                },
+                "message_id": {
+                    "description": "ID f\u00f6r det meddelande som ska redigeras.",
+                    "name": "Meddelande-ID"
+                }
+            },
+            "name": "Redigera bildtext"
+        },
+        "edit_message": {
+            "description": "Redigerar ett tidigare skickat meddelande.",
+            "fields": {
+                "chat_id": {
+                    "description": "ID f\u00f6r den chatt d\u00e4r meddelandet ska redigeras.",
+                    "name": "Chatt-ID"
+                },
+                "config_entry_id": {
+                    "description": "Den konfigurationspost som representerar den Telegram-bot som ska redigera meddelandet.",
+                    "name": "ID f\u00f6r konfigurationspost"
+                },
+                "disable_web_page_preview": {
+                    "description": "Inaktiverar f\u00f6rhandsgranskning av l\u00e4nkar i meddelandet.",
+                    "name": "Inaktivera f\u00f6rhandsgranskning av webbsidor"
+                },
+                "inline_keyboard": {
+                    "description": "Kommaseparerad lista \u00f6ver rader med kommandon f\u00f6r att skapa ett anpassat inline-tangentbord med knappar och tillh\u00f6rande callback-data.",
+                    "name": "Inline-tangentbord"
+                },
+                "message": {
+                    "description": "Meddelandetexten i aviseringen.",
+                    "name": "Meddelande"
+                },
+                "message_id": {
+                    "description": "ID f\u00f6r det meddelande som ska redigeras.",
+                    "name": "Meddelande-ID"
+                },
+                "parse_mode": {
+                    "description": "Parser f\u00f6r meddelandetexten.",
+                    "name": "Parse-l\u00e4ge"
+                },
+                "title": {
+                    "description": "Valfri titel f\u00f6r aviseringen. Kommer att komponeras som '%title\n%message'.",
+                    "name": "Titel"
+                }
+            },
+            "name": "Redigera meddelande"
+        },
+        "edit_replymarkup": {
+            "description": "Redigerar inline-tangentbordet i ett tidigare skickat meddelande.",
+            "fields": {
+                "chat_id": {
+                    "description": "ID f\u00f6r den chatt d\u00e4r svarsmarkeringen ska redigeras.",
+                    "name": "Chatt-ID"
+                },
+                "config_entry_id": {
+                    "description": "Den konfigurationspost som representerar den Telegram-bot som ska redigera svarsmarkeringen.",
+                    "name": "ID f\u00f6r konfigurationspost"
+                },
+                "inline_keyboard": {
+                    "description": "Kommaseparerad lista \u00f6ver rader med kommandon f\u00f6r att skapa ett anpassat inline-tangentbord med knappar och tillh\u00f6rande callback-data.",
+                    "name": "Inline-tangentbord"
+                },
+                "message_id": {
+                    "description": "ID f\u00f6r det meddelande som ska redigeras.",
+                    "name": "Meddelande-ID"
+                }
+            },
+            "name": "Redigera markering av svar"
+        },
+        "leave_chat": {
+            "description": "Tar bort boten fr\u00e5n chatten.",
+            "fields": {
+                "chat_id": {
+                    "description": "Chatt-ID f\u00f6r gruppen som boten ska tas bort fr\u00e5n.",
+                    "name": "Chatt-ID"
+                },
+                "config_entry_id": {
+                    "description": "Konfigurationsposten som representerar Telegram-boten som ska l\u00e4mna chatten.",
+                    "name": "ID f\u00f6r konfigurationspost"
+                }
+            },
+            "name": "L\u00e4mna chatt"
+        },
+        "send_animation": {
+            "description": "Skickar en animation.",
+            "fields": {
+                "authentication": {
+                    "description": "Definiera vilken autentiseringsmetod som ska anv\u00e4ndas. St\u00e4ll in p\u00e5 `digest` f\u00f6r att anv\u00e4nda HTTP digest-autentisering, eller `bearer_token` f\u00f6r OAuth 2.0 bearer token-autentisering. Standardinst\u00e4llningen \u00e4r `basic`.",
+                    "name": "Autentiseringsmetod"
+                },
+                "caption": {
+                    "description": "Animeringens titel.",
+                    "name": "Bildtext"
+                },
+                "config_entry_id": {
+                    "description": "Den konfigurationspost som representerar den Telegram-bot som ska skicka animationen.",
+                    "name": "ID f\u00f6r konfigurationspost"
+                },
+                "disable_notification": {
+                    "description": "Skickar tyst avisering. iOS-anv\u00e4ndare och webbanv\u00e4ndare kommer inte att f\u00e5 n\u00e5gon avisering, Android-anv\u00e4ndare kommer att f\u00e5 en avisering utan ljud.",
+                    "name": "Inaktivera avisering"
+                },
+                "file": {
+                    "description": "Lokal s\u00f6kv\u00e4g till en GIF eller H.264/MPEG-4 AVC-video utan ljud.",
+                    "name": "Fil"
+                },
+                "inline_keyboard": {
+                    "description": "Kommaseparerad lista \u00f6ver rader med kommandon f\u00f6r att skapa ett anpassat inline-tangentbord med knappar och tillh\u00f6rande callback-data.",
+                    "name": "Inline-tangentbord"
+                },
+                "keyboard": {
+                    "description": "Kommaseparerad lista \u00f6ver rader med kommandon f\u00f6r att skapa ett anpassat tangentbord.",
+                    "name": "Tangentbord"
+                },
+                "message_tag": {
+                    "description": "Tagg f\u00f6r skickat meddelande.",
+                    "name": "Meddelandetagg"
+                },
+                "message_thread_id": {
+                    "description": "Unik identifierare f\u00f6r forumets m\u00e5lmeddelandetr\u00e5d (\u00e4mne); Endast f\u00f6r forumets supergrupper.",
+                    "name": "Meddelandetr\u00e5ds-ID"
+                },
+                "parse_mode": {
+                    "description": "Parser f\u00f6r meddelandetexten.",
+                    "name": "Parse-l\u00e4ge"
+                },
+                "password": {
+                    "description": "L\u00f6senord (eller b\u00e4rartoken) f\u00f6r en URL som kr\u00e4ver HTTP-autentisering.",
+                    "name": "L\u00f6senord"
+                },
+                "reply_to_message_id": {
+                    "description": "Markera meddelandet som ett svar p\u00e5 ett tidigare meddelande.",
+                    "name": "Svara p\u00e5 meddelande-ID"
+                },
+                "target": {
+                    "description": "En array av f\u00f6rgodk\u00e4nda chatt-ID:n att skicka dokumentet till. Om den inte finns \u00e4r det f\u00f6rsta till\u00e5tna chatt-ID:t standard.",
+                    "name": "M\u00e5l"
+                },
+                "timeout": {
+                    "description": "Timeout f\u00f6r att skicka sticker (i sekunder).",
+                    "name": "Timeout f\u00f6r l\u00e4sning"
+                },
+                "url": {
+                    "description": "Fj\u00e4rrs\u00f6kv\u00e4g till en GIF- eller H.264/MPEG-4 AVC-video utan ljud.",
+                    "name": "URL"
+                },
+                "username": {
+                    "description": "Anv\u00e4ndarnamn f\u00f6r en URL som kr\u00e4ver HTTP-autentisering.",
+                    "name": "Anv\u00e4ndarnamn"
+                },
+                "verify_ssl": {
+                    "description": "Aktivera eller inaktivera verifiering av SSL-certifikat. Inaktivera om du laddar ned filen fr\u00e5n en URL och du inte vill verifiera serverns SSL-certifikat.",
+                    "name": "Verifiera SSL"
+                }
+            },
+            "name": "Skicka animation"
+        },
+        "send_document": {
+            "description": "Skickar ett dokument",
+            "fields": {
+                "authentication": {
+                    "description": "Definiera vilken autentiseringsmetod som ska anv\u00e4ndas. St\u00e4ll in p\u00e5 `digest` f\u00f6r att anv\u00e4nda HTTP digest-autentisering, eller `bearer_token` f\u00f6r OAuth 2.0 bearer token-autentisering. Standardinst\u00e4llningen \u00e4r `basic`.",
+                    "name": "Autentiseringsmetod"
+                },
+                "caption": {
+                    "description": "Rubrik p\u00e5 dokumentet.",
+                    "name": "Bildtext"
+                },
+                "config_entry_id": {
+                    "description": "Den konfigurationspost som representerar den Telegram-bot som ska skicka dokumentet.",
+                    "name": "ID f\u00f6r konfigurationspost"
+                },
+                "disable_notification": {
+                    "description": "Skickar tyst avisering. iOS-anv\u00e4ndare och webbanv\u00e4ndare kommer inte att f\u00e5 n\u00e5gon avisering, Android-anv\u00e4ndare kommer att f\u00e5 en avisering utan ljud.",
+                    "name": "Inaktivera avisering"
+                },
+                "file": {
+                    "description": "Lokal s\u00f6kv\u00e4g till ett dokument.",
+                    "name": "Fil"
+                },
+                "inline_keyboard": {
+                    "description": "Kommaseparerad lista \u00f6ver rader med kommandon f\u00f6r att skapa ett anpassat inline-tangentbord med knappar och tillh\u00f6rande callback-data.",
+                    "name": "Inline-tangentbord"
+                },
+                "keyboard": {
+                    "description": "Kommaseparerad lista \u00f6ver rader med kommandon f\u00f6r att skapa ett anpassat tangentbord.",
+                    "name": "Tangentbord"
+                },
+                "message_tag": {
+                    "description": "Tagg f\u00f6r skickat meddelande.",
+                    "name": "Meddelandetagg"
+                },
+                "message_thread_id": {
+                    "description": "Unik identifierare f\u00f6r forumets m\u00e5lmeddelandetr\u00e5d (\u00e4mne); Endast f\u00f6r forumets supergrupper.",
+                    "name": "Meddelandetr\u00e5ds-ID"
+                },
+                "parse_mode": {
+                    "description": "Parser f\u00f6r meddelandetexten.",
+                    "name": "Parse-l\u00e4ge"
+                },
+                "password": {
+                    "description": "L\u00f6senord (eller b\u00e4rartoken) f\u00f6r en URL som kr\u00e4ver HTTP-autentisering.",
+                    "name": "L\u00f6senord"
+                },
+                "reply_to_message_id": {
+                    "description": "Markera meddelandet som ett svar p\u00e5 ett tidigare meddelande.",
+                    "name": "Svara p\u00e5 meddelande-ID"
+                },
+                "target": {
+                    "description": "En array av f\u00f6rgodk\u00e4nda chatt-ID:n att skicka dokumentet till. Om den inte finns \u00e4r det f\u00f6rsta till\u00e5tna chatt-ID:t standard.",
+                    "name": "M\u00e5l"
+                },
+                "timeout": {
+                    "description": "Timeout f\u00f6r att skicka dokumentet (i sekunder).",
+                    "name": "Timeout f\u00f6r l\u00e4sning"
+                },
+                "url": {
+                    "description": "Fj\u00e4rrs\u00f6kv\u00e4g till ett dokument.",
+                    "name": "URL"
+                },
+                "username": {
+                    "description": "Anv\u00e4ndarnamn f\u00f6r en URL som kr\u00e4ver HTTP-autentisering.",
+                    "name": "Anv\u00e4ndarnamn"
+                },
+                "verify_ssl": {
+                    "description": "Aktivera eller inaktivera verifiering av SSL-certifikat. Inaktivera om du laddar ned filen fr\u00e5n en URL och du inte vill verifiera serverns SSL-certifikat.",
+                    "name": "Verifiera SSL"
+                }
+            },
+            "name": "Skicka dokument"
+        },
+        "send_location": {
+            "description": "Skickar en plats.",
+            "fields": {
+                "config_entry_id": {
+                    "description": "Den konfigurationspost som representerar den Telegram-bot som ska skicka platsen.",
+                    "name": "ID f\u00f6r konfigurationspost"
+                },
+                "disable_notification": {
+                    "description": "Skickar tyst avisering. iOS-anv\u00e4ndare och webbanv\u00e4ndare kommer inte att f\u00e5 n\u00e5gon avisering, Android-anv\u00e4ndare kommer att f\u00e5 en avisering utan ljud.",
+                    "name": "Inaktivera avisering"
+                },
+                "inline_keyboard": {
+                    "description": "Kommaseparerad lista \u00f6ver rader med kommandon f\u00f6r att skapa ett anpassat inline-tangentbord med knappar och tillh\u00f6rande callback-data.",
+                    "name": "Inline-tangentbord"
+                },
+                "keyboard": {
+                    "description": "Kommaseparerad lista \u00f6ver rader med kommandon f\u00f6r att skapa ett anpassat tangentbord.",
+                    "name": "Tangentbord"
+                },
+                "latitude": {
+                    "description": "Latitud att skicka.",
+                    "name": "Latitud"
+                },
+                "longitude": {
+                    "description": "Longitud att skicka.",
+                    "name": "Longitud"
+                },
+                "message_tag": {
+                    "description": "Tagg f\u00f6r skickat meddelande.",
+                    "name": "Meddelandetagg"
+                },
+                "message_thread_id": {
+                    "description": "Unik identifierare f\u00f6r forumets m\u00e5lmeddelandetr\u00e5d (\u00e4mne); Endast f\u00f6r forumets supergrupper.",
+                    "name": "Meddelandetr\u00e5ds-ID"
+                },
+                "reply_to_message_id": {
+                    "description": "Markera meddelandet som ett svar p\u00e5 ett tidigare meddelande.",
+                    "name": "Svara p\u00e5 meddelande-ID"
+                },
+                "target": {
+                    "description": "En array av f\u00f6rgodk\u00e4nda chatt-ID:n att skicka platsen till. Om den inte finns \u00e4r det f\u00f6rsta till\u00e5tna chatt-ID:t standard.",
+                    "name": "M\u00e5l"
+                },
+                "timeout": {
+                    "description": "Timeout f\u00f6r att skicka foto (i sekunder).",
+                    "name": "Timeout f\u00f6r l\u00e4sning"
+                }
+            },
+            "name": "Skicka plats"
+        },
+        "send_message": {
+            "description": "Skickar en avisering.",
+            "fields": {
+                "config_entry_id": {
+                    "description": "Den konfigurationspost som representerar den Telegram-bot som ska skicka meddelandet.",
+                    "name": "ID f\u00f6r konfigurationspost"
+                },
+                "disable_notification": {
+                    "description": "Skickar tyst avisering. iOS-anv\u00e4ndare och webbanv\u00e4ndare kommer inte att f\u00e5 n\u00e5gon avisering, Android-anv\u00e4ndare kommer att f\u00e5 en avisering utan ljud.",
+                    "name": "Inaktivera avisering"
+                },
+                "disable_web_page_preview": {
+                    "description": "Inaktiverar f\u00f6rhandsgranskning av l\u00e4nkar i meddelandet.",
+                    "name": "Inaktivera f\u00f6rhandsgranskning av webbsidor"
+                },
+                "inline_keyboard": {
+                    "description": "Kommaseparerad lista \u00f6ver rader med kommandon f\u00f6r att skapa ett anpassat inline-tangentbord med knappar och tillh\u00f6rande callback-data.",
+                    "name": "Inline-tangentbord"
+                },
+                "keyboard": {
+                    "description": "Kommaseparerad lista med rader av kommandon f\u00f6r att skapa ett anpassat tangentbord. Tom lista rensar ett tidigare inst\u00e4llt tangentbord.",
+                    "name": "Tangentbord"
+                },
+                "message": {
+                    "description": "Meddelandetexten i aviseringen.",
+                    "name": "Meddelande"
+                },
+                "message_tag": {
+                    "description": "Tagg f\u00f6r skickat meddelande.",
+                    "name": "Meddelandetagg"
+                },
+                "message_thread_id": {
+                    "description": "Unik identifierare f\u00f6r forumets m\u00e5lmeddelandetr\u00e5d (\u00e4mne); Endast f\u00f6r forumets supergrupper.",
+                    "name": "Meddelandetr\u00e5ds-ID"
+                },
+                "parse_mode": {
+                    "description": "Parser f\u00f6r meddelandetexten.",
+                    "name": "Parse-l\u00e4ge"
+                },
+                "reply_to_message_id": {
+                    "description": "Markera meddelandet som ett svar p\u00e5 ett tidigare meddelande.",
+                    "name": "Svara p\u00e5 meddelande-ID"
+                },
+                "target": {
+                    "description": "En array av f\u00f6rgodk\u00e4nda chatt-ID:n som meddelandet ska skickas till. Om den inte finns \u00e4r det f\u00f6rsta till\u00e5tna chatt-ID:t standard.",
+                    "name": "M\u00e5l"
+                },
+                "timeout": {
+                    "description": "Timeout f\u00f6r skicka meddelande (i sekunder). Hj\u00e4lper till vid timeout-fel (d\u00e5lig internetanslutning, etc).",
+                    "name": "Timeout f\u00f6r l\u00e4sning"
+                },
+                "title": {
+                    "description": "Valfri titel f\u00f6r aviseringen. Kommer att komponeras som '%title\n%message'.",
+                    "name": "Rubrik"
+                }
+            },
+            "name": "Skicka meddelande"
+        },
+        "send_photo": {
+            "description": "Skickar ett foto.",
+            "fields": {
+                "authentication": {
+                    "name": "Autentiseringsmetod"
+                },
+                "caption": {
+                    "description": "Bildens titel.",
+                    "name": "Bildtext"
+                },
+                "config_entry_id": {
+                    "description": "Den konfigurationspost som representerar den Telegram-bot som ska skicka fotot.",
+                    "name": "ID f\u00f6r konfigurationspost"
+                },
+                "disable_notification": {
+                    "description": "Skickar tyst avisering. iOS-anv\u00e4ndare och webbanv\u00e4ndare kommer inte att f\u00e5 n\u00e5gon avisering, Android-anv\u00e4ndare kommer att f\u00e5 en avisering utan ljud.",
+                    "name": "Inaktivera avisering"
+                },
+                "file": {
+                    "description": "Lokal s\u00f6kv\u00e4g till en bild.",
+                    "name": "Fil"
+                },
+                "inline_keyboard": {
+                    "description": "Kommaseparerad lista \u00f6ver rader med kommandon f\u00f6r att skapa ett anpassat inline-tangentbord med knappar och tillh\u00f6rande callback-data.",
+                    "name": "Inline-tangentbord"
+                },
+                "keyboard": {
+                    "description": "Kommaseparerad lista \u00f6ver rader med kommandon f\u00f6r att skapa ett anpassat tangentbord.",
+                    "name": "Tangentbord"
+                },
+                "message_tag": {
+                    "description": "Tagg f\u00f6r skickat meddelande.",
+                    "name": "Meddelandetagg"
+                },
+                "message_thread_id": {
+                    "description": "Unik identifierare f\u00f6r forumets m\u00e5lmeddelandetr\u00e5d (\u00e4mne); Endast f\u00f6r forumets supergrupper.",
+                    "name": "Meddelandetr\u00e5ds-ID"
+                },
+                "parse_mode": {
+                    "description": "Parser f\u00f6r meddelandetexten.",
+                    "name": "Parse-l\u00e4ge"
+                },
+                "password": {
+                    "name": "L\u00f6senord"
+                },
+                "reply_to_message_id": {
+                    "description": "Markera meddelandet som ett svar p\u00e5 ett tidigare meddelande.",
+                    "name": "Svara p\u00e5 meddelande-ID"
+                },
+                "target": {
+                    "description": "En array av f\u00f6rgodk\u00e4nda chatt-ID:n att skicka dokumentet till. Om den inte finns \u00e4r det f\u00f6rsta till\u00e5tna chatt-ID:t standard.",
+                    "name": "M\u00e5l"
+                },
+                "timeout": {
+                    "description": "Timeout f\u00f6r att skicka foto (i sekunder).",
+                    "name": "Timeout f\u00f6r l\u00e4sning"
+                },
+                "url": {
+                    "description": "Fj\u00e4rrs\u00f6kv\u00e4g till en bild.",
+                    "name": "URL"
+                },
+                "username": {
+                    "name": "Anv\u00e4ndarnamn"
+                },
+                "verify_ssl": {
+                    "description": "Aktivera eller inaktivera verifiering av SSL-certifikat. Inaktivera om du laddar ned filen fr\u00e5n en URL och du inte vill verifiera serverns SSL-certifikat.",
+                    "name": "Verifiera SSL"
+                }
+            },
+            "name": "Skicka bild"
+        },
+        "send_poll": {
+            "description": "Skickar en omr\u00f6stning.",
+            "fields": {
+                "allows_multiple_answers": {
+                    "description": "Om omr\u00f6stningen till\u00e5ter flera svar.",
+                    "name": "Till\u00e5t flera svar"
+                },
+                "config_entry_id": {
+                    "description": "Den konfigurationspost som representerar den Telegram-bot som ska skicka omr\u00f6stningen.",
+                    "name": "ID f\u00f6r konfigurationspost"
+                },
+                "disable_notification": {
+                    "description": "Skickar tyst avisering. iOS-anv\u00e4ndare och webbanv\u00e4ndare kommer inte att f\u00e5 n\u00e5gon avisering, Android-anv\u00e4ndare kommer att f\u00e5 en avisering utan ljud.",
+                    "name": "Inaktivera avisering"
+                },
+                "is_anonymous": {
+                    "description": "Om omr\u00f6stningen beh\u00f6ver vara anonym. Detta \u00e4r standardinst\u00e4llningen.",
+                    "name": "\u00c4r anonym"
+                },
+                "message_tag": {
+                    "description": "Tagg f\u00f6r skickat meddelande.",
+                    "name": "Meddelandetagg"
+                },
+                "message_thread_id": {
+                    "description": "Unik identifierare f\u00f6r forumets m\u00e5lmeddelandetr\u00e5d (\u00e4mne); Endast f\u00f6r forumets supergrupper.",
+                    "name": "Meddelandetr\u00e5ds-ID"
+                },
+                "open_period": {
+                    "description": "Tid i sekunder som omr\u00f6stningen kommer att vara aktiv efter att den skapats, 5-600.",
+                    "name": "\u00d6ppen period"
+                },
+                "options": {
+                    "description": "Lista \u00f6ver svarsalternativ, 2-10 str\u00e4ngar 1-100 tecken vardera.",
+                    "name": "Alternativ"
+                },
+                "question": {
+                    "description": "Enk\u00e4tfr\u00e5ga, 1-300 tecken.",
+                    "name": "Fr\u00e5ga"
+                },
+                "reply_to_message_id": {
+                    "description": "Markera meddelandet som ett svar p\u00e5 ett tidigare meddelande.",
+                    "name": "Svara p\u00e5 meddelande-ID"
+                },
+                "target": {
+                    "description": "En array av f\u00f6rgodk\u00e4nda chatt-ID:n att skicka platsen till. Om den inte finns \u00e4r det f\u00f6rsta till\u00e5tna chatt-ID:t standard.",
+                    "name": "M\u00e5l"
+                },
+                "timeout": {
+                    "description": "Timeout f\u00f6r att skicka omr\u00f6stning (i sekunder).",
+                    "name": "Timeout f\u00f6r l\u00e4sning"
+                }
+            },
+            "name": "Skicka omr\u00f6stning"
+        },
+        "send_sticker": {
+            "description": "Skickar ett klisterm\u00e4rke",
+            "fields": {
+                "authentication": {
+                    "description": "Definiera vilken autentiseringsmetod som ska anv\u00e4ndas. St\u00e4ll in p\u00e5 `digest` f\u00f6r att anv\u00e4nda HTTP digest-autentisering, eller `bearer_token` f\u00f6r OAuth 2.0 bearer token-autentisering. Standardinst\u00e4llningen \u00e4r `basic`.",
+                    "name": "Autentiseringsmetod"
+                },
+                "config_entry_id": {
+                    "description": "Den konfigurationspost som representerar den Telegram-bot som ska skicka stickern.",
+                    "name": "ID f\u00f6r konfigurationspost"
+                },
+                "disable_notification": {
+                    "description": "Skickar tyst avisering. iOS-anv\u00e4ndare och webbanv\u00e4ndare kommer inte att f\u00e5 n\u00e5gon avisering, Android-anv\u00e4ndare kommer att f\u00e5 en avisering utan ljud.",
+                    "name": "Inaktivera avisering"
+                },
+                "file": {
+                    "description": "Lokal s\u00f6kv\u00e4g till en statisk .webp eller animerad .tgs-dekal.",
+                    "name": "Fil"
+                },
+                "inline_keyboard": {
+                    "description": "Kommaseparerad lista \u00f6ver rader med kommandon f\u00f6r att skapa ett anpassat inline-tangentbord med knappar och tillh\u00f6rande callback-data.",
+                    "name": "Inline-tangentbord"
+                },
+                "keyboard": {
+                    "description": "Kommaseparerad lista \u00f6ver rader med kommandon f\u00f6r att skapa ett anpassat tangentbord.",
+                    "name": "Tangentbord"
+                },
+                "message_tag": {
+                    "description": "Tagg f\u00f6r skickat meddelande.",
+                    "name": "Meddelandetagg"
+                },
+                "message_thread_id": {
+                    "description": "Unik identifierare f\u00f6r forumets m\u00e5lmeddelandetr\u00e5d (\u00e4mne); Endast f\u00f6r forumets supergrupper.",
+                    "name": "Meddelandetr\u00e5ds-ID"
+                },
+                "password": {
+                    "description": "L\u00f6senord (eller b\u00e4rartoken) f\u00f6r en URL som kr\u00e4ver HTTP-autentisering.",
+                    "name": "L\u00f6senord"
+                },
+                "reply_to_message_id": {
+                    "description": "Markera meddelandet som ett svar p\u00e5 ett tidigare meddelande.",
+                    "name": "Svara p\u00e5 meddelande-ID"
+                },
+                "sticker_id": {
+                    "description": "ID f\u00f6r ett klisterm\u00e4rke som finns p\u00e5 telegramservrar.",
+                    "name": "Dekal-ID"
+                },
+                "target": {
+                    "description": "En array av f\u00f6rgodk\u00e4nda chatt-ID:n att skicka dokumentet till. Om den inte finns \u00e4r det f\u00f6rsta till\u00e5tna chatt-ID:t standard.",
+                    "name": "M\u00e5l"
+                },
+                "timeout": {
+                    "description": "Timeout f\u00f6r att skicka sticker (i sekunder).",
+                    "name": "Timeout f\u00f6r l\u00e4sning"
+                },
+                "url": {
+                    "description": "Fj\u00e4rrs\u00f6kv\u00e4g till en statisk .webp eller animerad .tgs-dekal.",
+                    "name": "URL"
+                },
+                "username": {
+                    "description": "Anv\u00e4ndarnamn f\u00f6r en URL som kr\u00e4ver HTTP-autentisering.",
+                    "name": "Anv\u00e4ndarnamn"
+                },
+                "verify_ssl": {
+                    "description": "Aktivera eller inaktivera verifiering av SSL-certifikat. Inaktivera om du laddar ned filen fr\u00e5n en URL och du inte vill verifiera serverns SSL-certifikat.",
+                    "name": "Verifiera SSL"
+                }
+            },
+            "name": "Skicka klisterm\u00e4rke"
+        },
+        "send_video": {
+            "description": "Skickar en video.",
+            "fields": {
+                "authentication": {
+                    "description": "Definiera vilken autentiseringsmetod som ska anv\u00e4ndas. St\u00e4ll in p\u00e5 `digest` f\u00f6r att anv\u00e4nda HTTP digest-autentisering, eller `bearer_token` f\u00f6r OAuth 2.0 bearer token-autentisering. Standardinst\u00e4llningen \u00e4r `basic`.",
+                    "name": "Autentiseringsmetod"
+                },
+                "caption": {
+                    "description": "Titel p\u00e5 videon.",
+                    "name": "Bildtext"
+                },
+                "config_entry_id": {
+                    "description": "Den konfigurationspost som representerar den Telegram-bot som ska skicka videon.",
+                    "name": "ID f\u00f6r konfigurationspost"
+                },
+                "disable_notification": {
+                    "description": "Skickar tyst avisering. iOS-anv\u00e4ndare och webbanv\u00e4ndare kommer inte att f\u00e5 n\u00e5gon avisering, Android-anv\u00e4ndare kommer att f\u00e5 en avisering utan ljud.",
+                    "name": "Inaktivera avisering"
+                },
+                "file": {
+                    "description": "Lokal s\u00f6kv\u00e4g till en video.",
+                    "name": "Fil"
+                },
+                "inline_keyboard": {
+                    "description": "Kommaseparerad lista \u00f6ver rader med kommandon f\u00f6r att skapa ett anpassat inline-tangentbord med knappar och tillh\u00f6rande callback-data.",
+                    "name": "Inline-tangentbord"
+                },
+                "keyboard": {
+                    "description": "Kommaseparerad lista \u00f6ver rader med kommandon f\u00f6r att skapa ett anpassat tangentbord.",
+                    "name": "Tangentbord"
+                },
+                "message_tag": {
+                    "description": "Tagg f\u00f6r skickat meddelande.",
+                    "name": "Meddelandetagg"
+                },
+                "message_thread_id": {
+                    "description": "Unik identifierare f\u00f6r forumets m\u00e5lmeddelandetr\u00e5d (\u00e4mne); Endast f\u00f6r forumets supergrupper.",
+                    "name": "Meddelandetr\u00e5ds-ID"
+                },
+                "parse_mode": {
+                    "description": "Parser f\u00f6r meddelandetexten.",
+                    "name": "Parse-l\u00e4ge"
+                },
+                "password": {
+                    "description": "L\u00f6senord (eller b\u00e4rartoken) f\u00f6r en URL som kr\u00e4ver HTTP-autentisering.",
+                    "name": "L\u00f6senord"
+                },
+                "reply_to_message_id": {
+                    "description": "Markera meddelandet som ett svar p\u00e5 ett tidigare meddelande.",
+                    "name": "Svara p\u00e5 meddelande-ID"
+                },
+                "target": {
+                    "description": "En array av f\u00f6rgodk\u00e4nda chatt-ID:n att skicka dokumentet till. Om den inte finns \u00e4r det f\u00f6rsta till\u00e5tna chatt-ID:t standard.",
+                    "name": "M\u00e5l"
+                },
+                "timeout": {
+                    "description": "Timeout f\u00f6r att skicka video (i sekunder).",
+                    "name": "Timeout f\u00f6r l\u00e4sning"
+                },
+                "url": {
+                    "description": "Fj\u00e4rrs\u00f6kv\u00e4g till en video.",
+                    "name": "URL"
+                },
+                "username": {
+                    "description": "Anv\u00e4ndarnamn f\u00f6r en URL som kr\u00e4ver HTTP-autentisering.",
+                    "name": "Anv\u00e4ndarnamn"
+                },
+                "verify_ssl": {
+                    "description": "Aktivera eller inaktivera verifiering av SSL-certifikat. Inaktivera om du laddar ned filen fr\u00e5n en URL och du inte vill verifiera serverns SSL-certifikat.",
+                    "name": "Verifiera SSL"
+                }
+            },
+            "name": "Skicka video"
+        },
+        "send_voice": {
+            "description": "Skickar ett r\u00f6stmeddelande",
+            "fields": {
+                "authentication": {
+                    "description": "Definiera vilken autentiseringsmetod som ska anv\u00e4ndas. St\u00e4ll in p\u00e5 `digest` f\u00f6r att anv\u00e4nda HTTP digest-autentisering, eller `bearer_token` f\u00f6r OAuth 2.0 bearer token-autentisering. Standardinst\u00e4llningen \u00e4r `basic`.",
+                    "name": "Autentiseringsmetod"
+                },
+                "caption": {
+                    "description": "Rubrik p\u00e5 r\u00f6stmeddelande",
+                    "name": "Bildtext"
+                },
+                "config_entry_id": {
+                    "description": "Den konfigurationspost som representerar den Telegram-bot som ska skicka r\u00f6stmeddelandet.",
+                    "name": "ID f\u00f6r konfigurationspost"
+                },
+                "disable_notification": {
+                    "description": "Skickar tyst avisering. iOS-anv\u00e4ndare och webbanv\u00e4ndare kommer inte att f\u00e5 n\u00e5gon avisering, Android-anv\u00e4ndare kommer att f\u00e5 en avisering utan ljud.",
+                    "name": "Inaktivera avisering"
+                },
+                "file": {
+                    "description": "Lokal s\u00f6kv\u00e4g till ett r\u00f6stmeddelande.",
+                    "name": "Fil"
+                },
+                "inline_keyboard": {
+                    "description": "Kommaseparerad lista \u00f6ver rader med kommandon f\u00f6r att skapa ett anpassat inline-tangentbord med knappar och tillh\u00f6rande callback-data.",
+                    "name": "Inline-tangentbord"
+                },
+                "keyboard": {
+                    "description": "Kommaseparerad lista \u00f6ver rader med kommandon f\u00f6r att skapa ett anpassat tangentbord.",
+                    "name": "Tangentbord"
+                },
+                "message_tag": {
+                    "description": "Tagg f\u00f6r skickat meddelande.",
+                    "name": "Meddelandetagg"
+                },
+                "message_thread_id": {
+                    "description": "Unik identifierare f\u00f6r forumets m\u00e5lmeddelandetr\u00e5d (\u00e4mne); Endast f\u00f6r forumets supergrupper.",
+                    "name": "Meddelandetr\u00e5ds-ID"
+                },
+                "password": {
+                    "description": "L\u00f6senord (eller b\u00e4rartoken) f\u00f6r en URL som kr\u00e4ver HTTP-autentisering.",
+                    "name": "L\u00f6senord"
+                },
+                "reply_to_message_id": {
+                    "description": "Markera meddelandet som ett svar p\u00e5 ett tidigare meddelande.",
+                    "name": "Svara p\u00e5 meddelande-ID"
+                },
+                "target": {
+                    "description": "En array av f\u00f6rgodk\u00e4nda chatt-ID:n att skicka dokumentet till. Om den inte finns \u00e4r det f\u00f6rsta till\u00e5tna chatt-ID:t standard.",
+                    "name": "M\u00e5l"
+                },
+                "timeout": {
+                    "description": "Timeout f\u00f6r att skicka r\u00f6st (i sekunder).",
+                    "name": "Timeout f\u00f6r l\u00e4sning"
+                },
+                "url": {
+                    "description": "Fj\u00e4rrs\u00f6kv\u00e4g till ett r\u00f6stmeddelande.",
+                    "name": "URL"
+                },
+                "username": {
+                    "description": "Anv\u00e4ndarnamn f\u00f6r en URL som kr\u00e4ver HTTP-autentisering.",
+                    "name": "Anv\u00e4ndarnamn"
+                },
+                "verify_ssl": {
+                    "description": "Aktivera eller inaktivera verifiering av SSL-certifikat. Inaktivera om du laddar ned filen fr\u00e5n en URL och du inte vill verifiera serverns SSL-certifikat.",
+                    "name": "Verifiera SSL"
+                }
+            },
+            "name": "Skicka r\u00f6st"
+        },
+        "set_message_reaction": {
+            "fields": {
+                "chat_id": {
+                    "name": "Chatt-ID"
+                },
+                "config_entry_id": {
+                    "name": "ID f\u00f6r konfigurationspost"
+                },
+                "message_id": {
+                    "name": "Meddelande-ID"
+                },
+                "reaction": {
+                    "name": "Reaktion"
+                }
+            }
+        }
+    }
+}
