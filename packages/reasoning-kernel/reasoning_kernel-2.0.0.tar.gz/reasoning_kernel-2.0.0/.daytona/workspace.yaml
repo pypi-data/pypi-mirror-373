@@ -1,0 +1,241 @@
+version: '1.0'
+name: reasoning-kernel-workspace
+description: Open-world cognitive reasoning system with probabilistic modeling
+
+# Daytona Cloud workspace configuration
+provider: docker
+runtime: container
+
+# Machine specifications
+machine:
+  type: medium
+  cpu: 2
+  memory: 4GB
+  disk: 20GB
+  gpu: optional
+
+# Development environment
+environment:
+  image: python:3.12-slim
+  dockerfile: |
+    FROM python:3.12-slim
+    
+    # Install system dependencies for scientific computing
+    RUN apt-get update && apt-get install -y \
+        build-essential \
+        git \
+        curl \
+        vim \
+        gcc \
+        g++ \
+        make \
+        cmake \
+        libopenblas-dev \
+        libssl-dev \
+        ca-certificates \
+        && rm -rf /var/lib/apt/lists/*
+    
+    # Install JAX for NumPyro (CPU version by default)
+    RUN pip install --upgrade pip setuptools wheel
+    RUN pip install --no-cache-dir \
+        "jax[cpu]" \
+        jaxlib \
+        numpyro \
+        arviz
+    
+    # Install Redis client with SSL support
+    RUN pip install --no-cache-dir \
+        "redis[hiredis]>=5.0.0" \
+        redis-om \
+        redis-py-cluster
+    
+    # Install Azure OpenAI and semantic-kernel
+    RUN pip install --no-cache-dir \
+        openai \
+        semantic-kernel==1.35.3 \
+        azure-identity \
+        azure-core
+    
+    # Install development and monitoring tools
+    RUN pip install --no-cache-dir \
+        ipython \
+        jupyter \
+        jupyterlab \
+        black \
+        ruff \
+        pytest \
+        pytest-asyncio \
+        pytest-cov \
+        mypy \
+        rich \
+        httpx \
+        pydantic \
+        python-dotenv \
+        loguru \
+        python-json-logger
+    
+    # Install web framework dependencies
+    RUN pip install --no-cache-dir \
+        fastapi \
+        uvicorn[standard] \
+        websockets \
+        sse-starlette
+    
+    # Set working directory
+    WORKDIR /workspace
+    
+    # Copy project files
+    COPY . /workspace/
+    
+    # Install project in development mode
+    RUN if [ -f "pyproject.toml" ]; then pip install -e .; fi
+
+# Git repository configuration
+repository:
+  url: https://github.com/qredence/reasoning-kernel
+  branch: main
+  
+# IDE and extensions
+ide:
+  name: vscode
+  settings:
+    python.defaultInterpreter: /usr/local/bin/python
+    python.linting.enabled: true
+    python.formatting.provider: black
+    python.testing.pytestEnabled: true
+  extensions:
+    - ms-python.python
+    - ms-python.vscode-pylance
+    - ms-python.debugpy
+    - ms-toolsai.jupyter
+    - ms-toolsai.vscode-jupyter-cell-tags
+    - github.copilot
+    - github.copilot-chat
+    - redhat.vscode-yaml
+    - ms-azuretools.vscode-docker
+
+# Environment variables
+env:
+  # Azure OpenAI (Corrected deployment names)
+  AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
+  AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+  AZURE_OPENAI_API_VERSION: "2025-04-01-preview"
+  AZURE_OPENAI_DEPLOYMENT_GPT5_MINI: "gpt-5-mini"
+  AZURE_OPENAI_DEPLOYMENT_O4_MINI: "o4-mini"
+  AZURE_OPENAI_DEPLOYMENT_ROUTER: "model-router"
+  AZURE_OPENAI_DEPLOYMENT_EMBEDDING: "text-embedding-3-small"
+  
+  # Redis Cloud
+  REDIS_CLOUD_URL: ${REDIS_CLOUD_URL}
+  REDIS_CLOUD_PASSWORD: ${REDIS_CLOUD_PASSWORD}
+  REDIS_SSL: "true"
+  REDIS_SSL_CERT_REQS: "required"
+  
+  # Daytona
+  DAYTONA_API_URL: "https://app.daytona.io"
+  DAYTONA_WORKSPACE_ID: ${DAYTONA_WORKSPACE_ID}
+  DAYTONA_API_KEY: ${DAYTONA_API_KEY}
+  
+  # Application
+  REASONING_ENV: "development"
+  LOG_LEVEL: "INFO"
+  PYTHONPATH: "/workspace"
+
+# Port forwarding
+ports:
+  - name: API Server
+    port: 8000
+    protocol: http
+  - name: Jupyter Lab
+    port: 8888
+    protocol: http
+  - name: TensorBoard
+    port: 6006
+    protocol: http
+
+# Startup commands
+commands:
+  - name: install
+    command: |
+      echo "📦 Installing dependencies..."
+      pip install -e ".[all]"
+      echo "✅ Dependencies installed"
+  
+  - name: start
+    command: |
+      echo "🚀 Starting Reasoning Kernel CLI..."
+      python -m reasoning_kernel.cli.interactive
+  
+  - name: test
+    command: |
+      echo "🧪 Running tests..."
+      pytest tests/ -v --cov=reasoning_kernel --cov-report=term-missing
+  
+  - name: benchmark
+    command: |
+      echo "📊 Running performance benchmarks..."
+      python -m tests.performance.msa_performance_benchmark
+  
+  - name: format
+    command: |
+      echo "🎨 Formatting code..."
+      black reasoning_kernel/
+      ruff check --fix reasoning_kernel/
+  
+  - name: notebook
+    command: |
+      echo "📓 Starting Jupyter Lab..."
+      jupyter lab --ip=0.0.0.0 --no-browser --allow-root
+  
+  - name: api
+    command: |
+      echo "🌐 Starting API server..."
+      uvicorn reasoning_kernel.api.main:app --host 0.0.0.0 --port 8000 --reload
+  
+  - name: monitor
+    command: |
+      echo "📈 Starting monitoring dashboard..."
+      python -m reasoning_kernel.monitoring.dashboard
+
+# Health checks
+healthcheck:
+  endpoint: http://localhost:8000/health
+  interval: 30s
+  timeout: 10s
+  retries: 3
+
+# Resource limits
+resources:
+  limits:
+    cpu: 2
+    memory: 4GB
+  requests:
+    cpu: 2
+    memory: 4GB
+
+# Volumes for persistent data
+volumes:
+  - name: models
+    path: /workspace/models
+    size: 10GB
+  - name: data
+    path: /workspace/data
+    size: 20GB
+  - name: logs
+    path: /workspace/logs
+    size: 5GB
+
+# Security settings
+security:
+  network:
+    allowOutbound: true
+    allowedDomains:
+      - "*.openai.azure.com"
+      - "*.redis-cloud.com"
+  - "app.daytona.io"
+  - "github.com"
+  - "pypi.org"
+  secrets:
+    - AZURE_OPENAI_API_KEY
+    - REDIS_CLOUD_PASSWORD
+    - DAYTONA_API_KEY
