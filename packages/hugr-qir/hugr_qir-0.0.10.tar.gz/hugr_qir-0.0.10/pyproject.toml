@@ -1,0 +1,108 @@
+[project]
+name = "hugr-qir"
+version = "0.0.10"
+description = "Quantinuum's tool for converting HUGR to QIR"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "click~=8.1.8",
+    "quantinuum-qircheck~=0.3.0",
+    "llvmlite~=0.44.0",
+    "hugr~=0.13.0",
+    "guppylang~=0.21.0"
+]
+
+[project.scripts]
+hugr-qir = "hugr_qir.cli:hugr_qir"
+
+[dependency-groups]
+dev = [
+    "maturin>=1.1,<2.0",
+    "pip>=24.3.1",
+    "pytest>=8.3.4",
+    "pytest-snapshot>=0.9.0",
+    "pytest-mock>=3.14.0",
+    "ruff>=0.9.0",
+    "mypy >=1.9.0,<2",
+    "pytest-cov >=5.0.0,<6",
+]
+examples = [
+    "pytket-quantinuum>=0.45.0",
+    "jupyterlab>=4.4.2",
+]
+
+[build-system]
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+module-name = "hugr_qir._hugr_qir"
+python-source = "python/"
+python-packages = ["hugr_qir"]
+bindings = "pyo3"
+
+[tool.pyright]
+# Rust bindings have typing stubs but no python source code.
+reportMissingModuleSource = "none"
+
+[tool.cibuildwheel]
+build = "cp310-*"
+skip = "*-win32 *-manylinux_i686 *-musllinux*"
+manylinux-x86_64-image = "manylinux_2_34"
+test-groups = ["dev"]
+test-sources = ["python/tests", "guppy_examples"]
+test-command = "pytest python/tests -k test_guppy_files"
+
+[tool.cibuildwheel.linux.environment]
+PATH = '$HOME/.cargo/bin:/tmp/llvm/bin:$PATH'
+LLVM_SYS_140_PREFIX = '/tmp/llvm'
+[tool.cibuildwheel.linux]
+before-all = [
+    'curl -sSf https://sh.rustup.rs | sh -s -- -y',
+    # NOTE: used to be 'dnf install libffi-devel -y',
+    'dnf install https://azure.repo.almalinux.org/9.6/BaseOS/x86_64/os/Packages/libffi-3.4.2-8.el9.x86_64.rpm',
+    'curl -LO https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/clang+llvm-14.0.6-x86_64-linux-gnu-rhel-8.4.tar.xz',
+    'mkdir -p /tmp/llvm',
+    'tar xf clang+llvm-14.0.6-x86_64-linux-gnu-rhel-8.4.tar.xz -C /tmp/llvm --strip-components=1',
+]
+repair-wheel-command = [
+    'auditwheel repair -w {dest_dir} {wheel}',
+    'pipx run abi3audit --strict --report {wheel}',
+]
+
+[tool.cibuildwheel.macos.environment]
+PATH = '/tmp/llvm:$PATH'
+LLVM_SYS_140_PREFIX = '/tmp/llvm'
+MACOSX_DEPLOYMENT_TARGET = "13.2"
+[tool.cibuildwheel.macos]
+before-all = [
+    'curl -sSf https://sh.rustup.rs | sh -s -- -y',
+    'if [ "$(uname -m)" = "arm64" ]; then ARCH_PREFIX=arm64-apple-darwin22.3.0; else ARCH_PREFIX=x86_64-apple-darwin; fi',
+    'curl -LO https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/clang+llvm-14.0.6-$ARCH_PREFIX.tar.xz',
+    'mkdir -p /tmp/llvm',
+    'tar xf clang+llvm-14.0.6-$ARCH_PREFIX.tar.xz -C /tmp/llvm --strip-components=1',
+]
+repair-wheel-command = [
+    'DYLD_LIBRARY_PATH=/tmp/llvm/lib delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}',
+    'pipx run abi3audit --strict --report {wheel}',
+]
+
+[tool.cibuildwheel.windows.environment]
+PATH = 'C:\\LLVM\\bin;$PATH'
+LLVM_SYS_140_PREFIX = 'C:\\LLVM'
+[tool.cibuildwheel.windows]
+before-all = [
+    'rustup update',
+    'curl -LO https://github.com/PLC-lang/llvm-package-windows/releases/download/v14.0.6/LLVM-14.0.6-win64.7z',
+    '7z x LLVM-14.0.6-win64.7z "-oC:\LLVM" -y',
+]
+before-build = ['pip install delvewheel']
+repair-wheel-command = [
+    'delvewheel repair -w {dest_dir} {wheel}',
+    'pipx run abi3audit --strict --report {wheel}',
+]
+test-groups = []
+before-test = [
+    'pip install --group {project}/pyproject.toml:dev'
+]
