@@ -1,0 +1,2 @@
+- python -m build --wheel
+- twine upload dist/fighub-0.1.5-py2.py3-none-any.whl
