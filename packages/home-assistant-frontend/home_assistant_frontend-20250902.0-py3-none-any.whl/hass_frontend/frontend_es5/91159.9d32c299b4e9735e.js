@@ -1,0 +1,2 @@
+"use strict";(self.webpackChunkhome_assistant_frontend=self.webpackChunkhome_assistant_frontend||[]).push([["91159"],{11531:function(t,e,a){a.r(e),a.d(e,{MapDashboardStrategy:function(){return o}});a(1455);var s=a(73742),n=a(59048),r=a(7616);class o extends n.fl{static async generate(t){return{views:[{strategy:t}]}}}o.noEditor=!0,o=(0,s.__decorate)([(0,r.Mo)("map-dashboard-strategy")],o)}}]);
+//# sourceMappingURL=91159.9d32c299b4e9735e.js.map
