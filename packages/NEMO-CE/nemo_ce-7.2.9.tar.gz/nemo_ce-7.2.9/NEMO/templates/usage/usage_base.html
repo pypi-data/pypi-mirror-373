@@ -1,0 +1,295 @@
+{% extends 'base.html' %}
+{% load custom_tags_and_filters %}
+{% load static %}
+{% block title %}{{ title }}{% endblock %}
+{% block extrahead %}
+    <script type="text/javascript" src="{% static "datetimepicker/bootstrap-datetimepicker.js" %}"></script>
+    <link rel="stylesheet" type="text/css" href="{% static "datetimepicker/bootstrap-datetimepicker.css" %}" />
+{% endblock %}
+{% block content %}
+    {% url 'user_usage' as usage_url %}
+    {% url 'staff_usage' as staff_usage_url %}
+    {% url 'project_usage' as project_usage_url %}
+    {% url 'billing' as billing_url %}
+    {% url 'project_billing' as project_billing_url %}
+    <h1>
+        {{ title }} <small class="light-grey">between {{ start_date|date }} and {{ end_date|date }}</small>
+    </h1>
+    <p>
+        This page presents a monthly report of your {{ facility_name }}
+        {% if billing_service %}
+            use and billing information.
+        {% else %}
+            use.
+        {% endif %}
+        Approved adjustments are
+        {% if not billing_service %}not{% endif %}
+        reflected
+        {% if billing_service %}in the billing information data but not{% endif %}
+        in the usage data.
+    </p>
+    <div style="height: 20px"></div>
+    <form id="usage_form" class="form-horizontal" role="form">
+        <div class="form-group">
+            <label for="month_list" class="control-label col-sm-2">Select month</label>
+            <div class="col-sm-3 col-md-3 col-lg-2">
+                <select id="month_list"
+                        class="form-control"
+                        style="margin-right: 5px;
+                               text-align-last:center"
+                        onchange="set_dates_from_month(this.value)">
+                    <option selected></option>
+                    {% for month in month_list %}<option>{{ month|date:"F, Y" }}</option>{% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <div class="control-label col-sm-2">
+                <label for="start_date">or from</label>
+            </div>
+            <div class="col-sm-3 col-md-3 col-lg-2">
+                <input type="text"
+                       id="start_date"
+                       name="start"
+                       class="form-control text-center"
+                       placeholder="Choose a date"
+                       value="{{ start_date.date|input_date_format }}">
+            </div>
+            <div class="control-label col-sm-1 col-sm-1 col-lg-1" style="text-align: center">
+                <label for="end_date">to</label>
+            </div>
+            <div class="col-sm-3 col-md-3 col-lg-2">
+                <input type="text"
+                       id="end_date"
+                       name="end"
+                       class="form-control text-center"
+                       placeholder="Choose a date"
+                       value="{{ end_date.date|input_date_format }}">
+            </div>
+            {% if pi_projects %}
+            </div>
+            <div class="form-group">
+                <div class="control-label col-sm-2">
+                    <label for="pi_project">Managed project</label>
+                </div>
+                <div class="col-sm-3 col-md-3 col-lg-2">
+                    <select {% if show_only_my_usage %}disabled{% endif %}
+                            name="pi_project"
+                            id="pi_project"
+                            class="form-control"
+                            style="text-align-last:center"
+                            title="Select a project you are the PI for to see all usage for that project">
+                        <option selected value="">All</option>
+                        {% for project in pi_projects %}
+                            <option value="{{ project.id }}"
+                                    {% if selected_project and selected_project.id == project.id %}selected{% endif %}>
+                                {{ project.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-sm-3 col-md-3 col-lg-2">
+                    <div class="checkbox">
+                        <input type="hidden" name="show_only_my_usage" value="off">
+                        <label>
+                            <input type="checkbox"
+                                   {% if show_only_my_usage %}checked{% endif %}
+                                   name="show_only_my_usage"
+                                   value="enabled"
+                                   onclick="$('#pi_project').attr('disabled', this.checked)">
+                            Show only my usage
+                        </label>
+                    </div>
+                </div>
+            {% endif %}
+            {% if charges_projects %}
+            </div>
+            <div class="form-group">
+                <div class="control-label col-sm-2">
+                    <label for="project">Project</label>
+                </div>
+                <div class="col-sm-3 col-md-3 col-lg-2">
+                    <select name="project"
+                            id="project"
+                            class="form-control"
+                            style="text-align-last:center"
+                            title="Select a project to see usage for only that project">
+                        <option selected value="">All</option>
+                        {% for project in charges_projects %}
+                            <option value="{{ project.id }}"
+                                    {% if selected_user_project and selected_user_project.id == project.id %}selected{% endif %}>
+                                {{ project.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            {% endif %}
+            {% if not project_autocomplete %}
+                <div class="hidden-lg hidden-md {% if charges_projects or pi_projects %}hidden-sm{% else %}col-sm-12{% endif %}">
+                    &nbsp;
+                </div>
+                <div class="col-sm-4 col-lg-3 {% if charges_projects or pi_projects %}text-right{% else %}col-md-3{% endif %}">
+                    {% button type="save" submit=False onclick="$('#csv_export').val('');this.form.submit();" value="Update" icon="glyphicon-refresh" %}
+                    <input id="csv_export" type="hidden" name="csv" value="">
+                    {% if not billing_service %}
+                        {% button style="margin-left: 15px" type="export" onclick="$('#csv_export').val('true');this.form.submit();" value="Export" %}
+                    {% else %}
+                        {% url "billing" as billing_url %}
+                        {% if billing_url not in request.path %}
+                            {% button style="margin-left: 15px" type="export" onclick="$('#csv_export').val('true');this.form.submit();" value="Export" %}
+                        {% endif %}
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+        {% if project_autocomplete and account_types %}
+            <div class="form-group">
+                <label for="account_type_select" class="control-label col-sm-2">Account Type:</label>
+                <div class="col-sm-3 col-md-3 col-lg-2">
+                    <select name="account_type"
+                            id="account_type_select"
+                            class="form-control"
+                            style="margin-right: 5px;
+                                   text-align-last:center">
+                        <option value="">- Any -</option>
+                        {# Option to clear filter #}
+                        {% for type in account_types %}
+                            <option value="{{ type.id }}" {% if type.id == selected_account_type|to_int %}selected{% endif %}>
+                                {{ type.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        {% endif %}
+        {% if project_autocomplete and project_types %}
+            <div class="form-group">
+                <label for="project_type_select" class="control-label col-sm-2">Project Type</label>
+                <div class="col-sm-3 col-md-3 col-lg-2">
+                    <select name="project_type"
+                            id="project_type_select"
+                            class="form-control"
+                            style="margin-right: 5px;
+                                   text-align-last:center">
+                        <option value="">- Any -</option>
+                        {# Option to clear filter #}
+                        {% for type in project_types %}
+                            <option value="{{ type.id }}" {% if type.id == selected_project_type|to_int %}selected{% endif %}>
+                                {{ type.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        {% endif %}
+        <input id="type" name="type" type="hidden" value="{{ kind|default:'' }}" />
+        <input id="id" name="id" type="hidden" value="{{ identifier|default:'' }}" />
+        <script>
+            const js_date_format = "{{ date_input_js_format }}";
+
+			let start_date_jq = $('#start_date');
+			let end_date_jq = $('#end_date');
+			start_date_jq.datetimepicker({format: js_date_format});
+			end_date_jq.datetimepicker({format: js_date_format});
+
+			function validate_charge(url, element)
+            {
+                function validation_success(response, status, xml_http_request)
+				{
+					$(element).closest('.usage-charge-adjustment-button').hide();
+				}
+                ajax_post(url, undefined, validation_success, ajax_failure_callback("Charge validation failed", "There was a problem validating this charge"));
+			}
+
+			function set_dates_from_month(month_input)
+			{
+                if (month_input)
+                {
+                    let month = moment(month_input, "MMMM, YYYY");
+                    let firstOfMonth = month.startOf('month').format(js_date_format);
+                    let lastOfMonth = month.endOf('month').format(js_date_format);
+    
+                    start_date_jq.val(firstOfMonth);
+                    end_date_jq.val(lastOfMonth);
+                }
+			}
+
+			function set_dropdown_selected()
+			{
+			    if ('{{ start_date|default_if_none:'' }}' && '{{ end_date|default_if_none:'' }}')
+			    {
+					let start = moment('{{ start_date.date|input_date_format }}', js_date_format);
+					let end = moment('{{ end_date.date|input_date_format }}', js_date_format);
+					if (start.month() === end.month() && start.year() === end.year() && start.day() === start.startOf('month').day() && end.day() === end.endOf('month').day())
+					{
+					    let month = start.format("MMMM, YYYY");
+						$('#month_list').val(month);
+					}
+				}
+			}
+			$(set_dropdown_selected());
+
+        </script>
+        {% if project_autocomplete %}
+            <div class="form-group">
+                <label class="control-label col-sm-2" for="search">For</label>
+                <div class="col-sm-7 col-md-7 col-lg-5" id="search_container">
+                    <input id="search"
+                           type="text"
+                           class="form-control"
+                           style="width: 100%"
+                           autofocus
+                           {% if selection %}placeholder="{{ selection }}" {% else %}placeholder="Search for an account, project, application or user"{% endif %}>
+                </div>
+                <div class="hidden-lg hidden-md hidden-sm">&nbsp;</div>
+                <div class="col-md-3">
+                    {% button type="save" submit=False onclick="$('#csv_export').val('');this.form.submit();" value="Update" icon="glyphicon-refresh" %}
+                    <input id="csv_export" type="hidden" name="csv" value="">
+                    {% button style="margin-left: 15px" type="export" onclick="$('#csv_export').val('true');this.form.submit();" value="Export" %}
+                </div>
+            </div>
+            <script>
+				function get_search_item(jquery_event, search_selection)
+				{
+					$('#type').val(search_selection.type);
+					$('#id').val(search_selection.id);
+				}
+				function on_load()
+				{
+					$('#search').autocomplete('accounts_and_projects_for_usage', get_search_item, {% json_search_base_with_extra_fields search_items %});
+				}
+				$(on_load);
+
+            </script>
+            <style>
+				#search_container .tt-dropdown-menu
+				{
+					min-width: 400px;
+					max-height: 600px;
+				}
+
+            </style>
+        {% endif %}
+    </form>
+    <div style="height: 5px; border-top: 1px dotted #eee"></div>
+    <div style="margin-top:10px">
+        <ul class="nav nav-pills" id="tabs">
+            <li class="{% if usage_url in request.path or project_usage_url in request.path %}active{% endif %}">
+                <a class="usage_tab_link"
+                   href="{% if project_autocomplete %}{{ project_usage_url }}{% else %}{{ usage_url }}{% endif %}">Usage</a>
+            </li>
+            {% if user.is_any_part_of_staff and not project_autocomplete %}
+                <li class="{% if staff_usage_url in request.path %}active{% endif %}">
+                    <a class="usage_tab_link" href="{{ staff_usage_url }}">Staff usage</a>
+                </li>
+            {% endif %}
+            {% if billing_service %}
+                <li class="{% if billing_url in request.path or project_billing_url in request.path %}active{% endif %}">
+                    <a class="usage_tab_link"
+                       href="{% if project_autocomplete %}{{ project_billing_url }}{% else %}{{ billing_url }}{% endif %}">Billing Information</a>
+                </li>
+            {% endif %}
+        </ul>
+    </div>
+    {% block usage_content %}{% endblock %}
+{% endblock %}
