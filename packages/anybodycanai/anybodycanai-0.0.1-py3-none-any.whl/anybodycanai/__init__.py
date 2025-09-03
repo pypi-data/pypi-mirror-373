@@ -1,0 +1,1 @@
+from .core import starter_function
