@@ -1,0 +1,222 @@
+name: Build
+
+on: [push, pull_request]
+
+jobs:
+  build_wheels:
+    name: Build wheels on ${{ matrix.config.name }}
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: "linux aarch64 38"
+            os: ubuntu-latest
+            arch: aarch64
+            build: "cp38*"
+            pyversion: 38
+          - name: "linux aarch64 39"
+            os: ubuntu-latest
+            arch: aarch64
+            build: "cp39*"
+            pyversion: 39
+          - name: "linux aarch64 310"
+            os: ubuntu-latest
+            arch: aarch64
+            build: "cp310*"
+            pyversion: 310
+          - name: "linux aarch64 311"
+            os: ubuntu-latest
+            arch: aarch64
+            build: "cp311*"
+            pyversion: 311
+          - name: "linux aarch64 312"
+            os: ubuntu-latest
+            arch: aarch64
+            build: "cp312*"
+            pyversion: 312
+          - name: "linux aarch64 313"
+            os: ubuntu-latest
+            arch: aarch64
+            build: "cp313*"
+            pyversion: 313
+          - name: "linux aarch64 314"
+            os: ubuntu-latest
+            arch: aarch64
+            build: "cp314*"
+            pyversion: 314
+          - name: "linux ppc64le 38"
+            os: ubuntu-latest
+            arch: ppc64le
+            build: "cp38*"
+            pyversion: 38
+          - name: "linux ppc64le 39"
+            os: ubuntu-latest
+            arch: ppc64le
+            build: "cp39*"
+            pyversion: 39
+          - name: "linux ppc64le 310"
+            os: ubuntu-latest
+            arch: ppc64le
+            build: "cp310*"
+            pyversion: 310
+          - name: "linux ppc64le 311"
+            os: ubuntu-latest
+            arch: ppc64le
+            build: "cp311*"
+            pyversion: 311
+          - name: "linux ppc64le 312"
+            os: ubuntu-latest
+            arch: ppc64le
+            build: "cp312*"
+            pyversion: 312
+          - name: "linux ppc64le 313"
+            os: ubuntu-latest
+            arch: ppc64le
+            build: "cp313*"
+            pyversion: 313
+          - name: "linux ppc64le 314"
+            os: ubuntu-latest
+            arch: ppc64le
+            build: "cp314*"
+            pyversion: 314
+          - name: "linux s390x 38"
+            os: ubuntu-latest
+            arch: s390x
+            build: "cp38*manylinux*"
+            pyversion: 38
+          - name: "linux s390x 39"
+            os: ubuntu-latest
+            arch: s390x
+            build: "cp39*manylinux*"
+            pyversion: 39
+          - name: "linux s390x 310"
+            os: ubuntu-latest
+            arch: s390x
+            build: "cp310*manylinux*"
+            pyversion: 310
+          - name: "linux s390x 311"
+            os: ubuntu-latest
+            arch: s390x
+            build: "cp311*manylinux*"
+            pyversion: 311
+          - name: "linux s390x 312"
+            os: ubuntu-latest
+            arch: s390x
+            build: "cp312*manylinux*"
+            pyversion: 312
+          - name: "linux s390x 313"
+            os: ubuntu-latest
+            arch: s390x
+            build: "cp313*manylinux*"
+            pyversion: 313
+          - name: "linux s390x 314"
+            os: ubuntu-latest
+            arch: s390x
+            build: "cp314*manylinux*"
+            pyversion: 314
+          - name: "linux riscv64 38"
+            os: ubuntu-latest
+            arch: riscv64
+            build: "cp38*"
+            pyversion: 38
+          - name: "linux riscv64 39"
+            os: ubuntu-latest
+            arch: riscv64
+            build: "cp39*"
+            pyversion: 39
+          - name: "linux riscv64 310"
+            os: ubuntu-latest
+            arch: riscv64
+            build: "cp310*"
+            pyversion: 310
+          - name: "linux riscv64 311"
+            os: ubuntu-latest
+            arch: riscv64
+            build: "cp311*"
+            pyversion: 311
+          - name: "linux riscv64 312"
+            os: ubuntu-latest
+            arch: riscv64
+            build: "cp312*"
+            pyversion: 312
+          - name: "linux riscv64 313"
+            os: ubuntu-latest
+            arch: riscv64
+            build: "cp313*"
+            pyversion: 313
+          - name: "linux riscv64 314"
+            os: ubuntu-latest
+            arch: riscv64
+            build: "cp314*"
+            pyversion: 314
+          - name: windoof
+            os: windows-latest
+            build: "*"
+          - name: mac intel
+            os: macos-13
+            build: "*"
+          - name: mac arm
+            os: macos-14
+            build: "*"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        if: ${{ contains(matrix.config.name, 'linux') }}
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: ${{ matrix.config.arch }}
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v3.1.4
+        env:
+          CIBW_BUILD: ${{ matrix.config.build }}
+          CIBW_SKIP: "pp*-win_amd64 pp39*linux* pp31?*linux_i686 pp*-mac* pp38-*linux*"
+          CIBW_ARCHS_LINUX: "${{ matrix.config.arch }}"
+          # CIBW_TEST_COMMAND: pip install pytest && pytest {package}
+        # with:
+        #   package-dir: .
+        #   output-dir: wheelhouse
+        #   config-file: "{package}/pyproject.toml"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: "dist-${{ matrix.config.os }}-${{ matrix.config.arch }}-${{ matrix.config.pyversion }}"
+          path: ./wheelhouse/*.whl
+
+
+  make_sdist:
+    name: Make SDist
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 100  # Optional, use if you use setuptools_scm
+        submodules: true  # Optional, use if you have submodules
+
+    - name: Build SDist
+      run: pipx run build --sdist
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: dist-sdist
+        path: dist/*.tar.gz
+
+
+  upload_all:
+    needs: [build_wheels, make_sdist]
+    environment: pypi
+    permissions:
+      id-token: write
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        path: dist
+        pattern: dist-*
+        merge-multiple: true
+
+    - uses: pypa/gh-action-pypi-publish@release/v1
