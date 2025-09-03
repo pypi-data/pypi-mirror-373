@@ -1,0 +1,54 @@
+"""PyTest for :mod:`pykern.pkyaml`
+
+:copyright: Copyright (c) 2015-2022 RadiaSoft LLC.  All Rights Reserved.
+:license: http://www.apache.org/licenses/LICENSE-2.0.html
+"""
+
+
+def test_load_dump():
+    from pykern import pkunit, pkyaml, pkio, pkdebug
+
+    first = None
+    for d in pkunit.case_dirs():
+        y = pkyaml.load_file(f := d.join("in.yml"))
+        if first is None:
+            first = (f, y)
+        _assert_load(y)
+        pkyaml.dump_pretty(y, d.join("out.yml"))
+    pkdebug.pkdp(pkio.__file__)
+    pkio.atomic_write(
+        first[0],
+        writer=lambda p: pkyaml.dump_pretty(first[1], p),
+    )
+
+
+def test_load_resource():
+    from pykern import pkunit
+    from pykern import pkyaml
+
+    p1 = pkunit.import_module_from_data_dir("p1")
+    pkunit.pkeq(
+        "v2",
+        p1.y["f2"],
+        "Resource should be loaded relative to root package of caller",
+    )
+
+
+def _assert_load(value):
+    from pykern.pkunit import pkok, pkfail
+    from pykern.pkcollections import PKDict
+
+    if isinstance(value, PKDict):
+        for k, v in value.items():
+            _assert_load(k)
+            _assert_load(v)
+    elif isinstance(value, list):
+        for v in value:
+            _assert_load(v)
+    else:
+        pkok(
+            isinstance(value, (int, float, str)),
+            "unknown type={} value={}",
+            type(value),
+            value,
+        )
