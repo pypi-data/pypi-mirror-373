@@ -1,0 +1,62 @@
+name: tag-release
+on:
+  push:
+    branches:
+      - dev
+      - main
+    tags-ignore: # Prevent running the action on the tag
+      - '*'
+
+
+jobs:
+  create-tag:
+    # NOTE: only trigger the workflow only when human user pushed to the branch (prevent self-triggering)
+    if: |
+      !contains(fromJSON('["github-actions[bot]", "semantic-release"]'), github.actor) &&
+      github.event.head_commit.author.name != 'semantic-release'
+    runs-on: ubuntu-latest
+    concurrency: release
+    environment: DEV
+    permissions:
+      contents: write
+    steps:
+      # NOTE: commits using GITHUB_TOKEN does not trigger workflows and we want to trigger PiPY from tag
+      - uses: actions/create-github-app-token@v1
+        id: trigger-token
+        with:
+          app-id: ${{ vars.TRIGGER_WORKFLOW_GH_APP_ID}}
+          private-key: ${{ secrets.TRIGGER_WORKFLOW_GH_APP_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          repository: opentargets/gentroutils
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+          ref: ${{ github.ref_name }}
+      - name: Create package release
+        id: semrelease
+        # v9.6.0 is required due to the python v3.12 in the newer version of semantic release action which
+        # breaks the poetry build command.
+        uses: python-semantic-release/python-semantic-release@v9.19.1
+        with:
+          github_token: ${{ steps.trigger-token.outputs.token }}
+      - name: Publish package to GitHub Release
+        uses: python-semantic-release/publish-action@v9.19.1
+        if: ${{ steps.semrelease.outputs.released }} == 'true'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ steps.semrelease.outputs.tag }}
+      - name: Sync dev and main branch
+        if: ${{ github.ref_name == 'main' }}
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git checkout dev
+          git merge main
+      - name: Push changes
+        if: ${{ github.ref_name == 'main' }}
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ steps.trigger-token.outputs.token }}
+          branch: dev
