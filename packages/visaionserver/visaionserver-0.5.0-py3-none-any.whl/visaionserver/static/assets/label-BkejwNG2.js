@@ -1,0 +1,2 @@
+import{a5 as t}from"./index-DeXzsHYB.js";const a={create:"/labels/create",update:"/labels/update",delete:"/labels/delete",batchCreate:"/labels/batch",getLabels:"/labels/list",merge:"/labels/merge"};function l(e){return t.post(a.merge,e)}function s(e){return t.get(a.getLabels,{params:e})}function b(e){return t.post(a.create,e)}function n(e){return t.post(a.batchCreate,e)}function u(e){return t.post(a.update,e)}function c(e){return t.post(a.delete,e)}export{n as b,b as c,c as d,s as g,l as m,u};
+//# sourceMappingURL=label-BkejwNG2.js.map

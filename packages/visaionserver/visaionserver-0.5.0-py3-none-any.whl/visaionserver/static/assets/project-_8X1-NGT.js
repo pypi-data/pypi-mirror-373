@@ -1,0 +1,2 @@
+const T={CLASSIFICATION:1,DETECTION:2,SEGMENTATION:3,INSTANCE:4},I={1:"CLS",2:"DET",3:"SEG",4:"INS"},N={[T.CLASSIFICATION]:"图像分类",[T.DETECTION]:"目标检测",[T.SEGMENTATION]:"语义分割",[T.INSTANCE]:"实例分割"},e={图像分类:"分类",目标检测:"检测",语义分割:"分割",实例分割:"实例"},E={分类:T.CLASSIFICATION,检测:T.DETECTION,分割:T.SEGMENTATION,实例:T.INSTANCE};export{N as P,I as a,E as b,e as c,T as d};
+//# sourceMappingURL=project-_8X1-NGT.js.map
