@@ -1,0 +1,49 @@
+name: Set Canary / Stable Traffic Split
+
+on:
+  workflow_dispatch:
+    inputs:
+      canary:
+        description: "Canary percentage (0-100)"
+        required: true
+      stable:
+        description: "Stable percentage (0-100)"
+        required: true
+
+env:
+  CLUSTER: desivocal-prod-us-e1-cluster
+  CLUSTER_ZONE: us-east1
+
+jobs:
+  patch-split:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Required for Workload Identity Federation
+    steps:
+    - uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: projects/623676891410/locations/global/workloadIdentityPools/desivocal-staging-pool/providers/github
+        service_account: gke-githubactions-svc-stage@desivocalprod01.iam.gserviceaccount.com
+    - uses: google-github-actions/get-gke-credentials@v2
+      with:
+        cluster_name: ${{ env.CLUSTER }}
+        location:      ${{ env.CLUSTER_ZONE }}
+
+    - name: Validate inputs & patch
+      run: |
+        CANARY=${{ github.event.inputs.canary }}
+        STABLE=${{ github.event.inputs.stable }}
+
+        if ! [[ "$CANARY" =~ ^[0-9]+$ && "$STABLE" =~ ^[0-9]+$ ]]; then
+          echo "Inputs must be integers"; exit 1
+        fi
+        if [ $((CANARY+STABLE)) -ne 100 ]; then
+          echo "Error: canary + stable must equal 100"; exit 1
+        fi
+
+        kubectl patch virtualservice dv-pipecat --type=json \
+          -p="[ \
+              {\"op\":\"replace\",\"path\":\"/spec/http/0/route/0/weight\",\"value\":$STABLE}, \
+              {\"op\":\"replace\",\"path\":\"/spec/http/0/route/1/weight\",\"value\":$CANARY} \
+            ]"

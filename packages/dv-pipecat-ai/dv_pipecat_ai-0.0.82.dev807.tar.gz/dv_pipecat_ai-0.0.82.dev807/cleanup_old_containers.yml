@@ -1,0 +1,23 @@
+# cleanup_containers_playbook.yml
+# Command: ansible-playbook -i inventory.ini cleanup_old_containers.yml
+---
+- name: Cleanup exited Docker containers
+  hosts: target_servers
+  become: yes
+
+  tasks:
+  - name: Get IDs of exited containers running python server.py
+    shell: |
+      docker ps -a --no-trunc --filter status=exited --format '{% raw %}{{.ID}}\t{{.Command}}{% endraw %}' | grep 'python server.py' | cut -f1
+    register: container_ids
+    ignore_errors: yes
+
+  - name: Show found container IDs
+    debug:
+      var: container_ids.stdout_lines
+  - name: Remove containers
+    shell: "docker rm {{ item }}"
+    with_items: "{{ container_ids.stdout_lines }}"
+    when: container_ids.stdout_lines | length > 0
+  - name: Prune unused docker resources
+    shell: docker system prune -af

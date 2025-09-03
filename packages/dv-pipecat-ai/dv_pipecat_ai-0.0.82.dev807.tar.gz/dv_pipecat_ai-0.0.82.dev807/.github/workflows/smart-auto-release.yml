@@ -1,0 +1,192 @@
+name: Smart Auto-Release on PR Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [dv-stage]
+
+env:
+  PACKAGE_NAME: "dv-pipecat-ai"
+  REQUIREMENTS_FILE: "examples/ringg-chatbot/remote-requirements.txt"
+
+jobs:
+  smart-release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: dv-stage
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine requests packaging
+
+    - name: Check for src/pipecat changes
+      id: check-changes
+      run: |
+        echo "Checking for changes in src/pipecat..."
+        if git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} | grep -q "src/pipecat"; then
+          echo "HAS_PIPECAT_CHANGES=true" >> $GITHUB_OUTPUT
+          echo "✅ Found changes in src/pipecat"
+        else
+          echo "HAS_PIPECAT_CHANGES=false" >> $GITHUB_OUTPUT
+          echo "ℹ️  No changes in src/pipecat detected"
+        fi
+
+    - name: Get current versions
+      if: steps.check-changes.outputs.HAS_PIPECAT_CHANGES == 'true'
+      id: versions
+      run: |
+        echo "Getting current versions..."
+        
+        # Get merged branch (dv-stage) requirements version
+        if [ -f "${{ env.REQUIREMENTS_FILE }}" ]; then
+          MERGED_REQUIREMENTS_VERSION=$(grep "${{ env.PACKAGE_NAME }}" ${{ env.REQUIREMENTS_FILE }} | sed -n 's/.*==\([^]]*\).*/\1/p')
+          echo "MERGED_REQUIREMENTS_VERSION=$MERGED_REQUIREMENTS_VERSION" >> $GITHUB_OUTPUT
+        else
+          echo "MERGED_REQUIREMENTS_VERSION=0.0.0.dev0" >> $GITHUB_OUTPUT
+        fi
+        
+        # Get base branch requirements version
+        git show ${{ github.event.pull_request.base.sha }}:${{ env.REQUIREMENTS_FILE }} > base_requirements.txt 2>/dev/null || echo "dv-pipecat-ai==0.0.0.dev0" > base_requirements.txt
+        BASE_REQUIREMENTS_VERSION=$(grep "${{ env.PACKAGE_NAME }}" base_requirements.txt | sed -n 's/.*==\([^]]*\).*/\1/p')
+        if [ -z "$BASE_REQUIREMENTS_VERSION" ]; then
+          BASE_REQUIREMENTS_VERSION="0.0.0.dev0"
+        fi
+        echo "BASE_REQUIREMENTS_VERSION=$BASE_REQUIREMENTS_VERSION" >> $GITHUB_OUTPUT
+        
+        echo "📊 Version Status:"
+        echo "   Base branch requirements version: $BASE_REQUIREMENTS_VERSION"
+        echo "   Merged branch requirements version: $MERGED_REQUIREMENTS_VERSION"
+
+    - name: Decide release action
+      if: steps.check-changes.outputs.HAS_PIPECAT_CHANGES == 'true'
+      id: decision
+      run: |
+        BASE_VERSION="${{ steps.versions.outputs.BASE_REQUIREMENTS_VERSION }}"
+        MERGED_VERSION="${{ steps.versions.outputs.MERGED_REQUIREMENTS_VERSION }}"
+        
+        echo "🤔 Decision Logic:"
+        echo "   Base branch version: $BASE_VERSION"
+        echo "   Merged branch version: $MERGED_VERSION"
+        
+        if [ "$BASE_VERSION" = "$MERGED_VERSION" ]; then
+          echo "SHOULD_RELEASE=true" >> $GITHUB_OUTPUT
+          echo "REASON=Versions match between branches - auto-bumping needed" >> $GITHUB_OUTPUT
+          echo "✅ Decision: AUTO-RELEASE (versions match between branches)"
+        else
+          echo "SHOULD_RELEASE=false" >> $GITHUB_OUTPUT
+          echo "REASON=Developer already updated version in this PR" >> $GITHUB_OUTPUT
+          echo "⏭️  Decision: SKIP (developer handled versioning)"
+        fi
+
+    - name: Skip release notification
+      if: steps.check-changes.outputs.HAS_PIPECAT_CHANGES == 'false' || steps.decision.outputs.SHOULD_RELEASE == 'false'
+      run: |
+        if [ "${{ steps.check-changes.outputs.HAS_PIPECAT_CHANGES }}" = "false" ]; then
+          echo "⏭️  SKIPPING: No src/pipecat changes detected"
+          SKIP_REASON="No src/pipecat changes in this PR"
+        else
+          echo "⏭️  SKIPPING: ${{ steps.decision.outputs.REASON }}"
+          SKIP_REASON="Developer already updated version in this PR"
+        fi
+        echo "Skip reason: $SKIP_REASON"
+
+    - name: Build package  
+      if: steps.decision.outputs.SHOULD_RELEASE == 'true'
+      run: |
+        echo "🔨 Building package with setuptools_scm auto-versioning..."
+        python -m build
+        echo "✅ Package built successfully"
+        ls -la dist/
+
+    - name: Extract actual built version
+      if: steps.decision.outputs.SHOULD_RELEASE == 'true'
+      id: extract-version
+      run: |
+        echo "📦 Extracting version from built package..."
+        
+        # Get the wheel filename and extract version
+        WHEEL_FILE=$(ls dist/*.whl | head -1)
+        BUILT_VERSION=$(echo "$WHEEL_FILE" | sed -E 's/.*-([0-9]+\.[0-9]+\.[0-9]+\.dev[0-9]+)-.*/\1/')
+        
+        echo "BUILT_VERSION=$BUILT_VERSION" >> $GITHUB_OUTPUT
+        echo "🔍 Actual built version: $BUILT_VERSION"
+        
+        # Verify this matches the tar.gz file too
+        TAR_FILE=$(ls dist/*.tar.gz | head -1)
+        TAR_VERSION=$(echo "$TAR_FILE" | sed -E 's/.*-([0-9]+\.[0-9]+\.[0-9]+\.dev[0-9]+)\.tar\.gz/\1/')
+        
+        if [ "$BUILT_VERSION" = "$TAR_VERSION" ]; then
+          echo "✅ Version consistency check passed: $BUILT_VERSION"
+        else
+          echo "❌ Version mismatch between wheel ($BUILT_VERSION) and tar ($TAR_VERSION)"
+          exit 1
+        fi
+
+    - name: Publish to PyPI
+      if: steps.decision.outputs.SHOULD_RELEASE == 'true'
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}
+        print-hash: true
+        verbose: true
+
+    - name: Update remote-requirements.txt
+      if: steps.decision.outputs.SHOULD_RELEASE == 'true'
+      run: |
+        BUILT_VERSION="${{ steps.extract-version.outputs.BUILT_VERSION }}"
+        echo "📝 Updating ${{ env.REQUIREMENTS_FILE }} with actual built version $BUILT_VERSION"
+        
+        # Update the version in remote-requirements.txt while preserving existing dependencies
+        # Extract current dependencies from the existing line
+        CURRENT_DEPS=$(grep "${{ env.PACKAGE_NAME }}" ${{ env.REQUIREMENTS_FILE }} | sed -n 's/.*\[\([^]]*\)\].*/\1/p')
+        echo "🔍 Current dependencies: $CURRENT_DEPS"
+        
+        # Update only the version, keeping existing dependencies
+        sed -i.bak "s/${{ env.PACKAGE_NAME }}\[.*\]==.*/${{ env.PACKAGE_NAME }}[$CURRENT_DEPS]==$BUILT_VERSION/" ${{ env.REQUIREMENTS_FILE }}
+        
+        # Show the change
+        echo "📋 Updated requirements file:"
+        grep "${{ env.PACKAGE_NAME }}" ${{ env.REQUIREMENTS_FILE }}
+        
+        # Configure git
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        # Commit the change
+        git add ${{ env.REQUIREMENTS_FILE }}
+        git commit -m "🤖 Auto-bump pipecat version to $BUILT_VERSION"
+        
+        # Push to dv-stage
+        git push origin HEAD:dv-stage
+
+    - name: Success notification
+      if: steps.decision.outputs.SHOULD_RELEASE == 'true'
+      run: |
+        BUILT_VERSION="${{ steps.extract-version.outputs.BUILT_VERSION }}"
+        echo "🎉 SUCCESS: Auto-release completed!"
+        echo "   📦 Published: ${{ env.PACKAGE_NAME }} v$BUILT_VERSION"
+        echo "   🔗 PyPI: https://pypi.org/project/${{ env.PACKAGE_NAME }}/$BUILT_VERSION/"
+        echo "   📝 Updated: ${{ env.REQUIREMENTS_FILE }}"
+        echo "   🚀 Deployment will proceed automatically"
+
+    - name: Error notification
+      if: failure() && steps.decision.outputs.SHOULD_RELEASE == 'true'
+      run: |
+        echo "❌ ERROR: Auto-release failed!"
+        echo "Check the workflow logs for details."

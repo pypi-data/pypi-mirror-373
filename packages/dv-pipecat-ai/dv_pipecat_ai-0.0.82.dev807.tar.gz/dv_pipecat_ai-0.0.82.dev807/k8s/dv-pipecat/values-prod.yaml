@@ -1,0 +1,93 @@
+# Production specific values for dv-pipecat.
+replicaCount: 60 # Start with more replicas for production
+
+image:
+  # repository: asia-south1-docker.pkg.dev/PROJECT_ID/REPOSITORY/dv-pipecat # Set by GitHub Action
+  pullPolicy: Always # Always pull for production deployments
+  # tag: Set by GitHub Action
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: false
+  # name: "" # Use default if create is true, otherwise specify existing service account
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8765
+
+ingress:
+  enabled: false # Enable ingress for production
+  className: "" # Use default GKE ingress controller
+  annotations:
+    # Add any specific annotations needed for GKE ingress, e.g., for SSL or backend config
+    # kubernetes.io/ingress.global-static-ip-name: "your-prod-static-ip-name"
+    # networking.gke.io/managed-certificates: "your-prod-managed-cert-name"
+    # cloud.google.com/backend-config: '{"ports": {"80":"your-prod-backend-config"}}'
+  hosts:
+  - host: use1-api.ringg.ai # Replace with your actual production domain
+    paths:
+    - path: /pc/*
+      pathType: ImplementationSpecific # GKE Ingress default
+
+resources:
+  # Adjust based on production load testing/monitoring
+  limits:
+    cpu: 1 # 1 vCPU
+    memory: 2.5Gi # Slightly higher memory limit for prod
+  requests:
+    cpu: 1 # 0.5 vCPU
+    memory: 2Gi
+
+autoscaling:
+  enabled: false # Enable HPA for production
+  minReplicas: 5
+  maxReplicas: 10 # Adjust max replicas based on expected peak load
+  targetCPUUtilizationPercentage: 75 # Target slightly lower CPU to handle spikes
+  targetMemoryUtilizationPercentage: 75 # Target memory utilization
+
+tolerations:
+  - key: kubernetes.io/arch
+    operator: Equal
+    value: arm64
+    effect: NoSchedule
+nodeSelector:
+  kubernetes.io/arch: arm64
+
+# Grace period for pods to terminate gracefully
+terminationGracePeriodSeconds: 270 # 4.5 minutes
+
+# Environment variables (if any specific to production, otherwise defaults from values.yaml apply)
+# env:
+#   - name: ENVIRONMENT
+#     value: "production"
+
+# Secrets are handled by GitHub Actions, not set here.
+
+# KEDA Configuration for production
+keda:
+  enabled: true
+  jsonPath: "predicted_pods"
+  targetValue: "1"
+  minReplicaCount: 4
+  maxReplicaCount: 200
+  pollingInterval: 60
+  cooldownPeriod: 60
+
+  # Production-optimized scaling behavior to prevent fluctuations
+  # Longer scale down stabilization to prevent rapid fluctuations
+  scaleDownStabilizationWindow: 900 # 15 minutes for production
+  # Conservative scale down - only 25% at a time
+  scaleDownPercent: 25
+  # Scale down every 2 minutes
+  scaleDownPeriod: 120
+  # Faster scale up for production responsiveness
+  scaleUpStabilizationWindow: 30
+  # Aggressive scale up - 100% at a time
+  scaleUpPercent: 100
+  # Scale up every 15 seconds
+  scaleUpPeriod: 15
+
+  # Production fallback behavior
+  failureThreshold: 5 # More tolerant of temporary failures
+  fallbackReplicas: 50 # Higher fallback replicas for production

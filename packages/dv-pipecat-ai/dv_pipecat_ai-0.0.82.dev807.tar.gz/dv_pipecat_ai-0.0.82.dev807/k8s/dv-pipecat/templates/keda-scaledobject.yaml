@@ -1,0 +1,57 @@
+{{- if .Values.keda.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "dv-pipecat.fullname" . }}-http-scaler
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "dv-pipecat.labels" . | nindent 4 }}
+    app.kubernetes.io/component: scaler
+spec:
+  scaleTargetRef:
+    name: {{ include "dv-pipecat.fullname" . }}
+  
+  pollingInterval: {{ .Values.keda.pollingInterval | default 30 }}
+  minReplicaCount: {{ .Values.keda.minReplicaCount | default 10 }}
+  maxReplicaCount: {{ .Values.keda.maxReplicaCount | default 1000 }}
+  cooldownPeriod: {{ .Values.keda.cooldownPeriod | default 900 }}
+  
+  # Advanced scaling behavior to prevent fluctuations
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: {{ .Values.keda.scaleDownStabilizationWindow | default 300 }}
+          policies:
+          - type: Percent
+            value: {{ .Values.keda.scaleDownPercent | default 50 }}
+            periodSeconds: {{ .Values.keda.scaleDownPeriod | default 60 }}
+        scaleUp:
+          stabilizationWindowSeconds: {{ .Values.keda.scaleUpStabilizationWindow | default 60 }}
+          policies:
+          - type: Percent
+            value: {{ .Values.keda.scaleUpPercent | default 100 }}
+            periodSeconds: {{ .Values.keda.scaleUpPeriod | default 15 }}
+  
+  # Fallback behavior when scaling metrics are unavailable
+  fallback:
+    failureThreshold: {{ .Values.keda.failureThreshold | default 3 }}
+    replicas: {{ .Values.keda.fallbackReplicas | default 20 }}
+  
+  triggers:
+  - type: metrics-api
+    authenticationRef:
+      name: {{ include "dv-pipecat.fullname" . }}-http-auth
+    metadata:
+      # The URL of your API
+      # url: "https://67397cb486a3.ngrok-free.app/ca/api/v0/admin/global/predicted-pods"
+      url: {{ .Values.CALLING_BACKEND_URL }}/admin/global/predicted-pods
+      # The JMESPath to find the number in the JSON response  
+      valueLocation: {{ .Values.keda.jsonPath | default "predicted_pods" | quote }}
+      # This is the divisor. KEDA calculates: desired_pods = (api_value / targetValue)
+      targetValue: {{ .Values.keda.targetValue | default "1" | quote }}
+      # Authentication configuration
+      authMode: "apiKey"
+      method: "header"
+      keyParamName: "X-Admin-API-Key"
+{{- end }}

@@ -1,0 +1,58 @@
+name: Promote Canary → Stable
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image SHA to promote (defaults to last dv-main build)
+        required: false
+
+env:
+  PROJECT_ID: desivocalprod01
+  REGION: asia-south1
+  REPOSITORY: ringg-registry-prod
+  IMAGE_NAME: dv-pipecat
+  HELM_RELEASE_NAME: dv-pipecat
+  CLUSTER: desivocal-prod-us-e1-cluster
+  CLUSTER_ZONE: us-east1
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Required for Workload Identity Federation
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: projects/623676891410/locations/global/workloadIdentityPools/desivocal-staging-pool/providers/github
+        service_account: gke-githubactions-svc-stage@desivocalprod01.iam.gserviceaccount.com
+    - uses: google-github-actions/get-gke-credentials@v2
+      with:
+        cluster_name: ${{ env.CLUSTER }}
+        location:      ${{ env.CLUSTER_ZONE }}
+
+    - id: tag
+      run: |
+        if [ -n "${{ github.event.inputs.tag }}" ]; then
+          echo "TAG=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        TAG=$(kubectl -n default get deploy dv-pipecat-canary \
+            -o jsonpath='{.spec.template.spec.containers[0].image}' | awk -F: '{print $NF}')
+        if [ -z "$TAG" ]; then
+          echo "❌ Could not determine tag from canary Deployment"; exit 1
+        fi
+        echo "Using running canary image tag $TAG"
+        echo "TAG=$TAG" >> "$GITHUB_OUTPUT"
+
+    # 1  roll stable Deployment to desired image
+    - name: Upgrade stable release
+      run: |
+        helm upgrade $HELM_RELEASE_NAME ./k8s/dv-pipecat \
+          -f ./k8s/dv-pipecat/values-prod.yaml \
+          --set image.repository=$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE_NAME \
+          --set image.tag=${{ steps.tag.outputs.TAG }} \
+          --namespace default

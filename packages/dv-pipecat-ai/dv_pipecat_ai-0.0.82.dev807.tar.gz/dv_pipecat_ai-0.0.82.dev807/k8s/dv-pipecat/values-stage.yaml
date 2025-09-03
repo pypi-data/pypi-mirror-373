@@ -1,0 +1,86 @@
+# Staging specific values for dv-pipecat.
+replicaCount: 1
+
+image:
+  # repository: asia-south1-docker.pkg.dev/PROJECT_ID/REPOSITORY/dv-pipecat # Set by GitHub Action
+  pullPolicy: Always
+  # tag: Set by GitHub Action
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: false
+  # name: "" # Use default if create is true, otherwise specify existing service account
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8765
+
+ingress:
+  enabled: false # Enable ingress for staging
+  className: "" # Use default GKE ingress controller
+  annotations:
+    # Add any specific annotations needed for GKE ingress, e.g., for SSL or backend config
+    # kubernetes.io/ingress.global-static-ip-name: "your-static-ip-name"
+    # networking.gke.io/managed-certificates: "your-managed-cert-name"
+    # cloud.google.com/backend-config: '{"ports": {"80":"your-backend-config"}}'
+  hosts:
+  - host: stage-api2.desivocal.com # Replace with your actual staging domain
+    paths:
+    - path: /pc
+      pathType: ImplementationSpecific # GKE Ingress default
+
+resources:
+  limits:
+    cpu: 1 # 1 vCPU
+    memory: 1.5Gi
+  requests:
+    cpu: 500m # 0.5 vCPU
+    memory: 1Gi
+
+autoscaling:
+  enabled: false # Keep HPA disabled for staging unless needed
+  # minReplicas: 1
+  # maxReplicas: 3
+  # targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+tolerations: []
+nodeSelector: {}
+
+# Grace period for pods to terminate gracefully
+terminationGracePeriodSeconds: 270 # 4.5 minutes
+
+# Environment variables (if any specific to staging, otherwise defaults from values.yaml apply)
+# env:
+#   - name: ENVIRONMENT
+#     value: "staging"
+
+# Secrets are handled by GitHub Actions, not set here.
+
+# KEDA Configuration for staging
+keda:
+  enabled: true
+  jsonPath: "predicted_pods"
+  targetValue: "1"
+  minReplicaCount: 1
+  maxReplicaCount: 2
+  pollingInterval: 30
+  cooldownPeriod: 30
+  # Staging-optimized scaling behavior to prevent fluctuations
+  # Scale down stabilization set to 30 seconds for faster response
+  scaleDownStabilizationWindow: 900 # 15 minutes for staging
+  # Conservative scale down - only 25% at a time
+  scaleDownPercent: 25
+  # Scale down every 2 minutes
+  scaleDownPeriod: 120
+  # Faster scale up for staging responsiveness
+  scaleUpStabilizationWindow: 30
+  # Aggressive scale up - 100% at a time
+  scaleUpPercent: 100
+  # Scale up every 15 seconds
+  scaleUpPeriod: 15
+
+  # Staging fallback behavior
+  failureThreshold: 5 # More tolerant of temporary failures
+  fallbackReplicas: 1 # Higher fallback replicas for staging
