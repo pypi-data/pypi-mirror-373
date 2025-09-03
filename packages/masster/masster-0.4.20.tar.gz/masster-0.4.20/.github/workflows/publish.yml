@@ -1,0 +1,174 @@
+name: Create release and Publish to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v1.0.0)'
+        required: true
+        type: string
+      test_pypi:
+        description: 'Publish to Test PyPI instead of PyPI'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Update version in pyproject.toml
+      run: |
+        # Remove 'v' prefix if present
+        VERSION="${{ github.event.inputs.version }}"
+        VERSION=${VERSION#v}
+        
+        # Update version in pyproject.toml
+        sed -i "s/^version = \".*\"/version = \"$VERSION\"/" pyproject.toml
+        
+        # Verify the change
+        echo "Updated pyproject.toml version:"
+        grep "^version = " pyproject.toml
+
+    - name: Update version in _version.py
+      run: |
+        # Remove 'v' prefix if present
+        VERSION="${{ github.event.inputs.version }}"
+        VERSION=${VERSION#v}
+        
+        # Update version in _version.py
+        sed -i "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" src/masster/_version.py
+        
+        # Verify the change
+        echo "Updated _version.py:"
+        grep "__version__ = " src/masster/_version.py
+
+    - name: Commit version updates
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add pyproject.toml src/masster/_version.py
+        git commit -m "Update version to ${{ github.event.inputs.version }}" || echo "No changes to commit"
+        git push
+
+    - name: Create Release
+      id: create-release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.event.inputs.version }}
+        name: Release ${{ github.event.inputs.version }}
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Pull latest changes
+      run: git pull origin ${{ github.ref_name }}
+
+    - name: Verify version synchronization
+      run: |
+        echo "Checking version synchronization..."
+        PYPROJECT_VERSION=$(grep "^version = " pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+        VERSION_PY=$(grep "__version__ = " src/masster/_version.py | sed 's/__version__ = "\(.*\)"/\1/')
+        INPUT_VERSION="${{ github.event.inputs.version }}"
+        INPUT_VERSION=${INPUT_VERSION#v}
+        
+        echo "Input version: $INPUT_VERSION"
+        echo "pyproject.toml version: $PYPROJECT_VERSION"
+        echo "_version.py version: $VERSION_PY"
+        
+        if [ "$PYPROJECT_VERSION" != "$INPUT_VERSION" ] || [ "$VERSION_PY" != "$INPUT_VERSION" ]; then
+          echo "Version mismatch detected!"
+          exit 1
+        fi
+        echo "All versions synchronized correctly!"
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install UV
+      uses: astral-sh/setup-uv@v3
+
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras --dev
+
+    - name: Run tests
+      run: |
+        uv run pytest tests/ -v
+
+    - name: Build package
+      run: |
+        uv build
+
+    - name: Check package
+      run: |
+        uv run twine check dist/*
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist
+        path: dist/
+
+  publish-test-pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test_pypi == 'true'
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/masster
+    permissions:
+      id-token: write
+
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: dist
+        path: dist/
+
+    - name: Publish to Test PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test_pypi != 'true'
+    environment:
+      name: pypi
+      url: https://pypi.org/p/masster
+    permissions:
+      id-token: write
+
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: dist
+        path: dist/
+
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1

@@ -1,0 +1,88 @@
+name: Security Scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      scan_type:
+        description: 'Type of security scan to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - safety-only
+          - bandit-only
+      upload_reports:
+        description: 'Upload security reports as artifacts'
+        required: false
+        default: true
+        type: boolean
+  schedule:
+    - cron: '0 3 * * 1'  # Weekly on Monday at 3 AM UTC
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install UV
+      uses: astral-sh/setup-uv@v3
+
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras --dev
+
+    - name: Run safety check
+      if: github.event_name == 'schedule' || github.event.inputs.scan_type == 'all' || github.event.inputs.scan_type == 'safety-only'
+      run: |
+        echo "Running Safety security scan..."
+        uv run safety check --json --output safety-report.json || true
+        echo "Safety scan completed. Check safety-report.json for results."
+
+    - name: Run bandit security check
+      if: github.event_name == 'schedule' || github.event.inputs.scan_type == 'all' || github.event.inputs.scan_type == 'bandit-only'
+      run: |
+        echo "Running Bandit security scan..."
+        uv run bandit -r src/masster -f json -o bandit-report.json || true
+        echo "Bandit scan completed. Check bandit-report.json for results."
+
+    - name: Display scan summary
+      run: |
+        echo "=== Security Scan Summary ==="
+        if [ "${{ github.event_name }}" = "schedule" ]; then
+          echo "Scan type: all (scheduled run)"
+        else
+          echo "Scan type: ${{ github.event.inputs.scan_type || 'all' }}"
+        fi
+        
+        if [[ ("${{ github.event_name }}" == "schedule") || ("${{ github.event.inputs.scan_type }}" == "all" || "${{ github.event.inputs.scan_type }}" == "safety-only") ]] && [ -f safety-report.json ]; then
+          echo "Safety report generated: safety-report.json"
+          # Show summary if available
+          if command -v jq &> /dev/null && [ -s safety-report.json ]; then
+            echo "Safety vulnerabilities found: $(jq '.vulnerabilities | length' safety-report.json 2>/dev/null || echo 'Unable to parse')"
+          fi
+        fi
+        
+        if [[ ("${{ github.event_name }}" == "schedule") || ("${{ github.event.inputs.scan_type }}" == "all" || "${{ github.event.inputs.scan_type }}" == "bandit-only") ]] && [ -f bandit-report.json ]; then
+          echo "Bandit report generated: bandit-report.json"
+          # Show summary if available
+          if command -v jq &> /dev/null && [ -s bandit-report.json ]; then
+            echo "Bandit issues found: $(jq '.results | length' bandit-report.json 2>/dev/null || echo 'Unable to parse')"
+          fi
+        fi
+
+    - name: Upload security reports
+      if: github.event_name == 'schedule' || github.event.inputs.upload_reports == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-reports-${{ github.run_number }}
+        path: |
+          safety-report.json
+          bandit-report.json
+        retention-days: 30

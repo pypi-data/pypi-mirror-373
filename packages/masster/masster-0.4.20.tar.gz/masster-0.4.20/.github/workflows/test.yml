@@ -1,0 +1,164 @@
+name: Test Suite
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_all_tests:
+        description: 'Run tests on all OS and Python versions'
+        required: false
+        default: true
+        type: boolean
+      target_os:
+        description: 'Target OS for testing (if not running all)'
+        required: false
+        default: 'ubuntu-latest'
+        type: choice
+        options:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+      python_version:
+        description: 'Python version for testing (if not running all)'
+        required: false
+        default: '3.11'
+        type: choice
+        options:
+          - '3.11'
+          - '3.12'
+          - '3.13'
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly on Monday at 2 AM UTC
+
+jobs:
+  test-all:
+    if: github.event_name == 'schedule' || github.event.inputs.run_all_tests == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+        exclude:
+          # Exclude macOS with Python 3.11 and 3.12 to reduce CI costs
+          - os: macos-latest
+            python-version: "3.11"
+          - os: macos-latest
+            python-version: "3.12"
+          # Exclude Windows with Python 3.12 to reduce CI costs
+          - os: windows-latest
+            python-version: "3.12"
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install UV
+      uses: astral-sh/setup-uv@v3
+      with:
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras --dev
+
+    - name: Lint with flake8
+      run: |
+        uv run flake8 src/masster tests --count --select=E9,F63,F7,F82 --show-source --statistics
+        uv run flake8 src/masster tests --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
+
+    - name: Type check with mypy
+      run: |
+        uv run mypy src/masster --ignore-missing-imports --no-strict-optional
+
+    - name: Test with pytest
+      run: |
+        uv run pytest tests/ -v --cov=masster --cov-report=xml --cov-report=term-missing
+
+    - name: Upload coverage to Codecov
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+
+  test-selective:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_all_tests != 'true'
+    runs-on: ${{ github.event.inputs.target_os || 'ubuntu-latest' }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ github.event.inputs.python_version || '3.11' }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ github.event.inputs.python_version || '3.11' }}
+
+    - name: Install UV
+      uses: astral-sh/setup-uv@v3
+      with:
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras --dev
+
+    - name: Lint with flake8
+      run: |
+        uv run flake8 src/masster tests --count --select=E9,F63,F7,F82 --show-source --statistics
+        uv run flake8 src/masster tests --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
+
+    - name: Type check with mypy
+      run: |
+        uv run mypy src/masster --ignore-missing-imports --no-strict-optional
+
+    - name: Test with pytest
+      run: |
+        uv run pytest tests/ -v --cov=masster --cov-report=xml --cov-report=term-missing
+
+    - name: Upload coverage to Codecov
+      if: github.event.inputs.target_os == 'ubuntu-latest' && github.event.inputs.python_version == '3.11'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+
+  build:
+    needs: [test-all, test-selective]
+    if: always() && (needs.test-all.result == 'success' || needs.test-selective.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install UV
+      uses: astral-sh/setup-uv@v3
+
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras --dev
+
+    - name: Build package
+      run: |
+        uv build
+
+    - name: Check package
+      run: |
+        uv run twine check dist/*
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist
+        path: dist/
