@@ -1,0 +1,36 @@
+from enum import Enum
+
+class Contribution(Enum):
+    """
+    Defines the type of contribution for each CONTRIBUTING Person or Organization involved in the
+    associated Record or product.  Definitions of these types are available on the E-Link online
+    API documentation at https://www.osti.gov/elink2api/#tag/person_model 
+    """
+    Chair="Chair"
+    ContactPerson="ContactPerson"
+    DataCollector="DataCollector"
+    DataCurator="DataCurator"
+    DataManager="DataManager"
+    Distributor="Distributor"
+    Editor="Editor"
+    HostingInstitution="HostingInstitution"
+    Producer="Producer"
+    ProjectLeader="ProjectLeader"
+    ProjectManager="ProjectManager"
+    ProjectMember="ProjectMember"
+    Reader="Reader"
+    RegistrationAgency="RegistrationAgency"
+    RegistrationAuthority="RegistrationAuthority"
+    RelatedPerson="RelatedPerson"
+    Researcher="Researcher"
+    ResearchGroup="ResearchGroup"
+    Reviewer="Reviewer"
+    ReviewerExternal="ReviewerExternal"
+    ReviewAssistant="ReviewAssistant"
+    RightsHolder="RightsHolder"
+    Sponsor="Sponsor"
+    StatsReviewer="StatsReviewer"
+    Supervisor="Supervisor"
+    Translator="Translator"
+    WorkPackageLeader="WorkPackageLeader"
+    Other="Other"
