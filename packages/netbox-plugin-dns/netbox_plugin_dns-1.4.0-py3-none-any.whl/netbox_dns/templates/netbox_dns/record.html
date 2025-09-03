@@ -1,0 +1,186 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load plugins %}
+{% load render_table from django_tables2 %}
+{% load perms %}
+{% load i18n %}
+
+{% block control-buttons %}
+{% if perms.netbox_dns.add_record and object.type != "CNAME" %}
+<a href="{% url 'plugins:netbox_dns:record_add' %}?view={{ object.zone.view.pk }}&zone={{ object.zone.pk }}&value={{ object.fqdn }}&type=CNAME&return_url={{ object.get_absolute_url }}">
+    <button type="submit" class="btn btn-primary" name="add-record">
+        <i class="mdi mdi-plus-thick" aria-hidden="true"></i>{% trans "Add CNAME" %}
+    </button>
+</a>
+{% endif %}
+{% if object.managed %}
+{% else %}
+{{ block.super }}
+{% endif %}
+{% endblock control-buttons %}
+
+{% block breadcrumbs %}
+{% if object.managed %}
+<li class="breadcrumb-item">
+    <a href="{% url 'plugins:netbox_dns:record_list_managed' %}">{% trans "Managed Records" %}</a>
+</li>
+{% else %}
+{{ block.super }}
+{% endif %}
+{% endblock %}
+
+{% block tabs %}
+{% if object.managed %}
+{% else %}
+{{ block.super }}
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    {% if object.managed %}
+    <div class="col col-md-12">
+    {% else %}
+    <div class="col col-md-8">
+    {% endif %}
+        <div class="card">
+            <h5 class="card-header">{% trans "Record" %}</h5>
+            <table class="table table-hover attr-table">
+                <tr>
+                    <th scope="row">{% trans "Name" %}</th>
+                    <td style="word-break:break-all;">{{ object.name }}</td>
+                </tr>
+                {% if mask_warning %}
+                <tr class="text-warning">
+                    <th scope="row">{% trans "Warning" %}</th>
+                    <td>{{ mask_warning }}</td>
+                </tr>
+                {% endif %}
+                {% if unicode_name %}
+                <tr>
+                    <th scope="row">{% trans "IDN" %}</th>
+                    <td style="word-break:break-all;">{{ unicode_name }}</td>
+                </tr>
+                {% endif %}
+                <tr>
+                    <th scope="row">{% trans "Zone" %}</th>
+                    {% if object.managed %}
+                    <td><a href="{% url 'plugins:netbox_dns:zone_managed_records' pk=object.zone.pk %}">{{ object.zone }}</a></td>
+                    {% else %}
+                    <td><a href="{% url 'plugins:netbox_dns:zone_records' pk=object.zone.pk %}">{{ object.zone }}</a></td>
+                    {% endif %}
+                </tr>
+                <tr>
+                    <th scope="row">{% trans "Type" %}</th>
+                    <td>{{ object.type }}</td>
+                </tr>
+                <tr>
+                    <th scope="row">{% trans "Value" %}</th>
+                    <td style="word-break:break-all;">{{ object.value }}</td>
+                </tr>
+                {% if unicode_value %}
+                <tr>
+                    <th scope="row">{% trans "Unicode Value" %}</th>
+                    <td style="word-break:break-all;">{{ unicode_value }}</td>
+                </tr>
+                {% endif %}
+                {% if cname_warning %}
+                <tr class="text-warning">
+                    <th scope="row">{% trans "Warning" %}</th>
+                    <td>{{ cname_warning }}</td>
+                </tr>
+                {% endif %}
+                {% if object.description %}
+                <tr>
+                    <th scope="row">{% trans "Description" %}</th>
+                    <td style="word-break:break-all;">{{ object.description }}</td>
+                </tr>
+                {% endif %}
+                {% if object.tenant %}
+                <tr>
+                    <th scope="row">{% trans "Tenant" %}</th>
+                    <td>
+                        {% if object.tenant.group %}
+                            {{ object.tenant.group|linkify }} /
+                        {% endif %}
+                        {{ object.tenant|linkify|placeholder }}
+                    </td>
+                </tr>
+                {% endif %}
+                <tr>
+                    <th scope="row">{% trans "TTL" %}</th>
+                    <td>{{ object.ttl|placeholder }}</td>
+                </tr>
+                {% if object.type == 'A' or object.type == 'AAAA' %}
+                <tr>
+                    <th scope="row">{% trans "Disable PTR" %}</th>
+                    <td>{% checkmark object.disable_ptr %}</td>
+                </tr>
+                {% endif %}
+                {% if object.ptr_record %}
+                <tr>
+                    <th scope="row">{% trans "PTR Record" %}</th>
+                    <td>{{ object.ptr_record|linkify }}</td>
+                </tr>
+                {% endif %}
+                {% if object.address_records.exists %}
+                <tr>
+                    <th scope="row">{% trans "Address Records" %}</th>
+                    <td>
+                        <table>
+                            {% for address_record in object.address_records.all %}
+                            <tr>
+                                <td>{{ address_record|linkify:"name" }}.{{ address_record.zone|linkify:"name" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                    </td>
+                </tr>
+                {% endif %}
+                {% if ipam_ip_address %}
+                <tr>
+                    <th scope="row">{% trans "IPAM IP Address" %}</th>
+                    <td>{{ ipam_ip_address|linkify }}</td>
+                </tr>
+                {% endif %}
+                <tr>
+                    <th scope="row">Status</th>
+                    <td>{% badge object.get_status_display bg_color=object.get_status_color %}</td>
+                </tr>
+            </table>
+        </div>
+        {% if cname_target_table %}
+            <div class="card">
+                {% if cname_target_table.rows|length == 1 %}
+                    <h2 class="card-header">{% trans "CNAME Target" %}</h2>
+                {% else %}
+                    <h2 class="card-header">{% trans "CNAME Targets" %}</h2>
+                {% endif %}
+                <div class="table-responsive">
+                    {% render_table cname_target_table 'inc/table.html' %}
+                </div>
+            </div>
+        {% elif cname_table %}
+            <div class="card">
+                {% if cname_table.rows|length == 1 %}
+                    <h2 class="card-header">{% trans "CNAME" %}</h2>
+                {% else %}
+                    <h2 class="card-header">{% trans "CNAMEs" %}</h2>
+                {% endif %}
+                <div class="table-responsive">
+                    {% render_table cname_table 'inc/table.html' %}
+                </div>
+            </div>
+        {% endif %}
+        {% if not object.managed %}
+        {% include 'inc/panels/custom_fields.html' %}
+        {% endif %}
+    </div>
+    {% if not object.managed %}
+    <div class="col col-md-4">
+        {% include 'inc/panels/tags.html' %}
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}
