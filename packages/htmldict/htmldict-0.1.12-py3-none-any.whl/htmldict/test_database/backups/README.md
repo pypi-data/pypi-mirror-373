@@ -1,0 +1,1 @@
+Database backups are made once per day!
