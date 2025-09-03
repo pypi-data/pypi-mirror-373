@@ -1,0 +1,103 @@
+# LISA Data Challenge software
+
+[![DOI](https://zenodo.org/badge/doi/10.5281/zenodo.7332221.svg)](https://doi.org/10.5281/zenodo.7332221)
+
+LDC provides a set of tools to generate and analyse the LDC datasets. 
+
+## Installation of the latest released version
+
+`pip install lisa-data-challenge`
+
+## Installation of the dev version
+
+### Cloning the gitlab project
+
+The default working branch is named `develop`. 
+`git clone -b develop https://gitlab.in2p3.fr/LISA/LDC.git`
+
+### Installation
+
+By default, `pyproject.toml` will be used to generate a temporary
+environement to build the package (see
+https://pip.pypa.io/en/stable/reference/build-system/pyproject-toml/)
+
+`pip install .`
+
+For older version of `setuptools`, a `setup.py` file is also provided.
+
+`python setup.py install`
+
+## Troubleshooting
+
+### Prerequisites
+
+- GSL : `apt-get install libgsl-dev` or `conda install gsl`
+- FFTW3 : `apt-get install libfftw3-dev` or `conda install fftw`
+
+Paths to FFTW and GSL can be set explicitly by editing `setup.cfg`.
+
+### Python dependencies
+
+Make sure that all requirements are met.
+
+The `requirements.txt` file defines the reference version for most of
+the dependencies for a python3.9 installation as recommended by
+[LISA-CDE](https://gitlab.in2p3.fr/LISA/lisa-cde), but other versions
+of the listed package might work. 
+
+To comply with the CDE environement:
+`pip install -r requirements.txt`
+
+Extensions for specific fast waveform generator can be disabled in the
+installation command line:
+
+`python setup.py install --no-fastGB --no-imrphenomD --no-fastAK`
+
+### Extra dependencies
+
+Some external tools are interfaced by the LDC and need separate installation:
+
+- EMRI waveform with few: see https://bhptoolkit.org/FastEMRIWaveforms/html/index.html
+- Fast BH waveform with lisabeta: see https://gitlab.in2p3.fr/marsat/lisabeta
+
+## Documentation
+
+- [LISA Data Challenge portal](https://lisa-ldc.lal.in2p3.fr)
+- [API documentation](https://lisa.pages.in2p3.fr/LDC/)
+
+## Use policy
+
+Do not forget to associate the authors of this software to your
+research:
+
+- Please cite the DOI (see badge above) and acknowledge the LDC
+  working group in any publication which makes use of it
+
+- Do not hesitate to send an email for help and/or collaboration:
+  ldc-at-lisamission.org, ldc-chairs-at-lisamission.org
+
+  ## Project status
+
+  This toolbox has been developed to support the simulation production and analysis of the LISA Data Challenges, over the 2020-2024 period. 
+These are the LDC codenamed:
+- Sangria LDC2a: mild enchilada (GB, MBHB), simple noise
+- Spritz LDC2b: single source type (GB, MBHB), instrumental artifacts (glitches, gaps)
+- Yorsh LDC1b: single source type: SOBH, EMRI
+
+Following on the LISA adoption by space agencies in 2024, multiple projects to support this activity have been put in place, to address the forthcoming increase in complexity of the future LDC. Thus this toolbox is under a decommissioning phase. 
+
+The following table gives pointers to those new projects, for the different parts covered by this toolbox. 
+
+| Topic                          | LDC toolbox submodule | New projects URL                                                                                                         |
+| ------------------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Fast waveform                  | ldc/waveform/fastgb   | https://gitlab.in2p3.fr/lisa/fastgb                                                                                      |
+| Waveform h+/hx                 | ldc/waveform/waveform |                                                                                                                          |
+| Catalogs                       | ldc/waveform/source   |                                                                                                                          |
+| LISA response                  | ldc/lisa/projection   | https://gitlab.in2p3.fr/lisa-simulation/gw-response                                                                      |
+| LISA analytic noise            | ldc/lisa/noise        | https://gitlab.in2p3.fr/LISA/fomweb                                                                                      |
+| LISA analytic orbits           | ldc/isa/orbits        | https://gitlab.in2p3.fr/lisa-simulation/orbits                                                                           |
+| Time/freq series management    | ldc/common/series     | https://gitlab.in2p3.fr/lisa-apc/typed-lisa-toolkit                                                                      |
+| LISA constants                 | ldc/common/constants  | https://gitlab.in2p3.fr/lisa-simulation/constants                                                                        |
+| Simulation production pipeline | data_generation/      | see notebooks showing how to use the above tools presented during the sim workshops https://indico.in2p3.fr/event/33255/ |
+| Submission evaluation          | evaluation            |                                                                                                                          |
+

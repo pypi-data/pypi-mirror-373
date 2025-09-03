@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+import os
+import logging
+import shutil
+import subprocess
+import glob
+
+import ldc.io.yml as ymlio
+from ldc.utils.logging import init_logger, close_logger
+
+
+def remove_relative_import(dotpy, custom_prefix="my-"):
+    with open(dotpy, "r", encoding='utf-8') as fid:
+        lines = fid.readlines()
+    new_lines = []
+    for l in lines:
+        if len(l)>10 and l[0:4]=='from':
+            spl = l.split(" ")
+            m = spl[1]
+            if m[0:2]=="..":
+                nm = m.replace(".." ,"lisanode.")
+            elif m[0]==".":
+                nm = m.replace("." , custom_prefix)
+            else:
+                nm = m
+            new_lines.append(" ".join([spl[0], nm]+spl[2:]))
+        else:
+            new_lines.append(l)
+    with open(dotpy, 'w', encoding='utf-8') as fid:
+        fid.writelines(new_lines)
+    if os.path.basename(dotpy)=="__init__.py":
+        with open(dotpy, 'w', encoding='utf-8') as fid:
+            fid.writelines([])
+
+def update_lisanode_config(lisanode_config, value, key):
+    """ Update acceleration noise parameter in config.py
+
+    TODO also update gw strain
+    """
+    with open(lisanode_config, "r", encoding='utf-8') as fid:
+        lines = fid.readlines()
+    new_lines = []
+    found = False
+    for l in lines:
+        if key+" =" in l:
+            new_lines.append(f"{key} = {value}\n")
+            found = True
+        else:
+            new_lines.append(l)
+    if not found:
+        new_lines.append(f"{key} = {value}\n")
+    with open(lisanode_config, 'w', encoding='utf-8') as fid:
+        fid.writelines(new_lines)
+            
+            
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-l', '--log', type=str, default="", help="Log file")
+    parser.add_argument('-o', '--output', default="./",
+                        help= "Output path")
+    parser.add_argument('-c', '--config', default="lisanode_config",
+                        help= "LISANode config file")
+    parser.add_argument('-g', '--graph', default="",
+                        help= "LISANode main graph file")
+    parser.add_argument('--pipe-config', default="",
+                        help= "Pipeline config file")
+    parser.add_argument('--glitch', default="", help= "Glitch input file")
+    parser.add_argument('--gw-dt', type=float, default=-1, 
+                        help= "GW dt, by default deduced from lisanode sampling (ie upsampling is done out of lisanode")
+
+    
+    args = parser.parse_args()
+    logger = init_logger(args.log)		
+
+    # copy lisa graph in output repo
+    import lisanode
+    input_directory = os.path.join(os.path.dirname(lisanode.__file__), "lisa")
+    logger.info("getting lisa instrument model from %s"%input_directory)
+
+    run_dir = os.path.dirname(args.output)
+    #run_dir = os.path.join(directory, 'mylisanode')
+    custom_prefix = "my_"
+
+    logger.info("will copy %s in %s"%(input_directory, run_dir))
+    dotpys = glob.glob(os.path.join(input_directory, "*.py"))
+    dotpys.remove(os.path.join(input_directory, "__init__.py"))
+    try:
+        os.mkdir(run_dir)
+    except:
+        pass
+    for f in dotpys:
+        shutil.copy(f, os.path.join(run_dir, custom_prefix+os.path.basename(f)))
+
+    # copy config
+    dest_config = os.path.join(run_dir, custom_prefix+"config.py")
+    shutil.copy(args.config, dest_config)
+    if args.pipe_config:
+        d = ymlio.load_config(args.pipe_config)
+        if 'accnoise' in d.keys():
+            update_lisanode_config(dest_config, d["accnoise"], "LISA_ACC_NOISE_A_LEVEL")
+        if 'backlinknoise' in d.keys():
+            update_lisanode_config(dest_config, d["backlinknoise"], "LISA_BACKLINK_NOISE_A_LEVEL")
+            
+        dt_physic = d["dt_instrument"].to('s').value/d["physic_upsampling"] #cfg["dt"]
+        dt_instru = d["dt_instrument"].to('s').value
+        if args.gw_dt<0:
+            update_lisanode_config(dest_config, 1/dt_physic, "LISA_GW_FILE_FS")
+        else:
+            update_lisanode_config(dest_config, 1/d["dt"].to("s").value, "LISA_GW_FILE_FS")
+        update_lisanode_config(dest_config, d["sim_kaiser_attenuation"], "LISA_AAFILTER_ATTENUATION")
+        update_lisanode_config(dest_config, f"[{d['sim_kaiser_passband']}, {d['sim_kaiser_stopband']}]",
+                               "LISA_AAFILTER_TRANSITION_BAND")
+        update_lisanode_config(dest_config, d["physic_upsampling"], "LISA_MEASUREMENT_DOWNSAMPLING")
+        update_lisanode_config(dest_config, 1/dt_instru, "LISA_MEASUREMENT_FS")
+        
+    if args.glitch:
+        update_lisanode_config(dest_config, "\'"+os.path.abspath(args.glitch)+"\'", "LISA_GLITCH_FILE")
+    
+    # copy graph
+    if args.graph:
+        shutil.copy(args.graph, args.output)
+    #for f in args.input:
+    #    shutil.copy(f, run_dir)
+
+    # replace relative import with custom prefix
+    dotpys = glob.glob(os.path.join(run_dir, "*.py"))
+    for f in dotpys:
+        logger.info("fix import in %s"%f)
+        remove_relative_import(f, custom_prefix=custom_prefix)
+

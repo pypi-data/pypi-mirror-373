@@ -1,0 +1,163 @@
+ 
+image: python:3.8-slim
+
+variables:
+  DOCKER_DRIVER: overlay2
+  IMAGE_TAG: $CI_COMMIT_REF_NAME
+  IMAGE_BUILD_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+  IMAGE_BUILD_LATEST: $CI_REGISTRY_IMAGE:latest
+  IMAGE_PROD_BUILD_TAG: $CI_REGISTRY_IMAGE:prod-$CI_COMMIT_REF_SLUG
+  IMAGE_JUPYTER_BUILD_TAG: $CI_REGISTRY_IMAGE:jupyter-$CI_COMMIT_REF_SLUG
+  MY_PROJECT_NAME: ldc
+  ORAS_URL: oras://$CI_REGISTRY_IMAGE/$MY_PROJECT_NAME:$CI_COMMIT_REF_SLUG
+  ORAS_URL_PROD: oras://$CI_REGISTRY_IMAGE/$MY_PROJECT_NAME:prod-$CI_COMMIT_REF_SLUG
+
+stages:
+ - build
+ - test
+ - deploy
+ - release
+
+docker:
+  image:
+    name: woozymasta/kaniko-tools
+    entrypoint: [""]
+  stage: build
+  script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+    - git clone --single-branch --branch ldc https://github.com/BlackHolePerturbationToolkit/FastEMRIWaveforms.git
+    - >-
+      /kaniko/executor
+      --force
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
+      --destination "${IMAGE_BUILD_TAG}"
+      --destination "${IMAGE_BUILD_LATEST}"
+
+pylint:
+  image: $IMAGE_BUILD_TAG
+  stage: test
+  script:
+  - pip3 install -U pylint
+  - python3 pylint-monitor
+
+doctest:
+  image: $IMAGE_BUILD_TAG
+  stage: test
+  script:
+  - python3 test/make_test.py
+
+singularity:
+  stage: deploy
+  image:
+    name: quay.io/singularity/singularity:v3.4.2
+    entrypoint: [""]
+  script:
+    - singularity build --docker-username "${CI_REGISTRY_USER}" --docker-password "${CI_REGISTRY_PASSWORD}" ldc.sif docker://gitlab-registry.in2p3.fr/lisa/ldc:${CI_COMMIT_REF_SLUG}
+    - echo "${ORAS_URL}"
+    - singularity push --docker-username "${CI_REGISTRY_USER}" --docker-password "${CI_REGISTRY_PASSWORD}" ldc.sif "${ORAS_URL}"
+  artifacts:
+    paths:
+    - ldc.sif
+  only:
+  - preprod
+  - 135-sangria-mbhb-with-higher-modes
+
+docker-prod:
+  image:
+    name: woozymasta/kaniko-tools
+    entrypoint: [""]
+  stage: deploy
+  script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+    - git clone --depth 1 -b v1.3 https://$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD@gitlab.in2p3.fr/j2b.bayle/LISANode.git
+    - >-
+      /kaniko/executor
+      --force
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile.prod"
+      --destination "${IMAGE_PROD_BUILD_TAG}"
+  only:
+  - preprod
+
+docker-jupyter:
+  image:
+    name: woozymasta/kaniko-tools
+    entrypoint: [""]
+  stage: build
+  script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+    - >-
+      /kaniko/executor
+      --force
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile.jupyter"
+      --destination "${IMAGE_JUPYTER_BUILD_TAG}"
+  only:
+  - master
+  - develop
+
+singularity-jupyter:
+  stage: deploy
+  image:
+    name: quay.io/singularity/singularity:v3.7.0
+    entrypoint: [""]
+  script:
+    - sed -i -e "s~\${DOCKER_IMAGE}~$IMAGE_JUPYTER_BUILD_TAG~g" ldc_jupyter.def
+    - singularity build --docker-username "${CI_REGISTRY_USER}" --docker-password "${CI_REGISTRY_PASSWORD}" ldc_jupyter.sif ldc_jupyter.def
+    - echo "${ORAS_URL}"
+    - singularity push --docker-username "${CI_REGISTRY_USER}" --docker-password "${CI_REGISTRY_PASSWORD}" ldc_jupyter.sif "${ORAS_URL}"
+  only:
+  - master
+  - develop
+
+
+# singularity-prod:
+#   stage: deploy
+#   image:
+#     name: quay.io/singularity/singularity:v3.4.2
+#     entrypoint: [""]
+#   script:
+#     - echo "docker://gitlab-registry.in2p3.fr/lisa/ldc:prod-${CI_COMMIT_REF_SLUG}"
+#     - singularity build --docker-username "${CI_REGISTRY_USER}" --docker-password "${CI_REGISTRY_PASSWORD}" ldcpipe.sif docker://gitlab-registry.in2p3.fr/lisa/ldc:prod-${CI_COMMIT_REF_SLUG}
+#     - echo "${ORAS_URL_PROD}"
+#     - singularity push --docker-username "${CI_REGISTRY_USER}" --docker-password "${CI_REGISTRY_PASSWORD}" ldcpipe.sif "${ORAS_URL_PROD}"
+#   artifacts:
+#     paths:
+#     - ldcpipe.sif
+#   only:
+#   - preprod
+
+pages:
+  image: $IMAGE_BUILD_TAG
+  stage: deploy
+  script:
+  - cd doc
+  - sphinx-build -b html . ../public
+  - cd ../data_generation/doc
+  - mkdocs build
+  - mv site ../../public/data_generation
+  artifacts:
+    paths:
+    - public
+  only:
+  - master
+  - develop
+
+pypi:
+  # publish the source distribution on https://pypi.org/project/lisa-data-challenge/, only when
+  # a new tag
+  stage: release
+  image: python:3.10-slim
+  script:
+    - apt-get update && apt-get -y --no-install-recommends install make git libhdf5-dev libboost-dev libfftw3-dev libgsl-dev && rm -rf /var/lib/apt/lists/*
+    - pip install setuptools-scm
+    - python -m setuptools_scm
+    - pip install twine build
+    - python -m build --sdist --outdir dist
+    - twine upload --verbose --non-interactive --repository pypi dist/* -u __token__ -p $TWINE_TOKEN
+  rules:
+    - if: $CI_COMMIT_TAG

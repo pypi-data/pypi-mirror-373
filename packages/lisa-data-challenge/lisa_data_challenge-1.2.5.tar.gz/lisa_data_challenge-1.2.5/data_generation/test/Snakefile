@@ -1,0 +1,98 @@
+
+myconfig = "config.yml"
+configfile: myconfig
+singularity: "ldcpipe.sif" 
+rundir = config["dirname"]
+
+rule all:
+    input:
+        expand(rundir+"/{source}-tdi.h5", source=config["sources"]) +\
+            expand(rundir+"/{source}-noisefree-tdi.h5", source=config["sources"])
+
+rule source_selection:
+    input:
+        cfg = "{source}-cfg.yml",
+    output:
+        rundir+"/{source}-cat.h5"
+    log:
+        "log/{source}-cat.log"
+    shell:
+        """
+        source_selection -c {input.cfg} -o {output}
+        """
+
+rule arm_projection:
+    input:
+        cfg = "config.yml", 
+        src = rundir+"/{source}-cat.h5"
+    output:
+        rundir+"/{source}-y.h5"
+    log:
+        "log/{source}-y.log"
+    params:
+        cfg = "{source}-cfg.yml"
+    shell:
+        """
+        arm_projection -i {input.src} -c {input.cfg} -o {output} --log {log} --source-config {params.cfg}
+        """
+
+rule lisanode_build:
+    input:
+        graph = "lisanode_graph.py",
+        cfg = myconfig,
+        cfgln = "lisanode_config.py",
+    output:
+        s = rundir+"/common-lisanode/LISAWithGWAndTDI"
+    log:
+        "log/lisanode-compile.log"
+    params:
+        graph = "my_graph.py",
+        prefix = config["ldc_liborbits"],
+        optim = 0,
+        fake_data = rundir+"/fake-y.h5",
+        run_dir = rundir+"/common-lisanode"
+    resources:
+        mem_mb = 60000
+    shell:
+        """
+        fake_strain -o {params.fake_data} -c {input.cfg} -l {log}
+        prep_lisanode -l {log} -o {params.run_dir}/{params.graph} -c {input.cfgln} -g {input.graph} --pipe-config {input.cfg} --strain {params.fake_data}
+        cd {params.run_dir}
+        lisanode run --build -O {params.optim} --enable X Y Z --flags='-L{params.prefix}/lib -I{params.prefix}/lib -I{params.prefix}/../../common/constants -lorbits' {params.graph}:LISAWithGWAndTDI
+        """
+
+rule L0L1:
+    input:
+        data = rundir+"/{source}-y.h5",
+        exe = rundir+"/common-lisanode/LISAWithGWAndTDI"
+    output: rundir+"/{source}-tdi.h5"
+    log:
+        "log/{source}-tdi.log"
+    params:
+        duration = 54000, #config["t_max"]+10,
+    resources:
+        mem_mb = 60000
+    shell:
+        """
+        chmod u+x {input.exe}
+        {input.exe} --gw-path {input.data} -d {params.duration} -o {output}
+        """
+
+rule L0L1_noisefree:
+    input:
+        data = rundir+"/{source}-y.h5",
+        exe = rundir+"/common-lisanode/LISAWithGWAndTDI"
+    output: rundir+"/{source}-noisefree-tdi.h5"
+    log:
+        "log/{source}-noisefree-tdi.log"
+    params:
+        duration = 54000, #config["t_max"]+10,
+    resources:
+        mem_mb = 60000
+    shell:
+        """
+        chmod u+x {input.exe}
+        {input.exe} --gw-path {input.data} -d {params.duration} -o {output} --lasernoise-on-off 0 --backlinknoise-on-off 0 --telescopenoise-on-off 0 --accelnoise-on-off 0 --readoutnoise-on-off 0 --obpathlengthnoise-on-off 0 --usonoise-on-off 0 --modulationnoise-on-off 0 --rangingnoise-on-off 0
+        """
+
+
