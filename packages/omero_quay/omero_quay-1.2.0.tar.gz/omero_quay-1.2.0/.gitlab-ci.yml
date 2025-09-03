@@ -1,0 +1,109 @@
+stages:
+  - pages
+  - formatting
+  - build
+  - test
+
+.build_image: &build_image
+  image: docker:26.1
+  services:
+    - docker:26.1-dind
+  variables:
+    QUAY_TEST_DATA: "/cache/QuayTestData"
+    DOCKER_TLS_CERTDIR: "/certs"
+    HTTP_PROXY: "http://proxy-upgrade.intra.glicid.fr:3128/"
+    HTTPS_PROXY: "http://proxy-upgrade.intra.glicid.fr:3128/"
+    NO_PROXY: "docker"
+  before_script:
+    - apk update && apk add git bash net-tools curl
+  tags:
+    - quay
+  when: manual
+
+pages:
+  image: python:3.10-slim
+  before_script:
+    - pip install mkdocs mkdocstrings mkdocstrings-python omero_quay
+      https://github.com/glencoesoftware/zeroc-ice-py-linux-x86_64/releases/download/20240202/zeroc_ice-3.6.5-cp310-cp310-manylinux_2_28_x86_64.whl
+  script:
+    - mkdocs build --site-dir public
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev"
+
+formatting:
+  stage: formatting
+  image: continuumio/miniconda3:latest
+  before_script:
+    - pip install ruff flake8
+  script:
+    # Verify the Python code is black formatting compliant.
+    - ruff check . --fix --exclude 'manifest.py' --exclude '*.ipynb'
+    # Verify the Python code is flake8 formatting compliant.
+    - flake8 --max-line-length 88  --extend-exclude=manifest.py .
+  allow_failure: false
+
+quay-client-build:
+  stage: build
+  <<: *build_image
+  script:
+    - cd tests/containers
+    - docker compose build quay-client --no-cache --push 
+      --build-arg HTTP_PROXY=http://proxy-upgrade.intra.glicid.fr:3128
+      --build-arg HTTPS_PROXY=http://proxy-upgrade.intra.glicid.fr:3128
+
+omero-server-build:
+  stage: build
+  <<: *build_image
+  script:
+    - cd tests/containers
+    - docker compose build omero-server --no-cache --push
+      --build-arg HTTP_PROXY=http://proxy-upgrade.intra.glicid.fr:3128
+      --build-arg HTTPS_PROXY=http://proxy-upgrade.intra.glicid.fr:3128
+
+omero-web-build:
+  stage: build
+  <<: *build_image
+  script:
+    - cd tests/containers
+    - docker compose build omero-web --no-cache --push
+
+irods-icat-build:
+  stage: build
+  <<: *build_image
+  script:
+    - cd tests/containers
+    - docker compose build irods-icat --no-cache --push
+      --build-arg HTTP_PROXY=http://proxy-upgrade.intra.glicid.fr:3128
+      --build-arg HTTPS_PROXY=http://proxy-upgrade.intra.glicid.fr:3128
+
+test:
+  stage: test
+  image: docker:26.1
+  services:
+    - docker:26.1-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    HTTP_PROXY: "http://proxy-upgrade.intra.glicid.fr:3128/"
+    HTTPS_PROXY: "http://proxy-upgrade.intra.glicid.fr:3128/"
+    NO_PROXY: "docker"
+    ICAT_HOSTNAME: "icat"
+    QUAY_TEST_DATA: "/builds/fbi-data/omero-quay/tests/containers/QuayTestData"
+  cache:
+    - key: quay_1.1
+  before_script:
+    - apk update && apk add git bash net-tools curl make
+  script:
+    - make docker_pull
+    - make docker_up
+    - make docker_populate
+    - make test
+  tags:
+    - quay
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: cov.xml

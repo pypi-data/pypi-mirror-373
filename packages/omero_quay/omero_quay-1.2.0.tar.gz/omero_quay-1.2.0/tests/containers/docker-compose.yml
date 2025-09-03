@@ -1,0 +1,278 @@
+services:
+  irods-db:
+    image: "postgres:15"
+    container_name: irods-db
+    environment:
+      POSTGRES_USER: irods
+      POSTGRES_DB: ICAT
+      POSTGRES_PASSWORD: testpassword
+    volumes:
+      - irods-db:/var/lib/postgresql/data
+    networks:
+      - omero
+    healthcheck:
+      test: "pg_isready -U irods -d ICAT"
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  irods-icat:
+    build:
+      context: irods_catalog_provider
+    image: gitlab-registry.in2p3.fr/fbi-data/omero-quay/irods-icat:${TAG:-dev}
+    container_name: irods-icat
+    hostname: irods-icat
+    environment:
+      IRODS_ROLE: provider
+      IRODS_HOST: irods-icat
+      IRODS_ICAT_HOSTNAME: irods-icat
+      IRODS_ADMIN_PASS: "rodsPass!"
+      IRODS_DEFAULT_RES_NAME: demoResc
+      IRODS_RES_DIR: /var/lib/irods/Vault
+      IRODS_ZONE: tempZone
+      IRODS_PLANE_KEY: 32_byte_server_control_plane_key
+      IRODS_NEG_KEY: 32_byte_server_negotiation_key__
+      IRODS_ZONE_KEY: TEMPORARY_ZONE_KEY
+      IRODS_DB_HOST: irods-db
+      IRODS_DB_NAME: ICAT
+      IRODS_DB_PASS: testpassword
+      IRODS_DB_USER: irods
+    depends_on:
+      irods-db:
+        condition: service_healthy
+        restart: true
+    networks:
+      omero:
+        aliases:
+          - irods-icat
+    ports:
+      - "1247:1247"
+    healthcheck:
+      test: ps -ewo cmd | (! grep 'setup_irods.py') | (! grep -v grep)
+      interval: 5s
+      timeout: 10s
+      retries: 20
+    volumes:
+      - irods-icat-home:/var/lib/irods
+      - irods-icat-config:/etc/irods
+      - icat-user:/mnt/user
+      - icat-coop:/mnt/coop
+      - "${QUAY_TEST_DATA:-./QuayTestData}:/tmp/share/data"
+      - "../../../omero-quay/tests/containers/populate_irods.sh:/tmp/populate_irods.sh"
+
+  irods-consumer:
+    build:
+      context: irods_catalog_provider
+    image: gitlab-registry.in2p3.fr/fbi-data/omero-quay/irods-icat:${TAG:-dev}
+    container_name: irods-consumer
+    hostname: irods-consumer
+    environment:
+      IRODS_ROLE: consumer
+      IRODS_HOST: irods-consumer
+      IRODS_ICAT_HOSTNAME: irods-icat
+      IRODS_ADMIN_PASS: "rodsPass!"
+      IRODS_DEFAULT_RES_NAME: consumerResc
+      IRODS_RES_DIR: /var/lib/irods/Vault
+      IRODS_ZONE: tempZone
+      IRODS_PLANE_KEY: 32_byte_server_control_plane_key
+      IRODS_NEG_KEY: 32_byte_server_negotiation_key__
+      IRODS_ZONE_KEY: TEMPORARY_ZONE_KEY
+    depends_on:
+      irods-icat:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - irods-consumer-home:/var/lib/irods
+      - irods-consumer-config:/etc/irods
+      - consumer-user:/mnt/user
+      - consumer-coop:/mnt/coop
+      - "${QUAY_TEST_DATA:-./QuayTestData}:/tmp/share/data"
+      - "../../../omero-quay:/tmp/omero-quay"
+      - "./provenance:/etc/quay/provenance"
+    networks:
+      omero:
+        aliases:
+          - irods-consumer
+    expose:
+      - "1247"
+    healthcheck:
+      test: ps -ewo cmd | (! grep 'setup_irods.py') | (! grep -v grep)
+      interval: 5s
+      timeout: 10s
+      retries: 10
+
+  omero-db:
+    image: "postgres:14"
+    container_name: omero-db
+    environment:
+      POSTGRES_USER: omero
+      POSTGRES_DB: omero
+      POSTGRES_PASSWORD: omero
+    volumes:
+      - omero-db:/var/lib/postgresql/data
+    networks:
+      - omero
+
+  omero-server:
+    build:
+      context: omero-server-quay
+      args:
+        - CI_COMMIT_BRANCH=${CI_COMMIT_BRANCH:-dev}
+    image: gitlab-registry.in2p3.fr/fbi-data/omero-quay/omero-server-quay:${TAG:-dev}
+    container_name: omero-server
+    hostname: omero-server
+    privileged: true
+    environment:
+      CONFIG_omero_db_host: omero-db
+      CONFIG_omero_db_user: omero
+      CONFIG_omero_db_pass: omero
+      CONFIG_omero_db_name: omero
+      ROOTPASS: omero
+      QUAY_CONF: "/etc/quay/quay.yml"
+      HTTP_PROXY: $HTTP_PROXY
+      HTTPS_PROXY: $HTTPS_PROXY
+    ports:
+      - "4063:4063"
+      - "4064:4064"
+      - "8898:8888"
+    volumes:
+      - omeroserver-data:/OMERO/
+      - "${QUAY_TEST_DATA:-./QuayTestData}:/tmp/QuayTestData"
+      - "./quay_server.yml:/etc/quay/quay.yml"
+      - "../../../omero-quay:/opt/omero/server/omero-quay"
+      - "./populate_omero.sh:/tmp/populate_omero.sh"
+    depends_on:
+      omero-db:
+        condition: service_started
+        restart: true
+    healthcheck:
+      test: ps -ewo cmd | (! grep -q 'python -m fsServerFS') | (! grep -v grep)
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    networks:
+      - omero
+
+  nfsrods:
+    image: irods/nfsrods:2.1.0
+    container_name: nfsrods
+    ports:
+      - "2049:2049"
+    volumes:
+      - "./irods_client_nfsrods/nfsrods_config:/nfsrods_config:ro"
+      - "./irods_client_nfsrods/passwd:/etc/passwd:ro"
+    depends_on:
+      irods-icat:
+        condition: service_healthy
+        restart: true
+    networks:
+      - omero
+
+  mongo:
+    image: mongo:8.0.3
+    container_name: mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+    depends_on:
+      omero-server:
+        condition: service_healthy
+        restart: true
+    ports:
+      - "27017:27017"
+    networks:
+      - omero
+
+  omero-web:
+    build:
+      context: omero-web-quay
+      args:
+        - CI_COMMIT_BRANCH=${CI_COMMIT_BRANCH:-dev}
+    image: gitlab-registry.in2p3.fr/fbi-data/omero-quay/omero-web:${TAG:-dev}
+    hostname: omero-web
+    container_name: omero-web
+    environment:
+      OMEROHOST: omero-server
+      QUAY_CONF: "/etc/quay/quay.yml"
+    depends_on:
+      omero-server:
+        condition: service_healthy
+        restart: true
+    networks:
+      - omero
+    ports:
+      - "4080:4080"
+    volumes:
+      - "./quay_web.yml:/etc/quay/quay.yml"
+      - omeroweb-config:/opt/omero/web/OMERO.web/etc/grid/
+      - "../../../omero-quay:/tmp/omero-quay"
+      - "./provenance:/etc/quay/provenance"
+
+  quay-client:
+    build:
+      context: quay_docker
+      args:
+        - CI_COMMIT_BRANCH=${CI_COMMIT_BRANCH:-dev}
+    image: gitlab-registry.in2p3.fr/fbi-data/omero-quay/quay-docker:${TAG:-dev}
+    container_name: quay-client
+    environment:
+      QUAY_TEST_DATA: /tmp/QuayTestData
+      QUAY_CONF: "/etc/quay/quay.yml"
+    volumes:
+      - "./quay_client.yml:/etc/quay/quay.yml"
+      - "${QUAY_TEST_DATA:-./QuayTestData}:/tmp/QuayTestData"
+      - "../../../omero-quay:/home/omero-facility/omero-quay"
+      - "./provenance:/etc/quay/provenance"
+    depends_on:
+      omero-server:
+        condition: service_healthy
+        restart: true
+    networks:
+      - omero
+
+  quay-facility:
+    build:
+      context: quay_docker
+      args:
+        - CI_COMMIT_BRANCH=dev
+    image: gitlab-registry.in2p3.fr/fbi-data/omero-quay/quay-docker:${TAG:-dev}
+    hostname: quay-facility
+    container_name: quay-facility
+    environment:
+      QUAY_TEST_DATA: /tmp/QuayTestData
+      QUAY_CONF: "/etc/quay/quay.yml"
+    entrypoint:
+      - /home/omero-facility/.conda/envs/quay/bin/python
+      - /home/omero-facility/omero-quay/scripts/run_service.py
+    volumes:
+      - "facility-mnt:/mnt/"
+      - "./quay_facility.yml:/etc/quay/quay.yml"
+      - "${QUAY_TEST_DATA:-./QuayTestData}:/tmp/QuayTestData"
+      - "../../../omero-quay:/home/omero-facility/omero-quay"
+      - "./provenance:/etc/quay/provenance"
+    depends_on:
+      omero-server:
+        condition: service_healthy
+        restart: true
+    expose:
+      - 8888
+    networks:
+      - omero
+
+networks:
+  omero:
+
+volumes:
+  omeroweb-config:
+  omeroserver-data:
+  irods-icat-home:
+  irods-icat-config:
+  icat-user:
+  icat-coop:
+  consumer-user:
+  consumer-coop:
+  facility-mnt:
+  irods-consumer-home:
+  irods-consumer-config:
+  irods-db:
+  omero-db:
