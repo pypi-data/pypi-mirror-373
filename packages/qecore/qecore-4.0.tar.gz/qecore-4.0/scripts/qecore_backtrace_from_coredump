@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+"""
+Utility script to get backtrace from coredump.
+Make sure to have debug repositories enabled.
+"""
+
+# pylint: disable=line-too-long
+# ruff: noqa: E501
+
+import os
+import time
+import argparse
+from subprocess import check_output, STDOUT, CalledProcessError
+
+
+def run(command) -> str:
+    """
+    Utility function to execute given command and return its output.
+    """
+
+    try:
+        output = check_output(command, shell=True, env=os.environ, stderr=STDOUT, encoding="utf-8")
+        return output.strip("\n")
+    except CalledProcessError as error:
+        return error.output
+
+
+def get_backtrace_from_coredump(coredump_pid, coredump_backtrace_arguments):
+    """
+    Get backtrace from coredump
+
+    :param coredump_pid: Process ID of coredump
+    :type coredump_pid: str
+
+    :param coredump_backtrace_arguments: Arguments to adjust execution.
+    :type coredump_backtrace_arguments: str
+    """
+
+    coredump_log = "/tmp/qecore_coredump.log"
+    debuginfo_install_log = "/tmp/qecore_debuginfo_install.log"
+
+    # Get coredump list results only from duration of the test.
+    coredump_list = run(f"sudo coredumpctl list {coredump_pid}")
+
+    # If there are no coredumps end right here.
+    if "No coredumps found." in coredump_list:
+        print("No coredumps found.")
+        return
+
+    print("Creating/Clearing log files.")
+
+    # Create file if not existing.
+    if not os.path.isfile(coredump_log):
+        run(f"touch {coredump_log}")
+
+    # Empty the coredump file logs.
+    if os.path.isfile(coredump_log):
+        run(f">{coredump_log}")
+
+    # Do not empty debuginfo log - the content is desired in all possible tests.
+    if not os.path.isfile(debuginfo_install_log):
+        run(f"touch {debuginfo_install_log}")
+
+    # Get packages to be installed from gdb.
+    def get_packages_from_coredump(pid):
+        # Get first gdb output and load it to file to parse over.
+        run(f"echo 'q' | sudo coredumpctl gdb {pid} 2&> {coredump_log}")
+
+        # Set the base variable to return with all data.
+        desired_data = ""
+
+        # Open the file and iterate over its lines.
+        with open(coredump_log, "r", encoding="utf-8") as _f:
+            # Loading one line at a time.
+            next_line = _f.readline()
+
+            # Loop until there is no next line.
+            while next_line:
+                # Parse correct lines to fetch debuginfo packages.
+                if "debug" in next_line and "install" in next_line:
+                    _, target = next_line.split("install ", 1)
+                    desired_data += target.strip("\n") + " "
+
+                # If there is no coredump file present there si nothing to fetch.
+                elif "Coredump entry has no core attached." in next_line:
+                    return None
+
+                # Load the next line.
+                next_line = _f.readline()
+
+        return desired_data
+
+    # Install all packages that gdb desires.
+    def install_debuginfo_packages(pid):
+        # We need gdb to be installed.
+        if "not installed" in run("rpm -q gdb"):
+            run(f"sudo dnf install -y gdb >> {debuginfo_install_log}")
+
+        # Iterate a few times over the gdb to get packages and install them.
+        packages_installed_in_last_attempt = ""
+        for _ in range(20):
+            packages_to_install = get_packages_from_coredump(pid)
+            print(f"\nAttempting to install debuginfo packages for: '{packages_to_install.rstrip(' ')}'")
+
+            # Install required packages but break if packages were already attempted to be installed.
+            if packages_to_install and (packages_to_install != packages_installed_in_last_attempt):
+                packages_installed_in_last_attempt = packages_to_install
+                run(f"sudo dnf debuginfo-install -y {packages_to_install} >> {debuginfo_install_log}")
+            else:
+                break
+
+    # Load coredump lines as provided
+    list_of_results = coredump_list.rstrip("\n").split("\n")[1:]
+    for coredump_line in list_of_results:
+        starting_time = time.time()
+
+        coredump_line_split = coredump_line.split(" ")
+        coredump_line_filtered = [x for x in coredump_line_split if x]
+        coredump_pid_to_investigate = coredump_line_filtered[4]
+
+        # Check if coredump file does not exist.
+        if coredump_line_filtered[8] == "none":
+            print("\nCoredump entry has no core attached.")
+            break
+
+        # Install all debuginfos given by coredump file with found pid.
+        install_debuginfo_packages(coredump_pid_to_investigate)
+
+        # All debuginfo packages should be installed now - get the backtrace and attach it to report.
+        print(f"\nGetting backtrace with '{coredump_backtrace_arguments}'")
+        run(f"echo '{coredump_backtrace_arguments}' | sudo coredumpctl gdb {coredump_pid_to_investigate} 2&> {coredump_log}")
+
+        # Calculate the total execution time of coredump fetch.
+        coredump_fetch_time = time.time() - starting_time
+
+        print(f"Backtrace is in '{coredump_log}' and it took '{coredump_fetch_time:.1f}' seconds.")
+
+    print(f"Debuginfos install log is in '{debuginfo_install_log}'.")
+
+
+def parse():
+    """
+    Parser for arguments given to the script.
+
+    :return: Namespace object with attributes parsed out of the command line.
+    :rtype: Namespace
+    """
+
+    parser = argparse.ArgumentParser(prog="$ qecore_backtrace_from_coredump",
+                                     description="Script to retrieve backtrace from coredump.",
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    parser.add_argument("coredumppid",
+                        help="Coredump PID to analyze.")
+
+    parser.add_argument("-c", "--gdb-command",
+                        type=str,
+                        required=False,
+                        help="Command to execute in gdb.")
+
+    return parser.parse_args()
+
+
+def main():
+    """
+    Main function.
+    """
+
+    arguments = parse()
+
+    command_to_run_in_gdb = "thread apply all bt full"
+    if arguments.gdb_command:
+        command_to_run_in_gdb = arguments.gdb_command
+
+    get_backtrace_from_coredump(arguments.coredumppid, command_to_run_in_gdb)
+
+
+if __name__ == "__main__":
+    main()
