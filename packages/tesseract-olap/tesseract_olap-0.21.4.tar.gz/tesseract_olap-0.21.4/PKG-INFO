@@ -1,0 +1,91 @@
+Metadata-Version: 2.3
+Name: tesseract-olap
+Version: 0.21.4
+Summary: A semantic layer for your data.
+License: Proprietary
+Author: Francisco Abarzua
+Author-email: francisco@datawheel.us
+Maintainer: Francisco Abarzua
+Maintainer-email: francisco@datawheel.us
+Requires-Python: >=3.9, <4.0
+Classifier: License :: Other/Proprietary License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Provides-Extra: clickhouse
+Provides-Extra: redis
+Requires-Dist: PyPika (>=0.48.0,<0.49.0)
+Requires-Dist: clickhouse-cityhash (>=1.0.2.4) ; extra == "clickhouse"
+Requires-Dist: clickhouse-connect (>=0.8.16) ; extra == "clickhouse"
+Requires-Dist: clickhouse-driver[lz4] (>=0.2.0) ; extra == "clickhouse"
+Requires-Dist: fnv-c (>=0.2,<1.0)
+Requires-Dist: httpx (>=0.18,<1.0)
+Requires-Dist: immutables (>=0.16,<1.0)
+Requires-Dist: lfudacache (==0.0.2)
+Requires-Dist: lxml (>=4.6)
+Requires-Dist: orjson (>=3.8,<4.0)
+Requires-Dist: polars (>=1.24,<2.0)
+Requires-Dist: pydantic (>=2.11,<3.0)
+Requires-Dist: pyparsing (>=3.1,<4.0)
+Requires-Dist: python-dateutil (>=2.9.0.post0,<3.0)
+Requires-Dist: redis (>=5.0,<6.0) ; extra == "redis"
+Requires-Dist: strenum (>=0.4,<1.0)
+Requires-Dist: typing-extensions (>=4.5)
+Requires-Dist: xlsxwriter (>=3.2,<4.0)
+Requires-Dist: xmlschema (>=3.3,<4.0)
+Project-URL: Repository, https://github.com/Datawheel/tesseract-olap
+Description-Content-Type: text/markdown
+
+## Installation
+
+Besides the main contents of the package, you can install the optional dependencies for the backend driver of your choice:
+
+* `tesseract-olap[clickhouse]`  
+  Installs the dependency needed to enable the use of the `tesseract_olap.backend.clickhouse` module.
+
+## Getting started
+
+In its most basic form, the tesseract-olap package provides you with a way to translate OLAP-type queries into request statements that a data backend can understand and execute safely. The results obtained through the execution of server methods are python objects, and as such, can be used in any way the language allows.
+
+```python
+# example.py
+
+from tesseract_olap.backend.clickhouse import ClickhouseBackend
+from tesseract_olap import OlapServer
+
+backend = ClickhouseBackend("clickhouse://user:pass@localhost:9000/database")
+server = OlapServer(backend=backend, schema="./path/to/schema.xml")
+
+def get_data():
+    # First you create an ordered representation of the intent for data
+    request = DataRequest.new("cube_name", {
+      "drilldowns": ["Time", "Country"],
+      "measures": ["Units", "Price"],
+    })
+
+    # This step performs the validation of the request against the schema
+    query = DataQuery.from_request(server.schema, request)
+
+    # The context manager establishes the connection with the backend
+    with server.session() as session:
+        # .fetch() methods perform the request against the server.
+        # There are three methods depending on the shape you want the data:
+        # result = session.fetch(query)
+        # result = session.fetch_dataframe(query)
+        result = session.fetch_records(query)
+    
+    return result.data
+
+if __name__ == "__main__":
+    get_data()
+```
+
+The server instance can then be used in other programs as the data provider, for simple (like data exploration) and complex (like data processing) operations.
+
+---
+&copy; 2022 [Datawheel, LLC.](https://www.datawheel.us/)
+
