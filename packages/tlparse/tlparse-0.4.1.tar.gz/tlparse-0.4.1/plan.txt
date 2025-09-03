@@ -1,0 +1,160 @@
+discrete features:
+- parse compilation starts [0/0] annotation and create a visualization of the
+  stack and how they relate together
+    - each compilation represents a stack trace
+    - a compilation is an ancestor of another compilation if its stack trace is a
+      prefix of the other stack trace
+    - this is a tree structure, so can use dot to visualize
+      - sort of like a flame graph, but there is no logical length (maybe
+        could use compilation time!)
+- correlating generated fx graph / dynamo trace / sizes
+  - just get all the graphs, display them in an indexed fashion
+  - use case:
+    https://fb.workplace.com/groups/1075192433118967/posts/1377556259549248/ did the sizes change?
+- why are our logs so big / who is generating all the logs
+- rank comparison / differ (for rank desychronization problems due to
+  nondeterminism)
+- rank tracing (compare how compilation is proceeding on different ranks, is
+  it imbalanced, debug compile time performance problems)
+
+
+infrastructure:
+- parse out a single compilation [0/0]
+  - start/end time for compilation
+
+some problems:
+- downloading all logs from logarithm takes surprisingly long (using lg
+  command)
+- there may be a lot of logs with a given MAST job, as there may be multiple
+  flows pasted together, sometimes not obvious which one to look at
+
+
+samples logs:
+- https://fb.workplace.com/groups/1075192433118967/posts/1377556259549248 why
+  cuda graph cause regression problem
+  - ~/local/eval-log.txt - the eval log
+  - ~/local/rank0-cudagraph-train.txt - the train log, rank0 only
+    (cudagraph-log.txt)
+      - interestingly, sometimes the ranks are interleaved in a naughty way
+
+- > ~/log2.txt ~torch only~> ~/f2.txt
+  - from  lg tw:tsp_zch/mast_hpc/f524854032-TrainingApplication.trainers.mqdbca/0 --start-time=1706158048 --end-time=1706165989 --stream=stderr
+  - this is the jon chuang config pr caused shampoo dynamic compile disaster
+
+- ~/log.txt (flavio-log.txt)
+  - this is flavio truzzi recent aps log
+  - xref https://fb.workplace.com/groups/6829516587176185/posts/6829560007171843/
+  - nb: this doesn't have all debug info
+
+
+
+what do i want to change about the logs
+- split into separate log file per rank to prevent splicing
+  - dedicated_log file is OK
+  - need some sort of hook for this
+  - need some way to test this
+- stack frame stored in single line and parseable
+  - this is actively harmful without preventing muxing (because larger write
+    is less likely to be atomic)
+
+
+uploading functionality
+- motivation
+  - if you run tlparse on a server, and it generates html, want to be able to
+    conveniently view it / share it to someone else, without having to download
+  - otherwise, can only do plain text report and share via pastebin
+- alternate models
+  - perfetto/chrome trace viewer: generate a trace json, separate viewer you
+    upload the file too
+    - but note that internally we built a built-in viewer that you can link to
+      with data directly. Convenient!
+  - generate an html file, pop open browser to view
+
+
+
+what does the one-size-fits-all command do (drive structured logging)
+- extract all IR representations into separate files (preferably machine
+  readable, but that's other people's problem)
+  - rendering these in human readable way, potentially *downstream* tool
+    problem
+
+use cases for the log parser
+- there is some problem, you are trying to diagnose the problem from logs
+  - but the logs are too big
+    - because all the ranks are muxed together
+    - because the dynamo debug logs are too spammy
+      - because I can't actually tell what I'm running over from the Dynamo
+        logs
+        - because I don't actually know what the model is doing (pdb style
+          view?)
+      - because there are so many values on the stack
+      - because this is a cursed model with lots of tiny tensors and lots of
+        bytecodes and therefore traversal is terrible !!!
+    - because the graph outputs are too big
+      - because no one asked for tabular output
+      - because the graph sizes are too far away from where you need them
+      - the graph is so long so you can't easily jump to def/use
+    - because the guard output is too big
+      - because you can't easily find the recompiles logs
+        - because the recompiles log doesn't say what exactly changed the next
+          time
+    - because the tracebacks are too big
+    - finding the graph break information is finding a needle in haystack
+    - because the restart analysis logs are annoying
+    - because the inductor logs are too long
+      - because I can't easily correlate inductor with aten being processed
+        (godbolt style, but godbolt not useful because too difficult to do the full information)
+    - because I don't know how to jump to the end of a section
+      - dynamo -> aot -> inductor -> guard
+  - but you can't get runnable artifacts from the logs
+  - you want to display some information, if you print everything fully
+    detailed it's too much, so you want fold/expand html UI (then the dump representation is full information)
+  - what's same/different between ranks
+  - what's same/different between recompiles
+  - two users: PyTorch developers, mass market general developers
+- you are working on a new model and you want to know how far along you are
+- trace recording and visualization (but maybe just defer to zoomer)
+- logarithm actually sort of sucks?
+- it's too hard to figure out how to modify source code to hit some s0 as
+  dynamic, from the logs
+  - because I can't tell what the source of a size guard is
+  - because automatic dynamic is printed by default
+
+- that's weird, why is the same frame having very different behavior each
+  time?
+  - are we allocating separate numbers for the separate object instances?
+
+
+value added
+- download (all) the logs in the first place
+- put the result somewhere shareable
+- automatically process tlparse when someone posts a log for help
+
+
+meta plugin architecture
+- want the plugin to automatically run
+- choice: fbpkg distribution vs oss plus internal plugin
+  - choice: pyo3/maturin python plugin vs shelling out to executables
+- plugin goals:
+    telemetry
+    log downloading
+    - lg or tw command line tool
+    uploading
+    - manifold cli into https://www.internalfb.com/intern/wiki/Development_Environment/Persistent_Storage/#raw-manifold-path-for-a https://www.internalfb.com/intern/wiki/Manifold/Getting_Started/Manifold_CLI/
+
+
+
+feb 23 ideas
+- ddpoptimize split needs a context
+- post_grad_graph and output_code occasionally has no context; how to orient
+  in this situation :think:
+- would like to know code hash, so can generate links to files
+
+
+- recompile
+  - dynamic shape dimension changed
+  - just collect them all at once place
+
+
+mar 19 ideas
+- print the nn module structure, whenever nn module is compiled
