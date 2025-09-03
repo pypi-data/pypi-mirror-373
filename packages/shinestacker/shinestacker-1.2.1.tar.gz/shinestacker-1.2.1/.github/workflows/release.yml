@@ -1,0 +1,73 @@
+---
+
+name: Create new release
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+
+on:
+  push:
+    tags:
+      - v**
+
+jobs:
+  publish-release:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.12"]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -e .[dev]
+
+      - name: Build and package release
+        working-directory: scripts
+        run: |
+          python build_release.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shinestacker-${{ matrix.os }}
+          path: |
+            ${{ matrix.os == 'windows-latest' && 'dist/shinestacker-release.zip' || 'dist/shinestacker-release.tar.gz' }}
+  create-release:
+    needs: publish-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release_assets
+          cp artifacts/shinestacker-ubuntu-latest/shinestacker-release.tar.gz release_assets/shinestacker-ubuntu.tar.gz
+          cp artifacts/shinestacker-macos-latest/shinestacker-release.tar.gz release_assets/shinestacker-macos.tar.gz
+          cp artifacts/shinestacker-windows-latest/shinestacker-release.zip release_assets/shinestacker-windows.zip
+          ls -la release_assets/
+
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: true
+          files: |
+            release_assets/shinestacker-ubuntu.tar.gz
+            release_assets/shinestacker-macos.tar.gz
+            release_assets/shinestacker-windows.zip

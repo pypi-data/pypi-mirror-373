@@ -1,0 +1,296 @@
+# Changelog
+
+This page reports the main releases only and the main changes therein.
+
+## [v1.2.1] - 2025-09-01
+**Bug fixes and minor improvements**
+* alignment is more tolerant in case of failures: frames are skipped and the running job is not stopped
+* fixed the -x (--expert) option
+* more safety checks prevent crashes for abnormal conditions
+* reference frame index improved with a more consistent treatment, a better numbering scheme and GUI widget 
+* improved project undo action description text
+* some bug fixes and code cleanup
+
+---
+
+## [v1.2.0] - 2025-08-31
+**Parallel processing and more improvements**
+
+* Implemented parallel processing for pyramid stacking algorithm
+* optimized pyramid algorithm: selects automatically the best within the given memory budget to avoid memory issues in case many pictures are selected. Explicit configuration is also possible for specific needs.
+* Implemented automatic subsample option for alignment, balancing and vignetting, now default
+* HLS and HSV corrections now supported for 16 bit images
+* Added luminosity correction in the LAB color space
+* Alignment module skips frames if transformation parameters are out of a reasonable ranges
+* Multilayer modules sends a warning if the estimated output file size is > 1GB
+* "Run all jobs" action is enabled only if more than one job are present
+* Updated default module names in project genereated by "new project" dialog
+* Code refactoring
+* Some GUI fixes
+
+---
+
+## [v1.1.0] - 2025-08-28
+**New Pyramids algorithm, some improvements and more fixes**
+
+### Changes
+
+* added Pyramids Tiles, that requires less RAM by fusing images in tiles
+* the alignment module now tolerates images of different shapes
+* noisy pixel mask verifies that the mask has the same shape as input images
+* minor changes to default alignment parameters
+* some improvements to the GUI
+* some bug fixes
+---
+
+## [v1.0.4.pre2] - 2025-08-26
+**Bug fixes**
+
+### Changes
+
+* fixed release build script changing format from zip to tar.gz for macOs and Linux
+
+---
+
+## [v1.0.4] - 2025-08-26
+**Bug fixes**
+
+### Changes
+
+* extensions are treated in lower case (e.g.: both jpg and JPG)
+* added missing retouch menu action: import frames from current project
+
+---
+## [v1.0.3] - 2025-08-26
+**Bug fixes**
+
+### Changes
+
+* fixed menu text
+* fixed crash multilayer module
+* fixed multilayer module
+* code cleanup
+
+---
+
+## [v1.0.2] - 2025-08-25
+**Bug fixes**
+
+### Changes
+
+* fixed context menu
+* fixed retouch callback for shiestacker-project app
+* fixed double image loading
+
+---
+
+## [v1.0.1] - 2025-08-25
+**First stable release**
+
+### Changes
+
+* added source file missing by mistake in v1.0.0
+
+---
+
+## [v1.0.0] - 2025-08-25
+**First stable release**
+
+### Changes
+
+* implemented vignetting correction filter
+* improved vignetting performance using subsampling
+* implemented fast subsample option in balance algorithms
+* implemented hex color line editin white balance filter
+* new application logo
+* interface improvements: implemented master/layer toggle
+* more informative GUI messages and colors
+* code refactoring and various cleanup 
+* bug fixes
+
+Note
+
+A source file was missing in this tag, and was added in v1.0.1
+
+---
+
+## [v0.5.0] - 2025-08-20
+**GUI and robustness improvements**
+
+### Changes
+
+* layer selection highlightted with a blue border
+* improved font rendering in brush preview
+* fixed thumbnail spacing
+* fixed and improved save strategy for retouched images
+* added checks for updated version in about dialog
+* disable "Save" and "Save As..." menus if do not apply to current status
+
+---
+
+## [v0.4.0] - 2025-08-19
+**Support touchpad navigation**
+
+### Changes
+
+* implemented touchpad image navigation (pan, zoom with pinch)
+* alignment robustness: retry without subsampling if number of bood matches is below a threshold parameter
+* added more robust path management in retouch area
+* added frame count display in "New Project" dialog
+* more unifrom color code in GUI run log
+* code clanup, removed remnants of obsolete code
+* various fixes
+
+---
+
+## [v0.3.6] - 2025-08-18
+**Bug fixes**
+
+### Changes
+
+* fixed a bug that prevented a complete clean up when "New Project" action is called
+* fixed the management of project file path while loading and saving
+* removed duplicated code
+* some code clean up
+
+---
+
+## [v0.3.5] - 2025-08-17
+**Bug fixes**
+
+### Changes
+
+* fixed a bug that prevented to add sub-actions
+* vignetting constrains model parameter in order to prevent searching for dark areas at the center of the image instead of at periphery
+* updated sample images and documentation
+
+---
+
+## [v0.3.4] - 2025-08-16
+**Code consolidation and fixes**
+
+### Changes
+
+* code consolidation with support of pylint code checking
+* some bug fixes
+* new project dialog shows the number of bunches, if selected
+* updated sample images, examples and documentation
+
+---
+
+## [v0.3.3] - 2025-08-13
+**Fixed PyPI distribution**
+
+This release is equivalent to v0.3.2, but resolves a problem for PyPI distribution.
+
+### Changes
+
+* examples and tests removed from PyPI distribution in order to fix file size limit
+
+---
+
+## [v0.3.2] - 2025-08-13
+**Fixes and code refactoring**
+
+### Changes
+
+* fixed ```from shinestacker import *```
+* restored jupyter support and updated examples
+* several bug fixes
+* several code refactoring reduces interclass dependencies
+* updated documentation
+* added new sample images and project files
+* examples removed from PyPI distribution
+
+---
+
+## [v0.3.1] - 2025-08-12
+**Fixes and code refactoring**
+
+### Changes
+
+* some GUI fixes
+* some code refactoring and cleanup
+
+---
+
+## [v0.3.0] - 2025-08-11
+**Filters added to retouch GUI**
+
+### Changes
+
+* added filters for sharpening, denoise and white balance
+* updated documentation
+* some bug fixes
+
+---
+
+## [v0.2.2] - 2025-07-28
+**More stability and improved tests**
+
+### Changes
+
+* improved test suite and enhanced test coverage
+* updated documentation
+* some stability improvements
+
+---
+
+## [v0.2.1] - 2025-07-27
+**Icon location fix**
+
+### Changes
+
+* icon location fixed, compatibly with PyPI and bundle release build
+
+---
+
+## [v0.2.0] - 2025-07-27
+**Stability improvements and new package name**
+
+### Changes
+
+* first release with new name ShineStacker
+* added BRISK detector/descriptor alignment method
+* improved stability by adding more validation controls to alignment configuration
+* some bug fixes
+* minor restyling
+
+---
+
+## [v0.1.4] - 2025-07-23
+**Bug fixes and alignment improvements**
+
+### Changes
+
+* fixed recently introduced bugs in the alignment module
+* disabled ECC refinement, too unstable
+* improvement rigid alignment with more precise matrix
+* some minor bug fixes
+* removed dependence on termcolor external module
+* some internal code cleanup
+
+---
+
+## [v0.1.1] - 2025-07-20
+**Optimized image alignment**
+
+### Changes
+
+* Faster alignment with image subsample enables
+* Alignment refinement via ECC transform enabled
+* GUI opens new project dialog at startup
+* fixed color logging for windowed app
+*  bug fixes
+
+---
+
+## [v0.1.0] - 2025-07-19
+**First relatively stable and usable GUI release**
+
+### Changes
+- several stability improvements
+- several bug fixes
+
+
+---
