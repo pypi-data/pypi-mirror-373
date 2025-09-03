@@ -1,0 +1,242 @@
+Metadata-Version: 2.4
+Name: statline
+Version: 1.1.7
+Summary: StatLine — weighted player scoring, efficiency modeling, and CLI tooling
+Project-URL: Homepage, https://github.com/amillolive/StatLine
+Project-URL: Repository, https://github.com/amillolive/StatLine
+Project-URL: Issues, https://github.com/amillolive/StatLine/issues
+Author: StatLine
+License: StatLine – Weighted Player Scoring and Analytics
+        Copyright (C) 2025 StatLine LLC (in formation)
+        
+        This program is free software: you can redistribute it and/or modify
+        it under the terms of the GNU Affero General Public License as published
+        by the Free Software Foundation, either version 3 of the License, or
+        (at your option) any later version.
+        
+        As an additional condition, you may not use the name “StatLine” or any
+        confusingly similar mark in connection with your distribution, hosting,
+        or marketing of this software without express written permission from
+        the copyright holder. This restriction is to protect the StatLine brand
+        and avoid confusion between official and unofficial versions.
+        
+        This program is distributed in the hope that it will be useful,
+        but WITHOUT ANY WARRANTY; without even the implied warranty of
+        MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+        GNU Affero General Public License for more details.
+        
+        You should have received a copy of the GNU Affero General Public License
+        along with this program.  If not, see <https://www.gnu.org/licenses/>.
+        
+        ---
+        
+        Additional Terms (Trademark)
+        
+        "StatLine" and associated logos are trademarks of StatLine LLC (in formation), trademark registration pending.  
+        This license does not grant you any rights to use the StatLine name or branding without prior written permission, except for fair use when referring to the project. Any fork, derivative work, or public deployment must remove the StatLine trademark unless explicitly authorized under our Trademark Policy.
+License-File: LICENSE
+Keywords: analytics,basketball,cli,discord,efg,google-sheets,mvp
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: GNU Affero General Public License v3
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Scientific/Engineering :: Information Analysis
+Requires-Python: <3.14,>=3.10
+Requires-Dist: pyyaml>=6
+Requires-Dist: typer>=0.12
+Requires-Dist: typing-extensions>=4.7; python_version < '3.11'
+Provides-Extra: cli-pretty
+Requires-Dist: rich>=13.0; extra == 'cli-pretty'
+Provides-Extra: dev
+Requires-Dist: coverage>=7.5; extra == 'dev'
+Requires-Dist: hypothesis>=6.100; extra == 'dev'
+Requires-Dist: mypy>=1.11; extra == 'dev'
+Requires-Dist: pytest-cov>=4.1; extra == 'dev'
+Requires-Dist: pytest>=8.1; extra == 'dev'
+Requires-Dist: ruff>=0.5; extra == 'dev'
+Requires-Dist: types-pyyaml; extra == 'dev'
+Provides-Extra: sheets
+Requires-Dist: google-auth>=2.0.0; extra == 'sheets'
+Requires-Dist: gspread>=6.0.0; extra == 'sheets'
+Description-Content-Type: text/markdown
+
+# StatLine
+
+**StatLine™ — weighted player scoring, efficiency modeling, and tooling.**
+
+“StatLine” is a trademark of StatLine LLC (in formation), registration pending.
+Source code is licensed under the GNU Affero General Public License v3 (see LICENSE).
+Brand, name, and logo are not covered by the AGPL.
+
+---
+
+## What is StatLine?
+
+StatLine is an adapter-driven analytics framework that:
+
+- normalizes raw game stats,
+- computes per-metric scores (with clamps, inversion, and ratios),
+- aggregates into buckets and applies weight presets (e.g., pri),
+- exposes a clean CLI and library API,
+- optionally ingests Google Sheets and caches mapped rows.
+
+Supported Python:
+
+- **3.10 – 3.13** (tested in CI across Linux, macOS, Windows)
+
+---
+
+## Install
+
+Base install:
+
+```bash
+# pip
+python -m venv .venv && source .venv/bin/activate   # use .\.venv\Scripts\activate on Windows
+pip install statline
+```
+
+With extras:
+
+```bash
+# Google Sheets ingestion
+pip install "statline[sheets]"
+
+# Developer tools (linters, types, tests)
+pip install -e ".[dev]"
+```
+
+---
+
+## CLI Basics
+
+StatLine installs a console script `statline`. You can also call the module directly.
+
+```bash
+statline --help
+python -m statline.cli --help
+```
+
+### Common commands
+
+```bash
+# list bundled adapters
+statline adapters
+
+# interactive scoring REPL (banner + timing are enabled by default)
+statline interactive
+
+# score a file of rows (CSV or YAML understood by the adapter)
+statline score --adapter example_game stats.csv
+
+# write results to a CSV instead of stdout
+statline score --adapter example_game stats.csv --out results.csv
+```
+
+Subcommands:
+
+- `adapters` — show available adapter keys & aliases
+- `interactive` — guided prompts + timing table
+- `export-csv` — export cached mapped metrics (when using the cache/Sheets flow)
+- `score` — batch-score a CSV/YAML through an adapter
+
+When the CLI runs, you’ll see a banner (noted so you can confirm proper install):
+
+```diff
+=== StatLine — Adapter-Driven Scoring ===
+```
+
+Enable per-stage timing via env (eg: 14ms):
+
+```bash
+STATLINE_TIMING=1 statline score --adapter rbw5 stats.csv
+```
+
+---
+
+## Input formats
+
+StatLine reads **CSV** or **YAML**. The columns/keys must match what the adapter expects.
+
+### CSV
+
+- First row is the header.
+- Each subsequent row is an entity (player).
+- Provide whatever **raw** fields your adapter maps (e.g., `ppg, apg, fgm, fga, tov`).
+
+```cs
+display_name,team,ppg,apg,orpg,drpg,spg,bpg,fgm,fga,tov
+Jordan,Red,27.3,4.8,1.2,3.6,1.9,0.7,10.2,22.1,2.1
+```
+
+### Example adapter (yaml)
+
+Adapters define the schema for raw inputs, buckets, weights, and any derived metrics.
+Below is the `example.yaml` you can ship in `statline/core/adapters/defs/`:
+
+```yaml
+key: example_game
+version: 0.1.0
+aliases: [ex, sample]
+title: Example Game
+
+dimensions:
+  map:   { values: [MapA, MapB, MapC] }
+  side:  { values: [Attack, Defense] }
+  role:  { values: [Carry, Support, Flex] }
+  mode:  { values: [Pro, Ranked, Scrim] }
+
+buckets:
+  scoring: {}
+  impact: {}
+  utility: {}
+  survival: {}
+  discipline: {}
+
+metrics:
+  # direct fields
+  - { key: stat3_count, bucket: utility,    clamp: [0, 50],  source: { field: stat3_count } }
+  - { key: mistakes,    bucket: discipline, clamp: [0, 25], invert: true, source: { field: mistakes } }
+
+# ratios/derived — replace old mapping math
+efficiency:
+  - { key: stat1_per_round, make: raw["stat1_total"], attempt: raw["rounds_played"], bucket: scoring }
+  - { key: stat2_rate,      make: raw["stat2_numer"], attempt: raw["stat2_denom"],   bucket: impact }
+  - { key: stat4_quality,   make: raw["stat4_good"],  attempt: raw["stat4_total"],   bucket: survival }
+
+weights:
+  pri:
+    scoring:    0.30
+    impact:     0.28
+    utility:    0.16
+    survival:   0.16
+    discipline: 0.10
+  mvp:
+    scoring:    0.34
+    impact:     0.30
+    utility:    0.12
+    survival:   0.14
+    discipline: 0.10
+  support:
+    scoring:    0.16
+    impact:     0.18
+    utility:    0.40
+    survival:   0.16
+    discipline: 0.10
+
+penalties:
+  pri:     { discipline: 0.10 }
+  mvp:     { discipline: 0.12 }
+  support: { discipline: 0.08 }
+
+sniff:
+  require_any_headers: [stat1_total, stat2_numer, stat2_denom, rounds_played, mistakes]
+```
+
+Reference `HOWTO.md` should you have any questions regarding adapters and yaml formatting.
