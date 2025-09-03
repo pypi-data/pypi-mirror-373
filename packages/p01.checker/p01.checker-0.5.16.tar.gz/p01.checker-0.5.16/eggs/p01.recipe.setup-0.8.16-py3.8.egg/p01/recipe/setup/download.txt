@@ -1,0 +1,517 @@
+=================
+Supported options
+=================
+
+The ``p01.recipe.setup:download`` recipe can be used to download and
+extract packages from the net. It supports the following options:
+
+``url``
+    URL to the package that will be downloaded and extracted. The
+    supported package formats are .tar.gz, .tar.bz2, and .zip. The
+    value must be a full URL,
+    e.g. http://python.org/ftp/python/2.4.4/Python-2.4.4.tgz.
+
+``strip-top-level-dir``
+    Switch to remove the top level directory from the
+    extracted archive. This will work only if the archive has exactly
+    one top level directory. Accepted values are 'true' or
+    'false'. Defaults to 'false'.
+
+``ignore-existing``
+    Switch to ignore existing files and/or directories. By
+    default, the extraction process fails if there is existing files
+    or directories matching the ones from the archive. Enabling this
+    option will skip these files/directories from the archive. When
+    this recipe is uninstalled the ignored files/directories *will
+    not* be removed. Accepted values are 'true' or 'false'. Defaults
+    to 'false'.
+
+``md5sum``
+    MD5 checksum for the package file. If available the MD5
+    checksum of the downloaded package will be compared to this value
+    and if the values do not match the execution of the recipe will
+    fail.
+
+``destination``
+    Path to a directory where the extracted contents of the package
+    will be placed. If omitted, a directory will be created under the
+    ``buildout['parts-directory']`` with the name of the section using
+    the recipe.
+
+``download-only``
+    When set to 'true', the recipe downloads the file without trying
+    to extract it. This is useful for downloading non-tarball
+    files. The ``strip-top-level-dir`` option will be ignored if this
+    option is enabled. Defaults to ``false``.
+
+``filename``
+    Allows renaming the downloaded file when using ``download-only = true``.
+    The downloaded file will still be placed under the ``destination``
+    directory with the given filename. If ``download-only = false`` this
+    option will be ignored. By default the original filename will be used. New
+    in version 1.4.1.
+
+The recipe uses the zc.buildout `Download API`_ to perform the
+actual download which allows additional configuration of the download
+process.
+
+By default, the recipe sets the ``download-cache`` option to
+``${buildout:directory}/downloads`` and creates the directory if
+necessary. This can be overridden by providing the ``download-cache``
+option in your ``[buildout]`` section.
+
+.. _`Download API`: http://pypi.python.org/pypi/zc.buildout#using-the-download-utility
+
+
+usage
+-----
+
+  >>> try:
+  ...     from hashlib import md5
+  ... except ImportError:
+  ...     from md5 import new as md5
+  >>> import os.path
+  >>> import pkg_resources
+
+  >>> testdata = os.path.dirname(__file__)
+  >>> server = start_server(testdata)
+
+  >>> sample = pkg_resources.resource_string(
+  ...     "p01.recipe.setup", "sample.tar.gz")
+
+  >>> hash = md5(sample).hexdigest()
+  >>> hash
+  'e04e2f9aa9398184f288826743c619f5'
+
+We use a fresh directory for temporary files in order to make sure that
+all temporary files have been cleaned up in the end:
+
+>>> import tempfile
+>>> old_tempdir = tempfile.tempdir
+>>> tempfile.tempdir = tmpdir('tmp')
+
+In the simplest form we can download a simple package and have it
+extracted in the parts directory.
+
+  >>> write(sample_buildout, 'buildout.cfg',
+  ... """
+  ... [buildout]
+  ... newest = false
+  ... parts = package1
+  ...
+  ... [package1]
+  ... recipe = p01.recipe.setup:download
+  ... url = %ssample.tar.gz
+  ... """ % server)
+
+Ok, let's run the buildout:
+
+  >>> print(system(buildout))
+  Installing package1.
+  Downloading http://test.server/sample.tar.gz
+  package1: Extracting package to /sample-buildout/parts/package1
+
+Let's take a look at the buildout parts directory now.
+
+  >>> ls(sample_buildout, 'parts')
+  d package1
+
+The containing directory is named after our part name. Within this
+directory are the contents of the extracted package.
+
+  >>> ls(sample_buildout, 'parts', 'package1')
+  d top-level
+
+The package contained a single top level directory. Let's peek what's inside.
+
+  >>> ls(sample_buildout, 'parts', 'package1', 'top-level')
+  - LICENSE.txt
+
+  >>> rmdir('downloads')
+
+
+download-cache
+--------------
+
+Using the ``download-cache`` option in the buildout allows you to
+store the downloaded packages in central location on your
+filesystem. Using the the same location for the ``download-cache`` in
+multiple buildouts will effectively share the packages between them
+and reduce the network traffic and storage requirements.
+
+Let's create a directory to be used as the download cache.
+
+  >>> cache = tmpdir('cache')
+
+And create a new buildout that sets the ``buildout-cache`` option
+accordingly.
+
+  >>> write(sample_buildout, 'buildout.cfg',
+  ... """
+  ... [buildout]
+  ... newest = false
+  ... parts = sharedpackage
+  ... download-cache = %(cache)s
+  ...
+  ... [sharedpackage]
+  ... recipe = p01.recipe.setup:download
+  ... url = %(server)ssample.tar.gz
+  ... """ % dict(cache=cache, server=server))
+
+Ok, let's run the buildout:
+
+  >>> print(system(buildout))
+  Uninstalling package1.
+  Installing sharedpackage.
+  Downloading http://test.server/sample.tar.gz
+  sharedpackage: Extracting package to /sample-buildout/parts/sharedpackage
+
+We can see that the package was placed under the shared container
+instead of the default location under the buildout directory. By default the
+the filename of the downloaded package is hashed.
+
+  >>> ls(cache)
+  d  dist
+  -  sample.tar.gz
+
+  >>> remove(cache, 'sample.tar.gz')
+
+
+destination
+-----------
+
+We can also extract the archive to any arbitrary location and have the
+top level directory be stripped, which is often a useful feature.
+
+  >>> tmpcontainer = tmpdir('otherplace')
+  >>> write(sample_buildout, 'buildout.cfg',
+  ... """
+  ... [buildout]
+  ... newest = false
+  ... parts = package1
+  ...
+  ... [package1]
+  ... recipe = p01.recipe.setup:download
+  ... url = %(server)s/sample.tar.gz
+  ... md5sum = e04e2f9aa9398184f288826743c619f5
+  ... destination = %(dest)s
+  ... strip-top-level-dir = true
+  ... """ % dict(server=server, dest=tmpcontainer))
+
+Rerunning the buildout now gives us
+
+  >>> print(system(buildout))
+  Uninstalling sharedpackage.
+  Installing package1.
+  Downloading http://test.server//sample.tar.gz
+  package1: Extracting package to /otherplace
+
+Taking a look at the extracted contents we can also see that the
+top-level directory has been stripped.
+
+  >>> ls(tmpcontainer)
+  - LICENSE.txt
+
+
+ignore-existing
+---------------
+
+By default, the recipe will fail if the destination where the package
+will be extracted already contains files or directories also included
+in the package.
+
+  >>> container = tmpdir('existing')
+  >>> source = os.path.join(container, "LICENSE.txt")
+  >>> write(source, "LICENSE.txt")
+
+  >>> write(sample_buildout, 'buildout.cfg',
+  ... """
+  ... [buildout]
+  ... newest = false
+  ... parts = package1
+  ...
+  ... [package1]
+  ... recipe = p01.recipe.setup:download
+  ... url = %(server)s/sample.tar.gz
+  ... md5sum = e04e2f9aa9398184f288826743c619f5
+  ... destination = %(dest)s
+  ... strip-top-level-dir = true
+  ... """ % dict(server=server, dest=container))
+
+Running the buildout now will fail because of the existing ``LICENSE.txt``
+file in the destination.
+
+  >>> print(system(buildout))
+  Uninstalling package1.
+  Installing package1.
+  package1: Extracting package to /existing
+  package1: Target /existing/LICENSE.txt already exists. Either remove it or set ``ignore-existing = true`` in your buildout.cfg to ignore existing files and directories.
+  While:
+    Installing package1.
+  Error: File or directory already exists.
+
+Setting the ``ignore-existing`` option will allow the recipe to
+proceed.
+
+  >>> rmdir(container)
+  >>> container = tmpdir('existing')
+  >>> source = os.path.join(container, "LICENSE.txt")
+  >>> write(source, "LICENSE.txt")
+
+  >>> write(sample_buildout, 'buildout.cfg',
+  ... """
+  ... [buildout]
+  ... newest = false
+  ... parts = package1
+  ...
+  ... [package1]
+  ... recipe = p01.recipe.setup:download
+  ... url = %(server)s/sample.tar.gz
+  ... md5sum = e04e2f9aa9398184f288826743c619f5
+  ... destination = %(dest)s
+  ... strip-top-level-dir = true
+  ... ignore-existing = true
+  ... """ % dict(server=server, dest=container))
+
+  >>> print(system(buildout))
+  Installing package1.
+  package1: Extracting package to /existing
+  package1: Ignoring existing target: /existing/LICENSE.txt
+
+  >>> ls(container)
+  - LICENSE.txt
+
+Also note that when the recipe is uninstalled the ignored targets will
+not be removed as they are not part of the output of this recipe. We
+can verify this by running the buildout again with a different
+destination.
+
+  >>> write(sample_buildout, 'buildout.cfg',
+  ... """
+  ... [buildout]
+  ... newest = false
+  ... parts = package1
+  ...
+  ... [package1]
+  ... recipe = p01.recipe.setup:download
+  ... url = %(server)s/sample.tar.gz
+  ... md5sum = e04e2f9aa9398184f288826743c619f5
+  ... strip-top-level-dir = true
+  ... ignore-existing = true
+  ... """ % dict(server=server))
+
+  >>> print(system(buildout))
+  Uninstalling package1.
+  Installing package1.
+  package1: Extracting package to /sample-buildout/parts/package1
+
+Now when we look into the directory containing the previous buildout
+we can see that the ``LICENSE.txt`` file is still there.
+
+  >>> ls(container)
+  - LICENSE.txt
+
+
+offline
+-------
+
+If the buildout is run in offline mode the recipe will still work if
+the package is cached in the downloads directory. Otherwise the user
+will be informed that downloading the file is not possible in offline
+mode.
+
+  >>> write(sample_buildout, 'buildout.cfg',
+  ... """
+  ... [buildout]
+  ... newest = false
+  ... parts = package1
+  ... offline = true
+  ...
+  ... [package1]
+  ... recipe = p01.recipe.setup:download
+  ... url = %(server)s/sample.tar.gz
+  ... md5sum = e04e2f9aa9398184f288826743c619f5
+  ... strip-top-level-dir = true
+  ... """ % dict(server=server))
+
+Let's verify that we do have a cached copy in our downloads directory.
+
+  >>> ls(sample_buildout, 'downloads')
+  -  sample.tar.gz
+
+  >>> print(system(buildout))
+  Uninstalling package1.
+  Installing package1.
+  package1: Extracting package to /sample-buildout/parts/package1
+
+When we remove the file from the filesystem the recipe will not work.
+
+  >>> remove(sample_buildout, 'downloads', 'sample.tar.gz')
+  >>> write(sample_buildout, 'buildout.cfg',
+  ... """
+  ... [buildout]
+  ... newest = false
+  ... parts = package1
+  ... offline = true
+  ...
+  ... [package1]
+  ... recipe = p01.recipe.setup:download
+  ... url = %(server)ssample.tar.gz
+  ... md5sum = e04e2f9aa9398184f288826743c619f5
+  ... """ % dict(server=server))
+
+  >>> print(system(buildout))
+  Uninstalling package1.
+  Installing package1.
+  While:
+    Installing package1.
+  Error: Couldn't download 'http://test.server/sample.tar.gz' in offline mode.
+
+
+download-only
+-------------
+
+We can download any file when setting the ``download-only`` option to
+``true``. This will simply place the file in the ``destination``
+directory.
+
+  >>> empty_download_cache(cache)
+  >>> downloads = tmpdir('my-downloads')
+  >>> write(sample_buildout, 'buildout.cfg',
+  ... """
+  ... [buildout]
+  ... newest = false
+  ... parts = package
+  ... download-cache = %(cache)s
+  ...
+  ... [package]
+  ... recipe = p01.recipe.setup:download
+  ... url = %(server)ssample.tar.gz
+  ... md5sum = e04e2f9aa9398184f288826743c619f5
+  ... destination = %(dest)s
+  ... download-only = true
+  ... """ % dict(server=server, dest=downloads, cache=cache))
+
+  >>> print(system(buildout))
+  Installing package.
+  Downloading http://test.server/sample.tar.gz
+
+Looking into the destination directory we can see that the file was
+downloaded but not extracted. Using the ``download-only`` option will
+work for any file regardless of the type.
+
+  >>> ls(downloads)
+  -  sample.tar.gz
+
+As seen above, with ``download-only`` the original filename will be preserved
+regardless whether filename hashing is in use or not. However, the cached copy
+will be hashed by default.
+
+  >>> ls(cache)
+  d  dist
+  -  sample.tar.gz
+
+filename
+--------
+
+The downloaded files may also be renamed to better reflect their purpose using
+the ``filename`` parameter.
+
+  >>> empty_download_cache(cache)
+  >>> write(sample_buildout, 'buildout.cfg',
+  ... """
+  ... [buildout]
+  ... newest = false
+  ... parts = package
+  ... download-cache = %(cache)s
+  ...
+  ... [package]
+  ... recipe = p01.recipe.setup:download
+  ... url = %(server)ssample.tar.gz
+  ... md5sum = e04e2f9aa9398184f288826743c619f5
+  ... destination = %(dest)s
+  ... download-only = true
+  ... filename = renamed-package-1.2.3.tgz
+  ... """ % dict(server=server, dest=downloads, cache=cache))
+
+  >>> print(system(buildout))
+  Uninstalling package.
+  Installing package.
+  Downloading http://test.server/sample.tar.gz
+
+  >>> ls(downloads)
+  -  renamed-package-1.2.3.tgz
+
+`Variable substitions
+<http://pypi.python.org/pypi/zc.buildout#variable-substitutions>`_ may be used
+with the ``filename`` parameter to generate the resulting filename dynamically.
+
+  >>> empty_download_cache(cache)
+  >>> write(sample_buildout, 'buildout.cfg',
+  ... """
+  ... [buildout]
+  ... newest = false
+  ... parts = package
+  ... download-cache = %(cache)s
+  ... example = foobar-1.2.3
+  ...
+  ... [package]
+  ... recipe = p01.recipe.setup:download
+  ... url = %(server)ssample.tar.gz
+  ... md5sum = e04e2f9aa9398184f288826743c619f5
+  ... destination = %(dest)s
+  ... download-only = true
+  ... filename = ${:_buildout_section_name_}-${buildout:example}.tgz
+  ... """ % dict(server=server, dest=downloads, cache=cache))
+
+  >>> print(system(buildout))
+  Uninstalling package.
+  Installing package.
+  Downloading http://test.server/sample.tar.gz
+
+In this example we have used the section name and a value from the [buildout]
+section to demonstrate the dynamic naming.
+
+  >>> ls(downloads)
+  -  package-foobar-1.2.3.tgz
+
+
+md5sum
+------
+
+The downloaded package can be verified against an MD5 checksum. This will
+make it easier to spot problems if the file has been changed. Note we don't
+test a bad md5 checksum which doesn't get downloaded by zc.buildout.Download
+because we will run into a permission error because the temporary dwonloaded
+file doesn't get released during remove the bad md5 file download. Just using
+a valid checksum allows the recipe to proceed.
+
+  >>> write(sample_buildout, 'buildout.cfg',
+  ... """
+  ... [buildout]
+  ... newest = false
+  ... parts = package1
+  ...
+  ... [package1]
+  ... recipe = p01.recipe.setup:download
+  ... url = %s/sample.tar.gz
+  ... md5sum = e04e2f9aa9398184f288826743c619f5
+  ... """ % server)
+
+  >>> print(system(buildout))
+  Uninstalling package.
+  Installing package1.
+  Downloading http://test.server//sample.tar.gz
+  package1: Extracting package to /sample-buildout/parts/package1
+
+
+Clean up
+--------
+
+We should have cleaned up all temporary files created by downloading things:
+
+>>> ls(tempfile.tempdir)
+
+Reset the global temporary directory:
+
+>>> tempfile.tempdir = old_tempdir

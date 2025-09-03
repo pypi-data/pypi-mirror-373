@@ -1,0 +1,156 @@
+======================
+p01.recipe.setup:paste
+======================
+
+This Zope 3 recipes allows us to point to scripts which the recipe will install
+a execute script hook for us. You can use this if you need to run a python
+script which knows about some egg packages.
+
+
+Options
+~~~~~~~
+
+The 'script' recipe accepts the following options:
+
+eggs
+  The names of one or more eggs, with their dependencies that should
+  be included in the Python path of the generated scripts.
+
+module
+  The ``module`` which contains the ``method`` to be executed.
+
+method
+  The ``method`` which get called from the ``module``.
+
+arguments
+  Use the option ``arguments`` to pass arguments to the script.
+  All the string will be copied to the script 1:1.
+  So what you enter here is what you get.
+
+environment
+  The environement if needed by your script
+
+
+Test
+~~~~
+
+Lets define a egg that we can use in our application:
+
+  >>> mkdir('hello')
+  >>> write('hello', 'setup.py',
+  ... '''
+  ... from setuptools import setup
+  ... setup(name='hello')
+  ... ''')
+
+And let's define a python module which we use for our test:
+
+  >>> write('hello', 'good.py',
+  ... """
+  ... def Good():
+  ...     print('good')
+  ... """)
+
+  >>> write('hello', 'bad.py',
+  ... """
+  ... import sys
+  ... def Bad():
+  ...     print('bad')
+  ...     sys.exit(1)  # FAIL
+  ... """)
+
+Also add a `__init__` to the `hello` package:
+
+  >>> write('hello', '__init__.py', '#make package')
+
+We'll create a `buildout.cfg` file that defines our script:
+
+  >>> write('buildout.cfg',
+  ... '''
+  ... [buildout]
+  ... develop = hello
+  ... parts = good bad all1 all2
+  ... newest = false
+  ...
+  ... [good]
+  ... recipe = p01.recipe.setup:script
+  ... eggs = hello
+  ... module = good
+  ... method = Good
+  ...
+  ... [bad]
+  ... recipe = p01.recipe.setup:script
+  ... eggs = hello
+  ... module = bad
+  ... method = Bad
+  ...
+  ... [all1]
+  ... recipe = p01.recipe.setup:scripts
+  ... eggs = hello
+  ... names = good
+  ...         bad
+  ...
+  ... [all2]
+  ... recipe = p01.recipe.setup:scripts
+  ... eggs = hello
+  ... names = bad
+  ...         good
+  ...
+  ... ''' % globals())
+
+Let's run buildout again:
+
+  >>> print(system(join('bin', 'buildout')))
+  Develop: '/sample-buildout/hello'
+  Installing good.
+  Generated script '/sample-buildout/bin/good'.
+  Installing bad.
+  Generated script '/sample-buildout/bin/bad'.
+  Installing all1.
+  Generated script '/sample-buildout/bin/all1'.
+  Installing all2.
+  Generated script '/sample-buildout/bin/all2'.
+
+And check the script again. Now we see the `helloWorld()` method is used:
+
+  >>> cat('bin', 'all1')
+  <BLANKLINE>
+  import sys
+  sys.path[0:0] = [...]
+  <BLANKLINE>
+  import os
+  sys.argv[0] = os.path.abspath(sys.argv[0])
+  <BLANKLINE>
+  <BLANKLINE>
+  import p01.recipe.setup.scripts
+  <BLANKLINE>
+  if __name__ == '__main__':
+      sys.exit(p01.recipe.setup.scripts.main(['/sample-buildout/bin', ['good', 'bad']]))
+
+  >>> cat('bin', 'all2')
+  <BLANKLINE>
+  import sys
+  sys.path[0:0] = [...]
+  <BLANKLINE>
+  import os
+  sys.argv[0] = os.path.abspath(sys.argv[0])
+  <BLANKLINE>
+  <BLANKLINE>
+  import p01.recipe.setup.scripts
+  <BLANKLINE>
+  if __name__ == '__main__':
+      sys.exit(p01.recipe.setup.scripts.main(['/sample-buildout/bin', ['bad', 'good']]))
+
+Now we can call the script:
+
+  >>> print(system(join('bin', 'all1'), with_exit_code=True))
+  good
+  bad
+  Child process exited with 1
+  EXIT CODE: 1
+
+  >>> print(system(join('bin', 'all2'), with_exit_code=True))
+  bad
+  Child process exited with 1
+  EXIT CODE: 1
+
