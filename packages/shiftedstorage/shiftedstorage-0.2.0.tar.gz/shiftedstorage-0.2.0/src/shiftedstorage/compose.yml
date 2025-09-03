@@ -1,0 +1,47 @@
+name: shiftedstorage
+
+services:
+  tailscale:
+    image: tailscale/tailscale:latest
+    hostname: ${CLUSTER_PEERNAME}
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: false
+    volumes:
+      - tailscale:/var/lib/tailscale
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - net_admin
+    restart: unless-stopped
+
+  ipfs:
+    image: ipfs/kubo:latest
+    environment:
+    volumes:
+      - ipfs:/data/ipfs
+    network_mode: service:tailscale
+    restart: unless-stopped
+    
+  ipfs-cluster:
+    image: ipfs/ipfs-cluster:latest
+    depends_on:
+      - ipfs
+    environment:
+      CLUSTER_PEERNAME: ${CLUSTER_PEERNAME}
+      CLUSTER_SECRET: ${CLUSTER_SECRET}
+      CLUSTER_IPFSHTTP_NODEMULTIADDRESS: /dns4/0.0.0.0/tcp/5001
+      CLUSTER_CRDT_TRUSTEDPEERS: '*'
+      CLUSTER_RESTAPI_HTTPLISTENMULTIADDRESS: /ip4/0.0.0.0/tcp/9094
+      CLUSTER_MONITORPINGINTERVAL: 2s
+    volumes:
+      - ipfs-cluster:/data/ipfs-cluster
+      - ./incoming:/incoming
+    network_mode: service:tailscale
+    restart: unless-stopped
+
+volumes:
+  ipfs:
+  ipfs-cluster:
+  tailscale:
