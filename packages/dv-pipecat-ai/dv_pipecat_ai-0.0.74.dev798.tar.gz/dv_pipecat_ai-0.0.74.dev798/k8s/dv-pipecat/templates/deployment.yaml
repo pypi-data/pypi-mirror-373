@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dv-pipecat.fullname" . }}
+  labels:
+    {{- include "dv-pipecat.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Ensure at least one pod is available during update if replicaCount > 1
+      maxUnavailable: "25%" # Use a percentage string
+      # Allow bursting one extra pod during update
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "dv-pipecat.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "dv-pipecat.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        version: {{ .Values.releaseTrack | default "stable" }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "dv-pipecat.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Load environment variables from the secret defined in values.yaml
+          envFrom:
+          - secretRef:
+              name: dv-pipecat-app-secrets # Same secrets for canary too
+          # Define any additional non-secret env vars if needed
+          env:
+            {{- toYaml .Values.env | nindent 12 }} # Keep using toYaml for the simpler env list
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /pc/v1/healthcheck # Updated path
+              port: http # Use named port 'http'
+            initialDelaySeconds: 60 # Increased delay
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /pc/v1/healthcheck # Updated path
+              port: http # Use named port 'http'
+            initialDelaySeconds: 90 # Increased delay
+            periodSeconds: 60
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            # Mount for GCP credentials secret
+            - name: secret-volume-gcp-creds
+              mountPath: "/app/creds.json"
+              subPath: creds.json
+              readOnly: true
+            # Add any other volumeMounts defined in values.yaml if needed, e.g.:
+            # {{- with .Values.volumeMounts }}
+            # {{- toYaml . | nindent 12 }}
+            # {{- end }}
+      volumes:
+        # Volume definition for GCP credentials secret
+        - name: secret-volume-gcp-creds
+          secret:
+            secretName: dv-pipecat-gcp-creds # Same secrets for canary too
+            optional: false # Ensure the secret must exist
+        # Add any other volumes defined in values.yaml if needed, e.g.:
+        # {{- with .Values.volumes }}
+        # {{- toYaml . | nindent 8 }}
+        # {{- end }}

@@ -1,0 +1,165 @@
+# Default values for dv-pipecat.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+releaseTrack: stable
+
+image:
+  repository: asia-south1-docker.pkg.dev/PROJECT_ID/REPOSITORY/dv-pipecat # Placeholder, will be set by GitHub Action
+  pullPolicy: IfNotPresent # Use IfNotPresent for development/testing, Always for production pushes
+  # Overridden by Helm command line argument or specific values file
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: false
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: "default"
+
+# RBAC Configuration
+rbac:
+  # Specifies whether RBAC resources should be created
+  create: true
+  # ClusterRole configuration
+  clusterRole:
+    # Rules for the ClusterRole
+    rules:
+      - apiGroups: [""]
+        resources: ["pods"]
+        verbs: ["get", "list"]
+      - apiGroups: ["apps"]
+        resources: ["deployments"]
+        verbs: ["get", "list"]
+      - apiGroups: [""]
+        resources: ["namespaces"]
+        verbs: ["get"]
+  # ClusterRoleBinding configuration
+  clusterRoleBinding:
+    # Whether to create a ClusterRoleBinding
+    create: true
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext: {} # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+service:
+  create: true #Set false for canary
+  type: ClusterIP
+  port: 80
+  targetPort: 8765 # Default port the application listens on
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+  - host: chart-example.local # Placeholder hostname
+    paths:
+    - path: /pc # Path prefix for the application
+      pathType: ImplementationSpecific # Use ImplementationSpecific for GKE Ingress, Prefix for others
+      # pathType: Prefix
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+resources:
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  limits:
+    cpu: 500m
+    memory: 1Gi
+  requests:
+    cpu: 200m
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+  # Volume definitions moved to deployment.yaml template
+volumes: [] # Volume mount definitions moved to deployment.yaml template
+volumeMounts: []
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Grace period for pods to terminate gracefully
+terminationGracePeriodSeconds: 270 # 4.5 minutes
+
+# Environment variables are loaded via envFrom below, plus any non-secret vars defined here.
+env:
+# Example non-secret env var:
+  - name: LOGGER_NAME
+    value: "pipecat"
+
+# Load environment variables from secrets
+envFrom:
+  - secretRef:
+      name: '{{ include "dv-pipecat.fullname" . }}-app-secrets'
+
+# KEDA Configuration for HTTP-based scaling
+keda:
+  enabled: false
+  # JSON path to extract the scheduled calls value
+  jsonPath: "predicted_pods"
+  # Target value for scaling (calls per pod)
+  targetValue: "1"
+  # HTTP method for API calls
+  httpMethod: "GET"
+  # Custom HTTP headers (optional)
+  httpHeaders: {}
+  # Scaling configuration
+  minReplicaCount: 10
+  maxReplicaCount: 1000
+  # How often to poll the API (seconds)
+  pollingInterval: 30
+  # Cooldown period before scaling down (seconds)
+  cooldownPeriod: 900
+
+  # Advanced scaling behavior to prevent fluctuations
+  # Scale down stabilization window (seconds) - prevents rapid scale down
+  scaleDownStabilizationWindow: 300
+  # Scale down percentage per period
+  scaleDownPercent: 50
+  # Scale down period (seconds)
+  scaleDownPeriod: 60
+  # Scale up stabilization window (seconds) - allows faster scale up
+  scaleUpStabilizationWindow: 60
+  # Scale up percentage per period
+  scaleUpPercent: 100
+  # Scale up period (seconds)
+  scaleUpPeriod: 15
+
+  # Fallback behavior when scaling metrics are unavailable
+  # Number of failures before fallback
+  failureThreshold: 3
+  # Number of replicas to maintain during fallback
+  fallbackReplicas: 20

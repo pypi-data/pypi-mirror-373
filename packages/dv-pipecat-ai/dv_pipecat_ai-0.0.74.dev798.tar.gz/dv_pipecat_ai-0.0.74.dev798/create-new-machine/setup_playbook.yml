@@ -1,0 +1,104 @@
+---
+- name: Setup new machine
+  hosts: target_servers
+  vars:
+    github_email: "kalicharanvemuru@gmail.com"
+    repo_url: "git@github.com:Stonkr/dv-pipecat.git"
+    branch_name: "dv-main"
+    env_file_source: ".env.prod"
+    gcp_creds_file_source: "creds.json"
+    target_user: "azureuser"
+
+  tasks:
+  - name: Transfer SSH private key
+    copy:
+      src: id_ed25519
+      dest: ~/.ssh/id_ed25519
+      mode: 600
+      owner: "{{ target_user }}"
+      group: "{{ target_user }}"
+
+  - name: Transfer SSH public key
+    copy:
+      src: id_ed25519.pub
+      dest: ~/.ssh/id_ed25519.pub
+      mode: 644
+      owner: "{{ target_user }}"
+      group: "{{ target_user }}"
+
+  - name: Correct permissions of private key (if needed)
+    shell: |
+      sudo chmod 600 ~/.ssh/id_ed25519
+      sudo chmod 644 ~/.ssh/id_ed25519.pub
+    args:
+      executable: /bin/bash
+
+  - name: Update apt cache
+    become: yes
+    apt:
+      update_cache: yes
+
+  - name: Install required packages (before Docker)
+    shell:
+      cmd: |
+        # Add Docker's official GPG key:
+        sudo apt-get update
+        sudo apt-get install -y ca-certificates curl
+        sudo install -m 0755 -d /etc/apt/keyrings
+        sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+        sudo chmod a+r /etc/apt/keyrings/docker.asc
+        # Add the repository to Apt sources:
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        sudo apt-get update
+      executable: /bin/bash
+
+  - name: Install Docker
+    become: yes
+    apt:
+      name: docker-ce
+      state: present
+
+  - name: Add deadsnakes PPA
+    become: yes
+    apt_repository:
+      repo: ppa:deadsnakes/ppa
+      state: present
+      update_cache: yes
+
+  - name: Install python3.12 and python3.12-venv
+    become: yes
+    apt:
+      name:
+      - python3.12
+      - python3.12-venv
+      state: present
+
+  - name: Clone the repository
+    git:
+      repo: "{{ repo_url }}"
+      dest: "./dv-pipecat"
+      version: "{{ branch_name }}"
+      accept_hostkey: yes
+
+  - name: Copy .env file
+    copy:
+      src: "{{ env_file_source }}"
+      dest: ~/dv-pipecat/examples/ringg-chatbot/.env
+      remote_src: no
+  - name: Copy creds.json file
+    copy:
+      src: "{{ gcp_creds_file_source }}"
+      dest: ~/dv-pipecat/examples/ringg-chatbot/creds.json
+      remote_src: no
+
+  - name: Build and deploy
+    shell: |
+      cd ~/dv-pipecat
+      # rm -rf venv
+      python3.12 -m venv venv
+      source venv/bin/activate
+      pip install -r dev-requirements.txt
+      python -m build
+      bash deploy.sh
+    args:
+      executable: /bin/bash

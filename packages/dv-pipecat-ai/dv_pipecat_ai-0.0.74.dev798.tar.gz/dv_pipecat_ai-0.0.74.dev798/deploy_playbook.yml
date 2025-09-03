@@ -1,0 +1,24 @@
+# deploy_playbook.yml
+---
+- name: Deploy to target servers
+  hosts: target_servers
+  become: no
+  serial: "50%"
+
+  tasks:
+  - name: Change to dv-pipecat directory and execute deployment script
+    shell: |
+      cd dv-pipecat || { echo "Directory missing"; exit 1; }
+      git fetch
+      git checkout dv-main
+      git pull --ff-only
+      rm -rf dist/
+      source venv/bin/activate && python -m build
+      bash deploy.sh
+    register: deploy_output
+    args:
+      executable: /bin/bash
+
+  - name: Show deployment output
+    debug:
+      var: deploy_output.stdout_lines
