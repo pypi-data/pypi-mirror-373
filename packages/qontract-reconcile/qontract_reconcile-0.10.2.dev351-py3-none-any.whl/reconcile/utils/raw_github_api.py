@@ -1,0 +1,94 @@
+import os
+from typing import Any
+
+import requests
+from sretoolbox.utils import retry
+
+Headers = dict[str, str | bytes | None]
+
+
+class RawGithubApi:
+    """
+    REST based GH interface
+
+    Unfortunately this needs to be used because PyGithub does not yet support
+    checking pending invitations
+    """
+
+    BASE_URL = os.environ.get("GITHUB_API", "https://api.github.com")
+    BASE_HEADERS = {
+        "Accept": "application/vnd.github.v3+json,"
+        "application/vnd.github.dazzler-preview+json"
+    }
+
+    def __init__(self, password: str) -> None:
+        self.password = password
+
+    def headers(self, headers: Headers | None = None) -> Headers:
+        if headers is None:
+            headers = {}
+        new_headers = headers.copy()
+        new_headers.update(self.BASE_HEADERS)
+        new_headers["Authorization"] = "token %s" % (self.password,)
+        return new_headers
+
+    def patch(self, url: str) -> requests.Response:
+        res = requests.patch(url, headers=self.headers(), timeout=60)
+        res.raise_for_status()
+        return res
+
+    @retry()
+    def query(self, url: str, headers: Headers | None = None) -> Any:
+        if headers is None:
+            headers = {}
+        h = self.headers(headers)
+        res = requests.get(self.BASE_URL + url, headers=h, timeout=60)
+        res.raise_for_status()
+        result = res.json()
+
+        if isinstance(result, list):
+            elements = list(result)
+            while "last" in res.links and "next" in res.links:
+                if res.links["last"]["url"] == res.links["next"]["url"]:
+                    req_url = res.links["next"]["url"]
+                    res = requests.get(req_url, headers=h, timeout=60)
+                    res.raise_for_status()
+
+                    elements.extend(element for element in res.json())
+                    return elements
+
+                req_url = res.links["next"]["url"]
+                res = requests.get(req_url, headers=h, timeout=60)
+                res.raise_for_status()
+
+                elements.extend(element for element in res.json())
+
+            return elements
+
+        return result
+
+    def org_invitations(self, org: str) -> list[str]:
+        invitations = self.query(f"/orgs/{org}/invitations")
+
+        return [
+            login
+            for login in (invitation.get("login") for invitation in invitations)
+            if login is not None
+        ]
+
+    def team_invitations(self, org_id: str, team_id: str) -> list[str]:
+        invitations = self.query(f"/organizations/{org_id}/team/{team_id}/invitations")
+
+        return [
+            login
+            for login in (invitation.get("login") for invitation in invitations)
+            if login is not None
+        ]
+
+    def repo_invitations(self) -> list[dict[str, Any]]:
+        return self.query("/user/repository_invitations")
+
+    def accept_repo_invitation(self, invitation_id: int) -> None:
+        url = self.BASE_URL + f"/user/repository_invitations/{invitation_id}"
+        res = self.patch(url)
+        res.raise_for_status()

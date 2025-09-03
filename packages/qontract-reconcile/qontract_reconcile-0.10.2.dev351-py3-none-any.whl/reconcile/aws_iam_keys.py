@@ -1,0 +1,160 @@
+import logging
+import shutil
+import sys
+from collections.abc import Callable, Iterable, Mapping
+from typing import Any
+
+from reconcile import queries
+from reconcile.utils.aws_api import AWSApi
+from reconcile.utils.constants import DEFAULT_THREAD_POOL_SIZE
+from reconcile.utils.defer import defer
+from reconcile.utils.state import State, init_state
+from reconcile.utils.terrascript_aws_client import TerrascriptClient as Terrascript
+
+QONTRACT_INTEGRATION = "aws-iam-keys"
+
+
+def filter_accounts(
+    accounts: Iterable[dict[str, Any]], account_name: str | None
+) -> list[dict[str, Any]]:
+    accounts = [a for a in accounts if a.get("deleteKeys") or a.get("disableKeys")]
+    if account_name:
+        accounts = [a for a in accounts if a["name"] == account_name]
+    return accounts
+
+
+def get_keys_to_delete(accounts: Iterable[dict[str, Any]]) -> dict[str, list[str]]:
+    return {
+        account["name"]: account["deleteKeys"]
+        for account in accounts
+        if account["deleteKeys"]
+    }
+
+
+def get_keys_to_disable(accounts: Iterable[dict[str, Any]]) -> dict[str, list[str]]:
+    return {
+        account["name"]: account["disableKeys"]
+        for account in accounts
+        if account.get("disableKeys")
+    }
+
+
+def should_run(
+    state: State,
+    keys_to_delete: dict[str, list[str]],
+    keys_to_disable: dict[str, list[str]] | None = None,
+) -> bool:
+    for account_name, keys in keys_to_delete.items():
+        if state.get(account_name, []) != keys:
+            return True
+    if keys_to_disable:
+        for account_name, keys in keys_to_disable.items():
+            disable_state_key = f"{account_name}_disable"
+            if state.get(disable_state_key, []) != keys:
+                return True
+    return False
+
+
+def update_state(
+    state: State,
+    keys_to_update: dict[str, list[str]],
+    keys_to_disable: dict[str, list[str]] | None = None,
+) -> None:
+    for account_name, keys in keys_to_update.items():
+        if state.get(account_name, []) != keys:
+            state.add(account_name, keys, force=True)
+    if keys_to_disable:
+        for account_name, keys in keys_to_disable.items():
+            disable_state_key = f"{account_name}_disable"
+            if state.get(disable_state_key, []) != keys:
+                state.add(disable_state_key, keys, force=True)
+
+
+def init_tf_working_dirs(
+    accounts: Iterable[dict[str, Any]],
+    thread_pool_size: int,
+    settings: Mapping[str, Any],
+) -> dict[str, str]:
+    # Avoid circular import
+    import reconcile.terraform_resources  # noqa: PLC0415
+
+    # if the terraform-resources integration is disabled
+    # for an account, it means that Terrascript will not
+    # initiate that account's config and will not create
+    # a working directory for it. this means that we are
+    # not able to recycle access keys belonging to users
+    # created by terraform-resources, but it is disabled
+    # tl;dr - we are good. how cool is this alignment...
+    ts = Terrascript(
+        reconcile.terraform_resources.QONTRACT_INTEGRATION,
+        reconcile.terraform_resources.QONTRACT_TF_PREFIX,
+        thread_pool_size,
+        accounts,
+        settings=settings,
+    )
+    return ts.dump()
+
+
+def cleanup(working_dirs: Mapping[str, str]) -> None:
+    for wd in working_dirs.values():
+        shutil.rmtree(wd)
+
+
+@defer
+def run(
+    dry_run: bool,
+    thread_pool_size: int = DEFAULT_THREAD_POOL_SIZE,
+    disable_service_account_keys: bool = False,
+    account_name: str | None = None,
+    defer: Callable | None = None,
+) -> None:
+    accounts = filter_accounts(
+        queries.get_aws_accounts(terraform_state=True), account_name
+    )
+    if not accounts:
+        logging.debug("nothing to do here")
+        # using return because terraform-resources
+        # may be the calling entity, and has more to do
+        return
+
+    settings = queries.get_app_interface_settings()
+    state = init_state(integration=QONTRACT_INTEGRATION)
+    if defer:
+        defer(state.cleanup)
+    keys_to_delete = get_keys_to_delete(accounts)
+    keys_to_disable = get_keys_to_disable(accounts)
+    if not should_run(state, keys_to_delete, keys_to_disable):
+        logging.debug("nothing to do here")
+        # using return because terraform-resources
+        # may be the calling entity, and has more to do
+        return
+
+    working_dirs = init_tf_working_dirs(accounts, thread_pool_size, settings)
+    if defer:
+        defer(lambda: cleanup(working_dirs))
+
+    with AWSApi(thread_pool_size, accounts, settings=settings) as aws:
+        error, service_account_recycle_complete = aws.delete_keys(
+            dry_run, keys_to_delete, working_dirs, disable_service_account_keys
+        )
+        if keys_to_disable:
+            disable_error = aws.disable_keys(dry_run, keys_to_disable)
+            # combine errors from both operations
+            error = error or disable_error
+    if error:
+        sys.exit(1)
+
+    if (
+        not dry_run
+        and not disable_service_account_keys
+        and service_account_recycle_complete
+    ):
+        update_state(state, keys_to_delete, keys_to_disable)
+
+
+def early_exit_desired_state(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    accounts = queries.get_aws_accounts(terraform_state=True)
+    return {
+        "keys": get_keys_to_delete(accounts),
+        "disable_keys": get_keys_to_disable(accounts),
+    }
