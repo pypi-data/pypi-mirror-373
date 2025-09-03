@@ -1,0 +1,73 @@
+from typing import (
+    TYPE_CHECKING,
+    Iterator,
+    Optional,
+)
+
+from edu_rdm_integration.core.consts import (
+    REGIONAL_DATA_MART_INTEGRATION_EXPORTING_DATA,
+)
+from edu_rdm_integration.rdm_models.models import (
+    RegionalDataMartModelEnum,
+)
+
+from {{ strategy.manager_class_module }} import (
+    {{ strategy.manager_class_name }},
+)
+
+from {{ function_python_path }}.runners import (
+    {{ camel_case_function_name }}Runner,
+)
+
+
+if TYPE_CHECKING:
+    from m3_db_utils.models import (
+        ModelEnumValue,
+    )
+
+
+class {{ camel_case_function_name }}RunnerManager({{ strategy.manager_class_name }}):
+    """Менеджер ранера функций "{{ function_verbose_name }}"."""
+
+    @classmethod
+    def _prepare_uuid(cls) -> Optional[str]:
+        """Получение UUID класса. Используется при регистрации сущности в базе данных.
+
+        Если ничего не возвращает, то регистрация в БД не будет произведена.
+        """
+        return '{{ strategy.manager_uuid }}'
+
+    @classmethod
+    def _prepare_verbose_name(cls) -> str:
+        """Полное наименование для дальнейшей регистрации и отображения пользователю."""
+        return 'Менеджер Функции "{{ function_verbose_name }}"'
+
+    @classmethod
+    def _prepare_tags(cls) -> list[str]:
+        """Список тегов, по которым сущность можно будет осуществлять поиск."""
+        tags = [
+            REGIONAL_DATA_MART_INTEGRATION_EXPORTING_DATA,
+        ]
+
+        return tags
+
+    @classmethod
+    def _prepare_runner_class(cls) -> type[{{ camel_case_function_name }}Runner]:
+        """Возвращает класс ранера."""
+        return {{ camel_case_function_name }}Runner
+
+    def _prepare_model_ids_map(self) -> dict['ModelEnumValue', Iterator[int]]:
+        """Осуществляется поиск записей моделей добавленных или обновленных за указанный период времени.
+
+        В выборках (QuerySet) необходимо использовать iterator().
+        """
+        model_ids_map = {
+            RegionalDataMartModelEnum.: (
+                RegionalDataMartModelEnum..model.objects.filter(
+                    modified__gte=self._period_started_at,
+                    modified__lt=self._period_ended_at,
+                ).values_list('pk', flat=True).iterator()
+            ),
+        }
+
+        return model_ids_map

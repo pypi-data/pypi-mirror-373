@@ -1,0 +1,142 @@
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Optional,
+)
+
+from educommon.integration_entities.enums import (
+    EntityLogOperation,
+)
+from educommon.integration_entities.helpers import (
+    EntitySaver,
+)
+
+from edu_rdm_integration.core.consts import (
+    REGIONAL_DATA_MART_INTEGRATION_COLLECTING_DATA,
+)
+from edu_rdm_integration.rdm_models.models import (
+    RDMModelEnum,
+)
+
+from {{ strategy.function_class_module }} import (
+    {{ strategy.function_class_name }},
+)
+
+from {{ function_python_path }}.helpers import (
+    {{ camel_case_function_name }}FunctionHelper,
+)
+from {{ function_python_path }}.results import (
+    {{ camel_case_function_name }}FunctionResult,
+)
+from {{ function_python_path }}.validators import (
+    {{ camel_case_function_name }}FunctionValidator,
+)
+
+
+if TYPE_CHECKING:
+    from m3_db_utils.models import (
+        ModelEnumValue,
+    )
+
+
+class {{ camel_case_function_name }}Function({{ strategy.function_class_name }}):
+    """Функция "{{ function_verbose_name }}"."""
+
+    helper: '{{ camel_case_function_name }}FunctionHelper'
+
+    def __init__(
+        self,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+
+        self._to_save_entities = {
+            EntityLogOperation.CREATE: {},
+            EntityLogOperation.UPDATE: {},
+        }
+
+        self._preparing_functions_map = {
+            EntityLogOperation.CREATE: self._prepare_model_instances_for_create,
+            EntityLogOperation.UPDATE: self._prepare_model_instances_for_update,
+            EntityLogOperation.DELETE: self._prepare_model_instances_for_delete,
+        }
+
+    @classmethod
+    def _prepare_uuid(cls) -> Optional[str]:
+        """Получение UUID класса. Используется при регистрации сущности в базе данных.
+
+        Если ничего не возвращает, то регистрация в БД не будет произведена.
+        """
+        return '{{ strategy.function_uuid }}'
+
+    @classmethod
+    def _prepare_verbose_name(cls) -> str:
+        """Полное наименование для дальнейшей регистрации и отображения пользователю."""
+        return 'Функция "{{ function_verbose_name }}"'
+
+    @classmethod
+    def _prepare_tags(cls) -> list[str]:
+        """Список тегов, по которым сущность можно будет осуществлять поиск."""
+        tags = [
+            REGIONAL_DATA_MART_INTEGRATION_COLLECTING_DATA,
+        ]
+
+        return tags
+
+    @classmethod
+    def _prepare_entities(cls) -> list['ModelEnumValue']:
+        """Формирование списка ключей модели-перечисления моделей РВД."""
+        rdm_models = [
+            RDMModelEnum.,
+        ]
+
+        return rdm_models
+
+    def _prepare_helper_class(self) -> type[{{ camel_case_function_name }}FunctionHelper]:
+        """Возвращает класс помощника функции."""
+        return {{ camel_case_function_name }}FunctionHelper
+
+    def _prepare_validator_class(self) -> type[{{ camel_case_function_name }}FunctionValidator]:
+        """Возвращает класс валидатора функции."""
+        return {{ camel_case_function_name }}FunctionValidator
+
+    def _prepare_result_class(self) -> type[{{ camel_case_function_name }}FunctionResult]:
+        """Возвращает класс результата функции."""
+        return {{ camel_case_function_name }}FunctionResult
+
+    def _prepare_model_instances_for_create(self, class_id: int, **kwargs) -> None:
+        """Подготовка объектов модели РВД для создания."""
+        raise NotImplementedError
+
+    def _prepare_model_instances_for_update(self, class_id: int, log_changes: dict[str, Any], **kwargs) -> None:
+        """Подготовка объектов модели РВД для обновления."""
+        raise NotImplementedError
+
+    def _prepare_model_instances_for_delete(self, class_id: int, **kwargs) -> None:
+        """Подготовка объектов модели РВД для удаления."""
+        raise NotImplementedError
+
+    def _prepare_model_instances(self):
+        """Подготовка объектов модели РВД для сохранения.
+
+        Производится обработка логов и на их основе выбирается подходящий метод для дальнейшей обработки.
+        """
+        # !!! Удалить после реализации !!!
+        # for some_id, log_changes in <some logs>:
+        #     for log_change in log_changes:
+        #         func = self._preparing_functions_map[log_change.operation]
+        #         func(some_id, log_changes=log_change.fields)
+        raise NotImplementedError
+
+    def _prepare(self, *args, **kwargs):
+        """Выполнение действий функций системы."""
+        save_model_instances = EntitySaver(
+            to_save_entities=self._to_save_entities,
+            model=self.first_entity.model,
+        )
+
+        self._prepare_model_instances()
+
+        if self.result.has_not_errors:
+            self.do_on_save(save_model_instances)
