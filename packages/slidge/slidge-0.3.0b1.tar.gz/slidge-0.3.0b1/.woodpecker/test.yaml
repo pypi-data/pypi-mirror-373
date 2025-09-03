@@ -1,0 +1,63 @@
+when:
+  event: [ push, pull_request ]
+  path: [ pyproject.toml, uv.lock, "slidge/**/*.py", "tests/**/*.py" ]
+
+matrix:
+  PYTHON_VERSION:
+    - "3.11"
+    - "3.12"
+    - "3.13"
+
+labels:
+  platform: linux/amd64
+
+variables:
+  - &ci-image codeberg.org/slidge/slidge:ci-${PYTHON_VERSION}
+  - &only-once
+    when:
+      matrix:
+        PYTHON_VERSION: "3.11"
+      event: push
+
+steps:
+  update-venv:
+    image: *ci-image
+    pull: true
+    commands:
+      - uv sync --all-groups --all-extras
+
+  ruff:
+    image: *ci-image
+    commands:
+      - ruff check
+      - ruff format --check
+
+  mypy:
+    image: *ci-image
+    commands:
+      - mypy
+
+  test:
+    image: *ci-image
+    commands:
+      - coverage run -m pytest tests
+      - coverage report | tee coverage.txt
+      - coverage html
+
+  coverage-badge:
+    image: *ci-image
+    commands:
+      - uv pip install pybadges
+      - COVERAGE=$(tail -n1 coverage.txt | awk 'NF>1{print $NF}')
+      - python -m pybadges --left-text=coverage --right-text=$COVERAGE --right-color=green > htmlcov/coverage.svg || true
+    <<: *only-once
+
+  coverage-publish:
+    image: codeberg.org/slidge/woodpecker-publish-pages
+    pull: true
+    settings:
+      token:
+        from_secret: CODEBERG_TOKEN
+      html-root: htmlcov
+      prefix: coverage
+    <<: *only-once

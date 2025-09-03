@@ -1,0 +1,57 @@
+# Build a source dist and a wheel.
+
+when:
+  event: [ push, tag ]
+  path: [ "slidge/**/*", "pyproject.toml", "uv.lock", "README.md" ]
+  branch: main
+
+labels:
+  platform: linux/amd64
+
+# We do not need to build several packages for several python versions
+# since slidge is pure python.
+variables:
+  - &image codeberg.org/slidge/slidge:ci-3.13
+
+steps:
+  changelog:
+    image: codeberg.org/slidge/woodpecker-generate-changelog
+    pull: true
+
+  build:
+    image: *image
+    commands:
+      - uv build
+
+  codeberg-pypi:
+    image: *image
+    environment:
+      CODEBERG_TOKEN:
+        from_secret: CODEBERG_TOKEN
+    # Here we don't want the whole workflow to fail if the file already exists.
+    # This happens when we push commits and a new tag at the same time, resulting
+    # in two packages with the same version identifier being produced by the "tag"
+    # and "push" workflow.
+    commands:
+      - uv publish --index codeberg --token $CODEBERG_TOKEN || true
+
+  pypi:
+    when:
+      event: tag
+    image: *image
+    environment:
+      PYPI_TOKEN:
+        from_secret: PYPI_TOKEN
+    commands:
+      - uv publish --token $PYPI_TOKEN
+
+  codeberg-release:
+    when:
+      event: tag
+    image: woodpeckerci/plugin-release
+    settings:
+      files:
+        - dist/slidge*
+      api_key:
+        from_secret: CODEBERG_TOKEN
+      note: CHANGELOG
