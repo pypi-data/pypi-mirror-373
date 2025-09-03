@@ -1,0 +1,229 @@
+Metadata-Version: 2.1
+Name: pygar-client
+Version: 3.1.3
+Summary: A Python client for the GAR protocol
+Home-page: https://www.trinityriversystems.com/docs/gar_protocol/
+Author: Jon Hill
+Description-Content-Type: text/markdown
+
+# Generic Active Records Protocol Documentation
+
+## Overview
+
+The GAR protocol is a WebSocket-based messaging system built on top of TCP. It is used for streaming and snapshot-style data delivery and operates over a single bi-directional socket connection. When establishing a connection, clients must specify the subprotocol `"gar-protocol"`:
+
+```
+Sec-WebSocket-Protocol: gar-protocol
+```
+
+## Encoding
+
+The server supports two formats for message payloads: **binary** and **JSON**.
+
+- **JSON (opcode 0x01)** is recommended for human-readable debugging and platform-agnostic integration.
+- **Binary (opcode 0x02)** is compact and efficient but platform-dependent due to endianness, sizing, and alignment.
+
+If the first byte of the initial Introduction message is `{`, then JSON mode is assumed regardless of the WebSocket opcode.
+
+## Binary Format
+
+- Each message begins with a `message_type` enumeration value.
+- Immediately followed by a binary-encoded struct corresponding to that type.
+- Must conform to platform-specific alignment and byte order.
+- Should only be used when both ends are aware of the exact schema and platform.
+
+## JSON Format
+
+JSON messages are structured with a `"message_type"` string and a corresponding `"value"` object.
+
+Example:
+```json
+{
+  "message_type": "Subscribe",
+  "value": {
+    "subscription_mode": "Snapshot",
+    "nagle_interval": 0,
+    "name": "S1",
+    "key_id": 0,
+    "topic_id": 0,
+    "class_list": ["Underlier"],
+    "key_filter": null,
+    "topic_filter": null
+  }
+}
+```
+
+This format is more portable and ideal for most clients.
+
+## Framing
+
+Each websocket frame contains a single message - a json {} or binary object.
+
+## Session Lifecycle
+
+1. **Introduction** must always be the first message. It specifies protocol version and heartbeat expectations.
+2. Clients may then **Subscribe** to topics and keys or **Publish** messages.
+3. Clients must send **Heartbeat** messages periodically to keep the connection alive. If none is received within the specified timeout, the server will disconnect the client.
+4. The **first heartbeat** has a 10x grace period to allow for slow client setup.
+5. All topics and keys must be explicitly introduced before publishing record messages.
+6. IDs `0` are considered **invalid** for both `topic_id` and `key_id`.
+7. Enumeration of topics and keys is not globally synchronized between client and server. Each side must track their own ID mappings.
+
+## Record Updates
+
+The GAR protocol supports record updates via:
+
+### Binary Format
+- **FixedLengthRecordUpdate**: `record_id` directly followed by the fixed-size record data.
+- **VariableLengthRecordUpdate**: serialized `binary_record_update` struct with embedded length field.
+
+### JSON Format
+- Encoded using `json_record_update` with clear field names and value.
+
+Example:
+```json
+{
+  "message_type": "JSONRecordUpdate",
+  "value": {
+    "record_id": {"key_id": 1, "topic_id": 22},
+    "value": 0.3
+  }
+}
+```
+
+## Batch updates
+
+Multiple updates can be sent together in a batch. Initial snapshots after subscribing are always sent in one or more batch.
+
+Records are sent in key-major format. Keys are introduced along with their class or class_list. Key names and classes may be omitted when keys have already been introduced.
+
+Binary format uses the `batch_update` struct.
+
+JSON format is similar, except the records within each "topics" object are JSON objects with topic_id numbers as member names: { "<topic_id>": record_value, ... }
+
+Example:
+```
+{
+  "message_type": "BatchUpdate",
+  "value": {
+    "default_class": "A",
+    "keys": [
+      {
+        "key_id": 1,
+        "name": "key1",
+        "topics": {
+          "20": 10
+        }
+      },
+      {
+        "key_id": 2,
+        "name": "key2",
+        "class": "B",
+        "topics": {
+          "21": 20
+        }
+      },
+      {
+        "key_id": 3,
+        "name": "key3",
+        "classes": ["A", "B", "C"],
+        "topics": {
+          "20": 30,
+          "21": 31,
+          "22": 32
+        }
+      }
+    ]
+  }
+}
+```
+
+## Subscriptions
+
+Clients may initiate:
+
+- **Snapshot** subscriptions (one-time data snapshot),
+
+- **Streaming** subscriptions (continuous updates),
+
+- **DeleteKeys** (delete all matching keys and their records)
+
+- **DeleteRecords** (delete all matching records)
+
+Subscription filters can be applied using:
+
+- Direct `key_id` or `topic_id`,
+
+- `_class` filters to only keys of this class,
+
+- Regular expressions via `key_filter` or `topic_filter`.
+
+Subscriptions may be changed by sending another subscription messages using the same name. After the ProcessingSnapshot subscription status message is returned, all subsequent updates will be for the new subscription settings.
+
+To cancel an active stream, send an `Unsubscribe` message with the subscription name. Alternatively, unsubscribe by sending another subscription with "subscription_mode": "Unsubscribed".
+
+If a topic filter regex is provided, it is checked against all relative topic paths. So for example, if the working namespace is "root_ns::sub_ns::w_ns", the topic "root_ns::sub_ns::tn" will
+be matched by any of the topic filters "tn", "sub_ns::tn", or "root_ns::sub_ns::tn". If the working namespace was "root_ns::other_ns", only "sub_ns::tn" and "root_ns::sub_ns::tn" would match.
+
+The working namespace defaults to the working namespace sent in the introduction message. It may be overridden in the subscription request using the working_namespace field.
+
+Clients may assign an arbitrary numeric subscription_group id for the purpose of isolating callbacks.
+An active_subscription_group message is sent before record or key updates to denote the subscription_group.
+Many updates may follow a single active_subscription_group message, and the initial active subscription_group is assumed to be 0.
+subscription_group ids do not need to be unique across subscriptions.
+
+Large subscriptions may overwhelm the client, server, or network. snapshot_size_limit may be set to throttle the initial snapshot response.
+Each time the limit is hit, the server sends back a SubscriptionStatus message with status = "NeedsContinue" and stops sending additional snapshot data.
+The snapshot processing will continue once the client sends a SubscribeContinue message, until another limit is hit or the snapshot finishes with status = Streaming or status = Finished.
+
+Clients do not need to continue with the snapshot if snapshot_size_limit is hit. They may choose to continue, pause for some time or indefinitely, or unsubscribe.
+
+## Subscription Status
+
+A SubscriptionStatus message will be sent to delineate the lifetime of the subscription.
+
+- "status": "ProcessingSnapshot" is sent at the start of processing. Topic, Key, and record updates will follow.
+
+- "status": "NeedsContinue" is sent if snapshot_size_limit is hit; see Subscriptions above.
+
+- "status": "Streaming" is sent for streaming subscriptions once the snapshot has been fully processed. Additional messages are live updates.
+
+- "status": "Finished" is sent once the snapshot has been fully processed and the subscription mode is non-streaming. It is also sent after an unsubscribe has been processed.
+
+## Heartbeats
+
+Clients specify a heartbeat timeout interval within their introduction. If the server does not receive a Heartbeat message within this interval, the client is disconnected.
+
+The server also specifies its timeout interval, and sends regular heartbeats. Clients may choose to respect missed heartbeats and disconnect.
+
+Heartbeats are expected to be sent at twice the frequency of the timeout interval. e.g. with timeout of 4 seconds, heartbeats are sent every 2 seconds.
+
+## Termination
+
+To gracefully close a session, clients should send a `Logoff` message. However, clean TCP connection closure is also acceptable.
+
+If the server encounters an issue, it may respond with an `Error` message prior to disconnection.
+
+## Example Session (Client Perspective)
+
+```json
+Sent: {"message_type": "Introduction", "value": { "version": 650269, "heartbeat_timeout_interval": 3000, "user": "jonh" }}
+Received: {"message_type": "Introduction", "value": { "version": 650269, "heartbeat_timeout_interval": 3000, "user": "jserver" }}
+Sent: {"message_type": "Subscribe", "value": { "subscription_mode": "Streaming", ... }}
+Received: {"message_type": "ProcessingSnapshot", "value": { "name": "S1" }}
+Received: {"message_type": "TopicIntroduction", "value": { "topic_id": 18, "name": "top_bid_price" }}
+...
+Received: {"message_type": "SnapshotComplete", "value": { "name": "S1" }}
+Sent: {"message_type": "Heartbeat", "value": { "u_milliseconds":, 1745425692890 }
+Received: {"message_type": "Heartbeat", "value": { "u_milliseconds":, 1745425693895 }
+...
+Sent: {"message_type": "Logoff"}
+```
+
+## Auditing Topics (Control Port)
+
+When running in audit mode (`--ws-control-port <port>`), GAR will emit internal topic traffic for monitoring
+
+## Protocol Schema
+
+- [gar_proto.gar](gar_proto.gar)
