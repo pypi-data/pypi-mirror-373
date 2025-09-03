@@ -1,0 +1,386 @@
+Metadata-Version: 2.4
+Name: ibm-watsonx-orchestrate-evaluation-framework
+Version: 1.1.1
+Summary: The WxO evaluation framework
+Author-email: Haode Qi <Haode.Qi@ibm.com>
+License: MIT
+Requires-Python: <3.14,>=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: rich~=13.9.4
+Requires-Dist: pydantic<3.0.0,>=2.10.3
+Requires-Dist: pyyaml~=6.0.2
+Requires-Dist: jinja2~=3.1.5
+Requires-Dist: python-dotenv
+Requires-Dist: dataclasses-json~=0.6.7
+Requires-Dist: jsonargparse~=4.37.0
+Requires-Dist: jsonschema~=4.23.0
+Provides-Extra: dev
+Requires-Dist: setuptools~=70.3.0; extra == "dev"
+Requires-Dist: pytest<9.0.0,>=8.3.4; extra == "dev"
+Requires-Dist: pytest-cov==6.0.0; extra == "dev"
+Requires-Dist: pytest-mock==3.14.0; extra == "dev"
+Requires-Dist: pytest-asyncio==0.25.1; extra == "dev"
+Requires-Dist: coverage[toml]>=6.5; extra == "dev"
+Requires-Dist: black~=22.3.0; extra == "dev"
+Requires-Dist: pylint~=2.16.4; extra == "dev"
+Provides-Extra: rag-eval
+Requires-Dist: tqdm~=4.67.1; extra == "rag-eval"
+Requires-Dist: sentence-transformers~=3.3.1; extra == "rag-eval"
+Requires-Dist: scikit-learn~=1.6.1; extra == "rag-eval"
+Requires-Dist: pandas~=2.1.4; extra == "rag-eval"
+Requires-Dist: notebook~=7.4.1; extra == "rag-eval"
+Requires-Dist: ipywidgets~=8.1.6; extra == "rag-eval"
+Requires-Dist: jupyter_contrib_nbextensions; extra == "rag-eval"
+Requires-Dist: jupyter~=1.1.1; extra == "rag-eval"
+
+# WXO Agent Evaluation Framework
+
+## Table of Contents
+- [Overview](#overview)
+- [ADK Setup Guide](#adk-setup-guide)
+- [Setup](#setup-for-evaluation-framework)
+- [Quick Experiment](#quick-experiment-against-the-default-wxo-dev-env)
+- [Run Against a Deployed Local Env](#run-against-a-deployed-local-env)
+- [Run Against a SaaS Tenant](#run-against-a-saas-tenant)
+- [Analyze Results](#analyze-results)
+- [Record Chat Sessions](#record-chat-sessions)
+- [Batch Test Case Generation](#batch-test-case-generation)
+- [Using Model Proxy Provider](#using-model-proxy-provider)
+- [Using Ollama](#using-ollama)
+- [Workflow Diagram](#workflow-diagram)
+- [Results](#results)
+- [Metrics](#metrics)
+
+## Overview
+
+- This framework is designed to test a tool-calling agent's ability to make real API calls against a `wxo-dev` testing tenant on your local wxo-lite server instance. To run evaluation against a remote tenant on SaaS, follow [Run Against a SaaS Tenant](#run-against-a-saas-tenant).
+- As an LLM-as-agent evaluation framework, we aim to test the agent's ability to do the following:
+    - We use a ground truth to evaluate our conversation against after inference. The process of inference is manifested through a user-LLM and agent simulation. Please set `enable_verbose_logging: True` in your configuration.
+    - Make real API calls correctly and efficiently. We provide metrics such as tool call precision, recall, and routing accuracy to measure the agent's performance against the ground truth.
+- The `benchmarks/` folder contains test-cases for the different agents we have evaluated so far. They are segmented by release versions of the `wxo-domains` repository.
+- The agent calls the `runs/` endpoint of the wxo-lite server instance, and the actual tool code is executed on the server side. The server database is not visible to our framework. 
+
+## ADK Setup Guide
+Follow the [ADK setup guide](https://github.ibm.com/WatsonOrchestrate/wxo-clients/tree/main) to install the ADK.    
+
+The current framework is compatible with ADK version >= 1.20, <= 1.7.0
+
+## Setup for Evaluation Framework
+Run the following command to install evaluation framework in the same env:
+``` 
+pip install -e .
+```
+
+## Contribution Guide
+### Secret Resolution
+install detect secret utilities:
+```
+pip install --upgrade git+https://github.com/ibm/detect-secrets.git@master#egg=detect-secrets
+```
+run the scan & resolve detections:
+```
+detect-secrets scan --exclude-files "benchmark|results" --update .secrets.baseline && detect-secrets audit .secrets.baseline && git add .secrets.baseline
+```
+
+
+## Quick Experiment Against the Default wxo-dev Env
+```bash
+orchestrate server start
+export WATSONX_SPACE_ID=""
+export WATSONX_APIKEY=""
+```
+
+NOTE: If you want to use `WO_INSTANCE` and `WO_API_KEY` instead, follow the [model proxy section](#using-model-proxy-provider).
+
+Import sample hr tools and agent into your default `wxo-dev` env:
+```bash
+orchestrate tools import -f benchmarks/hr_sample/tools.py -k python
+orchestrate agents import -f benchmarks/hr_sample/hr_agent.json
+```
+
+Run the main script:
+```bash
+python -m wxo_agentic_evaluation.main --config benchmarks/hr_sample/config.yaml --output_dir=results/test --num_workers=2
+```
+Note:  
+1. This approach uses the default `wxo-dev` tenant already available in your orchestrate env if you have used wxo-lite before.
+2. ADK also reads the env environments variable. If you have an env conflict, start the wxo-lite server before exporting the envs.
+
+## Run Against a Deployed Local Env
+
+1. start the orchestrated server: `orchestrate server start`
+2. create a simple test case like the following save in a folder like `benchmarks/TEST_CASE_NAME`:
+```JSON
+{
+  "agent": "NAME_OF_THE_AGENT",
+  "goals": {
+    "summarize": []
+  },
+  "goal_details": [
+    {
+      "type": "text",
+      "name": "summarize",
+      "response": "Your timeoff schedule for 20250101 to 20250303 is: 20250105",
+      "keywords": [
+        "20250105"
+      ]
+    }
+  ],
+  "story": "Your username is nwaters and you want to find out timeoff schedule from 20250101 to 20250303."
+}
+```
+Note:
+- The target agent name can be found `orchestrate agents list`
+- the example shown only evaluate the final response for the agent. For more sophisticated examples, follow `benchmarks/hr_sample/data_simple.json` or `benchmarks/hr_sample/data_complex.json`.
+
+3. create a test config yaml like the following:
+```YAML
+test_paths:
+  - benchmarks/TEST_CASE_NAME
+
+auth_config:
+  url: http://localhost:4321
+  tenant_name: wxo-dev
+
+output_dir: "results/TEST_CASE_NAME/MODEL_NAME"
+```
+
+NOTE: run `orchestrate env list` to find the name of the active tenant. for default `local` tenant, the name should be `wxo-dev`
+
+4. Run the test:
+```bash
+export WATSONX_SPACE_ID=""
+export WATSONX_APIKEY=""
+python -m wxo_agentic_evaluation.main --config benchmarks/hr_sample/config.yaml
+```
+
+NOTE: if your run fails for any reason and doesn't cover all the test cases, you can re-run the main script with `--skip_available_results=True` to skip the test cases that are already completed.
+
+## Run Against a SaaS Tenant 
+
+Orchestrate ADK ≥ 1.2 is required for this section.
+
+This section describes how to run benchmark tests using a **SaaS-based Orchestrate tenant**. The rest of the setup (test case creation, config structure, etc.) is similar to the [local setup](#run-against-a-deployed-local-env) and can be referred to as needed.
+
+### Prerequisites
+
+- **Orchestrate ADK version ≥ 1.2** is required.
+- Access to the **production SaaS Orchestrate instance** or **staging SaaS Orchestrate instance**.
+
+### 1. Get Authentication Details
+
+1. Visit the Orchestrate UI [ Prod /staging]: 
+
+- **AWS Production us-east-1:** [https://dl.watson-orchestrate.ibm.com](https://dl.watson-orchestrate.ibm.com)
+For other locations, please use the designated url for your data center.
+- **AWS Staging:** [https://staging-wa.watson-orchestrate.ibm.com](https://staging-wa.watson-orchestrate.ibm.com)
+- **IBM Cloud Production us-south:** [https://us-south.watson-orchestrate.cloud.ibm.com](https://us-south.watson-orchestrate.cloud.ibm.com)
+
+2. Log in and click the **Settings** button (top-right corner).
+
+3. Open the **API details** tab, then copy the **Instance URL** and generate an **API Key**.
+
+4. For more detailed instructions, refer to this guide:  
+   https://developer.ibm.com/apis/catalog/watsonorchestrate--custom-assistants/Getting+the+API+endpoint
+
+### 2. Add the SaaS Tenant
+
+Run the following command:
+
+```bash
+orchestrate env add -n saas \
+  -u [INSTANCE_URL] \
+  -t mcsp \
+  -a
+```
+if using stagging setup then pass the --iam-url argument as follow:
+- For AWS:
+```bash
+orchestrate env add -n saas \
+  -u [INSTANCE_URL] \
+  --iam-url https://iam.platform.test.saas.ibm.com \
+  -a
+```
+
+ - For IBM Cloud:
+ ```bash
+ orchestrate env add -n saas \
+  -u [INSTANCE_URL] \
+  --iam-url https://iam.test.cloud.ibm.com \
+  -a
+ ```
+
+> When prompted, paste the API key generated above.
+
+### 3. Set `WO_API_KEY` Environment Variable
+
+```bash
+export WO_API_KEY=[your_generated_api_key]
+```
+
+### 4. Update Your Test Config YAML
+
+Make sure your YAML config includes the correct SaaS tenant name:
+
+```yaml
+test_paths:
+  - benchmarks/TEST_CASE_NAME
+
+auth_config:
+  url: [INSTANCE_URL]
+  tenant_name: saas
+
+output_dir: "results/TEST_CASE_NAME/MODEL_NAME"
+```
+- Use staging url if using the staging set-up.
+###  5. Run the Simulation in SaaS Mode
+
+```bash
+python -m wxo_agentic_evaluation.main --config benchmarks/hr_sample/config.yaml 
+```
+
+## Analyze Results
+
+The `analyze_run.py` script summarizes agent evaluation results, showing successes, failures, and reasons for errors to help improve agent performance. After running an evaluation, analyze the results with:
+
+```bash
+python -m wxo_agentic_evaluation.analyze_run --data_path path/to/results
+```
+
+Additionally, the script comes with a feature to analyze the quality of tool descriptions for failing tools where the reason for failure is incorrect parameter usage by the agent.
+
+In order to analyze the description(s) of your failing tools, consider passing the optional flag `--tool_definition_path` like so:
+
+```bash
+python -m wxo_agentic_evaluation.analyze_run --data_path path/to/results --tool_definition_path path/to/.py/source/file/containing/tool/definitions
+```
+
+**Note:** If the flag `tool_definition_path` is not provided, description quality analysis is simply skipped.
+
+## Record Chat Sessions
+
+The `record_chat.py` script lets you capture your chat sessions in the chat UI and automatically generate ground truth data for evaluating your agents. This is valuable for benchmarking and experimenting with agent behavior under different configurations.
+
+Start the chat interface:
+
+```bash
+orchestrate chat start
+```
+
+Then open your browser to [http://localhost:3000/chat-lite](http://localhost:3000/chat-lite) and select the agent you wish to interact with.
+
+To begin recording, run:
+
+```bash
+python -m wxo_agentic_evaluation.record_chat --output_dir dir/to/save/recordings
+```
+
+While this process is running, for every chat session, annotated ground truth data is generated in your output directory: `<THREAD_ID>_annotated_data.json`
+
+Review the generated annotated data for accuracy before using it for evaluation.
+
+Press `Ctrl+C` in the terminal to stop recording when your session is complete.
+
+## Batch Test Case Generation
+
+For full instructions on setting up tools, writing stories, configuring the pipeline, and generating batch test cases, see the [Batch Test case Generation Guide](./benchmarks/batch_sample/README.MD).
+
+## Using Model Proxy Provider
+
+To use the model proxy provider (which allows direct access to LLM models), follow these steps:
+
+1. Set up environment variables:
+   ```sh
+   export WO_INSTANCE=<your-instance-url>
+   export WO_API_KEY=<your-api-key>
+   ```
+
+2. Create a configuration file similar to [benchmarks/hr_sample/config_model_proxy.yaml](benchmarks/hr_sample/config_model_proxy.yaml):
+   ```yaml
+   test_paths:
+     - <your-test-path>
+
+   auth_config:
+     url: http://localhost:4321
+     tenant_name: wxo-dev
+
+   provider_config:
+     provider: "model_proxy"
+     model_id: "<model-id>"
+
+   output_dir: "<output-dir>"
+   ```
+
+3. Run the evaluation:
+   ```sh
+   python -m wxo_agentic_evaluation.main --config path/to/your/config.yaml
+   ```
+
+## Using Ollama
+
+To use model from Ollama (local LLM deployment), follow these steps:
+
+1. Make sure you have [Ollama](https://ollama.com) installed and running on your system.
+
+2. Pull your desired model using Ollama (e.g. llama3.1:8b):
+   ```sh
+   ollama pull <model-id>
+   ```
+
+3. Create a configuration file similar to [benchmarks/hr_sample/config_ollama.yaml](benchmarks/hr_sample/config_ollama.yaml):
+   ```yaml
+   test_paths:
+     - <your-test-path>
+
+   auth_config:
+     url: http://localhost:4321
+     tenant_name: wxo-dev
+
+   provider_config:
+     provider: "ollama"
+     model_id: "<model-id>"
+
+   output_dir: "results/ollama/<model-name>"
+   ```
+
+4. Run the evaluation:
+   ```sh
+   python -m wxo_agentic_evaluation.main --config path/to/your/config.yaml
+   ```
+
+## Workflow Diagram
+
+To help better understand the workflow, this is a diagram of how this repo works together with wxO ADK and a wxO runtime.
+
+![Alt text](./doc/assets/workflow.png "Workflow")
+
+Inputs:
+- [a test config yaml](benchmarks/hr_sample/config.yaml)
+- a json file containing test cases, see [example 1](benchmarks/hr_sample/data_complex.json) or [example 2](benchmarks/hr_sample/data_simple.json) as a reference
+- optionally, a `tools.py` file for tools definition and one or more agent definitions e.g. `benchmarks/hr_sample/hr_agent.json`. Alternatively, these files are not needed if you have a tenant already set up with such tools and agents
+
+## Results
+You can find benchmark results [here](benchmarks/domain_1.8/README.md)
+
+## Metrics
+
+| Metric                     | Description                                                        | Calculation                                                                  | Range/Type         |
+|----------------------------|--------------------------------------------------------------------|------------------------------------------------------------------------------|--------------------|
+| **Total Steps**            | Total number of messages/steps in the conversation                 | Count of all messages in the conversation                                    | Integer ≥ 0        |
+| **LLM Steps**              | Number of assistant (LLM) responses (text or tool calls)           | Count of messages where `role == "assistant"`                                | Integer ≥ 0        |
+| **Total Tool Calls**       | Number of tool calls made by the agent                             | Count of all tool calls                                                      | Integer ≥ 0        |
+| **Tool Call Precision**    | Fraction of correct tool calls out of all tool calls               | `correct_tool_calls / total_tool_calls`                                      | Float 0.0–1.0      |
+| **Tool Call Recall**       | Fraction of correct tool calls out of expected tool calls          | `correct_tool_calls / expected_tool_calls`                                   | Float 0.0–1.0      |
+| **Agent Routing Accuracy** | Fraction of correct agents visited (relevant_routing_calls) out of total number of agents visited (total_routing_calls)       | `relevant_routing_calls / total_routing_calls`                               | Float 0.0–1.0      |
+| **Text Match**             | Whether the final summary text matches the ground truth            | `Summary Matched` \| `Summary MisMatched`                                    | Categorical        |
+| **Journey Success**        | Whether the agent completed tasks in the correct order             | Boolean (`True`/`False`)                                                     | Boolean            |
+| **Avg Resp Time (sec)**    | Average response time for agent responses                          | Mean response time across all agent interactions                             | Float ≥ 0.0        |
+
+### Key Definitions
+
+- **Correct Tool Call**: A tool call that matches both the expected function and arguments.
+- **Expected Tool Call**: A tool call that is required by the ground truth.
+- **Routing Call**: When an agent routes to another agent.
+- **Relevant Routing Call**: An agent is relevant when it's either the entry point agent or it includes a tool that is presented in the ground-truth.
+- **Text Match**: Indicates if the agent's final summary matches the expected summary ("Summary Matched") or does not match ("Summary MisMatched").
+- **Journey Success**: Indicates if the agent completed all required tasks in the correct order.
