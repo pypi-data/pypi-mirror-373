@@ -1,0 +1,69 @@
+# KozhinDev ClearML Wrapper
+A set of utility functions and decorators for simplifying ClearML integration in your ML projects  
+## Features
+
+- **`log_metrics`** – decorator for logging scalar metrics  
+- **`get_local_dataset_path`** – get local path to a dataset file/folder  
+- **`prepare_task`** – initialize or retrieve ClearML tasks (local or remote)  
+- **`get_local_model_path`** – retrieve a local copy of a model artifact
+
+First, install the library: ```pip install kozhindev_clearml_wrapper```
+# Usage
+1. Logging metrics  
+Use the @log_metrics decorator to log scalar metrics to ClearML:
+```python
+from clearml import Task
+from kozhindev_clearml_wrapper import log_metrics
+
+task = Task.init(project_name="Demo", task_name="Log Metrics Example")
+
+@log_metrics(task)
+def train():
+    for i in range(5):
+        yield "loss", "train", 0.1 * i, i  # (title, series, metric, iteration)
+
+train()
+```
+2. Get Local Dataset Path  
+Retrieve a dataset by ID and get the local path to a file or folder inside it:
+```python
+from kozhindev_clearml_wrapper import get_local_dataset_path
+
+dataset_path = get_local_dataset_path(
+    dataset_id="your-dataset-id",
+    dataset_name="data.csv"
+)
+
+print(dataset_path)
+```
+3. Prepare ClearML Task  
+Initialize a new task (local) or connect to an existing one (remote):
+```python
+from kozhindev_clearml_wrapper import prepare_task
+
+# Local task (creates a new one)
+task = prepare_task(
+    task_type="local",
+    project_name="Demo",
+    task_name="Local Task Example"
+)
+
+# Remote task (connects training parameters to the current ClearML task)
+train_params = {"learning_rate": 0.001, "epochs": 10}
+task = prepare_task(
+    task_type="remote",
+    train_params=train_params
+)
+```
+4. Get Local Model Path  
+Download and get the local path to a model artifact from a specific task:
+```python
+from kozhindev_clearml_wrapper import get_local_model_path
+
+path_to_model = get_local_model_path(
+    task_id="your-task-id",
+    artifact_name="trained_models"
+)
+
+print(path_to_model)
+```
