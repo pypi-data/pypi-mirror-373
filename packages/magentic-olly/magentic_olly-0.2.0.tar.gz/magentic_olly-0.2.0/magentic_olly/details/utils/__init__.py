@@ -1,0 +1,1 @@
+from .logger import magentic_logger
