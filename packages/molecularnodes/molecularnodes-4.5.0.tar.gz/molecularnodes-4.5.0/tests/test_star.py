@@ -1,0 +1,57 @@
+import pytest
+import starfile
+from scipy.spatial.transform import Rotation
+import molecularnodes as mn
+from .constants import data_dir
+
+
+@pytest.mark.parametrize("type", ["cistem", "relion"])
+def test_starfile_attributes(type):
+    file = data_dir / f"starfile/{type}.star"
+    ensemble = mn.entities.ensemble.load_starfile(file)
+
+    star = starfile.read(file)
+
+    if type == "relion":
+        df = star["particles"].merge(star["optics"], on="rlnOpticsGroup")
+        euler_angles = df[["rlnAngleRot", "rlnAngleTilt", "rlnAnglePsi"]].to_numpy()
+
+    elif type == "cistem":
+        df = star
+        euler_angles = df[
+            ["cisTEMAnglePhi", "cisTEMAngleTheta", "cisTEMAnglePsi"]
+        ].to_numpy()
+
+    # Calculate Scipy rotation from the euler angles
+    # Note: rot_from_euler = quats
+    rot_from_euler = Rotation.from_euler(
+        seq="ZYZ", angles=euler_angles, degrees=True
+    ).inv()
+
+    # Convert from blender to scipy conventions and then into Scipy rotation
+    quat_attribute = ensemble.named_attribute("rotation")
+    rot_from_geo_nodes = Rotation.from_quat(quat_attribute[:, [1, 2, 3, 0]])
+
+    # To compare the two rotation with multiply one with the inverse of the other
+    assert (rot_from_euler * rot_from_geo_nodes.inv()).magnitude().max() < 1e-5
+
+
+def test_load_starfiles():
+    file = data_dir / "starfile/clathrin.star"
+    _ensemble = mn.entities.ensemble.load_starfile(file)
+    assert _ensemble._entity_type == mn.entities.base.EntityType.ENSEMBLE_STAR
+    assert _ensemble.object.mn.entity_type == _ensemble._entity_type.value
+
+
+def test_categorical_attributes():
+    file = data_dir / "starfile/cistem.star"
+    ensemble = mn.entities.ensemble.load_starfile(file)
+    assert "cisTEMOriginalImageFilename_categories" in ensemble.object
+
+
+def test_micrograph_conversion():
+    file = data_dir / "starfile/cistem.star"
+    ensemble = mn.entities.ensemble.load_starfile(file)
+    tiff_path = data_dir / "starfile/montage.tiff"
+    ensemble._convert_mrc_to_tiff()
+    assert tiff_path.exists()
