@@ -1,0 +1,187 @@
+Metadata-Version: 2.4
+Name: scietex.logging
+Version: 0.1.1
+Summary: Asyncio logging handlers
+Author-email: Anton Bondarenko <bond.anton@gmail.com>
+License: MIT License
+        
+        Copyright (c) 2024 Anton Bondarenko
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+Project-URL: Homepage, https://github.com/bond-anton/scietex.logging
+Project-URL: Bug Tracker, https://github.com/bond-anton/scietex.logging/issues
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Provides-Extra: redis
+Requires-Dist: redis>=4.2.0; extra == "redis"
+Provides-Extra: valkey
+Requires-Dist: valkey-glide~=2.0.0; extra == "valkey"
+Provides-Extra: all
+Requires-Dist: redis>=4.2.0; extra == "all"
+Requires-Dist: valkey-glide~=2.0.0; extra == "all"
+Provides-Extra: test
+Requires-Dist: flake8; extra == "test"
+Requires-Dist: pytest; extra == "test"
+Requires-Dist: pytest-asyncio; extra == "test"
+Provides-Extra: lint
+Requires-Dist: pylint; extra == "lint"
+Dynamic: license-file
+
+# scietex.logging
+
+**scietex.logging** is an asynchronous logging package designed for high-performance applications that require non-blocking logging. It uses `asyncio` to manage log message queues and provides multiple backends, such as console and Redis logging, allowing for easy extension to other logging targets.
+
+## Features
+
+- **Asynchronous Logging**: Log messages are queued and handled asynchronously, reducing impact on application performance.
+- **Multiple Backends**: Supports console and Redis logging out of the box.
+- **Flexible Logging Levels**: Compatible with Python’s standard logging levels (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`).
+- **Optional Dependencies**: Only installs dependencies for the specific backends you need.
+
+## Examples
+
+Explore the [`examples/`](./examples) directory to see usage examples that demonstrate how to set up and work with `scietex.logging`. Each example provides a practical setup for different logging scenarios, including basic console logging and Redis-based logging.
+
+For detailed descriptions of each example, refer to the [Examples README](./examples/README.md).
+
+## Requirements
+
+- Python 3.9+
+- Additional dependencies for specific backends:
+  - **Redis support**: `redis.asyncio` (`pip install scietex.logging[redis]`)
+  - **PostgreSQL support**: *Coming Soon!* `asyncpg` (`pip install scietex.logging[postgres]`)
+
+## Installation
+
+Install the base package with:
+```bash
+pip install scietex.logging
+```
+
+To install all optional dependencies (including Redis and upcoming PostgreSQL support), use:
+```bash
+pip install scietex.logging[all]
+```
+
+Or, to install individual dependencies as needed:
+```bash
+pip install scietex.logging[redis]     # For Redis logging
+pip install scietex.logging[postgres]  # For PostgreSQL logging
+```
+
+## Basic Usage
+
+### Console Logging
+The following example shows how to set up asynchronous console logging.
+
+```python
+import logging
+from scietex.logging import AsyncBaseHandler
+import asyncio
+
+# Set up logger and handler
+logger = logging.getLogger("MyAsyncLogger")
+logger.setLevel(logging.DEBUG)
+handler = AsyncBaseHandler()
+logger.addHandler(handler)
+
+async def main():
+    await handler.start_logging()
+    logger.info("This is an asynchronous log message")
+    await handler.stop_logging()
+
+asyncio.run(main())
+```
+
+### Redis Logging
+This example demonstrates logging to a Redis stream.
+
+```python
+import logging
+from scietex.logging import AsyncRedisHandler
+import asyncio
+
+# Set up logger and Redis handler
+logger = logging.getLogger("MyAsyncLogger")
+logger.setLevel(logging.DEBUG)
+handler = AsyncRedisHandler(stream_name="my_log_stream")
+logger.addHandler(handler)
+
+async def main():
+    await handler.start_logging()
+    logger.error("This error message will be logged to Redis!")
+    await handler.stop_logging()
+
+asyncio.run(main())
+```
+
+## Configuration
+
+scietex.logging is designed to allow easy configuration of additional backends and custom logging formats:
+
+Formatting: Use Python’s standard logging Formatter to customize output. For example, to log timestamps in ISO format:
+
+```python
+formatter = logging.Formatter(
+    fmt="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%SZ"
+)
+handler.setFormatter(formatter)
+```
+
+## Extending scietex.logging
+
+To add support for additional logging backends, subclass AsyncBaseHandler and implement new workers as shown in the Redis example. The structure of the package allows for seamless extension by adding new worker methods for different logging destinations.
+
+### Example: Custom Database Handler
+
+```python
+from scietex.logging import AsyncBaseHandler
+import asyncpg
+
+class AsyncPostgresHandler(AsyncBaseHandler):
+    def __init__(self, db_url):
+        super().__init__()
+        self.db_url = db_url
+        self.queues["postgres"] = asyncio.Queue()
+        self.workers.append(self._postgres_worker())
+
+    async def _postgres_worker(self):
+        self.conn = await asyncpg.connect(self.db_url)
+        while self.logging_running_event.is_set() or not self.queues["postgres"].empty():
+            record = await self.queues["postgres"].get()
+            await self.conn.execute("INSERT INTO logs (level, message) VALUES ($1, $2)", record.levelname, record.getMessage())
+            self.queues["postgres"].task_done()
+
+    def emit(self, record):
+        super().emit(record)
+        asyncio.create_task(self.queues["postgres"].put(record))
+```
+
+## Contributing
+
+Contributions are welcome! If you find a bug or want to add a feature, please open an issue or submit a pull request.
+
+## License
+
+This project is licensed under the MIT License.
