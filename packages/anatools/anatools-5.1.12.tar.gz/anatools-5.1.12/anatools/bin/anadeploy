@@ -1,0 +1,573 @@
+#!/usr/bin/env python
+# Copyright 2019-2022 DADoES, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License in the root directory in the "LICENSE" file or at:
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+import argparse
+import subprocess
+import os
+import sys
+import anatools
+import time
+import yaml
+from traceback import print_exc
+from anatools.lib.print import print_color
+from anatools.lib.channel import Channel, find_channelfile
+from anatools.lib.service import Service, find_servicefile
+
+
+def autocommit(filepath, name, version):
+    with open(filepath, 'r') as yf: data = yaml.safe_load(yf)
+    gitpath = os.path.dirname(os.path.abspath(filepath))
+    gitcfg = data.get('git', None)
+    if gitcfg and os.path.exists(os.path.join(gitpath, '.git')):
+        url = gitcfg.get('remote', None)
+        if url is None:
+            try:
+                url_result = subprocess.run(["git", "remote", "get-url", "origin"], cwd=gitpath, capture_output=True, text=True, check=True)
+                url = url_result.stdout.strip()
+            except: pass
+            if url is None: print_color(f"\nFailed to get find remote URL for {filepath}", 'ff0000'); return
+        branch = gitcfg.get('branch', None)
+        if branch is None:
+            try:
+                branch_result = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=gitpath, capture_output=True, text=True, check=True)
+                branch = branch_result.stdout.strip()
+            except: pass
+            if branch is None: print_color(f"\nFailed to get find remote branch for {filepath}", 'ff0000'); return
+        autocommit = gitcfg.get('auto-commit', False)
+        autotag = gitcfg.get('auto-tag', False)
+        if autocommit:
+            print(f"Committing changes to {url}...", end='')
+            commit_msg = f"Auto-update after deploying {name} version {version}"
+            subprocess.run(["git", "add", gitpath], cwd=gitpath, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try: subprocess.run(["git", "commit", "-m", commit_msg], cwd=gitpath, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except subprocess.CalledProcessError as e: pass
+            if autotag: 
+                try: subprocess.run(["git", "tag", "-a", f"v{version}", "-m", commit_msg], cwd=gitpath, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except subprocess.CalledProcessError as e: print_color(f"\nFailed to tag commit: {e}", 'ff0000')
+            try: 
+                subprocess.run(["git", "push", url, branch, "--follow-tags"], cwd=gitpath, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                print("done.")
+            except subprocess.CalledProcessError as e: print_color(f"\nFailed to push changes to remote repository: {e}", 'ff0000')
+
+
+def create_channel(client, organization, name, volumes = []):
+    try:
+        remotechannel = None
+        orgchannels = client.get_channels(organizationId=organization['organizationId'])
+        channelnames = [c['name'] for c in orgchannels]
+        if name in channelnames: 
+            print_color(f"The channel {name} already exists in this orgnaization, would you like to enter another name or use that channel?", '91e600')
+            print_color(f"  [0] Enter a new name", '91e600')
+            print_color(f"  [1] Deploy to the {name} channel", '91e600')
+            resp = input("Select an option: ")
+            while resp not in ["0", "1"]:
+                resp = input("Invalid input, please enter either 0 or 1: ")
+            if resp == "0": 
+                resp = input("Enter the name you'd like to use: ")
+                while resp in channelnames:
+                    resp = input("A channel with that name already exists, enter another name: ")
+                name = resp
+            else: remotechannel = [c for c in orgchannels if c['name'] == name][0]
+        if not remotechannel:
+            channelId = client.create_channel(organizationId=organization['organizationId'], name=name, volumes=volumes)
+            remotechannel = client.get_channels(channelId=channelId)[0]
+        else:
+            changes = {}
+            if sorted(volumes) != sorted(remotechannel['volumes']): changes['volumes'] = {"local": volumes, "remote": remotechannel['volumes']}
+            if name and name != remotechannel['name']: changes['name'] = {"local": name, "remote": remotechannel['name']}
+            if len(changes.keys()) > 0:
+                print_color(f"The channel {remotechannel['name']} in the {organization['name']} organization has the following differences from the local channel:", '91e600')
+                for change in changes.keys():
+                    print_color(f"  {change}:   {changes[change]['remote']} (remote) -> {changes[change]['local']} (local)", '91e600')
+                resp = input("Would you like to update the remote channel?")
+                while resp.lower() not in ['y', 'yes', 'n', 'no']:
+                    resp = input('Invalid input, please enter either "y" or "n": ')
+                if resp.lower() in ['y', 'yes']:
+                    client.edit_channel(channelId=remotechannel['channelId'], name=name, volumes=volumes)
+                    remotechannel = client.get_channels(channelId=remotechannel['channelId'])[0]
+        return remotechannel
+    except Exception as e:
+        print_color(f'Channel creation failed, please contact support@rendered.ai.', 'ff0000')
+        print(e)
+
+
+def create_service(client, organization, name, volumes = []):
+    try:
+        remoteservice = None
+        orgservices = client.get_services(organizationId=organization['organizationId'])
+        servicenames = [s['name'] for s in orgservices]
+        if name in servicenames: 
+            print_color(f"The service {name} already exists in this orgnaization, would you like to enter another name or use that service?", '91e600')
+            print_color(f"  [0] Enter a new name", '91e600')
+            print_color(f"  [1] Deploy to the {name} service", '91e600')
+            resp = input("Select an option: ")
+            while resp not in ["0", "1"]:
+                resp = input("Invalid input, please enter either 0 or 1: ")
+            if resp == "0": 
+                resp = input("Enter the name you'd like to use: ")
+                while resp in servicenames:
+                    resp = input("A service with that name already exists, enter another name: ")
+                name = resp
+            else: remoteservice = [s for s in orgservices if s['name'] == name][0]
+        if not remoteservice:
+            serviceTypes = client.get_service_types()
+            serviceType = [st for st in serviceTypes if st['name'] == 'custom'][0]
+            serviceId = client.create_service(organizationId=organization['organizationId'], serviceTypeId=serviceType['serviceTypeId'], name=name, volumes=volumes)
+            remoteservice = client.get_services(serviceId=serviceId)[0]
+        else:
+            changes = {}
+            if sorted(volumes) != sorted(remoteservice['volumes']): changes['volumes'] = {"local": volumes, "remote": remoteservice['volumes']}
+            if name and name != remoteservice['name']: changes['name'] = {"local": name, "remote": remoteservice['name']}
+            if len(changes.keys()) > 0:
+                print_color(f"The service {remoteservice['name']} in the {organization['name']} organization has the following differences from the local service:", '91e600')
+                for change in changes.keys():
+                    print_color(f"  {change}:   {changes[change]['remote']} (remote) -> {changes[change]['local']} (local)", '91e600')
+                resp = input("Would you like to update the remote service?")
+                while resp.lower() not in ['y', 'yes', 'n', 'no']:
+                    resp = input('Invalid input, please enter either "y" or "n": ')
+                if resp.lower() in ['y', 'yes']:
+                    client.edit_service(serviceId=remoteservice['serviceId'], name=name, volumes=volumes)
+                    remoteservice = client.get_services(serviceId=remoteservice['serviceId'])[0]
+        return remoteservice
+    except Exception as e:
+        print_color(f'Channel creation failed, please contact support@rendered.ai.', 'ff0000')
+        raise(e)
+
+
+parser = argparse.ArgumentParser(
+    description="""
+Deploy a channel or service to the Rendered.ai Platform.
+    deploy a channel or service:    anadeploy
+    specify a channel file          anadeploy --channel channelfile
+    specify a service file          anadeploy --service servicefile
+    deploy to a specific channel    anadeploy --channelId channelId
+    deploy to a specific service    anadeploy --serviceId serviceId
+    deploy with verbose logging:    anadeploy --verbose
+""",
+    formatter_class=argparse.RawDescriptionHelpFormatter
+)
+parser.add_argument('--channel', default=None)
+parser.add_argument('--service', default=None)
+parser.add_argument('--channelId', default=None)
+parser.add_argument('--serviceId', default=None)
+parser.add_argument('--email', default=None)
+parser.add_argument('--password', default=None)
+parser.add_argument('--environment', default=None)
+parser.add_argument('--endpoint', default=None)
+parser.add_argument('--local', action='store_true')
+parser.add_argument('--verbose', action='store_true')
+parser.add_argument('--version', action='store_true')
+parser.add_argument('--noninteractive', action='store_true')
+args = parser.parse_args()
+if args.version: print(f'anadeploy {anatools.__version__}'); sys.exit(1)
+if args.verbose: verbose = 'debug'
+else: verbose = False
+interactive = False
+if args.email and args.password is None: interactive = True
+
+# find the channel or service file
+if args.channel is None and args.service is None: 
+    args.channel = find_channelfile()
+    args.service = find_servicefile()
+    if args.channel is None and args.service is None: print('No channel or service file was specified or found.'); sys.exit(1)
+if args.channel and args.service:
+    print_color('Found both channel and service files, please choose which to deploy:\n  [0] Channel\n  [1] Service', '91e600') 
+    resp = input("Select an option: ")
+    while resp not in ["0", "1"]:
+        resp = input("Invalid input, please enter either 0 or 1: ")
+    if resp == "0": args.service = None
+    else: args.channel = None
+    
+try:
+    client = anatools.client(
+        email=args.email, 
+        password=args.password,
+        environment=args.environment, 
+        endpoint=args.endpoint,
+        local=args.local,
+        interactive=interactive,
+        verbose=verbose)
+    volumes = []
+    if args.channel:
+        localchannel = Channel(args.channel)
+        for package in localchannel.packages.keys():
+            if localchannel.packages[package] is None: continue
+            if 'volumes' in localchannel.packages[package] and localchannel.packages[package]['volumes']:
+                for volume in localchannel.packages[package]['volumes'].keys():
+                    if volume != 'local': volumes.append(localchannel.packages[package]['volumes'][volume])
+
+        # make sure schema is valid
+        try:
+            print("Checking Channel Schema...", end="")
+            result = subprocess.run(
+                "anautils --mode=schema --output=/tmp/", 
+                shell=True,
+                check=True,  # Raise an exception if the command fails
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True)
+            print("done.")
+        except subprocess.CalledProcessError as e:
+            print(f"Schema check failed with return code {e.returncode}")
+            print(e.stderr)
+            sys.exit(1)
+
+        # make sure channel documentation is valid
+        try:
+            print("Checking Channel Documentation...", end="")
+            result = subprocess.run(
+                "anautils --mode=help --output=/tmp/", 
+                shell=True,
+                check=True,  # Raise an exception if the command fails
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True)
+            print("done.")
+        except subprocess.CalledProcessError as e:
+            print(f"Documentation check failed with return code {e.returncode}")
+            print(e.stderr)
+            sys.exit(1)
+
+        # get remote channelId and verify access to deploy, or create a new channel
+        remotechannels = []
+        remoteorganization = None
+        if args.channelId is None:
+            if localchannel.remotes and len(localchannel.remotes) > 0:
+                for i, remote in enumerate(localchannel.remotes):
+                    try: 
+                        c = client.get_channels(channelId=remote['channelId'])[0]
+                        organization = client.get_organizations(organizationId=c['organizationId'])[0]
+                        c['organization'] = organization
+                        c['index'] = i
+                        remotechannels.append(c)
+                    except Exception as e: 
+                        print_color(f"There was an issue retrieving remote channel with channelId={channelId}.", "ff0000")
+                        print(e)
+            options = 2
+            print_color(f'Choose an option for deploying the channel: ', '91e600')
+            if len(remotechannels) > 0:
+                try:
+                    for remote in remotechannels:
+                        print_color(f'  [{options-2}] Deploy to the {remote["name"]} channel in the {remote["organization"]["name"]} organization', '91e600')
+                        options += 1
+                except: pass
+            print_color(f'  [{options-2}] Deploy to a new channel', '91e600')
+            print_color(f'  [{options-1}] Deploy to an existing channel', '91e600')
+            selection = input(f'Please select an option: ')
+            while selection not in [str(i) for i in range(options)]:
+                selection = input(f'Invalid input, please enter a number between 0 and {options-1}: ')
+            if remotechannels and selection in [str(i) for i in range(len(remotechannels))]:
+                remotechannel = remotechannels[int(selection)]
+                local = localchannel.remotes[remotechannel['index']]
+                name = local.get('name', None)
+                description = local.get('description', None)
+                instance = local.get('instance', None)
+                timeout = local.get('timeout', None)
+                changes = {}
+                if sorted(volumes) != sorted(remotechannel['volumes']): changes['volumes'] = {"local": volumes, "remote": remotechannel['volumes']}
+                if name and name != remotechannel['name']: changes['name'] = {"local": name, "remote": remotechannel['name']}
+                if description and description != remotechannel['description']: changes['description'] = {"local": description, "remote": remotechannel['description']}
+                if instance and instance != remotechannel['instanceType']:  changes['instance'] = {"local": instance, "remote": remotechannel['instanceType']}
+                if timeout and timeout != remotechannel['timeout']: changes['timeout'] = {"local": timeout, "remote": remotechannel['timeout']}
+                if len(changes.keys()) > 0:
+                    print_color(f"The channel {remotechannel['name']} in the {organization['name']} organization has the following differences from the local channel:", '91e600')
+                    for change in changes.keys():
+                        print_color(f"  {change}:   {changes[change]['remote']} (remote) -> {changes[change]['local']} (local)", '91e600')
+                    resp = input("Would you like to update the remote channel? ")
+                    while resp.lower() not in ['y', 'yes', 'n', 'no']:
+                        resp = input('Invalid input, please enter either "y" or "n": ')
+                    if resp.lower() in ['y', 'yes']:
+                        print(f"Editing channel...{remotechannel['channelId']} {name} {description} {instance} {timeout} {volumes}")
+                        client.edit_channel(channelId=remotechannel['channelId'], name=name, volumes=volumes, description=description, instance=instance, timeout=timeout)
+                        print('done.')
+                        remotechannel = client.get_channels(channelId=remotechannel['channelId'])[0]
+            else:
+                organizations = sorted(client.get_organizations(), key=lambda x: x['name'].lower())
+                if len(organizations) > 1:
+                    print_color("Choose an organization to deploy the channel to: ", '91e600')
+                    for i, organization in enumerate(organizations):
+                        organizationId = organization['organizationId']
+                        print_color(f"  [{i}] {organization['name']} {'' if not verbose else f'({organizationId})'}", '91e600')
+                    resp = input(f'Please select an organization: ')
+                    while resp not in [str(i) for i in range(len(organizations))]:
+                        resp = input(f'Invalid input, please enter a number between 0 and {len(organizations)-1}: ')
+                    remoteorganization = organizations[int(resp)]
+                elif len(organizations) == 1: remoteorganization = organizations[0]
+                else: print_color('You have no organizations to deploy to, please contact sales@rendered.ai.', 'ff0000'); sys.exit(1)
+                if selection == str(options-2): remotechannel = create_channel(client=client, organization=remoteorganization, name=args.channel.split('/')[-1].split('.')[0], volumes=volumes)
+                else:
+                    channels = sorted(client.get_channels(organizationId=remoteorganization['organizationId']), key=lambda x: x['name'].lower())
+                    if len(channels) > 0:
+                        print_color("Choose a channel to deploy to: ", '91e600')
+                        for i, channel in enumerate(channels):
+                            channelId = channel["channelId"]
+                            print_color(f" [{i+1}] {channel['name']} {'' if not verbose else f'({channelId})'}", '91e600')
+                        resp = input(f'Please select a channel: ')
+                        while resp not in [str(i) for i in range(len(channels)+1)]:
+                            resp = input(f'Invalid input, please enter a number between 0 and {len(channels)}: ')
+                        remotechannel = channels[int(resp)-1]
+                        if volumes != remotechannel['volumes']:
+                            client.edit_channel(channelId=remotechannel['channelId'], volumes=volumes)
+                            remotechannel = client.get_channels(channelId=remotechannel['channelId'])[0]
+                    else: 
+                        resp = input('No channels found in this organization. Would you like to create a new channel?: ' )
+                        while resp.lower() not in ['y', 'yes', 'n', 'no']:
+                            resp = input('Invalid input, please enter either "y" or "n": ')
+                        if resp.lower() in ['n', 'no']: print('Exiting...'); sys.exit()
+                        remotechannel = create_channel(client=client, organization=remoteorganization, name=args.channel.split('/')[-1].split('.')[0], volumes=volumes)
+        else:
+            channels = client.get_channels(channelId=args.channelId)
+            if channels == False or len(channels) == 0: raise Exception(f"Channel {args.channelId} not found")
+            remotechannel = channels[0]
+        starttime = time.time()
+        deploymentId = client.deploy_channel(channelId=remotechannel['channelId'], channelfile=args.channel)
+        print('Registering Channel Image...', flush=True)
+        registerstart = time.time()
+        status = client.get_deployment_status(deploymentId=deploymentId, stream=True)
+        if status['status']['state'] == 'Channel Deployment Failed': raise Exception(f"Channel deployment failed: {status['status']['message']}")
+        else:   
+            print(f'\033[1F\033[FRegistering Channel Image...done.  [{time.time()-registerstart:.3f}s]\033[K\n\033[K')
+            print_color(f"The channel has been deployed and is ready to use!", '91e600')
+            print(f'Deployment Time: {time.time()-starttime:.3f}s\n')
+
+        if not args.noninteractive:
+            remoteconfig = {
+                "channelId": remotechannel['channelId'],
+                "name": remotechannel['name'],
+                "description": remotechannel['description'],
+                "instance": remotechannel['instanceType'],
+                "timeout": remotechannel['timeout']
+            }
+            remote_index = -1
+            for i, remote in enumerate(localchannel.remotes):
+                if remote.get('channelId') == remoteconfig['channelId']: remote_index = i; break
+            saveconfig = False
+            if len(localchannel.remotes) > 0:
+                for key in localchannel.remotes[remote_index].keys():
+                    if localchannel.remotes[remote_index][key] != remoteconfig[key]: saveconfig = True
+            if remote_index < 0 or saveconfig:
+                resp = input('Would you like to save the remote config in your Channel for next time? ')
+                if resp.lower() not in ['y', 'yes', 'n', 'no']: resp = input('Invalid input, please enter either "y" or "n": ') 
+                if resp.lower() in ['y', "yes"]:
+                    if len(remoteconfig['description']) == 0: remoteconfig['description'] = "\"\""
+                    new_remote_lines = [
+                        f"  - channelId: {remoteconfig['channelId']}\n",
+                        f"    name: {remoteconfig['name']}\n",
+                        f"    description: {remoteconfig['description']}\n",
+                        f"    instance: {remoteconfig['instance']}\n",
+                        f"    timeout: {remoteconfig['timeout']}\n"]
+                    with open(args.channel, 'r') as yf: lines = yf.readlines()
+                    remotes_line = -1
+                    for i, line in enumerate(lines):
+                        if line.strip().startswith('remotes:'): remotes_line = i; break
+                    if remotes_line >= 0:
+                        startpos = remotes_line + 1
+                        endpos = remotes_line + 1
+                        channel = False
+                        for i in range(startpos, len(lines)):
+                            if lines[i].strip().startswith('-'): startpos = i
+                            if 'channelId: ' in lines[i] and (lines[i].split('channelId: ')[1].strip() == remoteconfig['channelId']): 
+                                channel = True
+                            if (lines[i].strip().startswith('-') and channel) or (len(lines[i]) and not lines[i].startswith(' ')):
+                                endpos = i - 1
+                                if not channel: startpos = endpos
+                                break
+                        lines[startpos:endpos] = new_remote_lines
+                    else:
+                        lines.append("\n")
+                        lines.append("\n")
+                        lines.append("remotes:\n")
+                        for line in new_remote_lines: lines.append(line)
+                    with open(args.channel, 'w') as yf: yf.writelines(lines)
+                    print(f"Saved remote config to {args.channel}")
+        autocommit(filepath=args.channel, name=f"{remotechannel['name']} channel", version=remotechannel['version'])
+
+    else:
+        localservice = Service(args.service)
+        volumes = localservice.volumes
+
+        # get remote serviceId and verify access to deploy, or create a new service
+        remoteservices = []
+        remoteorganization = None
+        if args.serviceId is None:
+            if localservice.remotes and len(localservice.remotes) > 0:
+                for i, remote in enumerate(localservice.remotes):
+                    try:
+                        if 'enviroment' not in remote: remote['environment'] == 'prod'
+                        if client.environment == remote['environment']: 
+                            s = client.get_services(serviceId=remote['serviceId'])[0]
+                            organization = client.get_organizations(organizationId=s['organizationId'])[0]
+                            s['organization'] = organization
+                            s['index'] = i
+                            remoteservices.append(s)
+                    except Exception as e: 
+                        print_color(f"There was an issue retrieving remote service with serviceId={serviceId}.", "ff0000")
+                        print(e)
+            options = 2
+            print_color(f'Choose an option for deploying the service: ', '91e600')
+            if len(remoteservices) > 0:
+                try:
+                    for remote in remoteservices:
+                        print_color(f'  [{options-2}] Deploy to the {remote["name"]} service in the {remote["organization"]["name"]} organization', '91e600')
+                        options += 1
+                except: pass
+            print_color(f'  [{options-2}] Deploy to a new service', '91e600')
+            print_color(f'  [{options-1}] Deploy to an existing service', '91e600')
+            selection = input(f'Please select an option: ')
+            while selection not in [str(i) for i in range(options)]:
+                selection = input(f'Invalid input, please enter a number between 0 and {options-1}: ')
+            if remoteservices and selection in [str(i) for i in range(len(remoteservices))]:
+                remoteservice = remoteservices[int(selection)]
+                local = localservice.remotes[remoteservice['index']]
+                name = local.get('name', None)
+                description = local.get('description', None)
+                instance = local.get('instance', None)
+                timeout = local.get('timeout', None)
+                changes = {}
+                if sorted(volumes) != sorted(remoteservice['volumes']): changes['volumes'] = {"local": volumes, "remote": remoteservice['volumes']}
+                if name and name != remoteservice['name']: changes['name'] = {"local": name, "remote": remoteservice['name']}
+                if description and description != remoteservice['description']: changes['description'] = {"local": description, "remote": remoteservice['description']}
+                if instance and instance != remoteservice['instance']:  changes['instance'] = {"local": instance, "remote": remoteservice['instance']}
+                if len(changes.keys()) > 0:
+                    print_color(f"The service {remoteservice['name']} in the {organization['name']} organization has the following differences from the local service:", '91e600')
+                    for change in changes.keys():
+                        print_color(f"  {change}:   {changes[change]['remote']} (remote) -> {changes[change]['local']} (local)", '91e600')
+                    resp = input("Would you like to update the remote service? ")
+                    while resp.lower() not in ['y', 'yes', 'n', 'no']:
+                        resp = input('Invalid input, please enter either "y" or "n": ')
+                    if resp.lower() in ['y', 'yes']:
+                        print(f"Editing service...", end='')
+                        client.edit_service(serviceId=remoteservice['serviceId'], name=name, volumes=volumes, description=description, instance=instance)
+                        print('done.')
+                        remoteservice = client.get_services(serviceId=remoteservice['serviceId'])[0]
+            else:
+                organizations = sorted(client.get_organizations(), key=lambda x: x['name'].lower())
+                if len(organizations) > 1:
+                    print_color("Choose an organization to deploy the service to: ", '91e600')
+                    for i, organization in enumerate(organizations):
+                        organizationId = organization['organizationId']
+                        print_color(f"  [{i}] {organization['name']} {'' if not verbose else f'({organizationId})'}", '91e600')
+                    resp = input(f'Please select an organization: ')
+                    while resp not in [str(i) for i in range(len(organizations))]:
+                        resp = input(f'Invalid input, please enter a number between 0 and {len(organizations)-1}: ')
+                    remoteorganization = organizations[int(resp)]
+                elif len(organizations) == 1: remoteorganization = organizations[0]
+                else: print_color('You have no organizations to deploy to, please contact sales@rendered.ai.', 'ff0000'); sys.exit(1)
+                if selection == str(options-2): remoteservice = create_service(client=client, organization=remoteorganization, name=localservice.name, volumes=volumes)
+                else:
+                    services = sorted(client.get_services(organizationId=remoteorganization['organizationId']), key=lambda x: x['name'].lower())
+                    if len(services) > 0:
+                        print_color("Choose a service to deploy to: ", '91e600')
+                        for i, service in enumerate(services):
+                            serviceId = service["serviceId"]
+                            print_color(f" [{i+1}] {service['name']} {'' if not verbose else f'({serviceId})'}", '91e600')
+                        resp = input(f'Please select a service: ')
+                        while resp not in [str(i) for i in range(len(services)+1)]:
+                            resp = input(f'Invalid input, please enter a number between 0 and {len(services)}: ')
+                        remoteservice = services[int(resp)-1]
+                        if volumes != remoteservice['volumes']:
+                            client.edit_service(serviceId=remoteservice['serviceId'], volumes=volumes)
+                            remoteservice = client.get_services(serviceId=remoteservice['serviceId'])[0]
+                    else: 
+                        resp = input('No services found in this organization. Would you like to create a new service?: ' )
+                        while resp.lower() not in ['y', 'yes', 'n', 'no']:
+                            resp = input('Invalid input, please enter either "y" or "n": ')
+                        if resp.lower() in ['n', 'no']: print('Exiting...'); sys.exit()
+                        remoteservice = create_service(client=client, organization=remoteorganization, service=localservice, name=localservice.name, volumes=volumes)
+        else:
+            remoteservice = client.get_services(serviceId=args.serviceId)
+            if remoteservice == False or len(remoteservice) == 0: print_color(f"Service {args.serviceId} not found", 'error'); sys.exit(1)
+            remoteservice = remoteservice[0]                
+        starttime = time.time()
+        deploymentId = client.deploy_service(serviceId=remoteservice['serviceId'], servicefile=args.service)
+        print('Registering Service Image...', flush=True)
+        registerstart = time.time()
+        status = client.get_service_deployment(deploymentId=deploymentId, stream=True)
+        if status['status']['state'] == 'Service Deployment Failed': raise Exception(f"Service deployment failed: {status['status']['message']}")
+        else:   
+            print(f'\033[1F\033[FRegistering Service Image...done.  [{time.time()-registerstart:.3f}s]\033[K\n\033[K')
+            print_color(f"The service has been deployed and is ready to use!", '91e600')
+            print(f'Deployment Time: {time.time()-starttime:.3f}s\n')
+
+        remoteconfig = {
+            "serviceId": remoteservice['serviceId'],
+            "name": remoteservice['name'],
+            "description": remoteservice['description'],
+            "instance": remoteservice['instance'],
+            "volumes": remoteservice['volumes']
+        }
+        remote_index = -1
+        for i, remote in enumerate(localservice.remotes):
+            if remote.get('serviceId') == remoteconfig['serviceId']: remote_index = i; break
+        saveconfig = False
+        if len(localservice.remotes) > 0:
+            for key in localservice.remotes[remote_index].keys():
+                if key in remoteconfig:
+                    if localservice.remotes[remote_index][key] != remoteconfig[key]: saveconfig = True
+        if saveconfig and args.noninteractive:
+            client.edit_service(serviceId=remoteservice['serviceId'], name=localservice.remotes[remote_index]['name'], description=localservice.remotes[remote_index]['description'], instance=localservice.remotes[remote_index]['instance'], volumes=localservice.remotes[remote_index]['volumes'])
+        if not args.noninteractive:
+            if remote_index < 0 or saveconfig:
+                resp = input('Would you like to save the remote config in your Service file for next time? ')
+                if resp.lower() not in ['y', 'yes', 'n', 'no']: resp = input('Invalid input, please enter either "y" or "n": ') 
+                if resp.lower() in ['y', "yes"]:
+                    if len(remoteconfig['description']) == 0: remoteconfig['description'] = "\"\""
+                    new_remote_lines = [
+                        f"  - serviceId: {remoteconfig['serviceId']}\n",
+                        f"    name: {remoteconfig['name']}\n",
+                        f"    description: {remoteconfig['description']}\n",
+                        f"    instance: {remoteconfig['instance']}\n",
+                        f"    volumes: {remoteconfig['volumes']}\n"]
+                    if client.environment != 'prod': new_remote_lines.append(f"    environment: {client.environment}\n")
+                    with open(args.service, 'r') as yf: lines = yf.readlines()
+                    remotes_line = -1
+                    for i, line in enumerate(lines):
+                        if line.strip().startswith('remotes:'): remotes_line = i; break
+                    if remotes_line >= 0 and len(localservice.remotes):
+                        startpos = remotes_line + 1
+                        endpos = remotes_line + 1
+                        service = False
+                        for i in range(startpos, len(lines)):
+                            if lines[i].strip().startswith('-'): startpos = i
+                            if 'serviceId: ' in lines[i] and (lines[i].split('serviceId: ')[1].strip() == remoteconfig['serviceId']): 
+                                service = True
+                            if (lines[i].strip().startswith('-') and service) or (len(lines[i]) and not lines[i].startswith(' ')):
+                                endpos = i - 1
+                                if not service: startpos = endpos
+                                break
+                        lines[startpos:endpos] = new_remote_lines
+                    else:
+                        if remotes_line > 0: del lines[remotes_line]
+                        lines.append("\n")
+                        lines.append("\n")
+                        lines.append("remotes:\n")
+                        for line in new_remote_lines: lines.append(line)
+                    with open(args.service, 'w') as yf: yf.writelines(lines)
+                    print(f"Saved remote config to {args.service}")
+        autocommit(filepath=args.service, name=f"{remoteservice['name']} service", version=remoteservice['version'])
+        with open(args.service, 'r') as yf: data = yaml.safe_load(yf)
+        if 'rules' in data:
+            with open(os.path.join(os.path.dirname(args.service), data['rules']), 'r') as mdfile: local_rules = mdfile.read()
+            remote_rules = client.get_service_rules(serviceId=remoteservice['serviceId'])
+            if local_rules != remote_rules:
+                client.edit_service_rules(serviceId=remoteservice['serviceId'], rules=local_rules)
+                print(f"Updated rules for {remoteservice['name']} service.")
+
+
+
+except KeyboardInterrupt:
+    print_color('\nDeployment cancelled by user.', 'ff0000')
+except Exception as e:
+    print_color('\nDeployment failed, please notify support@rendered.ai.', 'ff0000')
+    print_exc()
