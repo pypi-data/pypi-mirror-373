@@ -1,0 +1,440 @@
+# CRC_API
+
+A Python wrapper for the MatInf VRO API used in CRC 1625. It allows querying samples, associated objects, compositions, and properties.
+
+## Installation
+
+```bash
+pip install crc1625-api
+```
+
+## 1. Initialize the client
+```python
+### Full Summary Query Example
+from matinfwebapi import MatInfWebApiClient
+
+
+crc_api = MatInfWebApiClient(
+    service_url="https://your-api-endpoint",  # e.g., "https://matinf-api.crc1625.de"
+    api_key="your-api-token"
+)
+```
+## 🧭 get_summary_fields() – Discover What You Can Search and Filter
+Before performing a detailed query, it's helpful to know what types, elements, properties, and users exist in the database.
+The get_summary_fields() method helps you explore all available options.
+
+It retrieves:
+
+ ✅ Associated Object Types – e.g., 'EDX CSV', 'Photo', 'Bandgap Plot'
+ 
+ ✅ Property Names – e.g., 'Bandgap', 'Thickness', 'Resistance'
+
+ ✅ Element Names – e.g., 'Ag', 'Pd', 'Pt', 'Cu'
+ 
+ ✅ Creator Emails – list of all users who created objects
+
+ ✅ Creator Usernames – system usernames linked to object creation
+
+This is useful for building dropdowns in a UI, validating user input, or just understanding the structure of your research data.
+
+##### 📌 Example:
+You can use the output of this function to:
+    Suggest available filters for users
+
+    Know which properties or elements are supported
+
+    Pre-fill search fields in automated scripts
+
+
+```python
+summary_fields = crc_api.get_summary_fields()
+# Convert and display each field as a table
+display(pd.DataFrame(summary_fields["distinct_associated_typenames"], columns=["Associated Object Types"]))
+```
+
+## What Does get_summary() Do?
+The get_summary() function collects detailed information about research objects (like samples) from the MatInf database. You can use it to:
+
+#### ✅ Filter objects by:
+    Type (e.g. "Sample")
+
+    Date range (e.g. created between Jan 2024 and May 2025)
+
+    Specific associated data types (e.g. EDX, Photo, Resistance CSV)
+
+    Specific elements (e.g. only samples that contain Ag and Pd)
+
+    Optional element percentage ranges (e.g. Pd between 5–20%)
+
+#### ✅ Include in the output:
+
+    Linked files (associated objects like images, CSVs, etc.)
+
+    Properties of the object (e.g. Bandgap)
+
+    Composition (element percentages)
+
+    Properties of linked objects (e.g. bandgap of associated analysis file)
+
+#### ✅ Export results:
+    As a readable list of Python dictionaries Or save it as a .json file for reuse or sharing
+
+##### 📘 Example:
+    We are retrieving all Sample objects:
+       Created between 2024-01-01 and 2025-05-31, that are linked to EDX CSV, photo, and HTTS resistance CSV files, that contain Pd (5–20%) and Ag (any amount), and include the bandgap property (if available)
+
+    The result will be saved in the results/ folder as summary_Sample.json.
+
+### Full Summary Query Example
+```python
+summary = crc_api.get_summary(
+    main_object="Sample",                        # Main object type to search
+    start_date="2023-01-01",                         # Start of creation date range
+    end_date="2025-01-01",                           # End of creation date range
+    include_associated=True,                         # Include linked objects
+    include_properties=True,                         # Include main object properties
+    include_composition=True,                        # Include element composition
+    include_linked_properties=True,                  # Include properties of associated objects
+    user_associated_typenames=["EDX CSV", "HTTS Resistance CSV"],  # Associated object types to include
+    property_names=["Bandgap"],        # Properties to extract
+    required_elements={"Pt": (10, 90), "Pd": None},  # Filter for samples with elements in given range
+    required_properties=["Bandgap"],                 # Filter for samples that include this property
+    save_to_json=True,                               # Save summary to disk
+    output_folder="summary_results"                  # Folder to save output
+)
+
+```
+
+## Search and Download  Objects by Type, Elements, and Metadata
+
+### 💡 What You Can Do with It:
+    Query objects (e.g., Samples) by type, creation date, and creator.
+
+    Filter objects based on associated data types (e.g., EDX, Photos, Resistance data).
+
+    Refine your search using specific elements (e.g., Ag, Pd), including optional percentage ranges (e.g., Pd between 5% and 20%).
+
+    Save results locally as .csv and .json files.
+
+    Automatically download all linked files into structured folders for offline use.
+
+    Export an Excel report that shows which users contributed to which data types.
+
+    Support strict filtering, so only objects that match all required associated types are returned.
+
+### 📘 Example:
+    We are searching for:
+
+        All Sample objects created between 2024-01-01 and 2025-05-31.
+
+        That are linked to at least these types: EDX CSV, Photo, and HTTS Resistance CSV.
+
+        That contain Ag (any amount) and Pd (between 5% and 20%) in their composition.
+
+        (Optional) That were created by a specific user (filtered by email).
+
+    All results will be saved locally, and relevant files will be downloaded automatically.
+
+This tool supports FAIR data practices and can be useful for building datasets for machine learning, publication, or collaborative research.
+```python
+# Define parameters for processing data
+typename_list = ['EDX CSV', 'Photo', 'HTTS Resistance CSV']
+main_object = 'Sample'
+start_date = '2024-01-01'
+end_date = '2025-05-31'
+
+# Elements with their percentage range (min, max)
+element_criteria = {
+    'Ag': (5, 20),
+    'Pd': (5, 20)
+}
+
+# Define save location and output filename
+save_location = "./results"
+output_filename = "search_result.csv"
+
+# Filter by creator's email
+creator_email = "felix@gmail.com" # change this mail
+# Call the search function with creator
+df = crc_api.search(
+    associated_typenames=typename_list,
+    main_object=main_object,
+    start_date=start_date,
+    end_date=end_date,
+    element_criteria=element_criteria,
+    #creator=creator_email,  
+    strict=True,
+    save_location=save_location,
+    output_filename=output_filename
+)
+
+
+```
+
+### Get the measurement with the object id
+```python
+main_objectID = 11104
+associated_types = ["EDX CSV", "Photo"]
+crc_api.download_by_main_objectid( main_objectID , associated_types, download_folder="downloaded_files")
+```
+
+### 🧩 get_sample_typename_matrix(main_object="Sample")
+Builds a binary matrix that shows which samples are associated with which object types (typenames).
+
+✅ Features:
+
+    Rows = Sample object IDs
+
+    Columns = All typenames in the database
+
+    Values = 1 if the sample has an association with that type, else 0
+
+📘 Example:
+```python
+matrix_df = crc_api.get_sample_typename_matrix()
+matrix_df.head()
+```
+
+### 🔗 get_sample_and_linked_properties()
+
+Collects properties for each sample and its linked objects. Supports filtering by property type and name.
+
+✅ Features:
+
+    Retrieves Sample properties (Float, Int, String, BigString)
+
+    Retrieves Linked object properties and averages numeric values across linked objects
+
+    Supports filtering by property names and types
+
+    Optionally includes or excludes objectname
+
+    Can save results directly as CSV
+
+🔧 Parameters:
+
+    property_type: "float", "int", "string", "bigstring", or "all" (default = "all")
+
+    property_names: list of property names to filter (default = all)
+
+    include_objectname: whether to include the objectname column (default = True)
+
+    save_to_csv: path to save CSV (default = None)
+
+📘 Example:
+```python
+matrix_df = crc_api.get_sample_typename_matrix()
+matrix_df.head()
+```
+
+## 📊 get_composition_table(value_type="ValuePercent")
+
+Builds a pivot table showing the composition (element percentages or absolutes) for each measurement area, mapping from composition object → actual sample → measurement index.
+
+✅ Output:
+
+    composition_objectid
+
+    actual_sample_objectid
+
+    compoundindex
+
+    measurement_area_index
+
+    Wide-format element columns (e.g., Ag, Pd, Pt)
+
+🔧 Parameters:
+
+    value_type: "ValuePercent" (default) or "ValueAbsolute"
+
+📘 Example:
+
+```python
+composition_df = crc_api.get_composition_table(value_type="ValuePercent")
+```
+
+## ⚡ extract_resistance_data()
+
+Downloads and processes resistance measurement data (HTTS Resistance CSV), matches each with its linked Sample, and computes average resistance (R), current (I), and voltage (V) values over (x, y) positions.
+
+
+#### **Inputs (Function Parameters)**
+
+- **`resistance_typename`** *(str, default: `"HTTS Resistance CSV"`)*  
+  The typename of resistance measurement objects in the database.  
+
+- **`sample_typename`** *(str, default: `"Sample"`)*  
+  The typename of sample objects to which resistance measurements are linked.  
+
+- **`base_output_folder`** *(str, default: `"output"`)*  
+  Main folder where the final merged CSV will be stored.  
+
+- **`resistance_output_folder`** *(str, default: `"resistance"`)*  
+  Folder where the downloaded raw resistance CSVs are saved.  
+
+- **`averaged_data_folder`** *(str, default: `"averaged_data"`)*  
+  Folder where processed/averaged resistance data per sample is saved.  
+
+- **`output_csv_filename`** *(str, default: `"resistance_summary.csv"`)*  
+  Name of the final summary CSV file that contains merged averaged data for all samples.  
+
+
+### **File Requirements**
+
+The downloaded resistance CSV files must contain the following columns:  
+✅ Outputs:
+
+    Raw CSVs in resistance/
+
+    Averaged CSVs in averaged_data/
+
+    Merged result in output/resistance_summary.csv
+
+📘 Example:
+
+```python
+
+result = crc_api.extract_resistance_data(
+    resistance_typename="HTTS Resistance CSV",
+    sample_typename="Sample",
+    base_output_folder="output_data",
+    resistance_output_folder="raw_resistance",
+    averaged_data_folder="averaged_results",
+    output_csv_filename="all_resistance_summary.csv"
+)
+```
+
+## 🧬 extract_xrd_data()
+
+Processes XRD files of type "XRD CSV (342 columns)", links each XRD object to its Sample, performs interpolation on the two_theta range (e.g., 50% resampling), and saves results in both JSON and wide-format CSV.
+
+#### **Inputs (Function Parameters)**
+
+- **`xrd_typename`** *(str, default: `"XRD CSV (342 columns)"`)*  
+  Typename of XRD objects in the database.
+
+- **`sample_typename`** *(str, default: `"Sample"`)*  
+  Typename of sample objects to which XRDs are (directly or indirectly) linked.
+
+- **`output_folder`** *(str, default: `"XRD_CSV_342"`)*  
+  Directory where all processed outputs are written.
+
+- **`json_filename`** *(str, default: `"processed_xrd.json"`)*  
+  Filename for the JSON output (list of entries, each with resampled angle array and intensities).
+
+- **`csv_filename`** *(str, default: `"processed_xrd.csv"`)*  
+  Filename for the wide CSV output (one row per intensity column, resampled to the new angle grid).
+
+- **`percentage`** *(float, default: `50.0`)*  
+  Downsampling ratio of the angle grid (e.g., `50.0` ⇒ half as many points, linearly spaced between min/max 2θ).
+
+---
+#### **What the function does**
+
+1. Loads `vroObjectInfo` and `vroObjectLinkObject`.  
+2. Finds all XRD objects by `TypeId` and, for each, **BFS-traverses** links (forward & backward) to locate the **nearest Sample** with a valid `ExternalId`.  
+3. Downloads the CSV for each XRD object to `output_folder`.  
+4. Builds a new **angle grid** with `percentage`% of the original length (linear spacing between min/max angle).  
+5. **Linearly interpolates** each intensity column onto the new angle grid.  
+6. Writes:
+   - A **JSON file** with entries:
+     ```json
+     {
+       "objectid_XRD": <int>,
+       "sampleid": "<ExternalId>",
+       "angle": [...],
+       "intensity_1": [...],
+       "intensity_2": [...],
+       ...
+     }
+     ```
+   - A **wide CSV** where each intensity column becomes a **row**, columns are the **resampled angles** (formatted `"{angle:.4f}"`), and two identifier columns:
+     - `objectid_XRD`
+     - `sampleid`
+
+Temporary downloaded CSVs are deleted after processing.
+
+---
+✅ Outputs:
+
+    Interpolated XRD data in JSON and CSV
+
+    Output folder: XRD_CSV_342/
+
+
+📘 Example:
+
+```python
+crc_api.extract_xrd_data(
+    xrd_typename="XRD CSV (342 columns)",
+    sample_typename="Sample",
+    output_folder="XRD_out",
+    json_filename="xrd_resampled.json",
+    csv_filename="xrd_resampled.csv",
+    percentage=50.0  # keep 40% of original angle points
+)
+```
+
+## 📏 extract_thickness_data()
+
+Downloads .zip files of type ID 40 (thickness), extracts .dat files, parses numeric thickness values, computes statistics (mean, std), and links them to Sample objects.
+
+#### **Inputs (Function Parameters)**
+
+- **`thickness_typeid`** *(int, default: `40`)*  
+  `TypeId` of the main thickness objects to process.
+
+- **`base_output_folder`** *(str, default: `"output"`)*  
+  Directory where the final summary CSV is saved.
+
+- **`zip_output_folder`** *(str, default: `"thickness_zip"`)*  
+  Directory to store downloaded ZIP files.
+
+- **`extracted_data_folder`** *(str, default: `"thickness_data"`)*  
+  (Reserved) Directory for extracted/intermediate data. Created for consistency.
+
+- **`output_csv_filename`** *(str, default: `"thickness_summary.csv"`)*  
+  Filename for the consolidated CSV summary.
+
+---
+#### **What the function does**
+
+1. Finds all objects with `typeid = thickness_typeid`.  
+2. For each object, finds a **linked sample** (forward and reverse link search).  
+3. Downloads the object’s file as `thickness_zip/<objectid>_thickness.zip`.  
+4. Validates the ZIP and iterates over `.dat` files.  
+5. For each `.dat`:
+   - Skips 6 header lines.
+   - Parses the second column as thickness values.
+   - Extracts file order from the filename suffix `_(\d+).dat` when present.
+   - Computes:
+     - `Avg_Thickness` (mean)  
+     - `Std_Thickness` (standard deviation)  
+     - `num_points` (count)
+   - Appends a summary row with identifiers.
+
+6. Sorts rows by `thickness_object_id` and `file_order`, drops the helper `file_order` column, and writes the summary CSV.
+
+✅ Outputs:
+
+    Summary CSV with average and std dev per .dat file
+
+    Output folders:
+
+    Zips: thickness_zip/
+
+    Extracted: thickness_data/
+
+    Final summary: output/thickness_summary.csv
+
+📘 Example:
+
+```python
+crc_api.extract_thickness_data(
+    thickness_typeid=40,
+    base_output_folder="out",
+    zip_output_folder="thickness_zip",
+    extracted_data_folder="thickness_data",
+    output_csv_filename="thickness_summary.csv"
+)
+```
