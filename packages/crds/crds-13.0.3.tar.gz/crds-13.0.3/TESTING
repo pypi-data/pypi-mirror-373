@@ -1,0 +1,64 @@
+As of version 7.0.7 CRDS test data has been restructured to support testing on
+Travis CI and sites with no access to /grp/crds/cache.
+
+Setting up CRDS to run the built-in unit tests can be accomplished as follows:
+
+    % git clone https://github.com/spacetelescope/crds.git CRDS
+    % cd CRDS
+    % setenv CRDS_SERVER_URL https://hst-crds.stsci.edu
+    % setup_test_cache $HOME   # You need at least 1G of space for this
+    % source envs/hst-crds-ops.sh (or .csh )  #   -dev or -test should also largely work
+    % ./runtests
+
+If you wish to relocate your CRDS test caches somewhere other than $HOME
+do:
+
+    % setup_test_cache <somewhere else>
+    % setenv CRDS_TEST_ROOT <somewhere else>
+    % source envs/hst-crds-ops.sh (or .csh)   #   -dev or -test should also largely work
+    % ./runtests
+
+The above configures CRDS to run the built-in unit tests using several file
+sources:
+
+- $CRDS_TEST_ROOT/crds-cache-test
+  Dirty test cache with corrupted/hacked files, used by tests only.
+  Has the dangerous property of like-named files (same as official names) with different contents.
+
+- $CRDS_TEST_ROOT/crds-cache-default-test
+  Used when CRDS_PATH not set,  replaces /grp/crds/cache with minimal reference files for testing
+  /grp/crds/cache is a complete HST + JWST readonly cache on the Central Store,  too large to distribute
+
+- $HOME/crds_cache_ops
+  For CRDS_PATH set by hst-crds-ops.csh (or .sh),  used whenever tests don't clear CRDS_PATH
+
+- CRDS/crds/tests/data
+  Ad hoc test data files used with explicit paths
+  CRDS/crds/test/data is normally omitted from source code distributions.
+
+Notes on crds-cache-default-test bootstrap file CRDS server setup:
+
+      This cache is initialized by setup_test_cache by first downloading a
+      bootstrap file from the HST OPS server.  Without the bootstrap file, the
+      cache setup for this will still occur normally but takes considerably
+      longer due to downloading files one-by-one.
+
+      The crds-cache-default-test download file, crds-cache-default-test.tar.bz2,
+      is constructed from the built-the-hard-way cache like this:
+
+      $ cd $CRDS_TEST_ROOT
+      $ tar jcf crds-cache-default-test.tar.bz2 crds-cache-default-test
+
+      The resulting bzip2 file is copied to the HST OPS VM at the
+      $CRDS/CRDS_server/crds_server/static directory where the source code of all the other
+      server static files resides.  This will cause it to be re-installed in the Apache
+      static directory whenever the server is re-installed.   Merely placing the bzip2
+      file in the Apache static directory will result in a file life expectancy of 1 day,
+      since it is continually deleted and reinitialized in the final installation dir.
+
+Other notes:
+
+      As files are added to CRDS,  a developer's test caches need to be continually updated
+      or unit test errors will occur.   This makes periodically re-running setup_test_cache
+      a requirement...  which is one reason optimizing the crds-cache-default-test setup
+      time is desirable.
