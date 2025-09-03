@@ -1,0 +1,85 @@
+SELECT
+    UPPER(current_database()) as database_name,
+    UPPER(c.table_schema) as schema_name,
+    UPPER(c.table_name) as table_name,
+    UPPER(c.column_name) as column_name,
+    CASE
+        WHEN c.is_nullable = 'YES' THEN true
+        ELSE false
+    END AS nullable,
+    UPPER(c.data_type) as data_type,
+    CASE
+        WHEN tco.constraint_type = 'PRIMARY KEY' THEN 1
+        ELSE 0
+    END AS is_primary_key,
+    CASE
+        WHEN c.data_type IN ('char', 'character', 'nachar', 'bpchar') THEN
+            CASE
+                WHEN c.data_type = 'bpchar' THEN 256  -- Always converted to CHAR(256)
+                ELSE COALESCE(c.character_maximum_length, 1)  -- Use defined length
+            END
+
+        -- VARCHAR, CHARACTER VARYING, NVARCHAR: 4 bytes overhead + max length
+        WHEN c.data_type IN ('varchar', 'character varying', 'nvarchar') THEN
+            4 + COALESCE(c.character_maximum_length, 256)
+
+        -- TEXT: Always converted to VARCHAR(256) = 4 bytes + 256
+        WHEN c.data_type = 'text' THEN 260
+
+        -- For other types, you'd need to define based on Redshift documentation
+        ELSE
+            -1
+    END AS character_length,
+    CASE
+        WHEN c.data_type IN ('real', 'float4', 'float', 'double precision', 'float8') THEN -1
+        ELSE c.numeric_precision
+    END AS precision,
+    c.numeric_scale as scale,
+    CASE
+        WHEN data_type IN ('smallint', 'int2') THEN 2
+        WHEN data_type IN ('integer', 'int', 'int4') THEN 4
+        WHEN data_type IN ('bigint', 'int8') THEN 8
+        WHEN data_type IN ('real', 'float4') THEN 4
+        WHEN data_type IN ('double precision', 'float8', 'float') THEN 8
+        WHEN data_type IN ('boolean', 'bool') THEN 1
+        WHEN data_type = 'date' THEN 4
+        WHEN data_type IN ('time', 'timetz', 'time without time zone', 'time with time zone') THEN 8
+        WHEN data_type IN ('timestamp', 'timestamptz', 'timestamp without time zone', 'timestamp with time zone') THEN 8
+        -- CHAR/NCHAR/BPCHAR are fixed-length, character_maximum_length is already in bytes
+        WHEN data_type IN ('char', 'character', 'nchar', 'bpchar') THEN character_maximum_length
+        -- VARCHAR/NVARCHAR/TEXT are variable-length, character_maximum_length is max bytes
+        WHEN data_type IN ('varchar', 'character varying', 'nvarchar', 'text') THEN character_maximum_length
+        -- VARBYTE/VARBINARY/BINARY VARYING are variable-length, character_maximum_length is max bytes
+        WHEN data_type IN ('varbyte', 'varbinary', 'binary varying') THEN character_maximum_length
+        WHEN data_type IN ('decimal', 'numeric') THEN
+            -- Redshift DECIMAL storage is dynamic based on precision.
+            -- This is an approximation. Up to 16 bytes.
+            CASE
+                WHEN numeric_precision BETWEEN 1 AND 9 THEN 4
+                WHEN numeric_precision BETWEEN 10 AND 18 THEN 8
+                WHEN numeric_precision BETWEEN 19 AND 38 THEN 16
+                ELSE NULL -- Should not happen for valid decimal precisions
+            END
+        WHEN data_type = 'hllsketch' THEN 128 * 1024 -- HLLSKETCH can be up to 128KB (131072 bytes)
+        WHEN data_type = 'super' THEN 16 * 1024 * 1024 -- Max SUPER size is 16MB (16777216 bytes)
+        WHEN data_type = 'geography' THEN 1 * 1024 * 1024 -- Max GEOGRAPHY size is 1MB (1048576 bytes)
+        -- INTERVAL types are typically 16 bytes internally, but not explicitly exposed as length in SVV_COLUMNS
+        WHEN data_type IN ('interval year to month', 'interval day to second') THEN 16
+        ELSE -1
+    END AS calculated_column_size_in_bytes
+FROM
+    SVV_COLUMNS c
+LEFT JOIN
+    information_schema.key_column_usage kcu
+    ON c.column_name = kcu.column_name
+    AND c.table_name = kcu.table_name
+    AND c.table_schema = kcu.table_schema
+LEFT JOIN
+    information_schema.table_constraints tco
+    ON kcu.constraint_name = tco.constraint_name
+    AND kcu.table_schema = tco.table_schema
+    AND kcu.table_name = tco.table_name
+    AND tco.constraint_type = 'PRIMARY KEY'
+WHERE
+    c.table_name = '{{table_name}}'
+    AND c.table_schema = '{{schema_name}}';

@@ -1,0 +1,26 @@
+INSERT INTO ROW_CONCATENATED_{{ chunk_id }}_{{ table_id }}
+SELECT
+    {% for index_column in index_column_collection %}
+        "{{ index_column.name }}_IDX",
+    {% endfor %}
+    {% for column in column_collection %}
+        CAST("{{ column.name }}" AS VARCHAR(MAX))
+        {% if not loop.last %} || {% endif %}
+    {% endfor %} FROM
+    (SELECT
+         {% for index_column in index_column_collection %}
+            "{{ index_column.name }}" AS "{{ index_column.name }}_IDX",
+         {% endfor %}
+         {% for column in column_collection %}
+            {% if column.nullable %}
+                coalesce({{ datatypes_normalization_renderer_templates[column.name] }}, '') AS "{{ column.name }}"{% if not loop.last %},{% endif %}
+            {% else %}
+                {{ datatypes_normalization_renderer_templates[column.name] }} AS "{{ column.name }}"{% if not loop.last %},{% endif %}
+            {% endif %}
+         {% endfor %}
+     FROM {{ fully_qualified_name }}
+     {% if has_where_clause %} WHERE {{ where_clause }} {% endif %}
+     ORDER BY {% for index_column in index_column_collection %} "{{ index_column.name }}_IDX" {% if not loop.last %},{% endif %} {% endfor %}
+     LIMIT {{ fetch }}
+     OFFSET {{ offset }}
+    ) AS RW; 

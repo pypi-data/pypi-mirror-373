@@ -1,0 +1,70 @@
+WITH PrimaryKeyInfo AS (
+    SELECT
+        ic.object_id,
+        ic.column_id
+    FROM
+        sys.index_columns AS ic
+            INNER JOIN
+        sys.indexes AS i ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+    WHERE
+        i.is_primary_key = 1
+)
+
+-- Main query to select column details
+SELECT
+    DB_NAME() AS database_name,
+    sch.name AS schema_name,
+    tbl.name AS table_name,
+    c.name AS column_name,
+    c.is_nullable AS nullable,
+    UPPER(t.name) AS data_type,
+    IIF(pk.column_id IS NOT NULL, 1, 0) AS is_primary_key,
+    -- Display character/binary length for relevant types
+    CASE
+        WHEN t.name IN ('char', 'varchar', 'nchar', 'nvarchar', 'binary', 'varbinary')
+            THEN
+            CASE
+                WHEN c.max_length = -1 THEN 'max'
+                -- For nchar/nvarchar, max_length is in bytes, so divide by 2 for character count
+                WHEN t.name IN ('nchar', 'nvarchar') THEN CAST(c.max_length / 2 AS VARCHAR(10))
+                ELSE CAST(c.max_length AS VARCHAR(10))
+                END
+        END AS character_length,
+    IIF(c.precision = 0, NULL, c.precision)  AS precision,
+    IIF(c.precision = 0, NULL, c.scale) AS scale,
+    CASE
+        -- For decimal and numeric, storage is based on precision
+        WHEN t.name IN ('decimal', 'numeric')
+            THEN
+            CASE
+                WHEN c.precision BETWEEN 1 AND 9 THEN 5
+                WHEN c.precision BETWEEN 10 AND 19 THEN 9
+                WHEN c.precision BETWEEN 20 AND 28 THEN 13
+                WHEN c.precision BETWEEN 29 AND 38 THEN 17
+                ELSE NULL
+                END
+        -- For variable-length types with a specific size (e.g., varchar(50), nvarchar(100))
+        -- and fixed-length types, max_length is the defined size in bytes.
+        WHEN c.max_length > 0 THEN c.max_length
+        -- For max types (varchar(max), nvarchar(max), varbinary(max), xml)
+        -- The value in the row is a 24-byte pointer if data is stored off-row.
+        WHEN c.max_length = -1 THEN 24
+        -- For legacy LOB types, max_length is 16, but the pointer size is 24 bytes
+        WHEN t.name IN ('text', 'ntext', 'image') THEN 24
+        ELSE c.max_length
+        END AS calculated_column_size_in_bytes
+FROM
+    sys.columns c
+        INNER JOIN
+    sys.tables tbl ON c.object_id = tbl.object_id
+        INNER JOIN
+    sys.schemas sch ON tbl.schema_id = sch.schema_id
+        INNER JOIN
+    sys.types t ON c.system_type_id = t.user_type_id AND t.is_user_defined = 0
+        LEFT JOIN
+    PrimaryKeyInfo pk ON c.object_id = pk.object_id AND c.column_id = pk.column_id
+WHERE
+    tbl.name = '{{table_name}}'
+    AND sch.name = '{{schema_name}}'
+ORDER BY
+    c.column_id;

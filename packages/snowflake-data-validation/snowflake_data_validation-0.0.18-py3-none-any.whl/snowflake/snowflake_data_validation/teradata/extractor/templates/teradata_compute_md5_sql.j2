@@ -1,0 +1,62 @@
+/* Insert data into first table */
+INSERT INTO ROW_CONCATENATED_{{ chunk_id }}_{{ table_id }}
+SELECT
+    {% for index_column in index_column_collection %}
+        "{{ index_column.name }}_IDX",
+    {% endfor %}
+    {% if column_collection|length > 1 %}
+        CAST(TRIM(
+            {% for column in column_collection %}
+                {% if column.nullable %}
+                    COALESCE({{ column.name }}, '')
+                {% else %}
+                    {{ column.name }}
+                {% endif %}
+                {% if not loop.last %} || {% endif %}
+            {% endfor %}
+        ) AS VARCHAR(6400))
+    {% else %}
+        CAST(TRIM({{ column_names_separate_by_comma }}) AS VARCHAR(6400))
+    {% endif %}
+FROM
+    (SELECT
+         {% for index_column in index_column_collection %}
+            "{{ index_column.name }}" AS "{{ index_column.name }}_IDX",
+         {% endfor %}
+         {% for column in column_collection %}
+            {% if column.nullable %}
+                TRIM(COALESCE({{ datatypes_normalization_renderer_templates[column.name] }}, '')) AS "{{ column.name }}"{% if not loop.last %},{% endif %}
+            {% else %}
+                TRIM({{ datatypes_normalization_renderer_templates[column.name] }}) AS "{{ column.name }}"{% if not loop.last %},{% endif %}
+            {% endif %}
+         {% endfor %}
+     FROM {{ fully_qualified_name }}
+     {% if has_where_clause %} WHERE {{ where_clause }} {% endif %}
+     QUALIFY ROW_NUMBER() OVER (ORDER BY {% for index_column in index_column_collection %} "{{ index_column.name }}_IDX" {% if not loop.last %},{% endif %} {% endfor %}) BETWEEN {{ offset + 1 }} AND {{ offset + fetch }}
+    ) AS RW;
+
+/* Insert data into second table */
+INSERT INTO ROW_MD5_{{ chunk_id }}_{{ table_id }}
+SELECT
+    {% for index_column in index_column_collection %}
+        "{{ index_column.name }}_IDX",
+    {% endfor %}
+    UPPER(SYSUDTLIB.HASH_MD5(TRIM(ROW_CONCAT_VALUES)))
+FROM ROW_CONCATENATED_{{ chunk_id }}_{{ table_id }};
+
+/* Insert final results */
+INSERT INTO CHUNKS_MD5_{{ normalized_fully_qualified_name }}_{{ table_id }}
+SELECT
+    '{{ chunk_id }}',
+    UPPER(SYSUDTLIB.HASH_MD5(
+        TRIM(
+            CAST(
+                XMLAGG(
+                    ROW_MD5
+                    ORDER BY {% for index_column in index_column_collection %} "{{ index_column.name }}" {% if not loop.last %},{% endif %} {% endfor %}
+                )
+                AS VARCHAR(6400)
+            )
+        )
+    ))
+FROM ROW_MD5_{{ chunk_id }}_{{ table_id }};

@@ -1,0 +1,23 @@
+WITH rc_cte AS (
+        SELECT COUNT(*) AS ROW_COUNT FROM {{ fully_qualified_name }} {% if has_where_clause %} WHERE {{ where_clause }} {% endif %}
+)
+    SELECT
+        C.COLUMN_NAME AS COLUMN_VALIDATED,
+        C.ORDINAL_POSITION AS ORDINAL_POSITION,
+        C.DATA_TYPE AS DATA_TYPE,
+        C.CHARACTER_MAXIMUM_LENGTH AS CHARACTER_MAXIMUM_LENGTH,
+        C.NUMERIC_PRECISION AS NUMERIC_PRECISION,
+        C.NUMERIC_SCALE AS NUMERIC_SCALE,
+        C.IS_NULLABLE AS IS_NULLABLE,
+        rc.ROW_COUNT
+   FROM INFORMATION_SCHEMA.COLUMNS C
+CROSS JOIN rc_cte rc
+WHERE C.TABLE_NAME = '{{ object_name }}'
+AND C.TABLE_SCHEMA = '{{ object_schema }}'
+{% if columns %}
+    AND C.COLUMN_NAME IN (
+    {% for column in columns %}
+        '{{ column }}'{% if not loop.last %}, {% endif %}
+        {% endfor %}
+    )
+{% endif %}
