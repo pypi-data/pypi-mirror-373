@@ -1,0 +1,313 @@
+# MediaMovarr
+
+A Python CLI tool that organizes downloaded media files according to Plex naming guidelines. MediaMovarr automatically detects media types (TV Shows, Movies, Music, Audiobooks), renames them properly, and moves them to organized destination folders.
+
+## Features
+
+- **Automatic Media Detection**: Identifies TV shows, movies, music, and audiobooks using filename patterns and folder structure
+- **Plex-Compatible Naming**: Renames files according to [Plex naming guidelines](https://support.plex.tv/articles/naming-and-organizing-your-tv-show-files/)
+- **TMDb Integration**: Optional metadata lookup via The Movie Database for accurate titles and years
+- **Safe Operations**: Dry-run mode and comprehensive logging to preview changes before execution
+- **Multi-Directory Scanning**: Support for scanning multiple download directories
+- **Cross-Platform**: Works on Windows, macOS, and Linux
+
+## Installation
+
+1. Clone the repository:
+
+```bash
+git clone <repository-url>
+cd mediamovarr
+```
+
+2. Install the package:
+
+```bash
+pip install -e .
+```
+
+3. Create a configuration file (see Configuration section below)
+
+## Quick Start
+
+1. Create a `config.json` file:
+
+```json
+{
+  "scan_dirs": [
+    "C:\\Downloads",
+    "%USERPROFILE%\\Downloads"
+  ],
+  "dest_dir": "D:\\Media",
+  "tmdb_enabled": false
+}
+```
+
+2. Run a dry-run to see what would be organized:
+
+```bash
+mediamovarr --dry-run --verbose
+```
+
+3. If the results look good, run without dry-run:
+
+```bash
+mediamovarr
+```
+
+## Configuration
+
+Create a `config.json` file in your project directory:
+
+```json
+{
+  "scan_dirs": [
+    "C:\\Downloads",
+    "%USERPROFILE%\\Downloads"
+  ],
+  "dest_dir": "D:\\Media",
+  "tmdb_enabled": true,
+  "tmdb_api_key": "your_api_key_here",
+  "tmdb_read_access_token": "your_token_here"
+}
+```
+
+### Configuration Options
+
+- **scan_dirs**: List of directories to scan for media files
+- **dest_dir**: Destination directory where organized media will be moved
+- **tmdb_enabled**: Enable TMDb metadata lookup (default: false)
+- **tmdb_api_key**: Your TMDb API key (required if tmdb_enabled is true)
+- **tmdb_read_access_token**: Your TMDb read access token (preferred over API key)
+
+### Environment Variables
+
+You can use environment variables in paths:
+
+- `%USERPROFILE%` - Windows user profile directory
+- `$HOME` - Unix home directory
+- Any other environment variable using `%VAR%` (Windows) or `$VAR` (Unix)
+
+## Usage
+
+```bash
+mediamovarr [OPTIONS]
+```
+
+### Options
+
+- `--config`, `-c`: Path to configuration file (default: config.json)
+- `--dry-run`, `-n`: Show what would be done without making changes
+- `--verbose`, `-v`: Enable verbose output
+- `--force`, `-f`: Force overwrite existing files
+- `--no-interactive`: Disable user confirmations (auto-skip medium confidence items)
+- `--skip-prechecks`: Skip pre-flight validation checks
+- `--help`: Show help message
+
+### Examples
+
+```bash
+# Dry run with verbose output
+mediamovarr --dry-run --verbose
+
+# Use custom config file
+mediamovarr --config /path/to/my-config.json
+
+# Force overwrite existing files
+mediamovarr --force
+
+# Verbose mode for detailed logging
+mediamovarr --verbose
+```
+
+## Media Organization
+
+MediaMovarr organizes media into the following structure:
+
+```
+Media/
+├── TV Shows/
+│   └── Show Name/
+│       └── Season 01/
+│           ├── Show.Name.S01E01.ext
+│           └── Show.Name.S01E02.ext
+├── Movies/
+│   └── Movie Title (Year)/
+│       └── Movie Title (Year).ext
+├── Music/
+│   └── Artist/
+│       └── Album/
+│           └── Track.ext
+└── Audiobooks/
+    └── Author/
+        └── Title/
+            └── Chapter.ext
+```
+
+## TMDb Integration
+
+To use TMDb for metadata lookup:
+
+1. Sign up for a free account at [The Movie Database](https://www.themoviedb.org/)
+2. Get your API key or read access token from your account settings
+3. Add the credentials to your config.json
+4. Set `tmdb_enabled: true`
+
+TMDb integration provides:
+
+- Accurate movie and TV show titles
+- Correct release years
+- Improved classification confidence
+
+## Supported File Types
+
+### Video Files
+
+`.mp4`, `.mkv`, `.avi`, `.mov`, `.wmv`, `.flv`, `.webm`, `.m4v`
+
+### Audio Files
+
+`.mp3`, `.flac`, `.wav`, `.aac`, `.ogg`, `.wma`, `.m4a`
+
+### Subtitle Files
+
+`.srt`, `.vtt`, `.ass`, `.ssa`, `.sub`
+
+## Detection Logic
+
+MediaMovarr uses intelligent heuristics to classify media:
+
+### TV Shows
+
+- Folder names containing "Season", "S01", "Series"
+- Episode patterns like "S01E01", "1x01"
+- Multiple video files in season-like structure
+
+### Movies
+
+- Years in parentheses: "Movie (2020)"
+- Single large video files
+- Movie-specific keywords: "BluRay", "1080p", etc.
+
+### Music
+
+- Multiple audio files
+- Artist/album folder structures
+- Music-specific keywords: "Album", "Discography"
+
+### Audiobooks
+
+- Multiple audio files with chapter patterns
+- Keywords: "Audiobook", "Chapter", "Narrated"
+
+## Development
+
+### Running Tests
+
+```bash
+# Install development dependencies
+pip install pytest
+
+# Run tests
+pytest tests/
+```
+
+### Project Structure
+
+```
+mediamovarr/
+├── mediamovarr/
+│   ├── __init__.py
+│   ├── __main__.py       # CLI entry point
+│   ├── config.py         # Configuration handling
+│   ├── discovery.py      # Media folder discovery
+│   ├── classify.py       # Media type classification
+│   ├── renamer.py        # Plex naming rules
+│   ├── mover.py          # File moving operations
+│   └── tmdb_client.py    # TMDb API client
+├── tests/
+├── config.json           # Sample configuration
+├── pyproject.toml
+└── README.md
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgments
+
+- [Plex](https://plex.tv/) for their media organization guidelines
+- [The Movie Database (TMDb)](https://www.themoviedb.org/) for metadata API
+- The open-source community for inspiration and tools
+
+## Troubleshooting
+
+### Common Issues
+
+**"Permission denied" errors**
+
+- Ensure you have write permissions to the destination directory
+- Check that files aren't in use by other applications
+
+**TMDb API not working**
+
+- Verify your API key or read access token is correct
+- Check your internet connection
+- Ensure you haven't exceeded rate limits
+
+**Media not detected correctly**
+
+- Use `--verbose` to see classification confidence scores
+- Check that folder names follow common naming patterns
+- Consider manually organizing problematic folders
+
+### Getting Help
+
+- Check the verbose output for detailed information
+- Review the configuration file for errors
+- Ensure all paths exist and are accessible
+
+For bug reports and feature requests, please use the project's issue tracker.
+
+## Pre-Flight Checks
+
+MediaMovarr automatically runs pre-flight checks before processing to ensure everything is configured correctly:
+
+### Checks Performed
+
+- ✅ Configuration file exists and is valid
+- ✅ Required configuration fields are present
+- ✅ Scan directories exist and are accessible
+- ✅ Destination directory exists (or can be created)
+- ✅ TMDb credentials are configured (if TMDb is enabled)
+- ✅ Database connection can be established
+
+### Skipping Prechecks
+
+If you want to skip the pre-flight checks (not recommended), use the `--skip-prechecks` flag:
+
+```bash
+mediamovarr --skip-prechecks
+```
+
+### Example Precheck Output
+
+```
+2024-01-15 10:30:00 - mediamovarr.__main__ - INFO - Running pre-flight checks...
+2024-01-15 10:30:00 - mediamovarr.__main__ - INFO - ✅ Configuration file exists
+2024-01-15 10:30:00 - mediamovarr.__main__ - INFO - ✅ Required field 'scan_dirs' is present
+2024-01-15 10:30:00 - mediamovarr.__main__ - INFO - ✅ Required field 'dest_dir' is present
+2024-01-15 10:30:00 - mediamovarr.__main__ - INFO - ✅ Scan directory accessible: C:\Downloads
+2024-01-15 10:30:00 - mediamovarr.__main__ - INFO - ✅ Destination directory accessible: D:\Media
+2024-01-15 10:30:00 - mediamovarr.__main__ - INFO - ✅ Database connection established
+2024-01-15 10:30:00 - mediamovarr.__main__ - INFO - 🎉 All pre-flight checks passed!
+```
