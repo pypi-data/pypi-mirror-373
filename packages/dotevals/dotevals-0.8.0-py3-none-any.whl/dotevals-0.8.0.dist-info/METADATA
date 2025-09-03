@@ -1,0 +1,625 @@
+Metadata-Version: 2.4
+Name: dotevals
+Version: 0.8.0
+Summary: Simple and robust LLM evaluations
+Author: .txt
+Project-URL: repository, https://github.com/dottxt-ai/dotevals
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: click
+Requires-Dist: pytest
+Requires-Dist: rich
+Requires-Dist: jsonschema
+Requires-Dist: nest-asyncio
+Provides-Extra: test
+Requires-Dist: pytest-asyncio; extra == "test"
+Requires-Dist: pytest-cov; extra == "test"
+Requires-Dist: coverage[toml]>=5.1; extra == "test"
+Requires-Dist: diff-cover; extra == "test"
+
+<div align="center" style="margin-bottom: 1em;">
+
+<img src="./docs/assets/images/dotevals-logo-light.svg#gh-light-mode-only" alt="Dotevals Logo" width=300></img>
+<img src="./docs/assets/images/dotevals-logo-dark.svg#gh-dark-mode-only" alt="Dotevals Logo" width=300></img>
+
+*Write Once, Evaluate Anywhere*
+
+</div>
+
+## Why dotevals?
+
+Just like everyone, we had to write evaluations. They needed to run with structured generation, use complex datasets, run at scale, and allow for easy exploration of failure modes. We looked around, but couldn't find what we needed. So `dotevals` was born.
+
+- **No complex YAML or DSLs, just familiar Python** - Write evaluations as functions.
+- **Works in notebooks** - Seamless notebook integration for interactive development and rapid prototyping.
+- **Works with pytest** - Integrate with CI/CD, use parametrization and fixtures.
+- **Automatic Resumption** - Evaluations crash. `dotevals` picks them up where they left off.
+- **Extensible by Design** - Plugin architecture for any dataset, evaluator, storage or LLM.
+- **Effortless Scaling** - Run dozens of experiments in parallel without changing the code.
+
+### The dotevals philosophy
+
+<div align="center"><img src="./docs/assets/images/use_philosophy.png" width=600></img></div>
+
+Evaluations are just functions over data. Write a single function, we will handle running it at scale with:
+
+- Failure recovery.
+- Automatic and configurable concurrency.
+- Result persistence.
+- Resource management using pytest fixtures.
+
+Focus on what to evaluate, not how to run evaluations.
+
+### Extensible by Design
+
+doteval is built with a plugin architecture that lets you extend every component:
+
+<details><summary><b>🔌 Use Any LLM</b></summary>
+
+`dotevals` integrates seamlessly with any LLM client, whether it's OpenAI, Anthropic, HuggingFace, or your own custom model. You can pass your model client to your evaluation function via a pytest fixture.
+
+```python
+import pytest
+from dotevals import foreach
+from dotevals.evaluators import exact_match
+
+# Example dataset (replace with your actual dataset)
+dataset = [
+    ("Hello world", "hello world"),
+    ("The quick brown fox", "quick brown fox"),
+]
+
+@pytest.fixture
+def my_openai_model():
+    """Your OpenAI model client as a pytest fixture."""
+    import openai
+    return openai.AsyncClient()
+
+@foreach("prompt,expected", dataset)
+async def eval_with_transformers(prompt, expected, my_transformers_model):
+    response = await my_openai_model.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return exact_match(response.choices[0].message.content, expected)
+```
+
+You can just as easily use `transformers` models. Here's an example using a `transformers` model with `outlines` for structured generation (install `outlines` with `pip install outlines`):
+
+```python
+import pytest
+from dotevals import batch, Result
+from dotevals.evaluators import exact_match
+
+@pytest.fixture
+def my_transformers_model():
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    import outlines
+
+    hf_model = AutoModelForCausalLM.from_pretrained("microsoft/Phi-3.5-medium-instruct")
+    hf_tokenizer = AutoTokenizer.from_pretrained("microsoft/Phi-3.5-medium-instruct")
+
+    return outlines.from_transformers(hf_model, hf_tokenizer)
+
+
+@batch("prompt,expected", dataset, batch_size=8) # batch_size is used by the @batch decorator
+async def eval_with_transformers(prompt, expected, my_transformers_model):
+    response = await my_transformers_model(prompt)
+    return exact_match(response, expected)
+```
+</details>
+
+
+<details><summary><b>💾 Store Anywhere</b></summary>
+
+`dotevals` automatically persists your evaluation results. By default, results are stored in local JSON files, but you can easily configure different storage backends.
+
+*   **JSON files (default)**: Stored in a local `.dotevals` directory.
+    ```bash
+    pytest eval.py
+    ```
+
+*   **SQLite**: For a lightweight, queryable database.
+    (Install with `pip install dotevals-storage-sqlite`)
+    ```bash
+    pytest eval.py --storage sqlite://results.db
+    ```
+
+*   **S3**: For cloud storage of your results.
+    (Install with `pip install dotevals-s3`)
+    ```bash
+    pytest --experiment experiment_name --storage s3://your-bucket/path
+    ```
+
+No need to change your evaluation code – just specify the storage backend when you run your evaluations.
+</details>
+
+
+<details><summary><b>🚀 Run Anywhere</b></summary>
+
+`dotevals` allows you to run your evaluations in various environments, from local development to distributed cloud deployments. This is achieved through **Executors**, which define how your evaluation functions are executed.
+
+*   **Local Execution (default)**: Evaluations run sequentially on your local machine.
+    ```python
+    @foreach("input,output", dataset)
+    def eval_local(input, output, model):
+        return exact_match(model(input), output)
+    ```
+
+*   **Distributed Execution with Modal**: Run your evaluations at scale on Modal, a cloud platform for running Python code. The `dotevals-modal` plugin provides an executor that handles the distributed execution.
+    (Install with `pip install dotevals-modal`)
+    ```python
+    @foreach("question,answer", dataset)
+    async def eval_distributed(question, answer, modal_client):
+        # modal_client is provided by the dotevals-modal plugin
+        response = await modal_client.generate(question)
+        return exact_match(response, answer)
+    ```
+    Run with:
+    ```bash
+    pytest eval.py --executor modal
+    ```
+
+Executors abstract away the execution environment, allowing you to write your evaluation logic once and run it anywhere.
+</details>
+
+
+<details><summary><b>📊 Evaluate Anything</b></summary>
+
+`dotevals` provides a flexible evaluation system that allows you to define custom evaluation logic. You can use built-in evaluators or create your own.
+
+*   **Built-in Evaluators**: Ready-to-use evaluators for common tasks.
+    ```python
+    from dotevals.evaluators import (
+        exact_match,      # String equality
+        numeric_match,    # Numeric comparison
+        valid_json,       # JSON validation
+        ast_evaluation,   # Function call validation
+    )
+    ```
+
+*   **Custom Evaluator Functions**: Easily create your own evaluation logic.
+    ```python
+    from dotevals.evaluators import evaluator
+    from dotevals.metrics import accuracy
+
+    @evaluator(metrics=accuracy())
+    def domain_specific_match(response, expected):
+        # Your evaluation logic here
+        return your_validation(response, expected)
+    ```
+
+*   **LLM-based Evaluators**: Leverage LLMs to judge model outputs.
+    (Install with `pip install dotevals-evaluators-llm`)
+    ```python
+    from dotevals_evaluators_llm.evaluators import (
+        llm_judge,           # LLM-based evaluation
+        semantic_similarity, # Embedding similarity
+        factual_consistency, # Fact checking
+    )
+    ```
+
+</details>
+
+
+## Quick Start
+
+Getting started with `dotevals` is simple:
+
+### 1. Install dotevals
+
+```bash
+pip install dotevals  # Core functionality with basic evaluators
+pip install dotevals-datasets  # Common benchmark datasets (GSM8K, MMLU, etc.)
+```
+
+
+### 2. Create a model
+
+Your model can be any Python object that can generate a response. For example, you can use OpenAI's client directly:
+
+```python
+import openai
+
+client = openai.OpenAI()
+
+def my_model(prompt: str) -> str:
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content
+```
+
+If you use libraries like `outlines` for structured generation, you can integrate them here as well.
+
+### 3. Write the evaluation function
+
+```python
+from dotevals import foreach
+from dotevals.evaluators import numeric_match
+
+dataset = [
+    ("What is 2+2?", "4"),
+    ("How many days are there in a week?", "7")
+]
+
+@foreach("question,answer", dataset)
+def eval_math(question, answer):
+    response = model(question)
+    return numeric_match(response, answer)
+```
+
+### 4. Run interactively (notebooks/scripts)
+
+```python
+from dotevals import run
+
+# Run evaluation and get immediate results
+results = run(eval_math)
+
+# View summary
+print(results.summary())
+# {'total': 2, 'errors': 0, 'metrics': {'numeric_match': {'accuracy': 1.0}}}
+```
+
+### 5. Run with pytest (CI/CD)
+
+```bash
+pytest eval_math.py --experiment my_evaluation
+dotevals show my_evaluation  # View results
+```
+
+## Examples
+
+Here are some examples that show how `dotevals` solves common problems:
+
+```python
+# Helper function to extract answer from model response
+def extract_answer(response: str) -> str:
+    # Implement your logic to extract the answer from the model's raw response
+    # This is a placeholder and needs to be adapted to your specific model's output format.
+    return response.strip()
+
+# Example dataset (replace with your actual dataset)
+dataset = [
+    ("What is 2+2?", "4"),
+    ("What color is the sky?", "blue"),
+]
+```
+
+<details><summary><b>🧮 Evaluate GPT-5 on GSM8K</b></summary>
+
+```python
+import pytest
+from dotevals import foreach, Result
+from dotevals.evaluators.base import numeric_match
+
+# Assuming you have an OpenAI client configured
+class GPT5Model:
+    def __init__(self):
+        import openai
+        self.client = openai.OpenAI()
+
+    def __call__(self, prompt: str) -> str:
+        response = self.client.chat.completions.create(
+            model="gpt-5",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content
+
+@pytest.fixture()
+def gpt5():
+    return GPT5Model()
+
+@foreach.gsm8k("test")
+def eval_gsm8k(question, reasoning, answer, gpt5):
+    response = gpt5(question)
+    extracted_answer = extract_answer(response)
+
+    return numeric_match(result, answer)
+```
+</details>
+
+<details><summary><b>📊 Compare GPT-5 with Opus-4.1 on GSM8K</b></summary>
+
+```python
+import pytest
+from dotevals import foreach, Result
+from dotevals.evaluators.base import numeric_match
+
+# Assuming you have OpenAI and Anthropic clients configured
+class OpenAIModel:
+    def __init__(self, model_name: str):
+        import openai
+        self.client = openai.OpenAI()
+        self.model_name = model_name
+
+    def __call__(self, prompt: str) -> str:
+        response = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content
+
+class AnthropicModel:
+    def __init__(self, model_name: str):
+        import anthropic
+        self.client = anthropic.Anthropic()
+        self.model_name = model_name
+
+    def __call__(self, prompt: str) -> str:
+        response = self.client.messages.create(
+            model=self.model_name,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.content[0].text
+
+@pytest.fixture(params=["openai:gpt-5", "anthropic:opus-4.1"])
+def models(request):
+    provider_name, model_name = request.param.split(":")
+
+    if provider_name == "openai":
+        return OpenAIModel(model_name)
+    elif provider_name == "anthropic":
+        return AnthropicModel(model_name)
+    else:
+        raise ValueError(f"Model {model_name} for {provider_name} is not available")
+
+@foreach.gsm8k("test")
+def eval_gsm8k(question, reasoning, answer, models):
+    # Assuming extract_answer is a helper function you define
+    response = models(question)
+    extracted_answer = extract_answer(response)
+
+    return numeric_match(result, answer)
+```
+</details>
+
+
+<details><summary><b>🏗️ Evaluate Phi-3.5 with structured outputs on BFCL simple</b></summary>
+
+```python
+import pytest
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from dotevals import foreach, Result
+from dotevals.evaluators.base import numeric_match
+
+class Phi3Model:
+    def __init__(self):
+        model_name = "microsoft/Phi-3-mini-4k-instruct"
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModelForCausalLM.from_pretrained(model_name)
+
+    def __call__(self, prompt: str) -> str:
+        inputs = self.tokenizer(prompt, return_tensors="pt")
+        outputs = self.model.generate(**inputs, max_new_tokens=50)
+        return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+@pytest.fixture()
+def phi():
+    return Phi3Model()
+
+@foreach.bfcl("simple")
+def eval_bfcl(question, schema, phi):
+    # Assuming extract_answer is a helper function you define
+    response = phi(question)
+    extracted_answer = extract_answer(response)
+
+    return numeric_match(result, answer
+```
+</details>
+
+<details><summary><b>⚡ Maximize throughput on a vLLM instance</b></summary>
+
+Start by installing the `dotevals-vllm` plugin:
+
+```bash
+pip install dotevals-vllm
+```
+
+Then, use the `vllm_client` fixture provided by the plugin:
+
+```python
+import pytest
+from dotevals import foreach, Result
+from dotevals.evaluators.base import numeric_match
+from dotevals.concurrency import Concurrency, adaptive
+
+@pytest.fixture()
+def vllm_model(vllm_client):
+    """
+    The `dotevals-vllm` plugin provides a `vllm_client` fixture that allows you to spin up, use, and shut down a vLLM instance locally or remotely.
+
+    We wrap it with an adaptive concurrency strategy to maximize throughput.
+    """
+    # Use adaptive concurrency for self-hosted models to maximize throughput
+    concurrency = Concurrency(adaptive(initial=20, max=100))
+    return concurrency.wrap(vllm_client)
+
+@foreach.bfcl("simple")
+async def eval_vllm(question, schema, vllm_model):
+    # Assuming extract_answer is a helper function you define
+    response = await vllm_model.generate(question)
+    extracted_answer = extract_answer(response)
+
+    return numeric_match(result, answer)
+```
+</details>
+
+<details><summary><b>📦 Store results in S3</b></summary>
+
+You don't need to change your experiment's implementation, just install the S3 plugin and run the experiment with the `storage` option set to `s3`. The S3 plugin also provides other options to parametrize the storage.
+
+(Install with `pip install dotevals-s3`)
+
+```bash
+pytest --experiment experiment_name --storage s3://your-bucket/path
+```
+</details>
+
+
+<details><summary><b>🧑‍⚖️ Use LLM-as-a-judge evaluators</b></summary>
+
+`dotevals` supports LLM-as-a-judge evaluators through the `dotevals-evaluators-llm` plugin. This allows you to use a large language model to evaluate the output of another model.
+
+(Install with `pip install dotevals-evaluators-llm`)
+
+```python
+from dotevals import foreach, Result
+from dotevals_evaluators_llm.evaluators import llm_judge
+
+@foreach("prompt,expected", dataset)
+def eval_with_llm_judge(prompt, expected, llm_judge_model):
+    # llm_judge_model is a fixture that provides an LLM for judging
+    response = llm_judge_model.generate(prompt)
+    score = llm_judge(response, expected)
+    return Result(score)
+```
+</details>
+
+
+## Extensible by Design
+
+dotevals is built with a plugin architecture that lets you extend every component:
+
+<details><summary><b>🔌 Use Any LLM</b></summary>
+
+```python
+# Models are provided via pytest fixtures
+@pytest.fixture
+def model():
+    """Your model as a pytest fixture."""
+    return load_your_model()  # OpenAI, Anthropic, HuggingFace, etc.
+
+@foreach("prompt,expected", dataset)
+def eval_with_model(prompt, expected, model):
+    response = model.generate(prompt)
+    return exact_match(response, expected)
+
+# For Modal deployment (pip install dotevals-modal)
+# The vllm_client fixture is automatically provided
+@foreach("prompt,expected", dataset)
+async def eval_modal(prompt, expected, vllm_client):
+    response = await vllm_client.agenerate(prompt)
+    return exact_match(response, expected)
+```
+</details>
+
+
+<details><summary><b>💾 Store Anywhere</b></summary>
+
+```bash
+# JSON files (default)
+pytest eval.py --storage json://.dotevals
+
+# SQLite with SQL queries
+pytest eval.py --storage sqlite://results.db
+
+# Your custom backend
+pytest eval.py --storage s3://bucket/path
+```
+</details>
+
+
+<details><summary><b>🚀 Run Anywhere</b></summary>
+
+```python
+# Local execution (default)
+@foreach("input,output", dataset)
+def eval_local(input, output, model):
+    return exact_match(model(input), output)
+
+# Distributed on Modal (pip install dotevals-modal)
+@foreach("question,answer", dataset)
+async def eval_distributed(question, answer, vllm_client):
+    # vllm_client automatically injected by Modal runner
+    response = await vllm_client.agenerate(question)
+    return exact_match(response, answer)
+
+# Run with: pytest eval.py --runner modal --modal-model meta-llama/Llama-3-8b
+```
+</details>
+
+
+<details><summary><b>📊 Evaluate Anything</b></summary>
+
+```python
+from dotevals.evaluators import evaluator
+from dotevals.metrics import accuracy
+
+# Built-in evaluators
+from dotevals.evaluators import (
+    exact_match,      # String equality
+    numeric_match,    # Numeric comparison
+    valid_json,       # JSON validation
+    ast_evaluation,   # Function call validation
+)
+
+# Create custom evaluators in 4 lines
+@evaluator(metrics=accuracy())
+def domain_specific_match(response, expected):
+    # Your evaluation logic
+    return your_validation(response, expected)
+
+# LLM-based evaluators (pip install dotevals-evaluators-llm)
+from dotevals.evaluators import (
+    llm_judge,           # LLM-based evaluation
+    semantic_similarity, # Embedding similarity
+    factual_consistency, # Fact checking
+)
+```
+</details>
+
+
+<details><summary><b>🔧 Execute however you want</b></summary>
+
+When `@foreach` and `@batch` aren't enough, create your own execution strategy:
+
+```python
+# Custom executor for async batch APIs (e.g., OpenAI Batch API)
+@async_batch("question", dataset, model=gpt4_batch)
+def eval_reasoning(question: list[str]) -> list[Result]:
+    responses = model.generate(question)
+    return [judge_reasoning(r) for r in responses]
+
+# Returns immediately, processes in background
+handle = eval_reasoning(session_manager)
+results = handle.wait()  # Get results when ready
+```
+
+Build executors for:
+- **Async APIs**: Submit jobs and poll for results
+- **Streaming endpoints**: Process data as it arrives
+- **Custom infrastructure**: GPU batching, distributed workers
+- **Special workflows**: Checkpointing, caching, fallback strategies
+
+Switch execution without changing evaluation logic - debug with `@foreach`, scale with `@async_batch`.
+</details>
+
+
+## About .txt
+
+<div align="center">
+<img src="./docs/assets/images/dottxt-light.svg#gh-light-mode-only" alt="dottxt logo" width=100></img>
+<img src="./docs/assets/images/dottxt-dark.svg#gh-dark-mode-only" alt="dottxt logo" width=100></img>
+</div>
+
+Dotevals is developed and maintained by [.txt](https://dottxt.co), a company dedicated to making LLMs more reliable for production applications.
+
+Our focus is on advancing structured generation technology through:
+
+- 🧪 **Cutting-edge Research**: We publish our findings on [structured generation](http://blog.dottxt.co/performance-gsm8k.html)
+- 🚀 **Enterprise-grade solutions**: You can license [our enterprise-grade libraries](https://docs.dottxt.co).
+- 🧩 **Open Source Collaboration**: We believe in building in public and contributing to the community
+
+Follow us on [Twitter](https://twitter.com/dottxtai) or check out our [blog](https://blog.dottxt.co/) to stay updated on our latest work in making LLMs more reliable.
+
+## Contributing
+
+We welcome contributions! See our [Contributing Guide](CONTRIBUTING.md) for details.
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
