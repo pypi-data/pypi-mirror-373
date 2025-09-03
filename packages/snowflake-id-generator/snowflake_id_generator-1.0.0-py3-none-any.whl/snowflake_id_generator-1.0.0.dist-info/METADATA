@@ -1,0 +1,272 @@
+Metadata-Version: 2.4
+Name: snowflake-id-generator
+Version: 1.0.0
+Summary: 分布式雪花算法ID生成器
+Home-page: https://github.com/yourusername/snowflake-id-generator
+Author: Your Name
+Author-email: your.email@example.com
+License: MIT
+Keywords: snowflake,id,generator,distributed,unique,uuid
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: System :: Distributed Computing
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: license
+Dynamic: requires-python
+Dynamic: summary
+
+# 雪花算法ID生成器 (Snowflake ID Generator)
+
+[![PyPI version](https://badge.fury.io/py/snowflake-id-generator.svg)](https://badge.fury.io/py/snowflake-id-generator)
+[![Python Support](https://img.shields.io/pypi/pyversions/snowflake-id-generator.svg)](https://pypi.org/project/snowflake-id-generator/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+一个高性能的分布式雪花算法ID生成器，用于生成全局唯一的64位整数ID。支持多实例部署和水平扩展，解决高并发场景下的ID冲突问题。
+
+## 特性
+
+- 🚀 **高性能**: 本地生成，无网络IO，每秒可生成数百万个ID
+- 🌐 **分布式友好**: 支持多实例部署，通过机器ID和数据中心ID区分
+- 🔒 **线程安全**: 内置线程锁，支持多线程并发访问
+- ⏰ **时间有序**: 基于时间戳生成，ID大致按时间顺序递增
+- 🛡️ **时钟回拨检测**: 自动检测系统时钟回拨，防止ID重复
+- 📊 **ID解析**: 支持解析ID获取时间戳、机器ID等详细信息
+- 🎯 **零依赖**: 仅使用Python标准库，无外部依赖
+
+## 安装
+
+```bash
+pip install snowflake-id-generator
+```
+
+## 快速开始
+
+### 基本使用
+
+```python
+from snowflake_id_generator import SnowflakeService, init_snowflake_service, generate_user_id
+
+# 初始化服务（使用默认配置）
+init_snowflake_service()
+
+# 生成ID
+user_id = generate_user_id()
+print(f"生成的用户ID: {user_id}")
+```
+
+### 自定义配置
+
+```python
+from snowflake_id_generator import SnowflakeService
+
+# 创建自定义配置的生成器
+generator = SnowflakeService(
+    worker_id=1,        # 工作机器ID (0-31)
+    datacenter_id=1,    # 数据中心ID (0-31)
+    epoch=1577836800000 # 起始时间戳（毫秒）
+)
+
+# 生成ID
+id = generator.generate_id()
+print(f"生成的ID: {id}")
+```
+
+### ID解析
+
+```python
+from snowflake_id_generator import SnowflakeService
+
+generator = SnowflakeService(worker_id=1, datacenter_id=1)
+id = generator.generate_id()
+
+# 解析ID获取详细信息
+info = generator.parse_id(id)
+print(f"时间戳: {info['timestamp']}")
+print(f"数据中心ID: {info['datacenter_id']}")
+print(f"工作机器ID: {info['worker_id']}")
+print(f"序列号: {info['sequence']}")
+print(f"可读时间: {info['readable_time']}")
+```
+
+## 雪花算法结构
+
+64位ID结构：
+```
+1位符号位(0) + 41位时间戳 + 5位数据中心ID + 5位工作机器ID + 12位序列号
+```
+
+- **时间戳**: 41位，可用约69年（从epoch开始）
+- **数据中心ID**: 5位，支持0-31个数据中心
+- **工作机器ID**: 5位，每个数据中心支持0-31个实例
+- **序列号**: 12位，每毫秒最多4096个ID
+
+## 配置说明
+
+### 机器ID配置
+
+在分布式环境中，每个实例必须使用不同的机器ID：
+
+```python
+# 实例1
+generator1 = SnowflakeService(worker_id=1, datacenter_id=1)
+
+# 实例2  
+generator2 = SnowflakeService(worker_id=2, datacenter_id=1)
+
+# 实例3
+generator3 = SnowflakeService(worker_id=1, datacenter_id=2)
+```
+
+### 时间戳配置
+
+默认起始时间戳为2020-01-01 00:00:00 UTC，可用到2089年。如需自定义：
+
+```python
+import time
+
+# 自定义起始时间戳（2021-01-01 00:00:00 UTC）
+custom_epoch = int(time.mktime(time.strptime("2021-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")) * 1000)
+
+generator = SnowflakeService(
+    worker_id=1,
+    datacenter_id=1, 
+    epoch=custom_epoch
+)
+```
+
+## 性能测试
+
+```python
+import time
+from snowflake_id_generator import SnowflakeService
+
+generator = SnowflakeService(worker_id=1, datacenter_id=1)
+
+# 性能测试
+start_time = time.time()
+count = 100000
+
+for _ in range(count):
+    generator.generate_id()
+
+end_time = time.time()
+duration = end_time - start_time
+qps = count / duration
+
+print(f"生成 {count} 个ID耗时: {duration:.2f}秒")
+print(f"QPS: {qps:.0f}")
+```
+
+## 错误处理
+
+```python
+from snowflake_id_generator import SnowflakeService, SnowflakeError
+
+try:
+    generator = SnowflakeService(worker_id=1, datacenter_id=1)
+    id = generator.generate_id()
+except SnowflakeError as e:
+    print(f"雪花算法错误: {e}")
+```
+
+## 高级用法
+
+### 批量生成ID
+
+```python
+def generate_batch_ids(generator, count):
+    """批量生成ID"""
+    return [generator.generate_id() for _ in range(count)]
+
+generator = SnowflakeService(worker_id=1, datacenter_id=1)
+ids = generate_batch_ids(generator, 1000)
+print(f"批量生成 {len(ids)} 个ID")
+```
+
+### 获取生成器状态
+
+```python
+generator = SnowflakeService(worker_id=1, datacenter_id=1)
+
+# 获取生成器状态信息
+info = generator.get_info()
+print(f"工作机器ID: {info['worker_id']}")
+print(f"数据中心ID: {info['datacenter_id']}")
+print(f"当前时间戳: {info['current_timestamp']}")
+print(f"最后时间戳: {info['last_timestamp']}")
+print(f"当前序列号: {info['current_sequence']}")
+```
+
+## 部署建议
+
+### 单机部署
+```python
+from snowflake_id_generator import init_snowflake_service, generate_user_id
+
+# 应用启动时初始化
+init_snowflake_service()
+
+# 在需要的地方生成ID
+user_id = generate_user_id()
+```
+
+### 分布式部署
+```python
+from snowflake_id_generator import SnowflakeService
+
+# 每个实例使用不同的配置
+# 实例1: worker_id=1, datacenter_id=1
+# 实例2: worker_id=2, datacenter_id=1  
+# 实例3: worker_id=1, datacenter_id=2
+
+generator = SnowflakeService(worker_id=1, datacenter_id=1)
+id = generator.generate_id()
+```
+
+## 注意事项
+
+1. **机器ID唯一性**: 确保同一数据中心内每个实例的worker_id唯一
+2. **时钟同步**: 建议使用NTP同步系统时钟，避免时钟回拨
+3. **实例重启**: 实例重启后序列号会重置，这是正常行为
+4. **ID范围**: 生成的ID为64位正整数，范围约为0到9.2×10^18
+
+## 许可证
+
+本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+## 更新日志
+
+### v1.0.0
+- 初始版本发布
+- 支持基本的雪花算法ID生成
+- 支持ID解析和状态查询
+- 线程安全设计
+- 时钟回拨检测
+
+## 联系方式
+
+- 作者: Your Name
+- 邮箱: your.email@example.com
+- 项目地址: https://github.com/yourusername/snowflake-id-generator
+
