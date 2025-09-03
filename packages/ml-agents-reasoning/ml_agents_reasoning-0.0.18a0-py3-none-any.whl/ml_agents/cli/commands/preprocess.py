@@ -1,0 +1,1111 @@
+"""Preprocessing commands for dataset standardization."""
+
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+import typer
+from rich.console import Console
+from rich.progress import track
+from rich.table import Table
+
+from ml_agents.cli.display import (
+    display_error,
+    display_info,
+    display_success,
+    display_warning,
+)
+from ml_agents.utils.logging_config import get_logger
+
+console = Console()
+logger = get_logger(__name__)
+
+# Default preprocessing output directory
+PREPROCESSING_OUTPUT_DIR = Path("./outputs")
+
+
+def sanitize_dataset_name(dataset_name: str) -> str:
+    """Sanitize dataset name for use in filesystem paths.
+
+    Args:
+        dataset_name: Original dataset name (e.g., "MrLight/bbeh-eval")
+
+    Returns:
+        Sanitized name safe for filesystem (e.g., "MrLight_bbeh-eval")
+    """
+    sanitized = dataset_name.replace("/", "_")
+    sanitized = sanitized.replace("\\", "_")
+    sanitized = sanitized.replace(":", "_")
+    sanitized = sanitized.replace("*", "_")
+    sanitized = sanitized.replace("?", "_")
+    sanitized = sanitized.replace('"', "_")
+    sanitized = sanitized.replace("<", "_")
+    sanitized = sanitized.replace(">", "_")
+    sanitized = sanitized.replace("|", "_")
+    sanitized = sanitized.replace(" ", "_")
+
+    # Remove any double underscores
+    while "__" in sanitized:
+        sanitized = sanitized.replace("__", "_")
+
+    return sanitized.strip("_")
+
+
+def ensure_preprocessing_output_dir(
+    dataset_name: str, config: Optional[str] = None
+) -> Path:
+    """Ensure preprocessing output directory exists for a dataset.
+
+    Args:
+        dataset_name: Dataset name (will be sanitized)
+        config: Optional dataset config name
+
+    Returns:
+        Path to the preprocessing output directory
+    """
+    from datetime import datetime
+
+    # Create directory structure: outputs/{dataset_name}/preprocessing/{timestamp}/
+    dataset_clean = sanitize_dataset_name(dataset_name)
+    if config:
+        dataset_clean += f"_{config}"
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = PREPROCESSING_OUTPUT_DIR / dataset_clean / "preprocessing" / timestamp
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create a symlink to latest
+    latest_link = output_dir.parent / "latest"
+    if latest_link.exists() or latest_link.is_symlink():
+        latest_link.unlink()
+    try:
+        latest_link.symlink_to(output_dir.name)
+    except OSError:
+        # Symlinks might not work on all systems
+        pass
+
+    return output_dir
+
+
+def generate_preprocessing_id() -> str:
+    """Generate unique preprocessing ID.
+
+    Returns:
+        Unique preprocessing identifier
+    """
+    import hashlib
+    import time
+    from datetime import datetime
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    hash_part = hashlib.md5(f"{timestamp}{time.time()}".encode()).hexdigest()[:4]
+    return f"prep_{timestamp}_{hash_part}"
+
+
+def preprocess_list_unprocessed(
+    benchmark_csv: str = typer.Option(
+        "./documentation/Tasks - Benchmarks.csv",
+        "--benchmark-csv",
+        "-b",
+        help="Path to benchmark CSV file containing dataset information",
+    ),
+    output_format: str = typer.Option(
+        "table", "--format", "-f", help="Output format: table, json, csv"
+    ),
+    output_file: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Save results to file"
+    ),
+    db_path: Optional[str] = typer.Option(
+        None,
+        "--db-path",
+        help="Database path (default: ./ml_agents_results.db)",
+    ),
+) -> None:
+    """List datasets that haven't been preprocessed yet."""
+    from ml_agents.core.dataset_preprocessor import DatasetPreprocessor
+
+    db_path = db_path or "./ml_agents_results.db"
+    display_info(f"Scanning for unprocessed datasets in: {benchmark_csv}")
+
+    try:
+        preprocessor = DatasetPreprocessor(benchmark_csv, db_path)
+        unprocessed = preprocessor.get_unprocessed_datasets()
+
+        if not unprocessed:
+            display_info("No unprocessed datasets found")
+            return
+
+        # Display results
+        if output_format == "table":
+            table = Table(title=f"Unprocessed Datasets ({len(unprocessed)} found)")
+            table.add_column("Name", style="cyan")
+            table.add_column("Task Type", style="yellow")
+            table.add_column("Status", style="red")
+            table.add_column("Description", style="dim", max_width=50)
+
+            for dataset in unprocessed:
+                table.add_row(
+                    dataset["name"],
+                    dataset.get("task_type", "unknown"),
+                    dataset["status"],
+                    (
+                        dataset.get("description", "")[:47] + "..."
+                        if len(dataset.get("description", "")) > 50
+                        else dataset.get("description", "")
+                    ),
+                )
+
+            console.print(table)
+
+        elif output_format == "json":
+            result = json.dumps(unprocessed, indent=2)
+            if output_file:
+                with open(output_file, "w") as f:
+                    f.write(result)
+                display_success(f"Results saved to: {output_file}")
+            else:
+                console.print(result)
+
+        elif output_format == "csv":
+            import pandas as pd
+
+            df = pd.DataFrame(unprocessed)
+            if output_file:
+                df.to_csv(output_file, index=False)
+                display_success(f"Results saved to: {output_file}")
+            else:
+                console.print(df.to_csv(index=False))
+
+        display_info(f"Total unprocessed datasets: {len(unprocessed)}")
+
+    except Exception as e:
+        display_error(f"Failed to list unprocessed datasets: {e}")
+        raise typer.Exit(1)
+
+
+def preprocess_inspect(
+    dataset: str = typer.Argument(
+        ..., help="Dataset name or HuggingFace URL to inspect"
+    ),
+    sample_size: int = typer.Option(
+        100,
+        "--samples",
+        "-n",
+        help="Number of samples to analyze for pattern detection",
+    ),
+    output_file: Optional[str] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Save inspection results to JSON file (default: ./outputs/preprocessing/<dataset>_analysis.json)",
+    ),
+    config: Optional[str] = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Dataset configuration name (for datasets with multiple configs)",
+    ),
+) -> None:
+    """Inspect dataset schema and detect input/output patterns."""
+    from ml_agents.core.dataset_preprocessor import DatasetPreprocessor
+
+    display_info(
+        f"Inspecting dataset schema: {dataset}"
+        + (f" (config: {config})" if config else "")
+    )
+
+    try:
+        preprocessor = DatasetPreprocessor()
+        schema_info = preprocessor.inspect_dataset_schema(dataset, sample_size, config)
+
+        # Display basic information
+        console.print(f"\n📊 [bold blue]Dataset Schema Analysis[/bold blue]")
+        console.print(f"Dataset: [cyan]{schema_info['dataset_name']}[/cyan]")
+        console.print(
+            f"Total samples: [yellow]{schema_info['total_samples']:,}[/yellow]"
+        )
+        console.print(
+            f"Analyzed samples: [yellow]{schema_info['sample_size_analyzed']:,}[/yellow]"
+        )
+        console.print(f"Columns: [green]{len(schema_info['columns'])}[/green]")
+
+        # Display columns and types
+        columns_table = Table(title="Columns")
+        columns_table.add_column("Column", style="cyan")
+        columns_table.add_column("Type", style="yellow")
+
+        for col, col_type in schema_info["column_types"].items():
+            columns_table.add_row(col, col_type)
+
+        console.print(columns_table)
+
+        # Display detected patterns
+        patterns = schema_info["detected_patterns"]
+        recommendation = patterns.get("recommended_pattern", {})
+
+        console.print(f"\n🔍 [bold blue]Pattern Detection Results[/bold blue]")
+        console.print(
+            f"Recommended pattern: [green]{recommendation.get('type', 'unknown')}[/green]"
+        )
+        console.print(
+            f"Confidence: [yellow]{recommendation.get('confidence', 0.0):.2f}[/yellow]"
+        )
+
+        if recommendation.get("input_fields"):
+            console.print(
+                f"Input fields: [cyan]{', '.join(recommendation['input_fields'])}[/cyan]"
+            )
+        if recommendation.get("output_field"):
+            console.print(
+                f"Output field: [cyan]{recommendation['output_field']}[/cyan]"
+            )
+        if recommendation.get("reasoning"):
+            console.print(f"Reasoning: [dim]{recommendation['reasoning']}[/dim]")
+
+        # Determine output file
+        if not output_file:
+            output_dir = ensure_preprocessing_output_dir(dataset, config)
+            output_file = str(output_dir / "analysis.json")
+
+        # Save detailed results
+        from ml_agents.core.dataset_preprocessor import NumpyJSONEncoder
+
+        with open(output_file, "w") as f:
+            json.dump(schema_info, f, indent=2, cls=NumpyJSONEncoder)
+        display_success(f"Detailed inspection results saved to: {output_file}")
+
+        display_success("Dataset inspection completed")
+
+    except Exception as e:
+        display_error(f"Failed to inspect dataset: {e}")
+        raise typer.Exit(1)
+
+
+def preprocess_generate_rules(
+    dataset: str = typer.Argument(..., help="Dataset name to generate rules for"),
+    output: str = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Output file for transformation rules (default: ./outputs/preprocessing/<dataset>_rules.json)",
+    ),
+    sample_size: int = typer.Option(
+        100, "--samples", "-n", help="Number of samples to analyze"
+    ),
+    config: Optional[str] = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Dataset configuration name (for datasets with multiple configs)",
+    ),
+    language: Optional[str] = typer.Option(
+        None,
+        "--language",
+        "-l",
+        help="Programming language to extract for coding datasets (javascript, python, java, cpp)",
+    ),
+    difficulty: Optional[str] = typer.Option(
+        None,
+        "--difficulty",
+        "-d",
+        help="Difficulty level to filter for coding datasets (easy, medium, hard)",
+    ),
+) -> None:
+    """Generate transformation rules for a dataset based on schema analysis."""
+    from ml_agents.core.dataset_preprocessor import DatasetPreprocessor
+
+    display_info(
+        f"Generating transformation rules for: {dataset}"
+        + (f" (config: {config})" if config else "")
+    )
+
+    try:
+        preprocessor = DatasetPreprocessor()
+
+        # First inspect the schema
+        schema_info = preprocessor.inspect_dataset_schema(dataset, sample_size, config)
+
+        # Generate transformation rules
+        rules = preprocessor.generate_transformation_rules(
+            schema_info, language=language, difficulty=difficulty
+        )
+
+        # Determine output file
+        if not output:
+            output_dir = ensure_preprocessing_output_dir(dataset, config)
+            output = str(output_dir / "rules.json")
+
+        # Save rules
+        from ml_agents.core.dataset_preprocessor import NumpyJSONEncoder
+
+        with open(output, "w") as f:
+            json.dump(rules, f, indent=2, cls=NumpyJSONEncoder)
+
+        # Display summary
+        console.print(f"\n🔧 [bold blue]Transformation Rules Generated[/bold blue]")
+        console.print(f"Dataset: [cyan]{rules['dataset_name']}[/cyan]")
+        console.print(
+            f"Transformation type: [yellow]{rules['transformation_type']}[/yellow]"
+        )
+        console.print(f"Confidence: [green]{rules['confidence']:.2f}[/green]")
+        console.print(f"Input format: [cyan]{rules['input_format']}[/cyan]")
+        console.print(f"Rules saved to: [green]{output}[/green]")
+
+        display_success("Transformation rules generated successfully")
+
+    except Exception as e:
+        display_error(f"Failed to generate transformation rules: {e}")
+        raise typer.Exit(1)
+
+
+def preprocess_transform(
+    dataset: str = typer.Argument(..., help="Dataset name to transform"),
+    rules: str = typer.Argument(..., help="Path to transformation rules JSON file"),
+    output: str = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Output path for standardized dataset (default: ./outputs/preprocessing/<dataset>.json)",
+    ),
+    validate: bool = typer.Option(
+        True, "--validate/--no-validate", help="Validate transformation integrity"
+    ),
+    config: Optional[str] = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Dataset configuration name (for datasets with multiple configs)",
+    ),
+    language: Optional[str] = typer.Option(
+        None,
+        "--language",
+        "-l",
+        help="Programming language to extract for coding datasets (javascript, python, java, cpp)",
+    ),
+    difficulty: Optional[str] = typer.Option(
+        None,
+        "--difficulty",
+        "-d",
+        help="Difficulty level to filter for coding datasets (easy, medium, hard)",
+    ),
+) -> None:
+    """Apply transformation rules to convert dataset to {INPUT, OUTPUT} format."""
+    from ml_agents.core.dataset_preprocessor import DatasetPreprocessor
+
+    display_info(
+        f"Transforming dataset: {dataset}" + (f" (config: {config})" if config else "")
+    )
+
+    try:
+        # Load transformation rules
+        with open(rules, "r") as f:
+            transformation_rules = json.load(f)
+
+        display_info(f"Loaded transformation rules from: {rules}")
+
+        preprocessor = DatasetPreprocessor()
+
+        # Load original dataset for comparison if validation requested
+        original_dataset = None
+        if validate:
+            from datasets import get_dataset_config_info, load_dataset
+
+            # Determine available split
+            try:
+                if config:
+                    dataset_info = get_dataset_config_info(dataset, config_name=config)
+                else:
+                    dataset_info = get_dataset_config_info(dataset)
+
+                available_splits = list(dataset_info.splits.keys())
+
+                if "train" in available_splits:
+                    split_to_use = "train"
+                elif "test" in available_splits:
+                    split_to_use = "test"
+                else:
+                    split_to_use = available_splits[0]
+            except Exception:
+                split_to_use = "train"
+
+            if config:
+                original_dataset = load_dataset(dataset, config, split=split_to_use)
+            else:
+                original_dataset = load_dataset(dataset, split=split_to_use)
+
+        # Apply transformation
+        transformed_dataset = preprocessor.apply_transformation(
+            dataset, transformation_rules, config
+        )
+
+        # Determine output path and create preprocessing ID
+        preprocessing_id = generate_preprocessing_id()
+        if not output:
+            output_dir = ensure_preprocessing_output_dir(dataset, config)
+            output = str(output_dir / "processed.json")
+
+            # Also save the rules to the same directory for tracking
+            rules_output = str(output_dir / "rules.json")
+            with open(rules_output, "w") as f:
+                json.dump(transformation_rules, f, indent=2)
+        else:
+            output_dir = Path(output).parent
+
+        # Export standardized dataset
+        preprocessor.export_standardized(transformed_dataset, output)
+
+        # Save metadata file
+        metadata = {
+            "preprocessing_id": preprocessing_id,
+            "dataset_name": dataset,
+            "dataset_config": config,
+            "rules_file": rules,
+            "output_file": output,
+            "timestamp": datetime.now().isoformat(),
+            "sample_count": len(transformed_dataset),
+        }
+        metadata_file = output_dir / "metadata.json"
+        with open(metadata_file, "w") as f:
+            json.dump(metadata, f, indent=2)
+
+        # Validate transformation if requested
+        if validate and original_dataset:
+            display_info("Validating transformation integrity...")
+            validation_results = preprocessor.validate_transformation(
+                original_dataset, transformed_dataset
+            )
+
+            if validation_results["validation_passed"]:
+                display_success("✅ Transformation validation passed")
+            else:
+                display_warning("⚠️  Transformation validation issues detected:")
+                for issue in validation_results["issues"]:
+                    console.print(f"   • {issue}")
+
+            # Display validation metrics
+            console.print(f"\n📊 [bold blue]Validation Metrics[/bold blue]")
+            console.print(
+                f"Original samples: [yellow]{validation_results['original_samples']:,}[/yellow]"
+            )
+            console.print(
+                f"Transformed samples: [yellow]{validation_results['transformed_samples']:,}[/yellow]"
+            )
+            console.print(
+                f"Empty inputs: [red]{validation_results['empty_inputs']}[/red]"
+            )
+            console.print(
+                f"Empty outputs: [red]{validation_results['empty_outputs']}[/red]"
+            )
+
+        display_success(f"Dataset transformation completed: {output}")
+
+    except Exception as e:
+        display_error(f"Failed to transform dataset: {e}")
+        raise typer.Exit(1)
+
+
+def preprocess_batch(
+    benchmark_csv: str = typer.Option(
+        "./documentation/Tasks - Benchmarks.csv",
+        "--benchmark-csv",
+        "-b",
+        help="Path to benchmark CSV file",
+    ),
+    output_dir: str = typer.Option(
+        "./outputs/preprocessing",
+        "--output-dir",
+        "-o",
+        help="Output directory for processed datasets",
+    ),
+    max_datasets: int = typer.Option(
+        10, "--max", "-m", help="Maximum number of datasets to process"
+    ),
+    sample_size: int = typer.Option(
+        100,
+        "--samples",
+        "-n",
+        help="Number of samples to analyze for pattern detection",
+    ),
+    confidence_threshold: float = typer.Option(
+        0.6,
+        "--confidence",
+        "-c",
+        help="Minimum confidence threshold for automatic processing",
+    ),
+    config: Optional[str] = typer.Option(
+        None,
+        "--config",
+        help="Dataset configuration name (applies to all datasets in batch)",
+    ),
+) -> None:
+    """Batch process multiple unprocessed datasets."""
+    from ml_agents.core.dataset_preprocessor import DatasetPreprocessor
+
+    display_info(f"Starting batch preprocessing of datasets from: {benchmark_csv}")
+
+    try:
+        # Initialize preprocessor with database integration
+        db_path = "./ml_agents_results.db"
+        preprocessor = DatasetPreprocessor(benchmark_csv, db_path)
+        unprocessed = preprocessor.get_unprocessed_datasets()
+
+        if not unprocessed:
+            display_info("No unprocessed datasets found")
+            return
+
+        # Limit processing
+        datasets_to_process = unprocessed[:max_datasets]
+
+        display_info(
+            f"Processing {len(datasets_to_process)} of {len(unprocessed)} unprocessed datasets"
+        )
+
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        successful = 0
+        failed = 0
+
+        for i, dataset_info in enumerate(
+            track(datasets_to_process, description="Processing datasets...")
+        ):
+            dataset_name = dataset_info["name"]
+            dataset_url = dataset_info.get("url", dataset_name)
+
+            try:
+                console.print(
+                    f"\n🔄 [{i+1}/{len(datasets_to_process)}] Processing: [cyan]{dataset_name}[/cyan]"
+                    + (f" (config: {config})" if config else "")
+                )
+
+                # Inspect schema
+                schema_info = preprocessor.inspect_dataset_schema(
+                    dataset_url, sample_size, config
+                )
+
+                # Generate rules
+                rules = preprocessor.generate_transformation_rules(schema_info)
+
+                # Check confidence threshold
+                if rules["confidence"] < confidence_threshold:
+                    display_warning(
+                        f"Low confidence ({rules['confidence']:.2f}) - skipping automatic processing"
+                    )
+                    failed += 1
+                    continue
+
+                # Apply transformation
+                from datasets import get_dataset_config_info, load_dataset
+
+                # Determine available split
+                try:
+                    if config:
+                        dataset_info = get_dataset_config_info(
+                            dataset_url, config_name=config
+                        )
+                    else:
+                        dataset_info = get_dataset_config_info(dataset_url)
+
+                    available_splits = list(dataset_info.splits.keys())
+
+                    if "train" in available_splits:
+                        split_to_use = "train"
+                    elif "test" in available_splits:
+                        split_to_use = "test"
+                    else:
+                        split_to_use = available_splits[0]
+                except Exception:
+                    split_to_use = "train"
+
+                if config:
+                    original_dataset = load_dataset(
+                        dataset_url, config, split=split_to_use
+                    )
+                else:
+                    original_dataset = load_dataset(dataset_url, split=split_to_use)
+                transformed_dataset = preprocessor.apply_transformation(
+                    dataset_url, rules, config
+                )
+
+                # Export using new directory structure
+                preprocessing_id = generate_preprocessing_id()
+                dataset_output_dir = ensure_preprocessing_output_dir(
+                    dataset_name, config
+                )
+                dataset_output_path = dataset_output_dir / "processed.json"
+                preprocessor.export_standardized(
+                    transformed_dataset, str(dataset_output_path)
+                )
+
+                # Validate transformation
+                validation_results = preprocessor.validate_transformation(
+                    original_dataset, transformed_dataset
+                )
+
+                # Save rules alongside
+                rules_path = dataset_output_dir / "rules.json"
+                from ml_agents.core.dataset_preprocessor import NumpyJSONEncoder
+
+                with open(rules_path, "w") as f:
+                    json.dump(rules, f, indent=2, cls=NumpyJSONEncoder)
+
+                # Save analysis info
+                analysis_path = dataset_output_dir / "analysis.json"
+                with open(analysis_path, "w") as f:
+                    json.dump(schema_info, f, indent=2, cls=NumpyJSONEncoder)
+
+                # Save metadata file
+                metadata = {
+                    "preprocessing_id": preprocessing_id,
+                    "dataset_name": dataset_name,
+                    "dataset_config": config,
+                    "dataset_url": dataset_url,
+                    "rules_file": str(rules_path),
+                    "output_file": str(dataset_output_path),
+                    "timestamp": datetime.now().isoformat(),
+                    "sample_count": len(transformed_dataset),
+                    "validation_results": validation_results,
+                }
+                metadata_file = dataset_output_dir / "metadata.json"
+                with open(metadata_file, "w") as f:
+                    json.dump(metadata, f, indent=2, cls=NumpyJSONEncoder)
+
+                # Save metadata to database
+                preprocessor._save_preprocessing_metadata(
+                    dataset_name=dataset_name,
+                    dataset_url=dataset_url,
+                    schema_info=schema_info,
+                    rules=rules,
+                    validation_results=validation_results,
+                    output_path=str(dataset_output_dir),
+                    preprocessing_id=preprocessing_id,
+                    rules_path=str(rules_path),
+                    analysis_path=str(analysis_path),
+                )
+
+                display_success(f"✅ Processed: {dataset_name}")
+                successful += 1
+
+            except Exception as dataset_error:
+                display_error(f"Failed to process {dataset_name}: {dataset_error}")
+                failed += 1
+                continue
+
+        # Summary
+        console.print(f"\n📊 [bold blue]Batch Processing Summary[/bold blue]")
+        console.print(f"Successful: [green]{successful}[/green]")
+        console.print(f"Failed: [red]{failed}[/red]")
+        console.print(f"Total processed: [yellow]{successful + failed}[/yellow]")
+        console.print(f"Output directory: [cyan]{output_dir}[/cyan]")
+
+        if successful > 0:
+            display_success("Batch preprocessing completed with successes")
+        else:
+            display_warning("Batch preprocessing completed with no successes")
+
+    except Exception as e:
+        display_error(f"Failed to run batch preprocessing: {e}")
+        raise typer.Exit(1)
+
+
+def preprocess_upload(
+    processed_file: str = typer.Argument(
+        ...,
+        help="Path to processed dataset JSON file (will also upload related _analysis.json, _rules.json, and .csv files)",
+    ),
+    source_dataset: str = typer.Option(
+        ...,
+        "--source-dataset",
+        "-s",
+        help="Original dataset name/URL for attribution (e.g., MilaWang/SpatialEval)",
+    ),
+    target_name: str = typer.Option(
+        ...,
+        "--target-name",
+        "-t",
+        help="Target name for uploaded dataset (will be uploaded to c4ai-ml-agents/<target-name>)",
+    ),
+    config: Optional[str] = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Dataset configuration that was used during preprocessing",
+    ),
+    description: Optional[str] = typer.Option(
+        None, "--description", "-d", help="Custom description for the dataset"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Validate and prepare but don't actually upload"
+    ),
+) -> None:
+    """Upload processed dataset and all related preprocessing files to HuggingFace Hub.
+
+    This command uploads:
+    - Main dataset JSON file
+    - Schema analysis JSON file (*_analysis.json)
+    - Transformation rules JSON file (*_rules.json)
+    - CSV file if available (*.csv)
+    - Generated README.md with metadata and transformation rules
+    """
+    from ml_agents.core.dataset_uploader import DatasetUploader
+
+    display_info(f"Preparing to upload: {processed_file}")
+    display_info(f"Source dataset: {source_dataset}")
+    display_info(f"Target: c4ai-ml-agents/{target_name}")
+
+    if config:
+        display_info(f"Configuration: {config}")
+
+    if description:
+        display_info(f"Description: {description}")
+
+    try:
+        uploader = DatasetUploader(org_name="c4ai-ml-agents")
+
+        # Validate the processed file first
+        console.print("\n🔍 [bold blue]Validating processed dataset...[/bold blue]")
+        validation_results = uploader.validate_processed_file(processed_file)
+
+        if not validation_results["validation_passed"]:
+            display_error("Dataset validation failed:")
+            for issue in validation_results["issues"]:
+                console.print(f"  [red]❌ {issue}[/red]")
+            raise typer.Exit(1)
+
+        # Display validation results
+        console.print(f"[green]✅ Dataset validation passed[/green]")
+        console.print(f"  - Format: {validation_results['format'].upper()}")
+        console.print(f"  - Samples: {validation_results['sample_count']:,}")
+        console.print(f"  - File size: {validation_results['file_size_mb']:.1f} MB")
+        console.print(
+            f"  - Schema: {'INPUT/OUTPUT' if validation_results['has_input_output_schema'] else 'Unknown'}"
+        )
+
+        if validation_results["issues"]:
+            console.print("[yellow]⚠️ Warnings:[/yellow]")
+            for issue in validation_results["issues"]:
+                console.print(f"  [yellow]• {issue}[/yellow]")
+
+        if dry_run:
+            display_info("Dry run mode - skipping actual upload")
+            console.print(
+                f"\n[green]✅ Dry run successful! Dataset is ready for upload.[/green]"
+            )
+            console.print(
+                f"[green]   Target: https://huggingface.co/datasets/c4ai-ml-agents/{target_name}[/green]"
+            )
+            console.print(
+                f"[green]   Run without --dry-run to perform actual upload[/green]"
+            )
+            return
+
+        # Confirm upload
+        console.print(
+            f"\n📤 [bold yellow]Ready to upload to HuggingFace Hub[/bold yellow]"
+        )
+        console.print(f"Target repository: [cyan]c4ai-ml-agents/{target_name}[/cyan]")
+
+        confirm = typer.confirm("Proceed with upload?")
+        if not confirm:
+            display_info("Upload cancelled by user")
+            return
+
+        # Perform upload
+        console.print("\n🚀 [bold green]Starting upload...[/bold green]")
+        repo_id = uploader.upload_dataset(
+            processed_file=processed_file,
+            source_dataset=source_dataset,
+            target_name=target_name,
+            config=config,
+            description=description,
+        )
+
+        display_success(
+            f"✅ Dataset successfully uploaded to: https://huggingface.co/datasets/{repo_id}"
+        )
+
+        # Display usage instructions
+        console.print("\n📋 [bold blue]Usage Instructions:[/bold blue]")
+        console.print(f"[cyan]# Load in Python[/cyan]")
+        console.print(f"from datasets import load_dataset")
+        console.print(f"dataset = load_dataset('{repo_id}')")
+        console.print()
+        console.print(f"[cyan]# Use with ML Agents CLI[/cyan]")
+        console.print(
+            f"ml-agents run --custom-dataset {repo_id} --approach ChainOfThought"
+        )
+
+    except Exception as e:
+        display_error(f"Failed to upload dataset: {e}")
+        logger.error(f"Dataset upload failed: {e}")
+        raise typer.Exit(1)
+
+
+def preprocess_fix_rules(
+    rules_file: str = typer.Argument(..., help="Path to rules JSON file to fix"),
+    input_fields: Optional[str] = typer.Option(
+        None,
+        "--input-fields",
+        help="Comma-separated list of input field names (e.g., 'story,question,candidate_answers')",
+    ),
+    output_field: Optional[str] = typer.Option(
+        None, "--output-field", help="Name of the output field (e.g., 'answer')"
+    ),
+    preprocessing_steps: Optional[str] = typer.Option(
+        None,
+        "--preprocessing-steps",
+        help="Comma-separated list of preprocessing steps (e.g., 'resolve_answer_index')",
+    ),
+    interactive: bool = typer.Option(
+        True,
+        "--interactive/--no-interactive",
+        help="Enable interactive mode for field selection",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Preview changes without saving"
+    ),
+) -> None:
+    """Fix transformation rules when automatic detection gets it wrong.
+
+    This command allows you to manually correct the field mappings and preprocessing
+    steps in a rules file when the automatic pattern detection is incorrect.
+
+    Examples:
+        # Interactive mode (default)
+        ml-agents preprocess fix-rules rules.json
+
+        # Non-interactive mode
+        ml-agents preprocess fix-rules rules.json \\
+            --input-fields story,question,candidate_answers \\
+            --output-field answer \\
+            --preprocessing-steps resolve_answer_index
+    """
+    from ml_agents.core.dataset_preprocessor import DatasetPreprocessor
+
+    try:
+        # Load existing rules
+        with open(rules_file, "r") as f:
+            rules = json.load(f)
+
+        display_info(f"Loading rules from: {rules_file}")
+
+        # Initialize preprocessor
+        preprocessor = DatasetPreprocessor()
+
+        # Get dataset schema for validation
+        dataset_name = rules.get("dataset_name")
+        config = rules.get("dataset_config")
+
+        if not dataset_name:
+            display_error("Rules file is missing dataset_name field")
+            raise typer.Exit(1)
+
+        display_info(f"Validating against dataset: {dataset_name}")
+
+        # Load dataset schema for validation
+        try:
+            schema_info = preprocessor.inspect_dataset_schema(
+                dataset_name, sample_size=10, config=config
+            )
+            available_fields = list(schema_info["columns"].keys())
+        except Exception as e:
+            display_warning(f"Could not load dataset schema for validation: {e}")
+            available_fields = []
+
+        # Display current rules
+        console.print("\n📋 [bold blue]Current Rules:[/bold blue]")
+        console.print(f"Dataset: [cyan]{dataset_name}[/cyan]")
+        console.print(f"Input fields: [yellow]{rules.get('input_fields', [])}[/yellow]")
+        console.print(
+            f"Output field: [yellow]{rules.get('output_field', 'None')}[/yellow]"
+        )
+        console.print(
+            f"Preprocessing steps: [yellow]{rules.get('preprocessing_steps', [])}[/yellow]"
+        )
+        console.print(f"Confidence: [red]{rules.get('confidence', 0.0):.2f}[/red]")
+
+        if available_fields:
+            console.print(f"\n🏷️  [bold blue]Available Fields:[/bold blue]")
+            console.print(f"[dim]{', '.join(available_fields)}[/dim]")
+
+        # Handle interactive vs non-interactive modes
+        new_input_fields = []
+        new_output_field = None
+        new_preprocessing_steps = []
+
+        if interactive and (not input_fields or not output_field):
+            console.print("\n🔧 [bold blue]Manual Correction Mode[/bold blue]")
+
+            # Interactive input fields selection
+            if not input_fields:
+                console.print("\n[bold yellow]Select Input Fields:[/bold yellow]")
+                if available_fields:
+                    console.print(
+                        "[dim]Available fields: "
+                        + ", ".join(available_fields)
+                        + "[/dim]"
+                    )
+
+                while True:
+                    field_input = typer.prompt("Enter input fields (comma-separated)")
+                    new_input_fields = [
+                        f.strip() for f in field_input.split(",") if f.strip()
+                    ]
+
+                    # Validate fields if schema is available
+                    if available_fields:
+                        invalid_fields = [
+                            f for f in new_input_fields if f not in available_fields
+                        ]
+                        if invalid_fields:
+                            display_error(f"Invalid fields: {invalid_fields}")
+                            console.print(
+                                f"[dim]Available fields: {', '.join(available_fields)}[/dim]"
+                            )
+                            continue
+
+                    break
+            else:
+                new_input_fields = [f.strip() for f in input_fields.split(",")]
+
+            # Interactive output field selection
+            if not output_field:
+                console.print(f"\n[bold yellow]Select Output Field:[/bold yellow]")
+                if available_fields:
+                    console.print(
+                        "[dim]Available fields: "
+                        + ", ".join(available_fields)
+                        + "[/dim]"
+                    )
+
+                while True:
+                    new_output_field = typer.prompt("Enter output field name")
+
+                    # Validate field if schema is available
+                    if available_fields and new_output_field not in available_fields:
+                        display_error(f"Invalid field: {new_output_field}")
+                        console.print(
+                            f"[dim]Available fields: {', '.join(available_fields)}[/dim]"
+                        )
+                        continue
+
+                    break
+            else:
+                new_output_field = output_field
+
+            # Interactive preprocessing steps
+            if not preprocessing_steps:
+                console.print(
+                    f"\n[bold yellow]Preprocessing Steps (optional):[/bold yellow]"
+                )
+                console.print(
+                    "[dim]Common steps: resolve_answer_index, format_multiple_choice[/dim]"
+                )
+                steps_input = typer.prompt(
+                    "Enter preprocessing steps (comma-separated, or press Enter for none)",
+                    default="",
+                )
+                if steps_input.strip():
+                    new_preprocessing_steps = [
+                        s.strip() for s in steps_input.split(",") if s.strip()
+                    ]
+            else:
+                new_preprocessing_steps = [
+                    s.strip() for s in preprocessing_steps.split(",") if s.strip()
+                ]
+
+        else:
+            # Non-interactive mode
+            if not input_fields or not output_field:
+                display_error(
+                    "In non-interactive mode, --input-fields and --output-field are required"
+                )
+                raise typer.Exit(1)
+
+            new_input_fields = [f.strip() for f in input_fields.split(",")]
+            new_output_field = output_field
+            if preprocessing_steps:
+                new_preprocessing_steps = [
+                    s.strip() for s in preprocessing_steps.split(",") if s.strip()
+                ]
+
+        # Validate the corrections
+        if available_fields:
+            invalid_inputs = [f for f in new_input_fields if f not in available_fields]
+            if invalid_inputs:
+                display_error(f"Invalid input fields: {invalid_inputs}")
+                display_error(f"Available fields: {available_fields}")
+                raise typer.Exit(1)
+
+            if new_output_field not in available_fields:
+                display_error(f"Invalid output field: {new_output_field}")
+                display_error(f"Available fields: {available_fields}")
+                raise typer.Exit(1)
+
+        # Update rules
+        rules["input_fields"] = new_input_fields
+        rules["output_field"] = new_output_field
+        rules["preprocessing_steps"] = new_preprocessing_steps
+        rules["manually_corrected"] = True
+        rules["correction_timestamp"] = datetime.now().isoformat()
+        rules["confidence"] = 1.0  # Manual correction has perfect confidence
+
+        # Set appropriate field labels based on detected pattern
+        if set(new_input_fields) == {"story", "question", "candidate_answers"}:
+            rules["field_labels"] = {
+                "story": "STORY:",
+                "question": "QUESTION:",
+                "candidate_answers": "OPTIONS:",
+            }
+        elif "context" in new_input_fields and "question" in new_input_fields:
+            rules["field_labels"] = {
+                new_input_fields[0]: (
+                    "CONTEXT:" if "context" in new_input_fields[0] else "INPUT:"
+                ),
+                new_input_fields[1]: (
+                    "QUESTION:" if "question" in new_input_fields[1] else "QUERY:"
+                ),
+            }
+        else:
+            # Generic labels
+            rules["field_labels"] = {
+                field: f"{field.upper()}:" for field in new_input_fields
+            }
+
+        # Display updated rules
+        console.print("\n✅ [bold green]Updated Rules:[/bold green]")
+        console.print(f"Input fields: [green]{new_input_fields}[/green]")
+        console.print(f"Output field: [green]{new_output_field}[/green]")
+        console.print(f"Preprocessing steps: [green]{new_preprocessing_steps}[/green]")
+        console.print(f"Confidence: [green]1.0[/green] (manually corrected)")
+
+        if dry_run:
+            display_info("🔍 Dry run mode - no changes saved")
+            console.print(f"\n[dim]Would save to: {rules_file}[/dim]")
+        else:
+            # Save updated rules
+            from ml_agents.core.dataset_preprocessor import NumpyJSONEncoder
+
+            with open(rules_file, "w") as f:
+                json.dump(rules, f, indent=2, cls=NumpyJSONEncoder)
+
+            display_success(f"✅ Rules successfully updated: {rules_file}")
+
+            console.print(f"\n📝 [bold blue]Next Steps:[/bold blue]")
+            console.print(f"1. Review the updated rules file")
+            console.print(f"2. Apply transformation:")
+            console.print(
+                f"   [cyan]ml-agents preprocess transform {dataset_name} {rules_file}[/cyan]"
+            )
+
+    except FileNotFoundError:
+        display_error(f"Rules file not found: {rules_file}")
+        raise typer.Exit(1)
+    except json.JSONDecodeError:
+        display_error(f"Invalid JSON in rules file: {rules_file}")
+        raise typer.Exit(1)
+    except Exception as e:
+        display_error(f"Failed to fix rules: {e}")
+        logger.error(f"Rules correction failed: {e}")
+        raise typer.Exit(1)
