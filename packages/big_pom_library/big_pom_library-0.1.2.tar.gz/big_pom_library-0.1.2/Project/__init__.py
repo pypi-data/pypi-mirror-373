@@ -1,0 +1,2 @@
+def Yes():
+    pass
