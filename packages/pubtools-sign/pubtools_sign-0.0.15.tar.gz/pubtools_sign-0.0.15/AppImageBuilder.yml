@@ -1,0 +1,50 @@
+version: 1
+script:
+  # Install dependency which is required by appimagebuilder
+  - apt-get update
+  - apt install -y squashfs-tools libssl-dev
+  # Remove any previous build
+  - rm -rf AppDir  | true
+  # Make usr and icons dirs
+  - mkdir -p AppDir/usr AppDir/usr/share/icons/hicolor/256x256/apps/
+  # Install icon (every AppImage requires one)
+  - touch AppDir/usr/share/icons/hicolor/256x256/apps/app_icon.png
+  # Install application and its dependencies
+  - python3.8 -m pip install --upgrade setuptools==70.0.0
+  - python3.8 -m pip install --system --ignore-installed --prefix=/usr --root=AppDir pubtools-sign==${VERSION}
+
+AppDir:
+  path: ./AppDir
+
+  app_info:
+    id: org.pubtools-sign
+    name: pubtools-sign 
+    icon: app_icon
+    version: ${VERSION} 
+    # Set the python executable as entry point
+    exec: usr/bin/python3
+    # Set the application main script path as argument. Use '$@' to forward CLI parameters
+    exec_args: "$APPDIR/usr/bin/pubtools-sign $@"
+
+  apt:
+    arch: amd64
+    sources:
+      - sourceline: 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal main restricted'
+        key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x3b4fe6acc0b21f32'
+
+    include:
+      - python3.8
+      - python3-pkg-resources
+    exclude: []
+
+  runtime:
+    env:
+      # Set python home
+      PYTHONHOME: '${APPDIR}/usr'
+      # Path to the site-packages dir or other modules dirs
+      PYTHONPATH: '${APPDIR}/usr/lib/python3.8/site-packages'
+
+AppImage:
+  update-information: !ENV ${UPDATE_INFO} 
+  sign-key: None
+  arch: x86_64

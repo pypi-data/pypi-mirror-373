@@ -1,0 +1,76 @@
+name: security check
+
+on: push
+
+jobs:
+  bandit:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ ubuntu-latest ]
+        python-version: [ '3.7', '3.8', '3.9', '3.10', '3.11' ]
+    name: Python ${{ matrix.python-version }} ${{ matrix.os }} 
+    steps:
+      - uses: jpetrucciani/bandit-check@main
+        with:
+          path: 'src'
+
+  owasp:
+    runs-on: ubuntu-latest
+    name: depecheck_test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: get version
+        id: version
+        run: |
+          VERSION=$(curl -s https://dependency-check.github.io/DependencyCheck/current.txt)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+      - name: Download cli
+        run: curl -L "https://github.com/dependency-check/DependencyCheck/releases/download/v${{ steps.version.outputs.version }}/dependency-check-${{ steps.version.outputs.version }}-release.zip" -o ${{github.workspace}}/dependecy-check.zip
+      - name: unzip cli
+        run: unzip ${{github.workspace}}/dependecy-check.zip
+      - name: Run OWASP
+        run: >
+          ./dependency-check/bin/dependency-check.sh 
+          --scan .
+          --enableExperimental
+          --failOnCVSS 4
+          --scan src
+          --disableKnownExploited
+          --disableMSBuild
+          --disableNodeJS
+          --disableYarnAudit
+          --disablePnpmAudit
+          --disableNodeAudit
+          --disableRubygems
+          --disableBundleAudit
+          --disableCocoapodsAnalyzer
+          --disableSwiftPackageManagerAnalyzer
+          --disableSwiftPackageResolvedAnalyzer
+          --disableAutoconf
+          --disableOpenSSL
+          --disableCmake
+          --disableArchive
+          --disableJar
+          --disableComposer
+          --disableCpan
+          --disableDart
+          --disableOssIndex
+          --disableCentral
+          --disableNuspec
+          --disableNugetconf
+          --disableAssembly
+          --disableGolangDep
+          --disableGolangMod
+          --disableMixAudit
+          --disableRetireJS
+          --disablePyDist
+          --disablePoetry
+          --out ${{github.workspace}}/dependency-check-report.zip
+
+      - name: Upload Test results
+        uses: actions/upload-artifact@master
+        with:
+           name: Depcheck report
+           path: ${{github.workspace}}/dependency-check-report.zip
