@@ -1,0 +1,24 @@
+from logging import Logger
+from typing import Any, Iterable, Optional
+
+from grpcAPI.app import App
+from grpcAPI.build_proto import make_protos
+from grpcAPI.commands.command import GRPCAPICommand
+from grpcAPI.makeproto.interface import IProtoPackage
+
+
+def run_lint(app: App, logger: Logger) -> Iterable[IProtoPackage]:
+    files = make_protos(app.services)
+    file_list = list(files)
+    logger.info(f"{len(file_list)} Protos have been successfully generated.")
+    logger.debug("Generated files:", [(f.package, f.filename) for f in file_list])
+    return file_list
+
+
+class LintCommand(GRPCAPICommand):
+
+    def __init__(self, app: App, settings_path: Optional[str] = None) -> None:
+        super().__init__("lint", app, settings_path, is_sync=True)
+
+    def run_sync(self, **kwargs: Any) -> Iterable[IProtoPackage]:
+        return run_lint(self.app, self.logger)
