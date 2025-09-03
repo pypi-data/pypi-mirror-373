@@ -1,0 +1,120 @@
+import logging
+
+from achatbot.common.interface import ILlmGenerator
+
+from . import LLamacppLLM
+from achatbot.common.session import Session
+
+
+class LlamacppGenerator(LLamacppLLM, ILlmGenerator):
+    """
+    token_ids -> llm generate stream -> token_ids
+    """
+
+    TAG = "llm_llamacpp_generator"
+
+    async def generate(self, session: Session, **kwargs):
+        assert session.ctx.state["token_ids"] is not None
+        assert isinstance(session.ctx.state["token_ids"], list)
+        token_ids = session.ctx.state["token_ids"]
+        # https://llama-cpp-python.readthedocs.io/en/latest/api-reference/#llama_cpp.Llama.generate
+        # AR generate model
+        generator = self.model.generate(
+            token_ids,
+            temp=kwargs.get("temperature", self.args.llm_temperature)
+            if kwargs.get("temperature", self.args.llm_temperature)
+            else 0.80,
+            top_k=kwargs.get("top_k", self.args.llm_top_k)
+            if kwargs.get("top_k", self.args.llm_top_k)
+            else 50,
+            top_p=kwargs.get("top_p", self.args.llm_top_p)
+            if kwargs.get("top_p", self.args.llm_top_p)
+            else 0.9,
+            min_p=kwargs.get("min_p", self.args.llm_min_p)
+            if kwargs.get("min_p", self.args.llm_min_p)
+            else 0.0,
+            repeat_penalty=kwargs.get("repetition_penalty", self.args.llm_repeat_penalty)
+            if kwargs.get("repetition_penalty", self.args.llm_repeat_penalty)
+            else 1.0,
+        )
+
+        # todo: cache for multi generate, or use `create_completion`` metod
+        # https://llama-cpp-python.readthedocs.io/en/latest/api-reference/#llama_cpp.Llama.create_completion
+
+        stop_ids = kwargs.get("stop_ids", self.args.llm_stop_ids)
+        max_new_tokens = (
+            kwargs.get("max_new_tokens", self.args.llm_max_tokens)
+            if kwargs.get("max_new_tokens", self.args.llm_max_tokens)
+            else 20
+        )
+        if max_new_tokens > self.args.n_ctx - len(token_ids):
+            max_new_tokens = self.args.n_ctx - len(token_ids)
+        token_cn = 0
+        for token_id in generator:
+            if token_cn >= max_new_tokens:
+                break
+            token_cn += 1
+            yield token_id
+            if token_id in stop_ids:
+                break
+
+
+"""
+MODEL=./models/qwen2.5-0.5b-instruct-q8_0.gguf \
+    TOKENIZER_PATH=./models/Qwen/Qwen2.5-0.5B-Instruct \
+    python -m src.core.llm.llamacpp.generator 
+
+MODEL=./models/Seed-X-PPO-7B.Q2_K.gguf \
+    TOKENIZER_PATH=./models/ByteDance-Seed/Seed-X-PPO-7B \
+    PROMPT="Translate the following English sentence into Chinese: I love programming. <zh>" \
+    STOP_ID=2 \
+    python -m src.core.llm.llamacpp.generator 
+
+MODEL=./models/Hunyuan-MT-7B.Q2_K.gguf \
+    TOKENIZER_PATH=./models/tencent/Hunyuan-MT-7B \
+    PROMPT="<|startoftext|>Translate the following segment into Chinese, without additional explanation.\n\nIt’s on the house.<|extra_0|>" \
+    STOP_ID=127960 \
+    python -m src.core.llm.llamacpp.generator 
+"""
+if __name__ == "__main__":
+    import uuid
+    import os
+    import time
+    import asyncio
+
+    from transformers import AutoTokenizer
+    from achatbot.common.types import SessionCtx
+    from achatbot.common.types import LLamcppLLMArgs
+
+    logging.basicConfig(level=logging.INFO)
+
+    tokenizer_path = os.getenv("TOKENIZER_PATH", "./models/Qwen/Qwen2.5-0.5B-Instruct")
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+
+    model_path = os.getenv("MODEL", "./models/qwen2.5-0.5b-instruct-q8_0.gguf")
+    chat_format = os.getenv("CHAT_FORMAT", None)
+    generator = LlamacppGenerator(
+        **LLamcppLLMArgs(model_path=model_path, chat_format=chat_format).__dict__
+    )
+
+    prompt = os.getenv("PROMPT", "hello, my name is")
+    stop_id = int(os.getenv("STOP_ID", "13"))
+
+    async def run():
+        session = Session(**SessionCtx(str(uuid.uuid4().hex)).__dict__)
+        session.ctx.state["token_ids"] = tokenizer.encode(prompt)
+        # test max_new_tokens>n_ctx-len(token_ids)
+        gen_iter = generator.generate(session, max_new_tokens=100, stop_ids=[stop_id])
+        start_time = time.perf_counter()
+        first = True
+        async for token_id in gen_iter:
+            if first:
+                ttft = time.perf_counter() - start_time
+                logging.info(f"generate TTFT time: {ttft} s")
+                first = False
+            gen_text = tokenizer.decode(token_id)
+            print(token_id, gen_text)
+
+        generator.close()
+
+    asyncio.run(run())
