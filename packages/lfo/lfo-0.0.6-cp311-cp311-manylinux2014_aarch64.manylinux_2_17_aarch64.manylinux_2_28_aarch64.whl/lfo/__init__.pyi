@@ -1,0 +1,69 @@
+from LFO import Wave
+
+class LFO:
+    period: float
+    frequency: float
+    cycles: int
+    cycle: int
+    frozen: bool
+
+    t: float
+    normalized: float
+
+    sine: float
+    cosine: float
+    triangle: float
+    sawtooth: float
+    square: float
+    one: float
+    zero: float
+
+    inv_sine: float
+    inv_cosine: float
+    inv_triangle: float
+    inv_sawtooth: float
+    inv_square: float
+    inv_one: float
+    inv_zero: float
+
+    sine_attenuverter: float = 1.0
+    cosine_attenuverter: float = 1.0
+    triangle_attenuverter: float = 1.0
+    sawtooth_attenuverter: float = 1.0
+    square_attenuverter: float = 1.0
+    one_attenuverter: float = 1.0
+    zero_attenuverter: float = 1.0
+
+    sine_offset: float = 0.0
+    cosine_offset: float = 0.0
+    triangle_offset: float = 0.0
+    sawtooth_offset: float = 0.0
+    square_offset: float = 0.0
+    one_offset: float = 0.0
+    zero_offset: float = 0.0
+
+    pw: float = 0.5
+    pw_offset: float = 0.0
+
+    def freeze(self) -> None: ...
+    def unfreeze(self) -> None: ...
+    def is_frozen(self) -> bool: ...
+    def reset(self) -> None: ...
+    def set_attenuverters(self, value: float) -> None: ...
+    def set_offsets(self, value: float) -> None: ...
+    def set_default_wave(self, number: Wave) -> None: ...
+    def rewind(self, number: float) -> None: ...
+    def skip(self, number: float) -> None: ...
+
+    def __call__(self) -> float:  ...
+    def __bool__(self) -> bool: ...
+    def __int__(self) -> int: ...
+    def __float__(self) -> float: ...
+    def __iter__(self) -> float: ...
+    def __next__(self) -> float: ...
+    def __eq__(self, other: object) -> bool: ...
+    def __ge__(self, other: object) -> bool: ...
+    def __gt__(self, other: object) -> bool: ...
+    def __le__(self, other: object) -> bool: ...
+    def __lt__(self, other: object) -> bool: ...
+    def __ne__(self, other: object) -> bool: ...
