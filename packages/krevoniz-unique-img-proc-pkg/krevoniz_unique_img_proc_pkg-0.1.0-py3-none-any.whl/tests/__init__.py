@@ -1,0 +1,1 @@
+# Pacote de testes para image_processing_pkg
