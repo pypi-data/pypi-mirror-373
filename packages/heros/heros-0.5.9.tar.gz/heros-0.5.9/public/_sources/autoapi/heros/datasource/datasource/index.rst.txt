@@ -1,0 +1,126 @@
+heros.datasource.datasource
+===========================
+
+.. py:module:: heros.datasource.datasource
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   heros.datasource.datasource.LocalDatasourceHERO
+   heros.datasource.datasource.DatasourceObserver
+   heros.datasource.datasource.PolledLocalDatasourceHERO
+
+
+Module Contents
+---------------
+
+.. py:class:: LocalDatasourceHERO(*args, observables: dict | None = None, **kwargs)
+
+   Bases: :py:obj:`heros.LocalHERO`
+
+
+   A datasource is a HERO that can provide information on a standardized interface.
+   This interface is the event `new_data`. Instances in the zenoh network interested in the data provided
+   by data sources can simply subscribe to the key expression `@objects/realm/*/new_data` or use
+   the :class:`DatasourceObserver`.
+
+   To make your class a LocalDatasourceHERO make it inherit this class.
+   This class is meant for datasources that create asynchronous events on their own. When processing such an event
+   call `new_data` to publish the data from this datasource.
+
+   :param name: name/identifier under which the object is available. Make sure this name is unique in the realm.
+   :param realm: realm the HERO should exist in. default is "heros"
+
+
+   .. py:attribute:: observable_processor
+
+
+   .. py:method:: _process_data(data)
+
+
+   .. py:method:: new_data(data)
+
+
+.. py:class:: DatasourceObserver(object_selector: str = '*', *args, **kwargs)
+
+   Bases: :py:obj:`heros.EventObserver`
+
+
+   A class that can observe and handle the data emitted by one or more datasource HEROs.
+   In particular, this class provides an efficient way to listen to the data emitted by all datasource HEROs in
+   the realm. By not instantiating the HEROs themselves but just subscribing to the topics for the datasource, this
+   reduces the pressure on the backing zenoh network. If, however, only the data of a few HEROs should be observed,
+   it might make more sense to just instantiate the according RemoteHEROs and connect a callback to their `new_data`
+   signal.
+
+   :param object_selector: selector to specify which objects to observe. This becomes part of a zenoh selector and thus
+   :param can be anything that makes sense in the selector. Defaults to * to observe all HEROs in the realm.:
+
+
+   .. py:method:: _handle_event(key_expr: str, data)
+
+
+   .. py:method:: register_new_data_callback(func: callable)
+
+      Register a callback that should be called on new_data.
+      This method passes the function to `EventObserver.register_callback`
+
+      :param func: function to call on new_data.
+
+
+
+.. py:class:: PolledLocalDatasourceHERO(*args, loop, interval: float = 5, **kwargs)
+
+   Bases: :py:obj:`LocalDatasourceHERO`
+
+
+   This local HERO periodically triggers the event "new_data" to poll and publish data.
+   This class is meant for datasources that do not generate events on their own an thus should be polled
+   on a periodical basis.
+
+   To make your class a PolledLocalDatasourceHERO make it inherit this class an implement the method `_new_data`.
+   The method will get called periodically and the return value will be published as an event.
+
+   .. note::
+
+      The periodic calling is realized via asyncio and will thus only work if the asyncio mainloop is
+      started.
+
+   :param name: name/identifier under which the object is available. Make sure this name is unique in the realm.
+   :param realm: realm the HERO should exist in. default is "heros"
+   :param interval: time interval in seconds between consecutive calls of `new_data` event
+
+
+   .. py:attribute:: datasource_interval
+      :value: 5
+
+
+
+   .. py:attribute:: _loop
+
+
+   .. py:attribute:: _stop_loop
+
+
+   .. py:attribute:: _loop_task
+
+
+   .. py:method:: _trigger_datasource()
+      :async:
+
+
+
+   .. py:method:: _destroy_hero()
+
+
+   .. py:method:: new_data()
+
+
+   .. py:method:: _new_data()
+      :abstractmethod:
+
+
+

@@ -1,0 +1,174 @@
+image: "python:slim"
+
+stages:
+  - pages
+  - test
+  - build-package
+  - publish-package
+  - publish-docker
+  - trigger
+
+variables:
+  PACKAGE_NAME: "heros"
+  PYPI_URL: "https://gitlab.com/api/v4/projects/${CI_PROJECT_ID}/packages/pypi"
+
+
+####################################
+# build script for docker images
+.build-docker-image:
+  image: quay.io/buildah/stable
+  variables:
+    IMAGE_TAG: "latest"
+    BUILDAH_FORMAT: docker
+    STORAGE_DRIVER: vfs
+  tags:
+    - docker
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | buildah login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
+  script:
+    - cd "${CI_PROJECT_DIR}"
+    - buildah build --platform=linux/arm64/v8,linux/amd64 --manifest "${CI_REGISTRY_IMAGE}:${TAG_NAME}" .
+    - buildah tag "${CI_REGISTRY_IMAGE}:${TAG_NAME}" "${CI_REGISTRY_IMAGE}:latest"
+    - buildah manifest push --all "${CI_REGISTRY_IMAGE}:${TAG_NAME}"
+    - buildah manifest push --all "${CI_REGISTRY_IMAGE}:latest"
+
+.publish-package-to-repo:
+  stage: publish-package
+  tags:
+    - docker
+  image: "quay.io/pypa/manylinux_2_28_x86_64"
+  needs: ["build-package"]  # Ensure package is built before publishing
+  before_script:
+    - pipx install twine
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+
+####################################
+# build
+build-package:
+  stage: build-package
+  tags:
+    - docker
+  parallel:
+    matrix:
+      - IMAGE: ["quay.io/pypa/manylinux_2_28_x86_64"]
+  image: $IMAGE
+  script:
+    - pipx install hatch
+    - hatch build  # Builds source tarball and wheel
+  artifacts:
+    paths:
+      - dist/
+  rules:
+    - when: always
+
+
+####################################
+# test
+pytest:
+  stage: test
+  tags:
+    - docker
+  script:
+    - pip install --upgrade uv
+    - uv venv
+    - uv pip install -e .[dev]
+    - uv run pytest --color=yes --junitxml=report.xml --cov-report html --cov-report term --cov-report xml:cobertura.xml --cov=src/
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  artifacts:
+      paths:
+          - htmlcov
+          - report.xml
+          - cobertura.xml
+      reports:
+          junit: report.xml
+          coverage_report:
+              coverage_format: cobertura
+              path: cobertura.xml
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# lint
+ruff:
+  stage: test
+  tags:
+    - docker
+  script:
+    - pip install --upgrade uv
+    - uv venv
+    - uv pip install -e .[dev]
+    - uv run ruff check
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+  allow_failure: true
+
+
+####################################
+# publish package
+publish-package-gitlab:
+  stage: publish-package
+  extends: .publish-package-to-repo
+  script:
+    - twine upload --skip-existing --repository-url "$PYPI_URL" -u "gitlab-ci-token" -p "$CI_JOB_TOKEN" dist/*
+
+publish-package-pypi:
+  stage: publish-package
+  extends: .publish-package-to-repo
+  script:
+    - twine upload --skip-existing -p "$PYPI_API_TOKEN" dist/*
+
+publish-package-pypi-test:
+  stage: publish-package
+  extends: .publish-package-to-repo
+  script:
+    - twine upload --skip-existing --verbose -r testpypi -p "$PYPI_TEST_API_TOKEN" dist/*
+  rules:
+    - when: manual
+  allow_failure: true
+
+
+####################################
+# docker image git commit sha with last commit from main (not on tag)
+publish-docker-main:
+  stage: publish-docker
+  extends: .build-docker-image
+  variables:
+    TAG_NAME: "$CI_COMMIT_SHORT_SHA"
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "main"'
+
+
+####################################
+# publish pages
+pages:
+  stage: pages
+  tags:
+    - docker
+  script:
+    - "apt-get update && apt-get install -y make"
+    - "pip install hatch sphinx sphinx-argparse sphinx-autoapi sphinx-autodoc-typehints furo toml"
+    - "cd docs"
+    - "make clean && make html"
+    - "mkdir ../public"
+    - "mv build/html/* ../public"
+  artifacts:
+    paths:
+    - public
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+
+####################################
+# trigger downstream pipeline
+trigger-downstream-boss:
+  stage: trigger
+  trigger:
+    project: "atomiq-project/boss"
+    branch: "main"
+  variables:
+    CI_JOB_TRIGGER: "heros"  # something like a "caller id" s.t. the downstram pipeline knwos who triggered the build
+  rules:
+   - if: '$CI_COMMIT_BRANCH == "main"'
