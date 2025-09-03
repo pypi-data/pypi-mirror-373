@@ -1,0 +1,166 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hydropandas"
+dynamic = ["version"]
+description = "Module by Artesia for loading observation data into custom DataFrames."
+license = { file = "LICENSE" }
+readme = "readme.md"
+authors = [{ name = "Onno Ebbens", email = "o.ebbens@artesia-water.nl" }]
+maintainers = [
+    { name = "O.N. Ebbens", email = "o.ebbens@artesia-water.nl" },
+    { name = "R. Calje", email = "r.calje@artesia-water.nl" },
+    { name = "D.A. Brakenhoff", email = "d.brakenhoff@artesia-water.nl" },
+    { name = "M.A. Vonk", email = "m.vonk@artesia-water.nl" },
+]
+requires-python = ">=3.10"
+dependencies = ["scipy", "pandas", "matplotlib", "tqdm", "requests", "colorama",
+                "geopandas", "pyproj", "contextily", "bokeh", "branca", "folium",
+                "rws-ddlpy"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Other Audience",
+    "License :: OSI Approved :: MIT License",
+    'Programming Language :: Python :: 3 :: Only',
+    'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
+    'Programming Language :: Python :: 3.12',
+    'Programming Language :: Python :: 3.13',
+    "Operating System :: OS Independent",
+    'Topic :: Scientific/Engineering :: Hydrology',
+]
+
+[project.urls]
+homepage = "https://www.artesia-water.nl"
+repository = "https://github.com/artesiawater/hydropandas"
+documentation = "https://hydropandas.readthedocs.io/en/stable/"
+
+[project.optional-dependencies]
+full = [
+    "openpyxl",
+    "pastastore",
+    "flopy",
+    "xarray",
+    "lxml",
+    "pyarrow",
+    "brodata"
+]
+rtd = [
+    "hydropandas[full]",
+    "imod",
+    "requests",
+    "nbconvert",
+    "ipykernel",
+    "netCDF4",
+    "docutils<0.18",
+    "sphinx_rtd_theme",
+    "Ipython",
+    "nbsphinx",
+    "nbsphinx_link"
+]
+ruffing = ["ruff"]
+pytesting = ["hydropandas[full,rtd]", "pytest>=7", "pytest-cov", "pytest-sugar"]
+coveraging = ["coverage"]
+dev = ["hydropandas[ruffing,pytesting]", "tox"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = { attr = "hydropandas.version.__version__" }
+
+[tool.setuptools.package-data]
+"hydropandas.data" = ["*.json"]
+"hydropandas.static" = ["*.html", "*.css"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+extend-include = ["*.ipynb"]
+lint.extend-select = ["I"]
+show-fixes = true
+fix = true
+
+[tool.ruff.lint.per-file-ignores]
+"knmi.py" = ["E712"] # see PR 239
+
+[tool.pytest.ini_options]
+addopts = "--durations=0"
+markers = ["slow: mark test as slow."]
+
+[tool.tox]
+legacy_tox_ini = """
+    [tox]
+    passenv = LIZARD_ROTTERDAM_API_KEY
+    requires = tox>=4
+    env_list = ruff, notebooks, py{310, 311, 312, 313}
+
+    [testenv]
+    description = run unit tests
+    extras = pytesting
+    commands =
+            pytest tests -m "not slow" --ignore=tests/api --ignore=tests/notebooks
+
+    [testenv:bro]
+    description = run bro tests
+    extras = pytesting
+    commands =
+            pytest tests/api/test_101_bro_api.py
+
+    [testenv:knmi]
+    description = run knmi tests
+    extras = pytesting
+    commands =
+            pytest tests/api/test_102_knmi_api.py
+
+    [testenv:lizard_vitens]
+    description = run lizard vitens tests
+    extras = pytesting
+    commands =
+            pytest tests/api/test_103_lizard_api_vitens.py
+
+    [testenv:lizard_rotterdam]
+    description = run lizard rotterdam tests
+    extras = pytesting
+    passenv = LIZARD_ROTTERDAM_API_KEY
+    commands =
+            pytest tests/api/test_106_lizard_api_rotterdam.py
+
+
+    [testenv:waterconnect]
+    description = run waterconnect tests
+    extras = pytesting
+    commands =
+            pytest tests/api/test_104_waterconnect_api.py
+
+    [testenv:waterinfo]
+    description = run waterinfo tests
+    extras = pytesting
+    commands =
+            pytest tests/api/test_105_waterinfo_api.py
+
+    [testenv:notebooks]
+    description = run all tests with notebooks and coverage
+    extras = pytesting,coveraging
+    commands =
+            coverage run -m pytest tests
+            coverage xml
+
+    [testenv:ruff]
+    description = run ruff checks
+    basepython = python3.11
+    extras = ruffing
+    commands =
+            ruff check --extend-select I --preview
+            ruff format --check
+
+    [testenv:ruff_fix]
+    description = run ruff locally and fix issues
+    extras = ruffing
+    commands =
+            ruff check --extend-select I --fix
+            ruff format
+"""
