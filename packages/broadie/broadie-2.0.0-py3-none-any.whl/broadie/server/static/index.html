@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>broadie AI Playground</title>
+  
+  <!-- Material Design Icons -->
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
+  
+  <!-- Marked.js for markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/petite-vue" defer init></script>
+</head>
+<body>
+<div class="app" v-scope="chatApp()" :class="{ 'dark-theme': isDarkTheme }">
+  <header class="app-header">
+    <div class="header-content">
+      <div class="agent-info">
+        <span class="material-icons">smart_toy</span>
+        <h1>{{ agentId }}</h1>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn clear-btn" @click="clearMessages" title="Clear chat history">
+          <span class="material-icons">edit</span>
+        </button>
+        <button class="icon-btn theme-toggle" @click="toggleTheme" :title="isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'">
+          <span class="material-icons">{{ isDarkTheme ? 'light_mode' : 'dark_mode' }}</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="chat-container">
+    <div class="chat-messages" ref="chatMessages" id="chat-messages">
+      <div v-if="messages.length === 0" class="empty-state">
+        <span class="material-icons">chat_bubble_outline</span>
+        <p>Start a conversation with your AI assistant</p>
+      </div>
+      
+      <div v-for="msg in messages" :key="msg.id" class="message-wrapper" :class="msg.role">
+        <div class="message-avatar">
+          <span class="material-icons">{{ msg.role === 'user' ? 'person' : 'smart_toy' }}</span>
+        </div>
+        <div class="message-bubble">
+          <div class="message-content">
+            <div v-if="msg.role === 'ai'" class="markdown-response" v-html="formatMarkdown(msg.text)"></div>
+            <div v-else class="text-content" v-html="formatMessage(msg.text)"></div>
+          </div>
+          <div class="message-time">{{ formatTime(msg.timestamp) }}</div>
+        </div>
+      </div>
+      
+      <div v-if="isLoading" class="message-wrapper ai">
+        <div class="message-avatar">
+          <span class="material-icons">smart_toy</span>
+        </div>
+        <div class="message-bubble loading">
+          <div class="typing-indicator">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="chat-input-container">
+      <div class="chat-input">
+        <div class="input-wrapper">
+          <textarea 
+                  aria-label="User message input"
+            v-model="message"
+            @keydown="handleKeydown"
+            placeholder="Type your message... (Cmd/Ctrl+Enter to send)"
+            :disabled="isLoading"
+            ref="messageInput"
+            rows="1"
+          ></textarea>
+        </div>
+      </div>
+    </footer>
+  </main>
+</div>
+
+<script>
+function chatApp() {
+  return {
+    message: "",
+    messages: [],
+    agentId: window.location.pathname.split("/")[1],
+    isLoading: false,
+    isDarkTheme: localStorage.getItem('darkTheme') === 'true' || window.matchMedia('(prefers-color-scheme: dark)').matches,
+    
+    mounted() {
+      this.applyTheme();
+      this.focusInput();
+    },
+    
+    toggleTheme() {
+      this.isDarkTheme = !this.isDarkTheme;
+      localStorage.setItem('darkTheme', this.isDarkTheme.toString());
+      this.applyTheme();
+    },
+    
+    applyTheme() {
+      // Theme switching logic (no longer needed for Prism.js)
+    },
+    
+    clearMessages() {
+      this.messages = [];
+      this.focusInput();
+    },
+    
+    focusInput() {
+      setTimeout(() => {
+        this.$refs.messageInput?.focus();
+      }, 100);
+    },
+    
+    scrollToBottom() {
+      setTimeout(() => {
+        const container = this.$refs.chatMessages;
+        if (container) {
+          container.scrollTop = container.scrollHeight;
+        }
+      }, 100);
+    },
+    
+    formatMarkdown(text) {
+      // Convert response to markdown with code block
+      let content = '';
+      
+      // Handle different types of responses
+      if (typeof text === 'object') {
+        // If it's an object, stringify it for the code block
+        content = '```json\n' + JSON.stringify(text, null, 2) + '\n```';
+      } else if (typeof text === 'string') {
+        // Try to parse as JSON first
+        try {
+          const parsed = JSON.parse(text);
+          content = '```json\n' + JSON.stringify(parsed, null, 2) + '\n```';
+        } catch {
+          // If not JSON, just wrap in a code block
+          content = '```\n' + text + '\n```';
+        }
+      } else {
+        // For other types, convert to string and wrap
+        content = '```\n' + String(text) + '\n```';
+      }
+      
+      // Use marked to render the markdown
+      return marked.parse(content);
+    },
+    
+    formatMessage(text) {
+      return text.replace(/\n/g, '<br>');
+    },
+    
+    formatTime(timestamp) {
+      return new Date(timestamp).toLocaleTimeString([], { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+    },
+    
+    handleKeydown(event) {
+      if (event.key === 'Enter') {
+        if (event.metaKey || event.ctrlKey) {
+          event.preventDefault();
+          this.sendMessage();
+        }
+        // Allow plain Enter for new lines (default behavior)
+      }
+    },
+    
+    async sendMessage() {
+      if (!this.message.trim() || this.isLoading) return;
+      
+      const userMsg = { 
+        id: Date.now(), 
+        role: "user", 
+        text: this.message,
+        timestamp: Date.now()
+      };
+      this.messages.push(userMsg);
+      this.scrollToBottom();
+
+      const payload = { message: this.message, thread_id: crypto.randomUUID() };
+      this.message = "";
+      this.isLoading = true;
+
+      try {
+        const res = await fetch(`/agent/${this.agentId}/invoke`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        
+        this.messages.push({ 
+          id: Date.now() + 1, 
+          role: "ai", 
+          text: data.response,
+          timestamp: Date.now()
+        });
+      } catch (err) {
+        this.messages.push({ 
+          id: Date.now() + 2, 
+          role: "ai", 
+          text: "❌ Error contacting server. Please try again.",
+          timestamp: Date.now()
+        });
+      } finally {
+        this.isLoading = false;
+        this.scrollToBottom();
+        this.focusInput();
+      }
+    }
+  }
+}
+</script>
+</body>
+</html>
