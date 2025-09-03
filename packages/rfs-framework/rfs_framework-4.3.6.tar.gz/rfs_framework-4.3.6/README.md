@@ -1,0 +1,223 @@
+# RFS Framework 🚀
+
+> **Enterprise-Grade Reactive Functional Serverless Framework for Python**
+
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Version](https://img.shields.io/badge/Version-4.3.0-green.svg)](https://pypi.org/project/rfs-framework/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Cloud Run Ready](https://img.shields.io/badge/Cloud%20Run-Ready-green.svg)](https://cloud.google.com/run)
+
+현대적인 엔터프라이즈 Python 애플리케이션을 위한 함수형 프로그래밍 프레임워크입니다.
+
+## 🎯 Why RFS Framework?
+
+- **타입 안전성**: Result 패턴으로 예외 없는 에러 처리
+- **반응형 스트림**: Mono/Flux 패턴의 비동기 처리
+- **클라우드 네이티브**: Google Cloud Run 최적화
+- **프로덕션 준비**: 모니터링, 보안, 배포 전략 내장
+
+## ⚡ Quick Start
+
+### Installation
+
+```bash
+# PyPI에서 설치 (v4.0.0 - 안정 버전)
+pip install rfs-framework
+
+# 선택적 모듈 설치
+pip install rfs-framework[web]       # FastAPI 웹 프레임워크 (완료)
+pip install rfs-framework[database]  # 데이터베이스 지원 (완료)
+pip install rfs-framework[test]      # 테스팅 도구 (완료)
+pip install rfs-framework[dev]       # 개발 도구 (완료)
+pip install rfs-framework[docs]      # 문서화 도구 (TBD)
+pip install rfs-framework[ai]        # AI/ML 통합 (TBD)
+
+# 모든 기능 포함
+pip install rfs-framework[all]
+
+# GitHub에서 최신 버전 설치 (v4.3.0)
+pip install git+https://github.com/interactord/rfs-framework.git
+```
+
+자세한 설치 옵션은 [설치 가이드](./INSTALLATION.md)를 참조하세요.
+
+### Basic Example
+
+```python
+from rfs import Result, Success, Failure
+
+def divide(a: int, b: int) -> Result[float, str]:
+    if b == 0:
+        return Failure("Cannot divide by zero")
+    return Success(a / b)
+
+# 안전한 에러 처리
+result = divide(10, 2)
+if result.is_success:
+    print(f"Result: {result.unwrap()}")  # Result: 5.0
+```
+
+### Reactive Streams
+
+```python
+from rfs.reactive import Flux
+import asyncio
+
+async def process_data():
+    result = await (
+        Flux.from_iterable(range(100))
+        .parallel(4)  # 4개 스레드 병렬 처리
+        .map(lambda x: x * x)
+        .filter(lambda x: x % 2 == 0)
+        .collect_list()
+    )
+    return result
+```
+
+더 많은 예제는 [Examples Directory](./examples/)를 참조하세요.
+
+## 🏗️ Architecture
+
+```
+Application Layer
+├── CLI & Tools       → 개발자 도구
+├── Web Framework     → FastAPI 통합
+└── Cloud Services    → GCP 통합
+
+Core Layer
+├── Result Pattern    → 함수형 에러 처리
+├── Reactive Streams  → 비동기 스트림
+├── State Machine     → 상태 관리
+└── Event Sourcing    → CQRS/이벤트 스토어
+
+Infrastructure Layer
+├── Security          → RBAC/ABAC, JWT
+├── Monitoring        → 메트릭, 로깅
+├── Deployment        → Blue-Green, Canary
+└── Optimization      → 성능 최적화
+```
+
+## 📚 Documentation
+
+### 핵심 문서
+- **[핵심 개념](./docs/01-core-patterns.md)** - Result 패턴과 함수형 프로그래밍
+- **[API Reference](./docs/API_REFERENCE.md)** - 전체 API 문서
+- **[사용자 가이드](./docs/USER_GUIDE.md)** - 단계별 사용 안내
+
+### 주제별 가이드
+- **[설정 관리](./docs/03-configuration.md)** - 환경별 설정
+- **[보안](./docs/11-security.md)** - 인증, 인가, 보안 강화
+- **[배포](./docs/05-deployment.md)** - 프로덕션 배포 전략
+- **[CLI 도구](./docs/14-cli-interface.md)** - 명령행 인터페이스
+
+### 전체 문서
+- **[📖 Docs (한국어)](./docs/)** - 17개 모듈 상세 문서
+- **[📚 HOF Library](./docs/16-hot-library.md)** - Higher-Order Functions
+- **[마이그레이션 가이드](./MIGRATION_GUIDE.md)** - v3에서 v4로 업그레이드
+
+## 🛠️ Development
+
+### Commands
+
+```bash
+# 개발 서버
+rfs-cli dev --reload
+
+# 테스트
+pytest --cov=rfs
+
+# 코드 품질
+black src/ && mypy src/
+
+# 시스템 상태
+rfs status  # 16개 핵심 기능 모니터링
+```
+
+### Project Structure
+
+```
+rfs-framework/
+├── src/rfs/
+│   ├── core/          # Result 패턴, DI, 설정
+│   ├── reactive/      # Mono/Flux 스트림
+│   ├── hof/           # Higher-Order Functions
+│   ├── production/    # 프로덕션 시스템
+│   └── cloud_run/     # Cloud Run 통합
+├── tests/             # 테스트 스위트
+├── docs/              # 한국어 문서
+└── examples/          # 예제 코드
+```
+
+## ✨ Key Features
+
+### 🎯 함수형 프로그래밍
+- Result/Maybe/Either 모나드
+- 함수 합성과 커링
+- 불변성과 순수 함수
+- [상세 문서 →](./docs/01-core-patterns.md)
+
+### ⚡ 반응형 스트림
+- 비동기 Mono/Flux 패턴
+- 백프레셔 지원
+- 30+ 연산자
+- [상세 문서 →](./docs/README.md#reactive-programming)
+
+### 🔒 엔터프라이즈 보안
+- RBAC/ABAC 접근 제어
+- JWT 인증
+- 취약점 스캐닝
+- [상세 문서 →](./docs/11-security.md)
+
+### 🚀 프로덕션 준비
+- Blue-Green/Canary 배포
+- Circuit Breaker 패턴
+- 성능 모니터링
+- [상세 문서 →](./docs/05-deployment.md)
+
+## 📊 Performance
+
+| Metric | Value | Note |
+|--------|-------|------|
+| **시작 시간** | ~50ms | CLI 초기화 |
+| **메모리 사용** | ~25MB | 기본 실행 |
+| **응답 시간** | <100ms | API 호출 |
+| **처리량** | 1200 RPS | 벤치마크 |
+
+## 🚧 Status
+
+- **완성도**: 93% (v4.3.0)
+- **프로덕션 준비**: ✅ Ready
+- **미완성 항목**: [TODO.md](./TODO.md) 참조
+
+## 🤝 Contributing
+
+기여를 환영합니다! [Contributing Guide](./CONTRIBUTING.md)를 참조하세요.
+
+```bash
+# 개발 환경 설정
+git clone https://github.com/interactord/rfs-framework
+cd rfs-framework
+pip install -e ".[dev]"
+
+# 테스트 실행
+pytest
+
+# PR 제출
+git checkout -b feature/your-feature
+git commit -m "feat: add feature"
+git push origin feature/your-feature
+```
+
+## 📄 License
+
+MIT License - [LICENSE](./LICENSE) 참조
+
+## 🆘 Support
+
+- **문제 보고**: [GitHub Issues](https://github.com/interactord/rfs-framework/issues)
+- **토론**: [Discussions](https://github.com/interactord/rfs-framework/discussions)
+- **문서**: [Wiki](https://github.com/interactord/rfs-framework/wiki)
+
+---
+
+**Made with ❤️ by the RFS Framework Team**
