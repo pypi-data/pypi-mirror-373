@@ -1,0 +1,201 @@
+# AI LLS Library
+
+Core business logic library and CLI tools for Landline Scrubber - phone verification and DNC checking.
+
+## Features
+
+- Phone number normalization (E.164 format)
+- Line type detection (mobile/landline/voip)
+- DNC (Do Not Call) list checking
+- DynamoDB caching with 30-day TTL
+- Bulk CSV processing
+- Infrastructure-aware CLI for admin operations
+- AWS Lambda PowerTools integration
+
+## Installation
+
+```bash
+# Install library with Poetry
+poetry install
+
+# Install CLI globally
+pip install -e .
+```
+
+## Library Usage
+
+### Single Phone Verification
+
+```python
+from ai_lls_lib import PhoneVerifier, DynamoDBCache
+
+cache = DynamoDBCache(table_name="phone-cache")
+verifier = PhoneVerifier(cache)
+
+result = verifier.verify_sync("+15551234567")
+print(f"Line type: {result.line_type}")
+print(f"DNC: {result.dnc}")
+print(f"From cache: {result.cached}")
+```
+
+### Bulk Processing
+
+```python
+from ai_lls_lib import BulkProcessor, PhoneVerifier, DynamoDBCache
+
+cache = DynamoDBCache(table_name="phone-cache")
+verifier = PhoneVerifier(cache)
+processor = BulkProcessor(verifier)
+
+results = processor.process_csv_sync("/path/to/phones.csv")
+processor.generate_results_csv(
+    original_path="/path/to/phones.csv",
+    results=results,
+    output_path="/path/to/results.csv"
+)
+```
+
+## CLI Usage
+
+The `ai-lls` CLI provides infrastructure-aware administrative tools:
+
+### Verification Commands
+```bash
+# Verify single phone
+ai-lls verify phone +15551234567 --stack landline-api
+
+# Bulk verify CSV
+ai-lls verify bulk input.csv -o output.csv --stack landline-api
+```
+
+### Cache Management
+```bash
+# Show cache statistics
+ai-lls cache stats --stack landline-api
+
+# Get cached entry
+ai-lls cache get +15551234567 --stack landline-api
+
+# Invalidate cache entry
+ai-lls cache invalidate +15551234567 --stack landline-api
+
+# Clear old entries
+ai-lls cache clear --older-than 20 --stack landline-api
+```
+
+### Administrative Commands
+```bash
+# Manage user credits
+ai-lls admin user-credits user123 --add 100
+ai-lls admin user-credits user123 --set 500
+
+# List API keys
+ai-lls admin api-keys --user user123
+
+# Check queue status
+ai-lls admin queue-stats
+
+# View secrets (masked)
+ai-lls admin secrets --stack landline-api
+```
+
+### Test Stack Management
+```bash
+# Deploy test stack
+ai-lls test-stack deploy
+
+# Check status
+ai-lls test-stack status
+
+# Run integration tests
+ai-lls test-stack test
+
+# Delete test stack
+ai-lls test-stack delete
+```
+
+## Project Structure
+
+```
+ai-lls-lib/
+├── src/ai_lls_lib/
+│   ├── core/           # Business logic (infrastructure-agnostic)
+│   │   ├── models.py   # Pydantic models
+│   │   ├── verifier.py # Phone verification
+│   │   ├── processor.py # Bulk processing
+│   │   └── cache.py    # DynamoDB cache
+│   ├── cli/            # Infrastructure-aware CLI
+│   │   ├── __main__.py # Entry point
+│   │   ├── commands/   # Command modules
+│   │   └── aws_client.py # AWS operations
+│   └── testing/        # Test utilities
+│       └── fixtures.py # Test data
+├── tests/
+│   ├── unit/          # Mocked tests
+│   └── integration/   # AWS integration tests
+└── test-stack.yaml    # Test infrastructure
+```
+
+## Testing
+
+```bash
+# Run unit tests (mocked AWS)
+poetry run pytest tests/unit -v
+
+# Deploy test stack for integration tests
+ai-lls test-stack deploy
+
+# Run integration tests (requires test stack)
+TEST_STACK_NAME=ai-lls-lib-test poetry run pytest tests/integration -v
+
+# All tests with coverage
+poetry run pytest --cov=src --cov-report=html
+
+# Clean up
+ai-lls test-stack delete
+```
+
+## Development
+
+### Current Stub Implementation
+
+For demo purposes, verification uses stub logic based on last digit:
+- Ends in 3: mobile, not on DNC
+- Ends in 2: landline, not on DNC
+- Ends in 1: mobile, on DNC
+- Ends in 0: landline, on DNC
+- Otherwise: mobile, not on DNC
+
+TODO markers indicate where real API integration will be added.
+
+### Code Quality
+
+```bash
+# Format code
+poetry run black src/ tests/
+poetry run isort src/ tests/
+
+# Type checking
+poetry run mypy src/
+
+# Run pre-commit hooks
+pre-commit run --all-files
+```
+
+## Environment Variables
+
+- `DNC_API_KEY` - DNC verification API key
+- `DNC_CHECK_API_KEY` - Alternative DNC service
+- `PHONE_VERIFY_API_KEY` - Line type verification
+- `AWS_REGION` - AWS region (default: us-east-1)
+- `AWS_PROFILE` - AWS profile for CLI operations
+
+## License
+
+Proprietary - All rights reserved
+
+## Release Process
+
+This library uses semantic versioning and publishes to:
+- TestPyPI on dev branch pushes (pre-release versions)
+- PyPI on main branch pushes (stable releases)
