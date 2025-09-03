@@ -1,0 +1,47 @@
+version: '3.3'
+
+services:
+  app: &app
+    build: .
+    tty: true
+    stdin_open: true
+    env_file:
+      - docker-compose.env
+      - docker-compose.local.env
+    depends_on:
+      db:
+        condition: service_healthy
+
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    command: >
+      bash -c "python manage.py runserver 0.0.0.0:8000"
+
+  migrate:
+    <<: *app
+    command: >
+      bash -c
+      "python manage.py migrate &&
+      python manage.py loaddata fixtures/*"
+    ports: []
+    depends_on:
+      - app
+
+  db:
+    image: postgis/postgis:14-3.1-alpine
+    environment:
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=db
+      - POSTGRES_INITDB_ARGS=--auth-host=md5
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+     - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
