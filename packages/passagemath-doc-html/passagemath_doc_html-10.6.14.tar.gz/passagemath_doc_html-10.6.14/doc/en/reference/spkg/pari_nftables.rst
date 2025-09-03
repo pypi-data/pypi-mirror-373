@@ -1,0 +1,77 @@
+.. _spkg_pari_nftables:
+
+pari_nftables: PARI data package for number fields
+==================================================
+
+Description
+-----------
+
+Repackaging of the historical megrez number field tables (errors fixed,
+1/10th the size, easier to use).
+
+License
+-------
+
+GNU General Public License (GPL version 2 or any later version).
+
+
+Upstream Contact
+----------------
+
+http://pari.math.u-bordeaux.fr/
+
+Dependencies
+------------
+
+-  Installation: None
+-  Runtime: PARI/GP
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    20080929
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install pari-nftables
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/pari_nftables
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install pari-nftables
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install pari-nftables
+
+# See https://repology.org/project/pari-nftables/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

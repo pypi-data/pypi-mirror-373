@@ -1,0 +1,100 @@
+.. _spkg_nbconvert:
+
+nbconvert: Converting Jupyter Notebooks
+=======================================
+
+Description
+-----------
+
+jupyter nbconvert converts notebooks to various other formats via Jinja
+templates.
+
+License
+-------
+
+BSD
+
+Upstream Contact
+----------------
+
+https://pypi.org/project/nbconvert/
+
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+- :ref:`spkg_beautifulsoup4`
+- :ref:`spkg_bleach`
+- :ref:`spkg_defusedxml`
+- :ref:`spkg_entrypoints`
+- :ref:`spkg_jinja2`
+- :ref:`spkg_jupyter_client`
+- :ref:`spkg_jupyter_core`
+- :ref:`spkg_jupyterlab_pygments`
+- :ref:`spkg_markupsafe`
+- :ref:`spkg_mistune`
+- :ref:`spkg_nbclient`
+- :ref:`spkg_nbformat`
+- :ref:`spkg_pandocfilters`
+- :ref:`spkg_pip`
+- :ref:`spkg_pygments`
+- :ref:`spkg_tinycss2`
+- :ref:`spkg_traitlets`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    7.9.2
+
+version_requirements.txt::
+
+    nbconvert >=5.6.1
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install nbconvert
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python3-nbconvert
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-python/nbconvert
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install jupyter-nbconvert
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install python3-jupyter_nbconvert
+
+# See https://repology.org/project/nbconvert/versions, https://repology.org/project/python:nbconvert/versions, https://repology.org/project/jupyter-nbconvert/versions, https://repology.org/project/python:jupyter-nbconvert/versions
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

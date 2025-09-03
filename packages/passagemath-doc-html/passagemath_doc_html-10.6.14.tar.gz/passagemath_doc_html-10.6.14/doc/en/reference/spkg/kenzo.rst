@@ -1,0 +1,53 @@
+.. _spkg_kenzo:
+
+kenzo: Construct topological spaces and compute homology groups
+===============================================================
+
+Description
+-----------
+
+Kenzo is a package to compute properties (mainly homology groups) of
+topological spaces. It allows defining spaces created from others by
+constuctions like loop spaces, classifying spaces and so on.
+
+License
+-------
+
+GPL
+
+
+Upstream Contact
+----------------
+
+-  https://github.com/gheber/kenzo
+
+-  https://github.com/miguelmarco/kenzo/
+
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- :ref:`spkg_ecl`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    1.1.10
+
+Equivalent System Packages
+--------------------------
+
+# See https://repology.org/project/kenzo/versions
+
+However, these system packages will not be used for building Sage
+because ``spkg-configure.m4`` has not been written for this package;
+see :issue:`27330` for more information.

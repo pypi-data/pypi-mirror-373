@@ -1,0 +1,111 @@
+.. _spkg_cbc:
+
+cbc: COIN-OR branch and cut solver for mixed-integer programs
+=============================================================
+
+Description
+-----------
+
+The Computational Infrastructure for Operations Research (COIN-OR**, or
+simply COIN) project is an initiative to spur the development of
+open-source software for the operations research community.
+
+The COIN Branch and Cut solver (CBC) is an open-source mixed-integer
+program (MIP) solver written in C++. CBC is intended to be used
+primarily as a callable library to create customized branch-and-cut
+solvers. A basic, stand-alone executable version is also available.
+
+License
+-------
+
+Eclipse Public License, Version 1.0 (EPL-1.0)
+(http://opensource.org/licenses/eclipse-1.0)
+
+
+Upstream Contact
+----------------
+
+-  https://github.com/coin-or/Cbc
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- $(BLAS)
+- :ref:`spkg_bzip2`
+- :ref:`spkg_readline`
+- :ref:`spkg_zlib`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    2.9.4.p0
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S coin-or-cbc
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install coincbc
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install coinor-cbc coinor-libcbc-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install coin-or-Cbc coin-or-Cbc-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/cbc
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge sci-libs/coinor-cbc
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install cbc
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr cbc
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install CoinMP-devel
+
+# See https://repology.org/project/coin-or-cbc/versions, https://repology.org/project/cbc/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

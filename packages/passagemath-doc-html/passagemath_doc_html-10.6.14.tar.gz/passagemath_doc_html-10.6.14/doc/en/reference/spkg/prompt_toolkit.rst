@@ -1,0 +1,99 @@
+.. _spkg_prompt_toolkit:
+
+prompt_toolkit: Interactive command lines for Python
+====================================================
+
+Description
+-----------
+
+Library for building powerful interactive command lines in Python
+
+https://pypi.python.org/pypi/prompt_toolkit
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+- :ref:`spkg_six`
+- :ref:`spkg_wcwidth`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    3.0.51
+
+version_requirements.txt::
+
+    prompt_toolkit >=3.0.43
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S python-importlib_resources
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install prompt_toolkit\>=3.0.38
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install importlib-resources
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python3-prompt-toolkit
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install devel/py-importlib-resources
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-python/prompt_toolkit
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install py-prompt_toolkit
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install python3\$\{PYTHON_MINOR\}-importlib_resources
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install python3-prompt_toolkit
+
+# See https://repology.org/project/python:prompt-toolkit/versions
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

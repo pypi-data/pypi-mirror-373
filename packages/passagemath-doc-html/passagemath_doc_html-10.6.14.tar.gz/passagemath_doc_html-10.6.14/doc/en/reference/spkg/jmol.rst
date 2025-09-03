@@ -1,0 +1,116 @@
+.. _spkg_jmol:
+
+jmol: Java viewer for chemical structures in 3D
+===============================================
+
+Description
+-----------
+
+Java viewer for chemical structures in 3D.
+
+This provides files necessary for Jmol (java).
+
+This package does not install JSmol (javascript), which upstream bundles with Jmol.
+
+
+License
+-------
+
+GPLv2+
+
+
+Upstream Contact
+----------------
+
+-  http://jmol.sourceforge.net
+-  Bob Hanson
+-  e-mail: hansonr@stolaf.edu
+-  Homepage: https://www.stolaf.edu/people/hansonr/
+-  Development page: https://github.com/BobHanson/Jmol-SwingJS
+-  Download page: https://sourceforge.net/projects/jmol/files/Jmol/
+
+Dependencies
+------------
+
+No build-time dependencies.
+
+The commandline jmol requires java at runtime.
+
+
+Special Build Instructions
+--------------------------
+
+To avoid depending on ``unzip`` at build time, we have to repack the
+tarball, see ``spkg-src``. We take the opportunity to remove some
+unnecessary subdirectories, see
+http://wiki.jmol.org/index.php/Jmol_JavaScript_Object#In_detail
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    14.29.52
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S jmol
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install jmol
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install jmol
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install jmol
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr jmol
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install jmol
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install jmol
+
+# See https://repology.org/project/jmol/versions
+
+However, these system packages will not be used for building Sage
+because ``spkg-configure.m4`` has not been written for this package;
+see :issue:`27330` for more information.

@@ -1,0 +1,101 @@
+.. _spkg_gf2x:
+
+gf2x: Fast arithmetic in GF(2)[x] and searching for irreducible/primitive trinomials
+====================================================================================
+
+Description
+-----------
+
+gf2x is a C/C++ software package containing routines for fast arithmetic
+in GF(2)[x] (multiplication, squaring, GCD) and searching for
+irreducible/primitive trinomials.
+
+Website: https://gitlab.inria.fr/gf2x/gf2x
+
+License
+-------
+
+-  GNU GPLv2+.
+
+
+Upstream Contact
+----------------
+
+-  Richard Brent
+-  Pierrick Gaudry
+-  Emmanuel Thomé
+-  Paul Zimmermann
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    1.3.0
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Alpine:
+
+   .. CODE-BLOCK:: bash
+
+       $ apk add gf2x-dev
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S gf2x
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install gf2x
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install libgf2x-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install gf2x gf2x-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/gf2x
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install pkgconfig\(gf2x\)
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install gf2x-devel
+
+# See https://repology.org/project/gf2x/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

@@ -1,0 +1,138 @@
+.. _spkg_libgd:
+
+libgd: Dynamic graphics generation tool
+=======================================
+
+Description
+-----------
+
+GD is an open source code library for the dynamic creation of images by
+programmers. GD is written in C, and "wrappers" are available for Perl,
+PHP and other languages. GD creates PNG, JPEG, GIF, WebP, XPM, BMP
+images, among other formats. GD is commonly used to generate charts,
+graphics, thumbnails, and most anything else, on the fly. While not
+restricted to use on the web, the most common applications of GD involve
+website development.
+
+License
+-------
+
+-  Custom (BSD-ish)
+
+
+Upstream Contact
+----------------
+
+-  https://libgd.github.io
+-  Pierre Joye (http://blog.thepimp.net)
+-  https://github.com/libgd/libgd
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- :ref:`spkg_libpng`
+- :ref:`spkg_xz`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    2.3.3
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Alpine:
+
+   .. CODE-BLOCK:: bash
+
+       $ apk add gd-dev
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S gd
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install libgd expat
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install libgd-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install gd gd-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install graphics/gd
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge media-libs/gd
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install gd
+
+.. tab:: MacPorts:
+
+   No package needed.
+
+.. tab:: mingw-w64:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S \$\{MINGW_PACKAGE_PREFIX\}-libgd
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr gd
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install gd pkgconfig\(gdlib\)
+
+.. tab:: Slackware:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo slackpkg install gd fontconfig libXpm libX11 libxcb libXau \
+             libXdmcp
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install gd-devel
+
+# See https://repology.org/project/gd/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

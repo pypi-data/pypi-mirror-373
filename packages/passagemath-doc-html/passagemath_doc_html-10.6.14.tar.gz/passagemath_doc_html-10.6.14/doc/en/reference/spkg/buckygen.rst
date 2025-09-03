@@ -1,0 +1,66 @@
+.. _spkg_buckygen:
+
+buckygen: Efficient generation of nonisomorphic fullerenes
+==========================================================
+
+Description
+-----------
+
+Buckygen is a program for the efficient generation of all nonisomorphic
+fullerenes. These are triangulations where all vertices have degree 5 or
+6. Or if the dual representation is used: cubic plane graphs where all
+faces are pentagons or hexagons.
+
+License
+-------
+
+Buckygen is licensed under the GNU General Public License v3 (June 2007)
+
+
+Upstream Contact
+----------------
+
+Buckygen was mainly written by Jan Goedgebeur,
+jan.goedgebeur[at]ugent.be.
+
+http://caagt.ugent.be/buckygen/
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    1.1
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S buckygen
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install buckygen
+
+# See https://repology.org/project/buckygen/versions
+
+However, these system packages will not be used for building Sage
+because ``spkg-configure.m4`` has not been written for this package;
+see :issue:`27330` for more information.

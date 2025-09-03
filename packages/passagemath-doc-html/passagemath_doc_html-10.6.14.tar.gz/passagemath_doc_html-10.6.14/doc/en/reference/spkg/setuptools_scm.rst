@@ -1,0 +1,110 @@
+.. _spkg_setuptools_scm:
+
+setuptools_scm: Python build system extension to obtain package version from version control
+============================================================================================
+
+Description
+-----------
+
+the blessed package to manage your versions by scm tags
+
+License
+-------
+
+MIT
+
+Upstream Contact
+----------------
+
+https://pypi.org/project/setuptools-scm/
+
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- :ref:`spkg_packaging`
+- :ref:`spkg_pip`
+- :ref:`spkg_setuptools`
+- :ref:`spkg_tomli`
+- :ref:`spkg_typing_extensions`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    8.2.0
+
+version_requirements.txt::
+
+    setuptools_scm >=7
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S python-setuptools-scm
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install setuptools_scm
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install python3-setuptools-scm
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python3-setuptools_scm
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install devel/py-setuptools_scm
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-python/setuptools-scm
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install py-setuptools_scm
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install python3\$\{PYTHON_MINOR\}-setuptools_scm
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install python3-setuptools_scm
+
+# See https://repology.org/project/python:setuptools-scm/versions
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

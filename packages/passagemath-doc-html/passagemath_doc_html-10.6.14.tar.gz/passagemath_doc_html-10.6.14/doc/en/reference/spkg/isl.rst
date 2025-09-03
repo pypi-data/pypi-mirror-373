@@ -1,0 +1,124 @@
+.. _spkg_isl:
+
+isl: Sets and relations of integer points bounded by affine constraints
+=======================================================================
+
+Description
+-----------
+
+isl is a thread-safe C library for manipulating sets and relations of
+integer points bounded by affine constraints. The descriptions of the
+sets and relations may involve both parameters and existentially
+quantified variables. All computations are performed in exact integer
+arithmetic using GMP.
+
+License
+-------
+
+isl is released under the MIT license, but depends on the LGPL GMP
+library.
+
+
+Upstream Contact
+----------------
+
+-  http://groups.google.com/group/isl-development
+
+Citation
+--------
+
+::
+
+  @incollection{Verdoolaege2010isl,
+     author = {Verdoolaege, Sven},
+     title = {isl: An Integer Set Library for the Polyhedral Model},
+     booktitle = {Mathematical Software - ICMS 2010},
+     series = {Lecture Notes in Computer Science},
+     editor = {Fukuda, Komei and Hoeven, Joris and Joswig, Michael and
+     Takayama, Nobuki},
+     publisher = {Springer},
+     isbn = {978-3-642-15581-9},
+     pages = {299-302},
+     volume = {6327},
+     year = {2010}
+  }
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- $(MP_LIBRARY)
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    0.20
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install isl
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install libisl-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install isl isl-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install devel/isl
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-libs/isl
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install isl
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install isl
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install pkgconfig\(isl\)
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install isl-devel
+
+# See https://repology.org/project/isl/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

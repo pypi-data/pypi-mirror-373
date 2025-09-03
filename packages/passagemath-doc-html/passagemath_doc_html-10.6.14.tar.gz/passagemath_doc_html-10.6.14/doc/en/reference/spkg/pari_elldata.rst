@@ -1,0 +1,83 @@
+.. _spkg_pari_elldata:
+
+pari_elldata: PARI data package for elliptic curves
+===================================================
+
+Description
+-----------
+
+PARI/GP version of J. E. Cremona Elliptic Curve Data, needed by
+ellsearch and ellidentify.
+
+License
+-------
+
+GNU General Public License (GPL version 2 or any later version).
+
+
+Upstream Contact
+----------------
+
+http://pari.math.u-bordeaux.fr/
+
+Dependencies
+------------
+
+-  Installation: None
+-  Runtime: PARI/GP
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    20210301
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S pari-elldata
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install pari-elldata
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/pari_elldata
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install pari-elldata
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install pari-elldata-small
+
+# See https://repology.org/project/pari-elldata/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

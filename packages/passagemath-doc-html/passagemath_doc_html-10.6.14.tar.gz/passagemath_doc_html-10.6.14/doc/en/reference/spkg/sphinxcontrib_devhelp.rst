@@ -1,0 +1,94 @@
+.. _spkg_sphinxcontrib_devhelp:
+
+sphinxcontrib_devhelp: Sphinx extension which outputs Devhelp documents
+=======================================================================
+
+Description
+-----------
+
+Sphinx extension which outputs Devhelp documents
+
+License
+-------
+
+BSD
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- :ref:`spkg_pip`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    2.0.0
+
+version_requirements.txt::
+
+    sphinxcontrib_devhelp >=1.0.2
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S python-sphinxcontrib-devhelp
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install sphinxcontrib-devhelp
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python3-sphinxcontrib-devhelp
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install textproc/py-sphinxcontrib-devhelp
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-python/sphinxcontrib-devhelp
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install py-sphinxcontrib-devhelp
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install python3\$\{PYTHON_MINOR\}-sphinxcontrib-devhelp
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install python3-sphinxcontrib-devhelp
+
+# See https://repology.org/project/python:sphinxcontrib-devhelp/versions
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

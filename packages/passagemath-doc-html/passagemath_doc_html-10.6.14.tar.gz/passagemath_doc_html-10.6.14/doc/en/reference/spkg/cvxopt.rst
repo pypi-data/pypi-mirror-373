@@ -1,0 +1,117 @@
+.. _spkg_cvxopt:
+
+cvxopt: Python software for convex optimization
+===============================================
+
+Description
+-----------
+
+CVXOPT is a free software package for convex optimization based on the
+Python programming language. It can be used with the interactive Python
+interpreter, on the command line by executing Python scripts, or
+integrated in other software via Python extension modules. Its main
+purpose is to make the development of software for convex optimization
+applications straightforward by building on Python's extensive standard
+library and on the strengths of Python as a high-level programming
+language.
+
+
+Upstream Contact
+----------------
+
+-  J. Dahl <dahl.joachim@gmail.com>
+-  L. Vandenberghe <vandenbe@ee.ucla.edu>
+
+https://cvxopt.org/
+
+License
+-------
+
+GPLv3 or later. Includes parts under GPLv2, GNU Lesser General Public
+License, v2.1. See src/LICENSE for more details. (Sage-compatible)
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(BLAS)
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+- :ref:`spkg_glpk`
+- :ref:`spkg_gsl`
+- :ref:`spkg_numpy`
+- :ref:`spkg_pkgconfig`
+- :ref:`spkg_suitesparse`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    1.3.2
+
+version_requirements.txt::
+
+    cvxopt >=1.2.5
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S python-cvxopt
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install cvxopt
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install python3-cvxopt
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python3-cvxopt
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/py-cvxopt
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-python/cvxopt
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install py-cvxopt
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install python3\$\{PYTHON_MINOR\}-cvxopt
+
+# See https://repology.org/project/python:cvxopt/versions
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

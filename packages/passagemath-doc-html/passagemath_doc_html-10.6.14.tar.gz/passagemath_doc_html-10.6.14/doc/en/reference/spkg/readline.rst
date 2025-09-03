@@ -1,0 +1,142 @@
+.. _spkg_readline:
+
+readline: Command line editing library
+======================================
+
+Description
+-----------
+
+The GNU Readline library provides a set of functions for use by
+applications that allow users to edit command lines as they are typed
+in. Both Emacs and vi editing modes are available. The Readline library
+includes additional functions to maintain a list of previously-entered
+command lines, to recall and perhaps reedit those lines, and perform
+csh-like history expansion on previous commands.
+
+Website: http://tiswww.case.edu/php/chet/readline/rltop.html
+
+License
+-------
+
+-  GPL V3+
+
+
+Upstream Contact
+----------------
+
+-  Chet Ramey at http://cnswww.cns.cwru.edu/~chet
+
+Special Update/Build Instructions
+---------------------------------
+
+We build readline using ncurses. Readline needs to be told to link with
+libtinfo (part of ncurses), this is what the patch 0002-ltinfo.patch
+does.
+
+Patches
+-------
+
+-  0001-macports.patch: Changes to shobj.conf for OS/X, from macports:
+
+   https://trac.macports.org/browser/trunk/dports/devel/readline/files/patch-shobj-conf.diff
+
+-  0002-ltinfo.patch: We build readline using ncurses, and for that it
+   needs to be told to link with libtinfo (part of ncurses).
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- :ref:`spkg_ncurses`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    8.2.p13
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S readline
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install readline
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install libreadline-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install readline-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install devel/readline
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install readline
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install readline
+
+.. tab:: mingw-w64:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S \$\{MINGW_PACKAGE_PREFIX\}-readline
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr readline
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install readline-devel pkgconfig\(readline\)
+
+.. tab:: Slackware:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo slackpkg install readline
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install readline-devel
+
+# See https://repology.org/project/readline/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

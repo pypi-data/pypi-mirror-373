@@ -1,0 +1,99 @@
+.. _spkg_symengine:
+
+symengine: A C++ symbolic manipulation library
+==============================================
+
+Description
+-----------
+
+SymEngine is a standalone fast C++ symbolic manipulation library.
+
+License
+-------
+
+BSD 3-clause
+
+Upstream Contact
+----------------
+
+https://github.com/symengine/symengine
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- $(MP_LIBRARY)
+- :ref:`spkg_cmake`
+- :ref:`spkg_ecm`
+- :ref:`spkg_flint`
+- :ref:`spkg_mpc`
+- :ref:`spkg_mpfr`
+- :ref:`spkg_ninja_build`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    0.11.2
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S symengine
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install symengine
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/symengine
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge sci-libs/symengine
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install symengine
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install symengine
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr symengine
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install symengine
+
+# See https://repology.org/project/symengine/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

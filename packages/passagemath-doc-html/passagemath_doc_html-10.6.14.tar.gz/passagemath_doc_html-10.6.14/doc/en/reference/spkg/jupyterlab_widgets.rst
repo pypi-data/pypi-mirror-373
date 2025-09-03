@@ -1,0 +1,76 @@
+.. _spkg_jupyterlab_widgets:
+
+jupyterlab_widgets: Jupyter interactive widgets for JupyterLab
+==============================================================
+
+Description
+-----------
+
+Jupyter interactive widgets for JupyterLab
+
+License
+-------
+
+BSD-3-Clause
+
+Upstream Contact
+----------------
+
+https://pypi.org/project/jupyterlab-widgets/
+
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- :ref:`spkg_pip`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    3.0.15
+
+version_requirements.txt::
+
+    jupyterlab-widgets
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S jupyterlab-widgets
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install devel/py-jupyterlab-widgets
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install py-jupyterlab_widgets
+
+.. tab:: openSUSE:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo zypper install python3\$\{PYTHON_MINOR\}-jupyterlab-widgets
+
+# See https://repology.org/project/jupyterlab-widgets/versions
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

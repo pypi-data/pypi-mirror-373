@@ -1,0 +1,95 @@
+.. _spkg_pybind11:
+
+pybind11: Create Python bindings to C++ code
+============================================
+
+Description
+-----------
+
+**pybind11** is a lightweight header-only library that exposes C++ types in Python
+and vice versa, mainly to create Python bindings of existing C++ code. Its
+goals and syntax are similar to the excellent
+[Boost.Python](http://www.boost.org/doc/libs/1_58_0/libs/python/doc/) library
+by David Abrahams: to minimize boilerplate code in traditional extension
+modules by inferring type information using compile-time introspection.
+
+License
+-------
+
+pybind11 is provided under a BSD-style license that can be found in the
+``LICENSE`` file. By using, distributing, or contributing to this project,
+you agree to the terms and conditions of this license.
+
+
+Upstream Contact
+----------------
+
+https://github.com/pybind/pybind11
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- :ref:`spkg_pip`
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    2.13.6
+
+version_requirements.txt::
+
+    pybind11>=2.13.2,<2.14.0
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install pybind11
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install python3-pybind11
+
+.. tab:: Gentoo Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo emerge dev-python/pybind11
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install pybind11
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install py-pybind11
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install python3-pybind11
+
+# See https://repology.org/project/python:pybind11/versions
+
+If the system package is installed and if the (experimental) option
+``--enable-system-site-packages`` is passed to ``./configure``, then ``./configure`` will check if the system package can be used.

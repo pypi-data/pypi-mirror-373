@@ -1,0 +1,90 @@
+.. _spkg_rw:
+
+rw: Compute rank-width and rank-decompositions
+==============================================
+
+Description
+-----------
+
+rw is a program that calculates rank-width and rank-decompositions.
+
+https://sourceforge.net/projects/rankwidth/
+
+License
+-------
+
+GPL version 2 or later
+
+
+Upstream Contact
+----------------
+
+Philipp Klaus Krause (philipp@informatik.uni-frankfurt.de)
+
+
+Type
+----
+
+standard
+
+
+Dependencies
+------------
+
+
+
+Version Information
+-------------------
+
+package-version.txt::
+
+    0.9
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Arch Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pacman -S rankwidth
+
+.. tab:: conda-forge:
+
+   .. CODE-BLOCK:: bash
+
+       $ conda install rw
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install librw-dev
+
+.. tab:: Fedora/Redhat/CentOS:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo dnf install rw-devel
+
+.. tab:: FreeBSD:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo pkg install math/rankwidth
+
+.. tab:: Nixpkgs:
+
+   .. CODE-BLOCK:: bash
+
+       $ nix-env -f \'\<nixpkgs\>\' --install --attr rankwidth
+
+.. tab:: Void Linux:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo xbps-install rankwidth-devel
+
+# See https://repology.org/project/rankwidth/versions
+
+If the system package is installed, ``./configure`` will check if it can be used.

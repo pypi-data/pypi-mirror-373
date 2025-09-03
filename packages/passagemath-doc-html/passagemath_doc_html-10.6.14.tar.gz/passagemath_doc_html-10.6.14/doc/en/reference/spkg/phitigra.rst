@@ -1,0 +1,46 @@
+.. _spkg_phitigra:
+
+phitigra: Graph editor for SageMath/Jupyter
+===========================================
+
+Description
+-----------
+
+Graph editor for SageMath/Jupyter
+
+License
+-------
+
+Upstream Contact
+----------------
+
+https://pypi.org/project/phitigra/
+
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- $(PYTHON)
+- $(PYTHON_TOOLCHAIN)
+- :ref:`spkg_ipywidgets`
+- :ref:`spkg_numpy`
+- :ref:`spkg_pillow`
+
+Version Information
+-------------------
+
+requirements.txt::
+
+    phitigra>=0.2.6
+
+Equivalent System Packages
+--------------------------
+
+(none known)

@@ -1,0 +1,59 @@
+.. _spkg__recommended:
+
+\_recommended: Represents system packages recommended for additional functionality
+==================================================================================
+
+Description
+-----------
+
+Script package representing a list of system packages recommended to be
+installed for additional functionality.
+
+
+Type
+----
+
+optional
+
+
+Dependencies
+------------
+
+- :ref:`spkg_ffmpeg`
+- :ref:`spkg_free_fonts`
+- :ref:`spkg_git`
+- :ref:`spkg_imagemagick`
+- :ref:`spkg_libjpeg`
+- :ref:`spkg_pandoc`
+- :ref:`spkg_texlive`
+- :ref:`spkg_texlive_luatex`
+- :ref:`spkg_xindy`
+
+Version Information
+-------------------
+
+
+
+Equivalent System Packages
+--------------------------
+
+.. tab:: Debian/Ubuntu:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo apt-get install default-jdk libavdevice-dev
+
+.. tab:: Homebrew:
+
+   .. CODE-BLOCK:: bash
+
+       $ brew install texinfo
+
+.. tab:: MacPorts:
+
+   .. CODE-BLOCK:: bash
+
+       $ sudo port install texinfo
+
+
+If the system package is installed, ``./configure`` will check if it can be used.
