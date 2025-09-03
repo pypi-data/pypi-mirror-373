@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+
+# Copyright (c) 2025 Touchlab Limited. All Rights Reserved
+# Unauthorized copying or modifications of this file, via any medium is strictly prohibited.
+
+import argparse
+from github import Github
+import os
+import subprocess
+
+def main():
+  parser = argparse.ArgumentParser(description="Update the version of library binaries.")
+  parser.add_argument("tag", type=str, help="The tag to update the library binaries to.")
+  parser.add_argument("--token", type=str, help="The GitHub token to use for authentication.")
+  args = parser.parse_args()
+  tag = args.tag
+  rawtoken = args.token
+  if rawtoken is None:
+    rawtoken = os.getenv('GITHUB_TOKEN')
+  if rawtoken is None:
+    print("No token provided. Please provide a token via --token or set the GITHUB_TOKEN environment variable.")
+    return
+  g = Github(rawtoken)
+  repo_name = "touchlab-avatarx/touchlab_comm"
+  repo = g.get_repo(repo_name)
+  release = repo.get_release(tag)
+  if release is None:
+    print(f"Release with tag {tag} not found.")
+    return
+  assets = release.get_assets()
+  if not os.path.exists('tmp'):
+    os.mkdir('tmp')
+  os.chdir('tmp')
+  for asset in assets:
+    if asset.name == 'touchlab_comm.zip' or asset.name == 'touchlab_comm.tar.gz':
+      print(f"Downloading {asset.name}...")
+      asset.download_asset(asset.name)
+      print(f"Downloaded {asset.name}.")
+      print(f"Unzipping {asset.name}...")
+      if asset.name.endswith('.zip'):
+        subprocess.run(['unzip', '-o', '-q', asset.name])
+      elif asset.name.endswith('.tar.gz'):
+        subprocess.run(['tar', '-xzf', asset.name])
+      else:
+        print(f"Unknown file type for {asset.name}.")
+    else:
+      print(f"Skipping {asset.name}")
+
+  print(f"Copying binaries...")
+  if not os.path.exists('../lib'):
+    os.mkdir('../lib')
+  subprocess.run('cp -r include ../', shell=True)
+  subprocess.run('cp lib/*.a lib/*.lib ../lib/', shell=True)
+
+  os.chdir('..')
+  subprocess.run(['rm', '-rf', 'tmp'])
+
+
+if __name__ == "__main__":
+  main()
+

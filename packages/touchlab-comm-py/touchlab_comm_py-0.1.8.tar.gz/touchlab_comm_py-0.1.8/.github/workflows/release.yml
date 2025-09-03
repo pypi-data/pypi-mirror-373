@@ -1,0 +1,144 @@
+name: Build and Release tag Linux
+
+on:
+  # pull_request:
+  push:
+    tags:
+    - '*'
+
+jobs:
+  build_sdist:
+    name: Build SDist
+    runs-on: [ ubuntu-latest ]
+    steps:
+    - uses: actions/checkout@v4
+    - name: Checkout submodules
+      run: |
+        git submodule update --init --recursive
+
+    - name: Build SDist
+      run: pip install build && rm -rf dist/ && python -m build --sdist
+
+    - name: Check metadata
+      run: pipx run twine check dist/*
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: cibw-sdist
+        path: dist/*.tar.gz
+  build_wheels:
+    name: Build wheel for cp${{ matrix.python }}-${{ matrix.platform_id }}-${{ matrix.manylinux_image }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Ensure that a wheel builder finishes even if another fails
+      fail-fast: false
+      matrix:
+        include:
+        # Window 64 bit
+        - os: [ windows-latest ]
+          python: 38
+          platform_id: win_amd64
+        - os: [ windows-latest ]
+          python: 39
+          platform_id: win_amd64
+        - os: [ windows-latest ]
+          python: 310
+          platform_id: win_amd64
+        - os: [ windows-latest ]
+          python: 311
+          platform_id: win_amd64
+        - os: [ windows-latest ]
+          python: 312
+          platform_id: win_amd64
+        - os: [ windows-latest ]
+          python: 313
+          platform_id: win_amd64
+
+        # Linux 64 bit manylinux_2_28
+        - os: [ ubuntu-latest ]
+          python: 38
+          platform_id: manylinux_x86_64
+          manylinux_image: manylinux_2_28
+        - os: [ ubuntu-latest ]
+          python: 39
+          platform_id: manylinux_x86_64
+          manylinux_image: manylinux_2_28
+        - os: [ ubuntu-latest ]
+          python: 310
+          platform_id: manylinux_x86_64
+          manylinux_image: manylinux_2_28
+        - os: [ ubuntu-latest ]
+          python: 311
+          platform_id: manylinux_x86_64
+          manylinux_image: manylinux_2_28
+        - os: [ ubuntu-latest ]
+          python: 312
+          platform_id: manylinux_x86_64
+          manylinux_image: manylinux_2_28
+        - os: [ ubuntu-latest ]
+          python: 313
+          platform_id: manylinux_x86_64
+          manylinux_image: manylinux_2_28
+    steps:
+    - uses: actions/checkout@v4
+    - name: Checkout submodules
+      run: |
+        git submodule update --init --recursive
+          # Used to host cibuildwheel
+    - uses: astral-sh/setup-uv@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Install cibuildwheel
+      run: python -m pip install cibuildwheel==2.23.2
+
+    - name: Build wheels
+      run: python -m cibuildwheel --output-dir wheelhouse
+      env:
+        CIBW_BUILD: cp${{ matrix.python }}-${{ matrix.platform_id }}
+        CIBW_ARCHS: auto64
+        CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.manylinux_image }}
+    - name: Store artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: cibw-wheels-cp${{ matrix.python }}-${{ matrix.platform_id }}
+        path: wheelhouse/*.whl
+        overwrite: true
+  create_release:
+    name: Create a GitHub release
+    needs: [ build_wheels, build_sdist ]
+    runs-on: [ ubuntu-latest ]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Create relese
+      uses: ncipollo/release-action@v1
+      with:
+        allowUpdates: true
+        bodyFile: "README.md"
+  upload_all:
+    name: Upload if release
+    needs: [ create_release ]
+    runs-on: [ ubuntu-latest ]
+    # if: github.event_name == 'release' && github.event.action == 'published'
+    environment:
+      name: pypi
+      url: https://pypi.org/p/touchlab_comm_py
+    permissions:
+      id-token: write
+      attestations: write
+
+    steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.x"
+
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: cibw-*
+        merge-multiple: true
+        path: dist
+    - name: Publish package distributions to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        attestations: false
