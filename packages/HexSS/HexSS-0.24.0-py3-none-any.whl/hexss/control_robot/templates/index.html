@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en" data-color-mode="auto" data-light-theme="light">
+<head>
+    {% include 'head_import.html' %}
+    <title>Robot Control Panel</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        .slave-control {
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+{% include 'header.html' %}
+<main class="page">
+    <div class="theme-default-content content__default">
+        <h2 id="jog-control-heading">Slave Control</h2>
+        <div class="container">
+            <section aria-labelledby="jog-control-heading">
+                <div id="slave-controls"></div>
+            </section>
+        </div>
+
+        <h2 id="other-controls-heading">All Controls</h2>
+        <div class="container">
+            <section aria-labelledby="other-controls-heading">
+                <div>
+                    <button id="servo-on">Servo ON</button>
+                    <button id="servo-off">Servo OFF</button>
+                </div>
+                <div>
+                    <button id="pause-on">Pause ON</button>
+                    <button id="pause-off">Pause OFF</button>
+                </div>
+                <div>
+                    <button id="alarm-reset">Alarm Reset</button>
+                    <button id="home">Home</button>
+                </div>
+            </section>
+        </div>
+
+        <h2 id="move-to-heading">Move To</h2>
+        <div class="container">
+            <section aria-labelledby="move-to-heading">
+                <div>
+                    <input type="number" id="move-to-row" placeholder="Row" aria-label="Row number">
+                    <button id="move-to">Move To</button>
+                </div>
+            </section>
+        </div>
+
+        <h2 id="status-heading">Status</h2>
+        <div class="container">
+            <section aria-labelledby="status-heading">
+                <pre id="status" aria-live="polite"></pre>
+                <pre id="error_status" aria-live="polite"></pre>
+            </section>
+        </div>
+    </div>
+</main>
+<script>
+    $(document).ready(function () {
+        initJogControls();
+        bindEventHandlers();
+        initPositionSocket();
+    });
+
+    function initJogControls() {
+        const jogControlsHtml = ['01', '02', '03', '04'].map(slaveId => `
+        <div class="slave-control">
+            <label>Slave ${slaveId}:</label>
+            <span id="position${slaveId}">??? mm</span>
+            <div>
+                <button class="jog-btn" data-slave="${slaveId}" data-direction="+">Jog +</button>
+                <button class="jog-btn" data-slave="${slaveId}" data-direction="-">Jog -</button>
+                <button class="home-btn" data-slave="${slaveId}">Home</button>
+            </div>
+        </div>
+    `).join('');
+        $('#slave-controls').html(jogControlsHtml);
+    }
+
+    function bindEventHandlers() {
+        $(document).on('mousedown mouseup mouseleave', '.jog-btn', function (event) {
+            const slave = parseInt($(this).data('slave'));
+            const direction = $(this).data('direction');
+            if (event.type === 'mousedown')
+                jog(slave, direction,);
+            else {
+                jog(slave, '0');
+            }
+        });
+        $(document).on('mouseup', '.home-btn', function () {
+            const slave = parseInt($(this).data('slave'));
+            home(slave);
+        });
+
+        $('#servo-on').click(() => servo([1, 2, 3, 4], true));
+        $('#servo-off').click(() => servo([1, 2, 3, 4], false));
+        $('#pause-on').click(() => pause([1, 2, 3, 4], true));
+        $('#pause-off').click(() => pause([1, 2, 3, 4], false));
+        $('#alarm-reset').click(() => alarmReset([1, 2, 3, 4]));
+        $('#home').click(() => home([1, 2, 3, 4]));
+        $('#move-to').click(() => moveTo([1, 2, 3, 4]));
+    }
+
+    function initPositionSocket() {
+        const eventSource = new EventSource('/socket/current_position');
+        eventSource.onmessage = function (event) {
+            const positions = JSON.parse(event.data);
+            for (let slave in positions) {
+                $(`#position${slave}`).text(`${positions[slave] / 100} mm`);
+            }
+        };
+        eventSource.onerror = function (error) {
+            console.error('EventSource failed:', error);
+            $('#error_status').text(`Error in position update: ${error.message}`);
+        };
+    }
+
+    function apiCall(endpoint, method, data) {
+        return $.ajax({
+            url: `/api/${endpoint}`,
+            method: method,
+            contentType: 'application/json',
+            data: JSON.stringify(data)
+        }).then(response => {
+            console.log(`${endpoint}:`, response);
+            $('#status').text(`${endpoint}\nStatus: ${response.status}`);
+            return response;
+        }).catch(error => {
+            console.error(`Error in ${endpoint}:`, error);
+            $('#error_status').text(`Error in ${endpoint}: ${error.statusText}`);
+        });
+    }
+
+    function servo(slave, on) {
+        apiCall('servo', 'POST', {slave, on});
+    }
+
+    function alarmReset(slave) {
+        apiCall('alarm_reset', 'POST',{slave});
+    }
+
+    function pause(slave, pause_) {
+        apiCall('pause', 'POST', {slave, pause:pause_});
+    }
+
+    function home(slave) {
+        apiCall('home', 'POST', {slave});
+    }
+
+    function currentPosition() {
+        apiCall('current_position', 'GET');
+    }
+
+    function jog(slave, direction) {
+        apiCall('jog', 'POST', {slave, direction});
+    }
+
+    function moveTo(slave) {
+        apiCall('move_to', 'POST', {slave, row: parseInt($('#move-to-row').val())});
+    }
+
+
+</script>
+</body>
+</html>
