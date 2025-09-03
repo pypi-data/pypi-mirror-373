@@ -1,0 +1,93 @@
+
+# Articom Skills SDK (Python)
+
+This SDK provides the tools to build, test, and serve custom skills for the Articom Agentic Marketplace Platform. It allows developers to create skills that can be self-hosted and made observable to the Articom server.
+
+## Features
+
+-   **Declarative Syntax:** Use simple Python decorators to define skills and their tools.
+    
+-   **Automatic Schema Generation:** Pydantic models are used for inputs and outputs, which automatically generate the `skill.json` manifest.
+    
+-   **Built-in Security:** Automatic HMAC signature verification for all incoming requests from the Articom server.
+    
+-   **Integrated Web Server:** A simple CLI to run a production-ready web server (FastAPI + Uvicorn).
+    
+
+## Installation
+
+```
+pip install articom-sdk
+```
+
+## Quickstart
+
+**1. Create your skill file (e.g., `main.py`):**
+
+```
+from pydantic import BaseModel
+from articom_sdk import ArticomSkill, Tool
+
+# Define the skill using a decorator
+@ArticomSkill(
+    name="SupportDeskConnector",
+    version="1.0.0",
+    author="My Company",
+    description="A skill to connect to a generic support desk."
+)
+class MySkill:
+
+    # Define the input data model for a tool
+    class CreateTicketInput(BaseModel):
+        customer_email: str
+        subject: str
+        priority: str
+
+    # Define the output data model
+    class CreateTicketOutput(BaseModel):
+        ticket_id: str
+        status: str
+
+    # Define a tool using a decorator
+    @Tool(
+        name="create_customer_ticket",
+        description="Creates a new support ticket for a customer."
+    )
+    def create_ticket(self, data: CreateTicketInput) -> CreateTicketOutput:
+        """
+        This is where your core logic goes.
+        Make an API call to your actual support desk system here.
+        """
+        print(f"Creating ticket for {data.customer_email} with subject '{data.subject}'")
+        new_ticket_id = "TICKET-12345"
+        return self.CreateTicketOutput(ticket_id=new_ticket_id, status="open")
+
+
+```
+
+**2. Create a `.env` file for your signing secret:**
+
+```
+# .env
+ARTICOM_SIGNING_SECRET=your_super_secret_string_from_articom_portal
+```
+
+**3. Run your skill server:**
+
+The SDK provides a command-line tool. You just need to point it to your skill file and the class name.
+
+```
+poetry run articom serve main:MySkill --port 8000
+```
+
+Your skill is now running and ready to be registered with Articom!
+
+**4. Generate the Manifest:**
+
+You can also generate the `skill.json` manifest without running the server. This is useful for CI/CD or validation.
+
+```
+poetry run articom generate-manifest main:MySkill
+```
+
+This will print the JSON manifest to the console.
