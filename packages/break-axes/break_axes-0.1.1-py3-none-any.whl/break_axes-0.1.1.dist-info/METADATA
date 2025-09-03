@@ -1,0 +1,217 @@
+Metadata-Version: 2.4
+Name: break_axes
+Version: 0.1.1
+Summary: Implementing broken axis effect in matplotlib
+Home-page: https://github.com/wuyao1997
+Author: Wu Yao
+Author-email: wuyao@qq.com
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: requires-python
+Dynamic: summary
+
+# break_axes
+
+**This is a test version and lacks English support.**
+
+
+install
+
+```bash
+pip install break_axes
+```
+
+## 基本说明
+
+这是一个用于在matplotlib中实现坐标轴断裂的工具。相比之前的项目
+[mpl_fold_axis](https://github.com/wuyao1997/mpl_fold_axis)，
+此项目不需要使用矩形白色色块填充折叠区域，来遮盖折叠区域，
+而是使用路径裁剪的方式，来实现坐标轴的断裂，因此可以支持透明背景图片。
+
+同时此项目修正了[mpl_fold_axis](https://github.com/wuyao1997/mpl_fold_axis)中的一些Bug，
+例如整数坐标可能出现位置错乱。
+
+通常用户只需要使用如下两个函数即可：
+
+- scale_axes：用于缩放坐标轴
+    参数：
+        ax: 坐标轴
+
+        x_interval: 要缩放的x轴区间，其为三元组列表，即`[(a0,b0,factor0),(a1,b1,factor1),...]`
+
+        y_interval: 要缩放的y轴区间，其为三元组列表
+
+        mode: 缩放模式，可选值为"linear"和"log"，默认值为"linear"
+
+- broken_and_clip_axes：用于断裂坐标轴和裁剪坐标轴内的 artists
+    参数：
+        ax: 坐标轴
+
+        x: 要生成断点的 x 坐标列表
+
+        y: 要生成断点的 y 坐标列表
+
+        axes_clip: 是否裁剪坐标系内的 artists, 默认为 True
+
+        which: 生成断裂标示的位置，可选`"lower", "upper", "both"`，默认值为"both"
+                此时对于x方向，底部和顶部的坐标轴都会添加断裂标识，y方向同理
+        
+        gap: 断点之间的间距，默认为 5，单位为 磅(pt)
+
+        dx: 断裂标识的半宽度，默认为 3，单位为 磅(pt)
+
+        dy: 断裂标识的半高度，默认为 3，单位为 磅(pt)
+
+        此外，还可以通过 `color, linewidth, zorder` 等关键字参数来自定义断裂标识的颜色和线宽，
+        其中 zorder 设置为较大值，例如100，可以确保断裂标识在其他 artists 之上。
+
+**注意**：在调用`broken_and_clip_axes`函数前，需要通过`ax.set(xlim=..., ylim=...)`或
+`ax.set_xlim(...)`和`ax.set_ylim(...)`来固定坐标轴的显示范围。
+
+下方是一个例子。
+
+### import 
+
+```python
+import matplotlib.pyplot as plt
+
+from break_axes import __version__, scale_axes, broken_and_clip_axes
+
+plt.rcParams['figure.figsize'] = (3,3)
+plt.rcParams['figure.dpi'] = 200
+plt.rcParams['axes.linewidth'] = 1.5
+
+print(f"break_axes version: {__version__}")
+```
+
+### 多处断裂坐标轴 (Multiple Broken Axes)
+
+```python
+fig, ax = plt.subplots(figsize=(4.5,3))
+ax.set(xlim=(-32,32), ylim=(0,180), xlabel="x (unit)", ylabel="y (unit)")
+ax.set_facecolor("#DDFFAA")
+ax.grid(ls=':', lw=0.5, color='dimgray')
+
+# scale x-axis and y-axis to reduce the blank space
+scale_axes(ax,
+           x_interval=[(-28, -2, 0.01), (2, 28, 0.01)],
+           y_interval=[(40,100, 0.1), (100, 180, 0.6)], 
+           mode="linear")
+
+
+_ = ax.set_xticks([-31,-30,-29,-1,0,1,29,30,31])
+_ = ax.set_yticks([0,20, 40, 100, 120, 140,160])
+
+rects = ax.bar([-31,-30,-29,-1,0,1,31,30,29], [20,40,22,132,155,108,5,27,17] )
+ax.bar_label(rects)
+
+# Text and Annotation wont be clipped
+ax.annotate("This is a very long long string.", xy=(-30, 80), xytext=(-30, 168), 
+    arrowprops=dict(
+        arrowstyle='-|>',
+        connectionstyle="arc3,rad=0.1", 
+        color='k', 
+        shrinkA=5, shrinkB=5
+    )
+)
+
+# Add broken line in x-axis and y-axis, clip spines and artists in axes
+broken_and_clip_axes(ax, x=[-15,15], y=[70], axes_clip=True, which='lower',
+                     gap=5, dx=3, dy=3)
+
+# plt.savefig("break_axes_bar.png", transparent=False)
+```
+
+### 对数坐标系 (Log Axes)
+
+```python
+import numpy as np
+
+x = np.logspace(0, 4, 100)
+
+fig, ax = plt.subplots(figsize=(4,3))
+ax.set(xlim=(1,10000), ylim=(1,10000), facecolor="#DDFFAA")  
+ax.plot(x, x)
+ax.set_xticks([1, 10, 100, 500, 5000, 10000],
+              [1, 10, 100, 500, 5000, r'$10^4$'])
+ax.set_yticks([1, 10, 100, 500, 5000, 10000],
+              [1, 10, 100, 500, 5000, r'$10^4$'])
+
+
+ax.annotate("This is a very long long string.", xy=(5, 10), xytext=(10, 5000), 
+    arrowprops=dict(
+        arrowstyle='-|>',
+        connectionstyle="arc3,rad=0.1", 
+        color='k', 
+        shrinkA=5, shrinkB=5
+    )
+)
+
+
+ax.grid(ls=':')
+ax.set_xlabel("X Label")
+ax.set_ylabel("Y Label")
+ax.set_title("Broken Axis Example - Log Mode")
+
+scale_axes(ax, x_interval=[(600, 4000, 0.1)], y_interval=[(600, 4000, 0.1)],
+           mode='log')
+broken_and_clip_axes(ax, x=[1500], y=[1500], axes_clip=True, which='lower',
+                     gap=5, dx=3, dy=3)
+
+plt.show()
+```
+
+
+
+## Basic Description  
+
+This is a tool for implementing axis breaks in matplotlib. Compared with the previous project [mpl_fold_axis](https://github.com/wuyao1997/mpl_fold_axis), this project does not require using white rectangular blocks to fill and cover the folded area. Instead, it adopts the **path clipping** method to achieve axis breaks, thus supporting transparent background images.  
+
+Meanwhile, this project fixes some bugs in [mpl_fold_axis](https://github.com/wuyao1997/mpl_fold_axis), such as the possible misalignment of integer coordinates.  
+
+Typically, users only need to use the following two functions:  
+
+- **scale_axes**: Used to scale the axes  
+    Parameters:  
+        ax: The axis object  
+
+        x_interval: A list of triples representing the x-axis intervals to be scaled, in the format `[(a0,b0,factor0),(a1,b1,factor1),...]`  
+
+        y_interval: A list of triples representing the y-axis intervals to be scaled  
+
+        mode: Scaling mode, optional values are "linear" and "log", default is "linear"  
+
+- **broken_and_clip_axes**: Used to create axis breaks and clip artists within the axes  
+    Parameters:  
+        ax: The axis object  
+
+        x: A list of x-coordinates where break points are to be created  
+
+        y: A list of y-coordinates where break points are to be created  
+
+        axes_clip: Whether to clip artists within the coordinate system, default is True  
+
+        which: Position to generate break marks, optional values are `"lower", "upper", "both"`, default is "both"  
+                In this case, break marks will be added to both the bottom and top of the x-axis, and the same applies to the y-axis.  
+
+        gap: Spacing between break points, default is 5, unit is **points (pt)**  
+
+        dx: Half-width of the break mark, default is 3, unit is **points (pt)**  
+
+        dy: Half-height of the break mark, default is 3, unit is **points (pt)**  
+
+        Additionally, keyword arguments such as `color, linewidth, zorder` can be used to customize the color and line width of the break marks.  
+        Setting `zorder` to a large value (e.g., 100) ensures the break marks are displayed above other artists.  
+
+**Note**: Before calling the `broken_and_clip_axes` function, you need to fix the display range of the axes using `ax.set(xlim=..., ylim=...)`, `ax.set_xlim(...)`, or `ax.set_ylim(...)`.  
+
+An example is provided below.
