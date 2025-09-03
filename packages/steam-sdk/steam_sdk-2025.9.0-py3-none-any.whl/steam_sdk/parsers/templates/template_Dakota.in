@@ -1,0 +1,59 @@
+environment
+    tabular_data
+        tabular_data_file = 'summary.dat'
+
+method
+    <<dmd.study.type>>
+    {% if dmd.study.type == 'multidim_parameter_study' %}
+        partitions = <<dd.partitions|join(" ")>>
+    {% elif dmd.study.type == 'optpp_q_newton' %}
+        convergence_tolerance = <<dmd.study.convergence_tolerance>>
+    {% elif dmd.study.type == 'coliny_pattern_search' %}
+        initial_delta = <<dmd.study.initial_delta>>
+        solution_target = <<dmd.study.solution_target>>
+        contraction_factor = <<dmd.study.contraction_factor>>
+        max_iterations = <<dmd.study.max_iterations>>
+        max_function_evaluations = <<dmd.study.max_function_evaluations>>
+        variable_tolerance = <<dmd.study.variable_tolerance>>
+    {% endif %}
+
+model
+    single
+
+variables
+    continuous_design = <<len(dmd.study.variables)>>
+    {% if dmd.study.type == 'optpp_q_newton' or dmd.study.type == 'coliny_pattern_search'%}
+       initial_point <<dd.initial_point|join(" ")>>
+    {% endif %}
+       lower_bounds <<dd.lower_bounds|join(" ")>>
+       upper_bounds <<dd.upper_bounds|join(" ")>>
+       descriptors '<<dmd.study.variables|join("' '")>>'
+    {% if len(dd.scaling) > 0 %}
+       scale_types '<<dd.scaling|join("' '")>>'
+    {% endif %}
+
+
+responses
+{% if dmd.study.type == 'multidim_parameter_study' %}
+    response_functions = <<len(dmd.responses.descriptors)>>
+    descriptors '<<dmd.responses.descriptors|join("' '")>>'
+    no_gradients
+    no_hessians
+{% elif dmd.study.type == 'optpp_q_newton' or dmd.study.type == 'coliny_pattern_search' %}
+    objective_functions = 1
+    descriptors 'dummy_value'
+    nonlinear_inequality_constraints = 0
+    numerical_gradients
+    method_source dakota
+    interval_type forward
+    fd_step_size = 1.e-4
+    no_hessians
+{% endif %}
+
+
+interface
+    failure_capture = recover 10000000000
+    analysis_drivers "<<dmd.python_path_dakota>> driver_link.py"
+        fork
+        asynchronous
+            evaluation_concurrency <<dmd.evaluation_concurrency>>
