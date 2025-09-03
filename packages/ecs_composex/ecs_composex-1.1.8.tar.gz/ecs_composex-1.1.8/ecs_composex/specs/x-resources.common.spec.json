@@ -1,0 +1,249 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "x-resources.common.spec.json",
+  "type": "object",
+  "title": "x-resources common specification",
+  "description": "The common definitions for specifications of x-resources in ComposeX",
+  "properties": {},
+  "definitions": {
+    "Properties": {
+      "type": "object"
+    },
+    "Lookup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "Tags": {
+          "oneOf": [
+            {
+              "type": "object",
+              "patternProperties": {
+                "[\\x20-\\x7E]+": {
+                  "type": "string",
+                  "minLength": 0,
+                  "maxLength": 256
+                }
+              }
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "patternProperties": {
+                  "[\\S]+$": {
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 256
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "Arn": {
+          "type": "string",
+          "description": "The ARN identifier.",
+          "format": "^arn:(aws|aws-cn|aws-us-gov):([a-z0-9-]+):([a-z0-9-]+)?:(\\d{12})?:(.*$)"
+        },
+        "Identifier": {
+          "type": "string",
+          "description": "The Service resource ID (i.e. vpc-abcd1234)"
+        },
+        "RoleArn": {
+          "type": "string",
+          "format": "^arn:(aws|aws-cn|aws-us-gov):iam::(\\d{12}):role/(.*$)"
+        },
+        "Region": {
+          "type": "string",
+          "format": "(af|ap|ca|eu|me|sa|us|cn|us)-[\\S]+-[\\d]$",
+          "description": "AWS Region to look for the resource into."
+        }
+      }
+    },
+    "Use": {
+      "type": [
+        "string",
+        "array",
+        "object"
+      ]
+    },
+    "MacroParameters": {
+      "type": "object"
+    },
+    "Settings": {
+      "type": "object",
+      "properties": {
+        "Subnets": {
+          "type": "string",
+          "description": "For applicable resources, allows to override the subnets to place them into from default."
+        },
+        "x-cloudmap": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/definitions/CloudMapDef"
+            }
+          ]
+        }
+      }
+    },
+    "CloudMapDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "Namespace"
+      ],
+      "properties": {
+        "Namespace": {
+          "type": "string",
+          "description": "The name of the x-cloudmap namespace to register the resource into."
+        },
+        "DnsSettings": {
+          "type": "object",
+          "properties": {
+            "Hostname": {
+              "type": "string"
+            },
+            "Port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          }
+        },
+        "AdditionalAttributes": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Add arbitrary values for your resource attributes in CloudMap",
+          "patternProperties": {
+            "[\\x20-\\x7E]+$": {
+              "type": "string"
+            }
+          }
+        },
+        "ReturnValues": {
+          "type": "object",
+          "description": "Set the CFN Return Value as attribute in CloudMap",
+          "additionalProperties": false,
+          "patternProperties": {
+            "[\\x20-\\x7E]+$": {
+              "type": "string"
+            }
+          }
+        },
+        "ForceRegister": {
+          "type": "boolean",
+          "description": "When used on Lookup resources, enable registering the resource anyway.",
+          "default": false
+        }
+      }
+    },
+    "Services": {
+      "type": "object",
+      "patternProperties": {
+        "[\\x20-\\x7E]+$": {
+          "description": "Object representation of the service to use.",
+          "properties": {
+            "Access": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object"
+                }
+              ]
+            },
+            "Scaling": {
+              "$ref": "#/definitions/ScalingDefinition"
+            },
+            "ReturnValues": {
+              "type": "object",
+              "description": "Set the CFN Return Value and the environment variable name you want to expose to the service",
+              "additionalProperties": false,
+              "patternProperties": {
+                "[\\x20-\\x7E]+$": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/definitions/varNameDef"
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "EnvVarName": {
+                          "$ref": "#/definitions/varNameDef"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "varNameDef": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_]+$",
+      "description": "The environment variable name for the property value"
+    },
+    "legacyServiceDef": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "access": {
+          "type": [
+            "string",
+            "object"
+          ]
+        },
+        "scaling": {
+          "$ref": "#/definitions/ScalingDefinition"
+        }
+      }
+    },
+    "ScalingDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "Steps"
+      ],
+      "properties": {
+        "Steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/StepDefinition"
+          }
+        },
+        "ScaleInCooldown": {
+          "type": "integer"
+        },
+        "ScaleOutCooldown": {
+          "type": "integer"
+        }
+      }
+    },
+    "StepDefinition": {
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "LowerBound": {
+          "type": "integer"
+        },
+        "UpperBound": {
+          "type": "integer"
+        },
+        "Count": {
+          "type": "integer"
+        }
+      }
+    }
+  }
+}
