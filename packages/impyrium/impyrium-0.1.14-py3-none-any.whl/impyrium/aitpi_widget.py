@@ -1,0 +1,212 @@
+import sys
+import PySide6
+from PySide6 import QtCore
+from PySide6.QtCore import QObject
+import os
+
+from .aitpi.src import aitpi
+from .aitpi.src.aitpi import router
+from .widgets.custom_button import ImpPushButton
+
+from .keycombo_dialog import KeyComboDialog
+from . import control
+from . import helpers
+
+from PySide6 import QtGui
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QScrollArea,
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDateEdit,
+    QDateTimeEdit,
+    QDial,
+    QDoubleSpinBox,
+    QFontComboBox,
+    QLabel,
+    QLCDNumber,
+    QLineEdit,
+    QMainWindow,
+    QProgressBar,
+    QPushButton,
+    QRadioButton,
+    QSlider,
+    QSpinBox,
+    QTimeEdit,
+    QVBoxLayout,
+    QHBoxLayout,
+    QWidget,
+    QTabWidget,
+)
+
+class ScrollPassCombo(QComboBox):
+    def __init__(self, scrollWidget=None, *args, **kwargs):
+        super(ScrollPassCombo, self).__init__(*args, **kwargs)  
+        self.scrollWidget=scrollWidget
+
+    def wheelEvent(self, *args, **kwargs):
+        return self.scrollWidget.wheelEvent(*args, **kwargs)
+
+class InputControl(QWidget, QObject):
+    def __init__(self, deleteCallback, inputUnit, scrollWidget, parent: QWidget = None):
+        super().__init__(parent)
+        self.scrollWidget = scrollWidget
+        self.deleteCallback = deleteCallback
+        self.inputUnit = aitpi.InputUnit(inputUnit)
+        self.startReglink = self.inputUnit['reg_link']
+        self.type = self.inputUnit['type']
+        if self.type == 'button':
+            self.inputTrigger = self.inputUnit['trigger']
+        elif self.type == 'encoder':
+            self.inputTrigger = f"L: {self.inputUnit['left_trigger']}\nR: {self.inputUnit['right_trigger']}"
+        else:
+            raise Exception("Invalid input unit")
+
+        commands = aitpi.getCommands()
+        topLayout = QHBoxLayout(self)
+        subLayoutWidget = QWidget()
+        layout = QVBoxLayout()
+        label = QLabel(self.inputTrigger)
+        self.combo = ScrollPassCombo(scrollWidget)
+        self.combo.view().setAutoScroll(False)
+        self.combo.addItem('<Unset>', '')
+        i = 0
+        self.commands = []
+        for command in commands:
+            if command['input_type'] == self.type:
+                self.commands.append(command)
+                linkName = aitpi.InputConverter.toRegLink(command['id'], command['name'])
+                self.combo.addItem(linkName)
+                if linkName == self.startReglink:
+                    self.combo.setCurrentIndex(i+1)
+                i += 1
+        label.setBuddy(self.combo)
+        self.combo.currentIndexChanged.connect(self.updateInput)
+        layout.addWidget(label)
+        layout.addWidget(self.combo)
+        subLayoutWidget.setLayout(layout)
+        topLayout.addWidget(subLayoutWidget)
+        delButton = ImpPushButton()
+        delButton.setMaximumWidth(25)
+        delButton.setMaximumHeight(25)
+        delButton.setIcon(QtGui.QIcon(helpers.getImageForPyQt("cancel_button")))
+        delButton.setIconSize(PySide6.QtCore.QSize(25,25))
+        delButton.clicked.connect(self.deleteClicked)
+        topLayout.addWidget(delButton)
+
+
+    def updateInput(self, index):
+        if index == 0:
+            aitpi.changeInputRegLink(self.inputUnit, '', '')
+            return
+        index = index - 1
+        aitpi.changeInputRegLink(self.inputUnit, self.commands[index]['id'], self.commands[index]['name'])
+
+    def deleteClicked(self):
+        self.deleteCallback(self)
+
+class ItemScrollView(QScrollArea):
+    def __init__(self, items, parent: QWidget = None) -> None:
+        super(ItemScrollView, self).__init__(parent)
+        widget = QWidget()
+        self.mainLayout = QVBoxLayout(widget)
+        self.mainLayout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        for item in items:
+            self.mainLayout.addWidget(item)
+        self.setWidget(widget)
+        self.setWidgetResizable(True)
+
+    def addItem(self, item):
+        self.mainLayout.addWidget(item)
+
+    def removeItem(self, item):
+        self.mainLayout.removeWidget(item)
+
+class Aitpi(QWidget):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.inputList = []
+        self.view = ItemScrollView(self.inputList)
+        self.mainlayout = QVBoxLayout()
+        addInputButton = QPushButton()
+        addInputButton.setText("Click to add input")
+        addInputButton.clicked.connect(self.runInputDialog)
+        self.mainlayout.addWidget(addInputButton)
+        self.mainlayout.addWidget(self.view)
+
+        self.setLayout(self.mainlayout)
+        self.updateAll()
+
+    def runInputDialog(self):
+        dlg = KeyComboDialog(self.addInput)
+        dlg.exec()
+
+    def addInput(self, type, triggers):
+        if len(triggers) == 0:
+            return
+        if type == "button":
+            aitpi.addInput({'trigger': triggers[0]})
+            self.updateAll()
+        if len(triggers) == 1:
+            return
+        if type == "encoder":
+            aitpi.addInput({
+                'left_trigger': triggers[0],
+                'right_trigger': triggers[1],
+                'type': 'encoder',
+            })
+            self.updateAll()
+
+    def updateAll(self):
+        for i in self.inputList:
+            self.view.removeItem(i)
+        inputs = aitpi.getInputs()
+        self.inputList = [InputControl(self.inputControlDelete, x, self.view) for x in inputs]
+        for i in self.inputList:
+            self.view.addItem(i)
+        self.update()
+
+    def inputControlDelete(self, control):
+        self.inputList.remove(control)
+        self.view.removeItem(control)
+        aitpi.removeInput(control.inputUnit)
+        self.update()
+
+if __name__ == "__main__":
+
+    def run_py(message):
+        print("message")
+        if (message.event == aitpi.BUTTON_PRESS and message.attributes['id'] == 'python_commands'):
+            os.system(f"python3 {message.attributes['path']}/{message.attributes['name']}")
+            print("Running file")
+
+        if (message.event in aitpi.ENCODER_VALUES and message.attributes['id'] == 'python_encoders'):
+            os.system(f"python3 {message.attributes['path']}/{message.attributes['name']} {message.event}")
+            print("Running encoder")
+
+    router.addConsumer(['python_commands', 'python_encoders'], run_py)
+    aitpi.addRegistry("test_json/registry.json", "test_json/foldered_commands.json")
+    aitpi.initInput("test_json/input.json")
+
+    class MainWindow(QMainWindow):
+        def __init__(self):
+            super().__init__()
+            self.setWindowTitle("Impyrium")
+            self.setMinimumSize(10, 500)
+            w = Aitpi(self)
+            self.setCentralWidget(w)
+            self.isLinux = sys.platform.startswith('linux')
+
+        def keyPressEvent(self, event):
+            if self.isLinux:
+                aitpi.pyqt6KeyPressEvent(event)
+
+        def keyReleaseEvent(self, event):
+            if self.isLinux:
+                aitpi.pyqt6KeyPressEvent(event)
+
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    app.exec()
