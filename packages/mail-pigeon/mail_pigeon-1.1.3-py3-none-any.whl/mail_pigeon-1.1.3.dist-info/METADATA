@@ -1,0 +1,289 @@
+Metadata-Version: 2.4
+Name: mail_pigeon
+Version: 1.1.3
+Summary: Асинхронная клиент-серверная библиотека с файловой очередью на стороне клиента.
+Author: Антон Глызин
+Author-email: tosha.glyzin@mail.ru
+License: MIT
+Project-URL: Releases, https://github.com/AntonGlyzin/mail_pigeon/releases
+Project-URL: Github, https://github.com/AntonGlyzin/mail_pigeon
+Project-URL: Read the docs, https://mail-pigeon.readthedocs.io/ru/stable
+Keywords: zmq files queue client server python
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Software Development :: Libraries
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pyzmq<=27.0.2
+Requires-Dist: psutil<=7.0.0
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: keywords
+Dynamic: license
+Dynamic: license-file
+Dynamic: project-url
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+
+# Асинхронная клиент-серверная библиотека с файловой очередью на стороне клиента
+
+Почтовый голубь - библиотека для взаимодействия с приложениями на уровне протоколов ZMQ. Библиотека обеспечивает стабильное отправления сообщений и их получения. При потери связи с сервером клиент накапливает файловую очередь, а после восстановления связи отправляет все сообщения получателю через сервер переадресаций. В каждом клиенте находится свой сервер переадресаций, который способен запустиься для поддержания рассылки сообщений. Данная библиотека является асинхронной, клиент не ждет мгновенного подтверждения. Когда сообщение посылается получателю, отправитель еще имеет копию сообщения, которое при случае может снова отправиться.
+
+1. [Установка](#установка)
+2. [Создание клиента с файловой очередью](#создание-клиента-с-файловой-очередью)
+3. [Ожидаем получения сообщений](#ожидаем-получения-сообщений)
+4. [Отправить и забыть](#отправить-и-забыть)
+5. [Отправить и ждать ответа](#отправить-и-ждать-ответа)
+6. [Запасной сервер переадресаций](#запасной-сервер-переадресаций)
+7. [Клиент без файловой очереди](#клиент-без-файловой-очереди)
+8. [Клиент-серверная синхронизация](#клиент-серверная-синхронизация)
+9. [Пользовательская файловая очередь](#пользовательская-файловая-очередь)
+
+---
+## Установка
+
+```
+pip install mail-pigeon
+```
+
+---
+## Создание клиента с файловой очередью
+
+```python
+from pathlib import Path
+from mail_pigeon import MailClient
+from mail_pigeon.queue import FilesBox
+
+name = 'app1'
+
+path = Path(__file__).parent / name # где будут скапливаться файлы на отправку
+fb = FilesBox(str(path)) # очередь писем на отправку
+client = MailClient(
+        name_client=name, 
+        is_master=True, 
+        wait_server=True, 
+        out_queue=fb
+    )
+```
+
+Параметры `MailClient`:
+- `name_client` : Название клиента латиницей без пробелов. Оно пригодится для отправки сообщений другим участникам.
+- `host_server` : Адрес клиента мастера. По умолчанию - `27.0.0.1`.
+- `port_server` : Порт подключения. По умолчанию - `5555`.
+- `is_master` : Будет ли этот клиент сервером. Если у вас несколько приложений, то только один может быть сервером переадресаций. Либо можно указать значение `None`, что скажет клиенту, запустить свой сервер, если нет другого. Если установить `True`, но сервер уже запущен в другом приложение, то будет ошибка. В этом случе в других приложениях нужно указать `False`.
+- `out_queue` : Очередь писем на отправку. Можно определить свой класс очереди. К примеру очеред через редис.
+- `wait_server` : Стоит ли ждать включения сервера. Если вы решите сделать это, то клиент будет ожидать своего внутреннего сервера или тот, что запуститься в другом клиенте.
+
+
+Параметры `FilesBox`:
+
+- `folder` : Путь до директории с очерелью сообщений.
+- `timeout_processing` : Количество секунд в течение которых нужно обработать сообщение, которое было полученно методом `.get()` очереди, но не удаленно методом `.done(key)` из очереди. При запоздание в обработке, сообщение снова окажется в очереди, где его смогут получить другие потоки с помощью `.get()`. Если значение `None`, то из активного списка внутри `FilesBox` не будут происходить перемещения обратно. Но в экземпляре `MailClient` вне зависимости от этого атрибута, перемещения происходят на основание подключился сторонний клиент или отключился.
+
+---
+## Ожидаем получения сообщений
+
+```python
+...
+
+while True:
+    msg = client.get()
+    print('')
+    print(f'key: {msg.key}') # ИД сообщения в очереди у отправителя
+    print(f'sender: {msg.sender}') # из другого приложения
+    print(f'recipient: {msg.recipient}') # здесь название нашего приложения
+    print(f'content: {msg.content}') # контент
+    print('===========')
+```
+
+Метод `.get()` можно использовать как с блокировкой, так и с временной блокировкой. Когда метод используется с временной блокировкой `timeout = 3` в секундах, то если результата не будет, то вернется пустота `None`.
+Сообщения, которые приходят будут иметь структуру. Данные запроса будут находится в `msg.content`.
+
+---
+## Отправить и забыть
+
+Данный метод отправляет текст в другое приложение с названием клиента `app2`. Метод `.send()` способен отправить сообщение и про него забыть. Другая сторона должна ожидать сообщение через метод `.get()`.
+
+```python
+client.send(recipient='app2', content='hello world')
+```
+
+Параметры метода `.send()`:
+- `recipient` : Получатель.
+- `content` : Содержимое.
+- `wait` : Ожидать ли получения ответа от запроса.
+- `timeout` : Сколько времени ожидать сообщения. Если установить, то ответ может быть пустота `None`.
+- `key_response` : Ключи из запроса. Обработаный ответ на запрос. Обратные сообщения не блокируются по wait.
+
+---
+## Отправить и ждать ответа
+
+Если есть потребность в ожидания ответа от другого приложения, то последовательность действий будет такая:
+- Приложение `app1` посылает запрос и ждет ответа.
+```python
+# app1
+content = 'hello'
+msg = client.send(recipient='app2', content=content, wait=True) 
+content = f'{content} {msg.content}'
+print(f'key: {msg.key}') # ИД сообщения в очереди у отправителя
+print(f'sender: {msg.sender}') # из другого приложения
+print(f'recipient: {msg.recipient}') # здесь название нашего приложения
+print(f'content: {content}') # контент 'hello world'
+print('===========')
+```
+
+- Приложение `app2` получает запрос, обрабатывает его и посылает ответ с таким же ключом как в запросе.
+```python
+# app2
+while True:
+    msg = client.get()
+    print('')
+    print(f'key: {msg.key}') # ИД сообщения в очереди у отправителя
+    print(f'sender: {msg.sender}') # из другого приложения
+    print(f'recipient: {msg.recipient}') # здесь название нашего приложения
+    print(f'content: {msg.content}') # контент 'hello'
+    print('===========')
+    # обработка запроса
+    client.send(recipient=msg.sender, content='world', key_response=msg.key) 
+```
+
+---
+## Запасной сервер переадресаций
+
+Предположим у вас есть клиент-сервер, который занимается переадресацией. Но если это приложение упадет или остановиться, то связь между клиентами будет нарушена. В этом случае можно сделать так, чтобы было возможно запустить дополнительный сервер в клиенте.
+
+Приложение 1.
+
+```python
+from pathlib import Path
+from mail_pigeon import MailClient
+from mail_pigeon.queue import FilesBox
+
+name = 'app1'
+
+path = Path(__file__).parent / name # очередь писем на отправку
+client = MailClient(
+        name_client=name, 
+        is_master=None, 
+        wait_server=True, 
+        out_queue=FilesBox(str(path))
+    )
+```
+
+Приложение 2.
+```python
+from pathlib import Path
+from mail_pigeon import MailClient
+from mail_pigeon.queue import FilesBox
+
+name = 'app2'
+
+path = Path(__file__).parent / name # очередь писем на отправку
+client = MailClient(
+        name_client=name, 
+        is_master=None, 
+        wait_server=True, 
+        out_queue=FilesBox(str(path))
+    )
+```
+
+Когда установлен атрибут `is_master=None`, то это говорит клиенту, что запустить сервер, если нет другого. Если приложение `app2` упадет, то будет запушен сервер внутри `app1`. Эти сервера должны находится на одном хосте.
+
+---
+## Клиент без файловой очереди
+
+Если нет необходимости в сохранение сообщений, когда приложение падает или выключается, то можно упустить создание очереди.
+
+```python
+from mail_pigeon import MailClient
+from mail_pigeon.queue import FilesBox
+
+name = 'app1'
+
+client = MailClient(
+        name_client=name, 
+        is_master=None, 
+        wait_server=True
+    )
+```
+В этом случае будет применена очеред внутри самого клиента. Она находится в памяти процесса.
+
+---
+## Клиент-серверная синхронизация
+
+У каждого клиента имеется список имен других клиентов. Только если клиент знает об участнике, он может отправлять ему сообщения. Об этом заботиться сервер, который обовещает всех клиентов, кто присоединяется, а кто уходит. Сервер в свою очеред поддерживает связь со всеми клиентами, и если один клиент перестает отвечать, то сервер его отключает и всех уведомляет об его уходе. Также и клиент всегда смотрит, приходят ли сигнали с сервера, и при случае выбирает заданный алгоитм решения, если отсутствуют сигналы.
+
+---
+## Пользовательская файловая очередь
+
+Для создания своей очереди есть специальный базовый класс. Понадобиться определить следующие методы.
+
+```python
+from typing import List
+from mail_pigeon.queue import BaseQueue
+
+
+class SimpleBox(BaseQueue):
+    
+    def __init__(self, timeout_processing: int = None):
+        super().__init__(timeout_processing)
+        self._simple_box = {}
+
+    def _init_live_queue(self) -> List[str]:
+        """Инициализация очереди при создание экземпляра.
+
+        Returns:
+            List[str]: Список.
+        """
+        return []
+            
+    def _remove_data(self, key: str):
+        """Удаляет данные одного элемента.
+
+        Args:
+            key (str): Ключ.
+        """
+        if key in self._simple_box:
+            del self._simple_box[key]
+
+    def _read_data(self, key: str) -> str:
+        """Чтение данных по ключу.
+
+        Args:
+            key (str): Название.
+
+        Returns:
+            str: Прочитанные данные.
+        """
+        return self._simple_box[key]
+
+    def _save_data(self, key: str, value: str):
+        """Сохраняет данные.
+
+        Args:
+            value (str): Ключ.
+            value (str): Значение.
+        """
+        self._simple_box[key] = value
+```
+
+В этих методах вам не нужно заботиться о конкурентности данных. Просто опишите откуда читать и куда сохранять.
+
+---
+## Внешние ссылки
+
+- [Журнал изменений](https://github.com/AntonGlyzin/mail_pigeon/releases)
+
+- [На проект в Github](https://github.com/AntonGlyzin/mail_pigeon)
+
+- [PYPI](https://pypi.org/project/mail_pigeon/)
