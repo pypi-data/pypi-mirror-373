@@ -1,0 +1,329 @@
+from http import HTTPStatus
+from typing import Any, Optional, Union
+
+import httpx
+
+from ... import errors
+from ...client import AuthenticatedClient, Client
+from ...models.get_users_saved_episodes_response_401 import GetUsersSavedEpisodesResponse401
+from ...models.get_users_saved_episodes_response_403 import GetUsersSavedEpisodesResponse403
+from ...models.get_users_saved_episodes_response_429 import GetUsersSavedEpisodesResponse429
+from ...models.paging_saved_episode_object import PagingSavedEpisodeObject
+from ...types import UNSET, Response, Unset
+
+
+def _get_kwargs(
+    *,
+    market: Union[Unset, str] = UNSET,
+    limit: Union[Unset, int] = 20,
+    offset: Union[Unset, int] = 0,
+) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+
+    params["market"] = market
+
+    params["limit"] = limit
+
+    params["offset"] = offset
+
+    params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
+
+    _kwargs: dict[str, Any] = {
+        "method": "get",
+        "url": "/me/episodes",
+        "params": params,
+    }
+
+    return _kwargs
+
+
+def _parse_response(
+    *, client: Union[AuthenticatedClient, Client], response: httpx.Response
+) -> Optional[
+    Union[
+        GetUsersSavedEpisodesResponse401,
+        GetUsersSavedEpisodesResponse403,
+        GetUsersSavedEpisodesResponse429,
+        PagingSavedEpisodeObject,
+    ]
+]:
+    if response.status_code == 200:
+        response_200 = PagingSavedEpisodeObject.from_dict(response.json())
+
+        return response_200
+
+    if response.status_code == 401:
+        response_401 = GetUsersSavedEpisodesResponse401.from_dict(response.json())
+
+        return response_401
+
+    if response.status_code == 403:
+        response_403 = GetUsersSavedEpisodesResponse403.from_dict(response.json())
+
+        return response_403
+
+    if response.status_code == 429:
+        response_429 = GetUsersSavedEpisodesResponse429.from_dict(response.json())
+
+        return response_429
+
+    if client.raise_on_unexpected_status:
+        raise errors.UnexpectedStatus(response.status_code, response.content)
+    else:
+        return None
+
+
+def _build_response(
+    *, client: Union[AuthenticatedClient, Client], response: httpx.Response
+) -> Response[
+    Union[
+        GetUsersSavedEpisodesResponse401,
+        GetUsersSavedEpisodesResponse403,
+        GetUsersSavedEpisodesResponse429,
+        PagingSavedEpisodeObject,
+    ]
+]:
+    return Response(
+        status_code=HTTPStatus(response.status_code),
+        content=response.content,
+        headers=response.headers,
+        parsed=_parse_response(client=client, response=response),
+    )
+
+
+def sync_detailed(
+    *,
+    client: AuthenticatedClient,
+    market: Union[Unset, str] = UNSET,
+    limit: Union[Unset, int] = 20,
+    offset: Union[Unset, int] = 0,
+) -> Response[
+    Union[
+        GetUsersSavedEpisodesResponse401,
+        GetUsersSavedEpisodesResponse403,
+        GetUsersSavedEpisodesResponse429,
+        PagingSavedEpisodeObject,
+    ]
+]:
+    """Get User's Saved Episodes
+
+     Get a list of the episodes saved in the current Spotify user's library.<br/>
+    This API endpoint is in __beta__ and could change without warning. Please share any feedback that
+    you have, or issues that you discover, in our [developer community
+    forum](https://community.spotify.com/t5/Spotify-for-Developers/bd-p/Spotify_Developer).
+
+    Args:
+        market (Union[Unset, str]): An [ISO 3166-1 alpha-2 country
+            code](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2).
+              If a country code is specified, only content that is available in that market will be
+            returned.<br/>
+              If a valid user access token is specified in the request header, the country associated
+            with
+              the user account will take priority over this parameter.<br/>
+              _**Note**: If neither market or user country are provided, the content is considered
+            unavailable for the client._<br/>
+              Users can view the country that is associated with their account in the [account
+            settings](https://www.spotify.com/account/overview/).
+             Example: ES.
+        limit (Union[Unset, int]): The maximum number of items to return. Default: 20. Minimum: 1.
+            Maximum: 50.
+             Default: 20. Example: 10.
+        offset (Union[Unset, int]): The index of the first item to return. Default: 0 (the first
+            item). Use with limit to get the next set of items.
+             Default: 0. Example: 5.
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[Union[GetUsersSavedEpisodesResponse401, GetUsersSavedEpisodesResponse403, GetUsersSavedEpisodesResponse429, PagingSavedEpisodeObject]]
+    """
+
+    kwargs = _get_kwargs(
+        market=market,
+        limit=limit,
+        offset=offset,
+    )
+
+    response = client.get_httpx_client().request(
+        **kwargs,
+    )
+
+    return _build_response(client=client, response=response)
+
+
+def sync(
+    *,
+    client: AuthenticatedClient,
+    market: Union[Unset, str] = UNSET,
+    limit: Union[Unset, int] = 20,
+    offset: Union[Unset, int] = 0,
+) -> Optional[
+    Union[
+        GetUsersSavedEpisodesResponse401,
+        GetUsersSavedEpisodesResponse403,
+        GetUsersSavedEpisodesResponse429,
+        PagingSavedEpisodeObject,
+    ]
+]:
+    """Get User's Saved Episodes
+
+     Get a list of the episodes saved in the current Spotify user's library.<br/>
+    This API endpoint is in __beta__ and could change without warning. Please share any feedback that
+    you have, or issues that you discover, in our [developer community
+    forum](https://community.spotify.com/t5/Spotify-for-Developers/bd-p/Spotify_Developer).
+
+    Args:
+        market (Union[Unset, str]): An [ISO 3166-1 alpha-2 country
+            code](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2).
+              If a country code is specified, only content that is available in that market will be
+            returned.<br/>
+              If a valid user access token is specified in the request header, the country associated
+            with
+              the user account will take priority over this parameter.<br/>
+              _**Note**: If neither market or user country are provided, the content is considered
+            unavailable for the client._<br/>
+              Users can view the country that is associated with their account in the [account
+            settings](https://www.spotify.com/account/overview/).
+             Example: ES.
+        limit (Union[Unset, int]): The maximum number of items to return. Default: 20. Minimum: 1.
+            Maximum: 50.
+             Default: 20. Example: 10.
+        offset (Union[Unset, int]): The index of the first item to return. Default: 0 (the first
+            item). Use with limit to get the next set of items.
+             Default: 0. Example: 5.
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Union[GetUsersSavedEpisodesResponse401, GetUsersSavedEpisodesResponse403, GetUsersSavedEpisodesResponse429, PagingSavedEpisodeObject]
+    """
+
+    return sync_detailed(
+        client=client,
+        market=market,
+        limit=limit,
+        offset=offset,
+    ).parsed
+
+
+async def asyncio_detailed(
+    *,
+    client: AuthenticatedClient,
+    market: Union[Unset, str] = UNSET,
+    limit: Union[Unset, int] = 20,
+    offset: Union[Unset, int] = 0,
+) -> Response[
+    Union[
+        GetUsersSavedEpisodesResponse401,
+        GetUsersSavedEpisodesResponse403,
+        GetUsersSavedEpisodesResponse429,
+        PagingSavedEpisodeObject,
+    ]
+]:
+    """Get User's Saved Episodes
+
+     Get a list of the episodes saved in the current Spotify user's library.<br/>
+    This API endpoint is in __beta__ and could change without warning. Please share any feedback that
+    you have, or issues that you discover, in our [developer community
+    forum](https://community.spotify.com/t5/Spotify-for-Developers/bd-p/Spotify_Developer).
+
+    Args:
+        market (Union[Unset, str]): An [ISO 3166-1 alpha-2 country
+            code](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2).
+              If a country code is specified, only content that is available in that market will be
+            returned.<br/>
+              If a valid user access token is specified in the request header, the country associated
+            with
+              the user account will take priority over this parameter.<br/>
+              _**Note**: If neither market or user country are provided, the content is considered
+            unavailable for the client._<br/>
+              Users can view the country that is associated with their account in the [account
+            settings](https://www.spotify.com/account/overview/).
+             Example: ES.
+        limit (Union[Unset, int]): The maximum number of items to return. Default: 20. Minimum: 1.
+            Maximum: 50.
+             Default: 20. Example: 10.
+        offset (Union[Unset, int]): The index of the first item to return. Default: 0 (the first
+            item). Use with limit to get the next set of items.
+             Default: 0. Example: 5.
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[Union[GetUsersSavedEpisodesResponse401, GetUsersSavedEpisodesResponse403, GetUsersSavedEpisodesResponse429, PagingSavedEpisodeObject]]
+    """
+
+    kwargs = _get_kwargs(
+        market=market,
+        limit=limit,
+        offset=offset,
+    )
+
+    response = await client.get_async_httpx_client().request(**kwargs)
+
+    return _build_response(client=client, response=response)
+
+
+async def asyncio(
+    *,
+    client: AuthenticatedClient,
+    market: Union[Unset, str] = UNSET,
+    limit: Union[Unset, int] = 20,
+    offset: Union[Unset, int] = 0,
+) -> Optional[
+    Union[
+        GetUsersSavedEpisodesResponse401,
+        GetUsersSavedEpisodesResponse403,
+        GetUsersSavedEpisodesResponse429,
+        PagingSavedEpisodeObject,
+    ]
+]:
+    """Get User's Saved Episodes
+
+     Get a list of the episodes saved in the current Spotify user's library.<br/>
+    This API endpoint is in __beta__ and could change without warning. Please share any feedback that
+    you have, or issues that you discover, in our [developer community
+    forum](https://community.spotify.com/t5/Spotify-for-Developers/bd-p/Spotify_Developer).
+
+    Args:
+        market (Union[Unset, str]): An [ISO 3166-1 alpha-2 country
+            code](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2).
+              If a country code is specified, only content that is available in that market will be
+            returned.<br/>
+              If a valid user access token is specified in the request header, the country associated
+            with
+              the user account will take priority over this parameter.<br/>
+              _**Note**: If neither market or user country are provided, the content is considered
+            unavailable for the client._<br/>
+              Users can view the country that is associated with their account in the [account
+            settings](https://www.spotify.com/account/overview/).
+             Example: ES.
+        limit (Union[Unset, int]): The maximum number of items to return. Default: 20. Minimum: 1.
+            Maximum: 50.
+             Default: 20. Example: 10.
+        offset (Union[Unset, int]): The index of the first item to return. Default: 0 (the first
+            item). Use with limit to get the next set of items.
+             Default: 0. Example: 5.
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Union[GetUsersSavedEpisodesResponse401, GetUsersSavedEpisodesResponse403, GetUsersSavedEpisodesResponse429, PagingSavedEpisodeObject]
+    """
+
+    return (
+        await asyncio_detailed(
+            client=client,
+            market=market,
+            limit=limit,
+            offset=offset,
+        )
+    ).parsed
