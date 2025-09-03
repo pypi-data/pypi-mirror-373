@@ -1,0 +1,101 @@
+Metadata-Version: 2.4
+Name: falcon_tryton
+Version: 0.1.1
+Summary: Adds Tryton support to Falcon application
+Home-page: https://gitlab.com/numaelis/falcon-tryton
+Author: Numael Garay
+Author-email: mantrixsoft@gmail.com
+License: GPL-3
+Keywords: falcon tryton web
+Platform: any
+Classifier: Environment :: Web Environment
+Classifier: Framework :: Tryton
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: GNU General Public License (GPL)
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Topic :: Internet :: WWW/HTTP :: Dynamic Content
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: Falcon>=4.0
+Requires-Dist: Werkzeug
+Requires-Dist: trytond>=5.0
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: license
+Dynamic: license-file
+Dynamic: platform
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+Falcon-Tryton
+============
+
+Adds Tryton support to Falcon application.
+
+
+```
+#! -*- coding: utf8 -*-
+
+from functools import wraps
+from falcon_tryton import Tryton
+import falcon
+import os
+
+CONTEXT = None
+CONFIG = {}
+CONFIG['TRYTON_DATABASE'] = os.environ.get('DB_NAME', 'mydb') 
+CONFIG['TRYTON_USER'] = 0
+
+app = falcon.App()
+
+tryton = Tryton(app, CONFIG)
+
+User = tryton.pool.get('res.user')
+        
+# @tryton.default_context
+# def default_context():
+#     global CONTEXT
+#     if not CONTEXT:
+#         CONTEXT = User.get_preferences(context_only=True)
+#     return CONTEXT    
+
+class ApiUser:
+    def __init__(self, tryton = None):
+        self.tryton = tryton
+        
+    @tryton.transaction()
+    def on_get(self, req, resp):
+        resp.status = falcon.HTTP_200
+        users = User.browse([1])       
+        resp.media = {'name':users[0].name}
+
+apiuser = ApiUser(tryton)
+
+app.add_route("/user", apiuser)
+
+
+
+# wsgi gunicorn o uwsgi:
+
+""" example file wsgi_falcon.py:
+
+            from app_falcon import app
+"""
+# important: no use app.run()
+
+```
+There are three configuration options available:
+
+* `TRYTON_DATABASE`: the Tryton's database to connect.
+* `TRYTON_USER`: the Tryton user id to use, by default `0` (aka `root`).
+
+
