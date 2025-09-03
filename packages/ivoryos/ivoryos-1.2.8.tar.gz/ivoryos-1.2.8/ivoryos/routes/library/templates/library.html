@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+
+{% block title %}IvoryOS | Design Database{% endblock %}
+{% block body %}
+    <!-- Deck Filter Buttons -->
+    <div class="btn-group" role="group">
+        {% for deck in deck_list %}
+            <a class="btn {% if deck == current_deck_name %}btn-primary{% else %}btn-secondary{% endif %}"
+               href="{{ url_for('library.load_from_database', deck_name=deck) }}">
+                {{ deck }}
+            </a>
+        {% endfor %}
+    </div>
+
+    <!-- Search Form -->
+    <form id="search" class="d-flex " method="GET" style="display: inline-block;float: right;"
+          action="{{ url_for('library.load_from_database', deck_name=current_deck_name or 'ALL') }}">
+        <div class="input-group">
+            <input type="search" name="keyword" id="keyword" class="form-control"
+                   placeholder="Search workflows..." value="{{ request.args.get('keyword', '') }}">
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-search"></i>
+            </button>
+        </div>
+    </form>
+
+    <table class="table table-hover" id="workflowLibrary">
+        <thead>
+            <tr>
+                <th scope="col">Workflow name</th>
+                <th scope="col">Deck </th>
+                <th scope="col">Editing</th>
+                <th scope="col">Time created</th>
+                <th scope="col">Last modified</th>
+                <th scope="col">Author</th>
+{#                <th scope="col">Registered</th>#}
+                <th scope="col"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for script in scripts %}
+                <tr>
+                    <td><a href="{{ url_for('library.workflow_script', script_name=script.name) }}">{{ script.name }}</a></td>
+                    <td>{{ script.deck }}</td>
+                    <td>{{ script.status }}</td>
+                    <td>{{ script.time_created }}</td>
+                    <td>{{ script.last_modified }}</td>
+                    <td>{{ script.author }}</td>
+{#                    <td>{{ workflow.registered }}</td>#}
+                    <td>
+                        {#not workflow.status == "finalized" or#}
+                        {% set username = current_user.get_id() %}
+                        {% if username == 'admin' or username == script.author %}
+                            <a href="#"
+                               class="text-danger"
+                               data-delete-url="{{ url_for('library.workflow_script', script_name=script.name) }}"
+                               onclick="deleteWorkflow(this); return false;">
+                               Delete
+                            </a>
+                        {% else %}
+                            <a class="disabled-link">delete</a>
+                        {% endif %}
+                    <td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {#    paging#}
+    <div class="pagination justify-content-center">
+        <div class="page-item {{ 'disabled' if not scripts.has_prev else '' }}">
+            <a class="page-link" href="{{ url_for('library.load_from_database', page=scripts.prev_num) }}">Previous</a>
+        </div>
+
+        {% for num in scripts.iter_pages() %}
+            {% if num %}
+                <div class="page-item {{ 'active' if num == scripts.page else '' }}">
+                    <a class="page-link" href="{{ url_for('library.load_from_database', page=num) }}">{{ num }}</a>
+                </div>
+            {% else %}
+                <div class="page-item disabled">
+                    <span class="page-link">…</span>
+                </div>
+            {% endif %}
+        {% endfor %}
+
+        <div class="page-item {{ 'disabled' if not scripts.has_next else '' }}">
+            <a class="page-link" href="{{ url_for('library.load_from_database', page=scripts.next_num) }}">Next</a>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='js/db_delete.js') }}"></script>
+{% endblock %}
