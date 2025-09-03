@@ -1,0 +1,303 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    {%- if schema_id %}
+    "$id": "{{ schema_id }}",
+    {%- endif %}
+    {%- if schema_title %}
+    "title": "{{ schema_title }}",
+    {%- endif %}
+    "$comment": "{{ disclaimer }}",
+    "type": "object",
+
+    "properties": {
+        {%- if context.urls %}
+        {%- if context.urls | length == 1 %}
+        "@context": {
+            "const": "{{ context.urls[0] }}"
+        }
+        {%- else %}
+        "@context": {
+            "type": "array",
+            "prefixItems": {
+                {%- for url in context.urls %}
+                { "const": "{{ url }}" }{% if not loop.last %},{% endif %}
+                {%- endfor %}
+            },
+            "minContains": "{{ context.urls | length }}",
+            "maxContains": "{{ context.urls | length }}",
+            "items": false
+        }
+        {%- endif %}
+        {%- endif %}
+    },
+    {%- if context.urls %}
+    "required": ["@context"],
+    {%- endif %}
+
+    "oneOf": [
+        {
+            "type": "object",
+            "properties": {
+                "@graph": {
+                    "description": "Top level container for JSON-LD objects",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "$ref": "#/$defs/AnyClass",
+                        "unevaluatedProperties": false
+                    }
+                }
+            },
+            "required": ["@graph"]
+        },
+        { "$ref": "#/$defs/AnyClass" }
+    ],
+    "unevaluatedProperties": false,
+
+    "$defs": {
+    {%- for class in classes %}
+        {#- Classes are divided into 2 parts. The properties are separated into a separate object #}
+        {#- so that a object can references the properties of its parent without needing the const #}
+        {#- @type tag #}
+        {%- if not class.is_abstract or class.is_extensible %}
+        "{{ varname(*class.clsname) }}": {
+            "allOf": [
+                {
+                    "type": "object",
+                    {%- if class.deprecated %}
+                    "deprecated": true,
+                    {%- endif %}
+                    {%- if class.is_extensible %}
+                    "unevaluatedProperties": true,
+                    {%- endif %}
+                    "properties": {
+                        "{{ class.id_property or "@id" }}": { "$ref": "#/$defs/{{ class.node_kind.split("#")[-1] }}" },
+                        "{{ context.compact_iri("@type") }}": {
+                        {#- Abstract Extensible classes are weird; any type _except_ the specific class type is allowed #}
+                        {%- if class.is_abstract and class.is_extensible %}
+                            "allOf":  [
+                                { "$ref": "#/$defs/IRI" },
+                                { "not": { "const": "{{ context.compact_vocab(class._id) }}" } }
+                            ]
+                        {%- else %}
+                            "oneOf": [
+                                {%- if class.is_extensible %}
+                                { "$ref": "#/$defs/IRI" },
+                                {%- endif %}
+                                { "const": "{{ context.compact_vocab(class._id) }}" }
+                            ]
+                        {%- endif %}
+                        }
+                    }{%- if class.node_kind == SH.IRI %},
+                    "required": ["{{ class.id_property or "@id" }}"]
+                    {%- endif %}
+                },
+                { "$ref": "#/$defs/{{ varname(*class.clsname) }}_props" }
+            ]
+        },
+        {%- endif %}
+        "{{ varname(*class.clsname) }}_derived": {
+            {%- set ns = namespace(json_refs=[], named_individuals=[]) %}
+            {%- for d in get_all_derived(class) + [class._id] %}
+                {%- if not classes.get(d).is_abstract %}
+                    {%- set ns.json_refs = ns.json_refs + ["#/$defs/" + varname(*classes.get(d).clsname)] %}
+                {%- elif classes.get(d).is_extensible %}
+                    {%- set ns.json_refs = ns.json_refs + ["#/$defs/" + varname(*classes.get(d).clsname) + "_props"] %}
+                {%- endif %}
+                {%- for n in classes.get(d).named_individuals %}
+                    {%- if context.compact_iri(n._id) != n._id %}
+                        {%- set ns.named_individuals = ns.named_individuals + [context.compact_iri(n._id)] %}
+                    {%- endif %}
+                {%- endfor %}
+            {%- endfor %}
+            "anyOf": [
+                {%- if ns.json_refs %}
+                {
+                    "type": "object",
+                    {%- if not class.is_extensible %}
+                    "unevaluatedProperties": false,
+                    {%- endif %}
+                    "anyOf": [
+                        {%- for r in ns.json_refs %}
+                        { "$ref": "{{ r }}" }{% if not loop.last %},{% endif %}
+                        {%- endfor %}
+                    ]
+                },
+                {%- endif %}
+                {%- for n in ns.named_individuals %}
+                { "const": "{{ n }}" },
+                {%- endfor %}
+                { "$ref": "#/$defs/BlankNodeOrIRI" }
+            ]
+        },
+        "{{ varname(*class.clsname) }}_props": {
+            "allOf": [
+                {%- if class.parent_ids %}
+                {%- for parent in class.parent_ids %}
+                { "$ref": "#/$defs/{{ varname(*classes.get(parent).clsname) }}_props" },
+                {%- endfor %}
+                {%- else %}
+                { "$ref": "#/$defs/SHACLClass" },
+                {%- endif %}
+                {%- set required = [] %}
+                {
+                    "type": "object",
+                    "properties": {
+                        {%- for prop in class.properties %}
+                        {%- if not prop.min_count is none and prop.min_count > 0 %}
+                            {{- required.append(prop.path) or "" }}
+                        {%- endif %}
+                        {%- set is_list = prop.max_count is none or prop.max_count != 1 %}
+                        "{{ context.compact_vocab(prop.path) }}": {
+                        {%- set prop_ref = "#/$defs/prop_" + varname(*class.clsname) + "_" + varname(prop.varname) %}
+                        {%- if is_list %}
+                            "oneOf": [
+                                {
+                                    "type": "array",
+                                    {%- if prop.max_count is not none %}
+                                    "maxItems": {{ prop.max_count }},
+                                    {%- endif %}
+                                    {%- if prop.min_count is not none %}
+                                    "minItems": {{ prop.min_count }},
+                                    {%- endif %}
+                                    "items": {
+                                        "$ref": "{{ prop_ref }}"
+                                    }
+                                }{% if allow_elided_lists %},
+                                {
+                                    "$ref": "{{ prop_ref }}"
+                                }
+                                {%- endif %}
+                            ]
+                        {%- else %}
+                            "$ref": "{{ prop_ref }}"
+                        {%- endif %}
+                        }{% if not loop.last %},{% endif %}
+                        {%- endfor %}
+                    }{% if required %},
+                    "required": [
+                        {%- for r in required %}
+                        "{{ context.compact_vocab(r) }}"{% if not loop.last %},{% endif %}
+                        {%- endfor %}
+                    ]
+                    {%- endif %}
+                }
+            ]
+        },
+        {%- for prop in class.properties %}
+        "prop_{{ varname(*class.clsname) }}_{{ varname(prop.varname) }}": {
+            {%- if prop.deprecated %}
+                "deprecated": true,
+            {%- endif %}
+            {%- if prop.enum_values %}
+                "enum": [
+                {%- for e in prop.enum_values %}
+                    "{{ context.compact_vocab(e, prop.path) }}"{% if not loop.last %},{% endif %}
+                {%- endfor %}
+                ]
+            {%- elif prop.class_id %}
+                "$ref": "#/$defs/{{ varname(*classes.get(prop.class_id).clsname) }}_derived"
+            {%- else %}
+                {%- if prop.datatype == "http://www.w3.org/2001/XMLSchema#string" %}
+                    {%- if prop.pattern %}
+                    "pattern": "{{ prop.pattern | replace("\\", "\\\\") }}",
+                    {%- endif %}
+                    "type": "string"
+                {%- elif prop.datatype == "http://www.w3.org/2001/XMLSchema#dateTime" %}
+                    "type": "string",
+                    "allOf": [
+                        {
+                            "pattern": "^[0-9]{4}-[0-1][0-9]-[0-3][0-9]T[0-2][0-9]:[0-6][0-9]:[0-6][0-9](Z|[+-][0-9]{2}:[0-9]{2})?$"
+                        }{%- if prop.pattern %},
+                        {
+                            "pattern": "{{ prop.pattern | replace("\\", "\\\\") }}"
+                        }
+                        {%- endif %}
+                    ]
+                {%- elif prop.datatype == "http://www.w3.org/2001/XMLSchema#dateTimeStamp" %}
+                    "type": "string",
+                    "allOf": [
+                        {
+                            "pattern": "^[0-9]{4}-[0-1][0-9]-[0-3][0-9]T[0-2][0-9]:[0-6][0-9]:[0-6][0-9](Z|[+-][0-9]{2}:[0-9]{2})$"
+                        }{%- if prop.pattern %},
+                        {
+                            "pattern": "{{ prop.pattern | replace("\\", "\\\\") }}"
+                        }
+                        {%- endif %}
+                    ]
+                {%- elif prop.datatype == "http://www.w3.org/2001/XMLSchema#anyURI" %}
+                    {%- if prop.pattern %}
+                    "pattern": "{{ prop.pattern | replace("\\", "\\\\") }}",
+                    {%- endif %}
+                    "$ref": "#/$defs/anyURI"
+                {%- elif prop.datatype == "http://www.w3.org/2001/XMLSchema#positiveInteger" %}
+                    "type": "integer",
+                    "minimum": 1
+                {%- elif prop.datatype == "http://www.w3.org/2001/XMLSchema#nonNegativeInteger" %}
+                    "type": "integer",
+                    "minimum": 0
+                {%- elif prop.datatype == "http://www.w3.org/2001/XMLSchema#integer" %}
+                    "type": "integer"
+                {%- elif prop.datatype == "http://www.w3.org/2001/XMLSchema#boolean" %}
+                    "type": "boolean"
+                {%- elif prop.datatype == "http://www.w3.org/2001/XMLSchema#decimal" %}
+                    "oneOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "string",
+                            "pattern": "^-?[0-9]+(\\.[0-9]*)?$"
+                        }
+                    ]
+                {%- else %}
+                    {{- abort("Unknown data type " + prop.datatype) }}
+                {%- endif %}
+            {%- endif %}
+        },
+        {%- endfor %}
+    {%- endfor %}
+        "IRI": {
+            "type": "string",
+            "pattern": "^(?!_:).+:.+"
+        },
+        "BlankNode": {
+            "type": "string",
+            "pattern": "^_:.+"
+        },
+        "BlankNodeOrIRI": {
+            "oneOf": [
+                { "$ref": "#/$defs/IRI" },
+                { "$ref": "#/$defs/BlankNode" }
+            ]
+        },
+        "anyURI": {
+            "type": "string"
+        },
+        "SHACLClass": {
+            "type": "object",
+            "properties": {
+                "{{ context.compact_iri("@type") }}": {
+                    "oneOf": [
+                        { "$ref": "#/$defs/IRI" },
+                        {
+                            "enum": [
+                            {%- for class in concrete_classes %}
+                                "{{ context.compact_vocab(class._id) }}"{% if not loop.last %},{% endif %}
+                            {%- endfor %}
+                            ]
+                        }
+                    ]
+                }
+            },
+            "required": ["{{ context.compact_iri("@type") }}"]
+        },
+        "AnyClass": {
+            "anyOf": [
+                {%- for class in concrete_classes %}
+                { "$ref": "#/$defs/{{ varname(*class.clsname) }}" }{% if not loop.last %},{% endif %}
+                {%- endfor %}
+            ]
+        }
+    }
+}
