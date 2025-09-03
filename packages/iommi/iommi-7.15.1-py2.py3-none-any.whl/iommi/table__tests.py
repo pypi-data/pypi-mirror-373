@@ -1,0 +1,4646 @@
+import json
+from collections import defaultdict
+from datetime import (
+    date,
+    datetime,
+    time,
+)
+from urllib.parse import urlencode
+
+import pytest
+from django.db.models import (
+    F,
+    QuerySet,
+)
+from django.http import HttpResponse
+from django.test import override_settings
+from django.utils import timezone
+
+from docs.models import (
+    Album,
+    Artist,
+    Track,
+)
+from iommi import (
+    Action,
+    Fragment,
+    html,
+    LAST,
+    Page,
+)
+from iommi._web_compat import (
+    mark_safe,
+    Template,
+)
+from iommi.base import (
+    items,
+    keys,
+)
+from iommi.declarative import get_members
+from iommi.declarative.namespace import getattr_path
+from iommi.endpoint import (
+    find_target,
+    InvalidEndpointPathException,
+    perform_ajax_dispatch,
+)
+from iommi.form import (
+    Field,
+    Form,
+)
+from iommi.from_model import (
+    get_field_by_name,
+    register_search_fields,
+)
+from iommi.query import (
+    Filter,
+    Query,
+)
+from iommi.shortcut import (
+    get_shortcuts_by_name,
+    is_shortcut,
+    Namespace,
+    Shortcut,
+    with_defaults,
+)
+from iommi.sql_trace import (
+    set_sql_debug,
+    SQL_DEBUG_LEVEL_ALL,
+)
+from iommi.table import (
+    bulk_delete__post_handler,
+    Column,
+    DataRetrievalMethods,
+    datetime_formatter,
+    ordered_by_on_list,
+    register_cell_formatter,
+    Struct,
+    Table,
+    yes_no_formatter,
+)
+from tests.helpers import (
+    req,
+    request_with_middleware,
+    staff_req,
+    user_req,
+    verify_html,
+    verify_table_html,
+)
+from tests.models import (
+    AutomaticUrl,
+    AutomaticUrl2,
+    BooleanFromModelTestModel,
+    ChoicesModel,
+    IntChoicesModel,
+    CSVExportTestModel,
+    DefaultsInForms,
+    FieldFromModelOneToOneTest,
+    Foo,
+    Qux,
+    FromModelWithInheritanceTest,
+    QueryFromIndexesTestModel,
+    SortKeyOnForeignKeyB,
+    T2,
+    TBar,
+    TBar2,
+    TBaz,
+    TFoo,
+)
+
+register_search_fields(model=TFoo, search_fields=['b'], allow_non_unique=True, overwrite=True)
+
+
+def get_rows():
+    return [Struct(foo="Hello", bar=17), Struct(foo="<evil/> &", bar=42)]
+
+
+def explicit_table():
+    columns = dict(
+        foo=Column(),
+        bar=Column.number(),
+    )
+
+    return Table(rows=get_rows(), columns=columns, attrs__class__another_class=True, attrs__id='table_id')
+
+
+def declarative_table():
+    class TestTable(Table):
+        class Meta:
+            @staticmethod
+            def attrs__class__another_class(table, **_):
+                return True
+
+            @staticmethod
+            def attrs__id(table, **_):
+                return 'table_id'
+
+        foo = Column()
+        bar = Column.number()
+
+    return TestTable(rows=get_rows())
+
+
+@pytest.mark.parametrize('table_builder', [explicit_table, declarative_table])
+def test_render_impl(table_builder):
+    verify_table_html(
+        table=table_builder(),
+        # language=html
+        expected_html="""
+            <table class="another_class table" id="table_id">
+                <thead>
+                    <tr>
+                        <th class="first_column iommi_sort_header subheader">
+                            <a href="?order=foo"> Foo </a>
+                        </th>
+                        <th class="first_column iommi_sort_header subheader">
+                            <a href="?order=bar"> Bar </a>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td> Hello </td>
+                        <td class="rj"> 17 </td>
+                    </tr>
+                    <tr>
+                        <td> &lt;evil/&gt; &amp; </td>
+                        <td class="rj"> 42 </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_declaration_merge():
+    class MyTable(Table):
+        class Meta:
+            columns__name = Column()
+
+        bar = Column()
+
+    assert {'name', 'bar'} == set(MyTable(rows=[]).bind(request=None).columns.keys())
+
+
+def test_kwarg_column_config_injection():
+    class MyTable(Table):
+        foo = Column()
+
+    table = MyTable(rows=[], columns__foo__extra__stuff="baz")
+    table = table.bind(request=None)
+    assert 'baz' == table.columns['foo'].extra.stuff
+
+
+def test_bad_arg():
+    with pytest.raises(TypeError) as e:
+        Table(rows=[], columns__foo=Column(), foo=None)
+    assert 'foo' in str(e.value)
+
+
+def test_column_ordering():
+    class MyTable(Table):
+        foo = Column(after='bar')
+        bar = Column()
+
+    assert ['bar', 'foo'] == list(MyTable(rows=[]).bind(request=None).columns.keys())
+
+
+def test_column_with_meta():
+    class MyColumn(Column):
+        class Meta:
+            sortable = False
+
+    class MyTable(Table):
+        foo = MyColumn()
+        bar = MyColumn.icon('history')
+
+    table = MyTable(rows=[])
+    table = table.bind(request=None)
+    assert not table.columns['foo'].sortable
+    assert not table.columns['bar'].sortable
+
+
+@pytest.mark.django_db
+def test_django_table():
+    f1 = TFoo.objects.create(a=17, b="Hej")
+    f2 = TFoo.objects.create(a=42, b="Hopp")
+
+    b1 = TBar.objects.create(foo=f1, c=True)
+    b2 = TBar.objects.create(foo=f2, c=False)
+
+    class TestTable(Table):
+        foo_a = Column.number(attr='foo__a')
+        foo_b = Column(attr='foo__b')
+        foo = Column.choice_queryset(
+            model=TFoo,
+            choices=lambda table, **_: TFoo.objects.all(),
+            filter__include=True,
+            bulk__include=True,
+        )
+
+    t = TestTable(rows=TBar.objects.all().order_by('pk'))
+    t = t.bind(request=req('get'))
+
+    assert list(t.columns['foo'].choices) == list(TFoo.objects.all())
+
+    assert t.bulk._is_bound
+    assert list(t.bulk.fields['foo'].choices) == list(TFoo.objects.all())
+
+    assert t.query.form._is_bound
+    assert list(t.query.form.fields['foo'].choices) == list(TFoo.objects.all())
+
+    verify_table_html(
+        table=t,
+        # language=html
+        expected_html=f"""
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="first_column iommi_sort_header subheader">
+                            <a href="?order=foo_a"> Foo a </a>
+                        </th>
+                        <th class="first_column iommi_sort_header subheader">
+                            <a href="?order=foo_b"> Foo b </a>
+                        </th>
+                        <th class="first_column iommi_sort_header subheader">
+                            <a href="?order=foo"> Foo </a>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr data-pk="{b1.pk}">
+                        <td class="rj"> 17 </td>
+                        <td> Hej </td>
+                        <td> Foo(17, Hej) </td>
+
+                    </tr>
+                    <tr data-pk="{b2.pk}">
+                        <td class="rj"> 42 </td>
+                        <td> Hopp </td>
+                        <td> Foo(42, Hopp) </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_inheritance():
+    class FooTable(Table):
+        foo = Column()
+
+    class BarTable(Table):
+        bar = Column()
+
+    class TestTable(FooTable, BarTable):
+        another = Column()
+
+    t = TestTable(rows=[]).bind(request=None)
+    assert list(t.columns.keys()) == ['foo', 'bar', 'another']
+
+
+def test_output():
+    class TestTable(Table):
+        class Meta:
+            attrs__class__foo = True
+            attrs__id = 'table_id'
+
+        foo = Column()
+        bar = Column.number()
+        icon = Column.icon('history', group="group")
+        edit = Column.edit(group="group")
+        delete = Column.delete()
+
+    rows = [
+        Struct(foo="Hello räksmörgås ><&>", bar=17, get_absolute_url=lambda: '/somewhere/'),
+    ]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="foo table"  id="table_id">
+                <thead>
+                    <tr>
+                        <th class="superheader" colspan="1"> </th>
+                        <th class="superheader" colspan="1"> </th>
+                        <th class="superheader" colspan="2"> group </th>
+                        <th class="superheader" colspan="1"> </th>
+                    </tr>
+                    <tr>
+                        <th class="first_column iommi_sort_header subheader"> <a href="?order=foo"> Foo </a> </th>
+                        <th class="first_column iommi_sort_header subheader"> <a href="?order=bar"> Bar </a> </th>
+                        <th class="first_column subheader"> </th>
+                        <th class="subheader"> Edit </th>
+                        <th class="first_column subheader"> Delete </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td> Hello räksmörgås &gt;&lt;&amp;&gt; </td>
+                        <td class="rj"> 17 </td>
+                        <td> <i class="fa fa-history fa-lg"> </i> </td>
+                        <td> <a href="/somewhere/edit/"> <i class="fa fa-lg fa-pencil-square-o"> </i> Edit </a> </td>
+                        <td> <a href="/somewhere/delete/"> <i class="fa fa-lg fa-trash-o"> </i> Delete </a> </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_generator():
+    class TestTable(Table):
+        foo = Column()
+        bar = Column()
+
+    rows = (x for x in [Struct(foo="foo", bar="bar")])
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="first_column iommi_sort_header subheader"> <a href="?order=foo"> Foo </a> </th>
+                        <th class="first_column iommi_sort_header subheader"> <a href="?order=bar"> Bar </a> </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td> foo </td>
+                        <td> bar </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+@pytest.fixture
+def NoSortTable():  # noqa: N802
+    class NoSortTable(Table):
+        class Meta:
+            sortable = False
+
+    return NoSortTable
+
+
+def test_display_name(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        foo = Column(display_name="Bar")
+
+    rows = [Struct(foo="foo")]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr> <th class="first_column subheader"> Bar </th> </tr>
+                </thead>
+                <tbody>
+                    <tr> <td> foo </td> </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_link(NoSortTable):  # noqa: N803  # noqa: N803
+    class TestTable(NoSortTable):
+        foo = Column.link(cell__url='https://whereever', cell__url_title="whatever")
+        bar = Column.link(cell__value='bar', cell__url_title=lambda value, **_: "url_title_goes_here")
+
+    rows = [Struct(foo='foo', bar=Struct(get_absolute_url=lambda: '/get/absolute/url/result'))]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="first_column subheader"> Foo </th>
+                        <th class="first_column subheader"> Bar </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td> <a href="https://whereever" title="whatever"> foo </a> </td>
+                        <td> <a href="/get/absolute/url/result" title="url_title_goes_here"> bar </a> </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_cell__url_with_attr(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        foo = Column(
+            cell__url='https://whereever', cell__url_title="whatever", cell__link__attrs__class__custom='custom'
+        )
+
+    rows = [Struct(foo='foo', bar=Struct(get_absolute_url=lambda: '/get/absolute/url/result'))]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="first_column subheader"> Foo </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td> <a class="custom" href="https://whereever" title="whatever"> foo </a> </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_css_class(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        foo = Column(header__attrs__class__some_class=True, cell__attrs__class__bar=True)
+
+    rows = [Struct(foo="foo")]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="first_column some_class subheader"> Foo </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="bar"> foo </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_header_url(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        foo = Column(header__url="/some/url")
+
+    rows = [Struct(foo="foo")]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="first_column iommi_sort_header subheader"> <a href="/some/url"> Foo </a> </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td> foo </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_include(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        foo = Column()
+        bar = Column(include=False)
+
+    rows = [Struct(foo="foo", bar="bar")]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr> <th class="first_column subheader"> Foo </th> </tr>
+                </thead>
+                <tbody>
+                    <tr> <td> foo </td> </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_include_lambda(NoSortTable):  # noqa: N803
+    def include_callable(table, column, **_):
+        assert isinstance(table, TestTable)
+        assert column._name == 'bar'
+        return False
+
+    class TestTable(NoSortTable):
+        foo = Column()
+        bar = Column.icon('foo', include=include_callable)
+
+    rows = [Struct(foo="foo", bar="bar")]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr> <th class="first_column subheader"> Foo </th> </tr>
+                </thead>
+                <tbody>
+                    <tr> <td> foo </td> </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_attr(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        foo = Column()
+        bar = Column(attr='foo')
+
+    rows = [Struct(foo="foo")]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="first_column subheader"> Foo </th>
+                        <th class="first_column subheader"> Bar </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td> foo </td>
+                        <td> foo </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+# noinspection HtmlUnknownAttribute
+def test_attrs(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        class Meta:
+            attrs__class__classy = True
+
+            @staticmethod
+            def attrs__foo(**_):
+                return 'bar'
+
+            row__attrs__class__classier = True
+
+            @staticmethod
+            def row__attrs__foo(**_):
+                return "quux"
+
+        yada = Column()
+
+    verify_table_html(
+        table=TestTable(rows=[Struct(yada=1), Struct(yada=2)]),
+        # language=html
+        expected_html="""
+            <table class="classy table"  foo="bar">
+                <thead>
+                    <tr>
+                        <th class="first_column subheader"> Yada </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="classier" foo="quux">
+                        <td> 1 </td>
+                    </tr>
+                    <tr class="classier" foo="quux">
+                        <td> 2 </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+# noinspection HtmlUnknownAttribute
+def test_attrs_new_syntax(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        class Meta:
+            attrs__class__classy = True
+
+            @staticmethod
+            def attrs__foo(table, **_):
+                return 'bar'
+
+            row__attrs__class__classier = True
+
+            @staticmethod
+            def row__attrs__foo(table, **_):
+                return 'quux'
+
+        yada = Column()
+
+    verify_table_html(
+        table=TestTable(rows=[Struct(yada=1), Struct(yada=2)]),
+        # language=html
+        expected_html="""
+            <table class="classy table"  foo="bar">
+                <thead>
+                    <tr>
+                        <th class="first_column subheader"> Yada </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="classier" foo="quux">
+                        <td> 1 </td>
+                    </tr>
+                    <tr class="classier" foo="quux">
+                        <td> 2 </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_column_presets(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        icon = Column.icon('some-icon')
+        edit = Column.edit()
+        delete = Column.delete()
+        download = Column.download()
+        run = Column.run()
+        select = Column.select(after='run')
+        boolean = Column.boolean()
+        link = Column.link(cell__format="Yadahada name")
+        number = Column.number()
+
+    rows = [
+        Struct(
+            pk=123,
+            get_absolute_url=lambda: "http://yada/",
+            boolean=lambda: True,
+            link=Struct(get_absolute_url=lambda: "http://yadahada/"),
+            number=123,
+        )
+    ]
+    table = TestTable(rows=rows)
+
+    verify_table_html(
+        table=table,
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="first_column subheader" />
+                        <th class="first_column subheader">Edit </th>
+                        <th class="first_column subheader">Delete </th>
+                        <th class="first_column subheader">Download </th>
+                        <th class="first_column subheader">Run </th>
+                        <th class="first_column subheader" title="Select all">
+                            <i class="fa fa-check-square-o" onclick="iommi_table_js_select_all(this, false)"></i>
+                        </th>
+                        <th class="first_column subheader"> Boolean </th>
+                        <th class="first_column subheader"> Link </th>
+                        <th class="first_column subheader"> Number </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr data-pk="123">
+                        <td> <i class="fa fa-lg fa-some-icon" /> </td>
+                        <td> <a href="http://yada/edit/"> <i class="fa fa-lg fa-pencil-square-o"/> Edit </a> </td>
+                        <td> <a href="http://yada/delete/"> <i class="fa fa-lg fa-trash-o"/> Delete </a> </td>
+                        <td> <a href="http://yada/download/"> <i class="fa fa-download fa-lg"/> Download </a> </td>
+                        <td> <a href="http://yada/run/"> Run </a> </td>
+                        <td> <input class="checkbox" name="pk_0" type="checkbox"/> </td> <td> <i class="fa fa-check" title="Yes" /> </td>
+                        <td> <a href="http://yadahada/"> Yadahada name </a> </td>
+                        <td class="rj"> 123 </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_select_column_preset(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        select = Column.select()
+        checked_select = Column.select(extra__checked=True)
+        named_select = Column.select(extra__checkbox_name='banana')
+
+    verify_table_html(
+        table=TestTable(rows=[Struct()]),
+        # language=HTML
+        expected_html='''
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="first_column subheader" title="Select all">
+                            <i class="fa fa-check-square-o" onclick="iommi_table_js_select_all(this, false)"> </i>
+                        </th>
+                        <th class="first_column subheader" title="Select all">
+                            <i class="fa fa-check-square-o" onclick="iommi_table_js_select_all(this, false)"> </i>
+                        </th>
+                        <th class="first_column subheader" title="Select all">
+                            <i class="fa fa-check-square-o" onclick="iommi_table_js_select_all(this, false)"> </i>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td> <input class="checkbox" name="pk_0" type="checkbox"/> </td>
+                        <td> <input checked="" class="checkbox" name="pk_0" type="checkbox"/> </td>
+                        <td> <input class="checkbox" name="banana_0" type="checkbox"/> </td>
+                    </tr>
+                </tbody>
+            </table>
+        ''',
+    )
+
+
+@pytest.mark.skipif(pytest.__name__ == 'hammett', reason='hammett has problems with this warns() thing')
+def test_column_select_shortcut_no_override_call_target(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        select = Column.select()
+
+    TestTable().bind()
+
+
+@pytest.mark.django_db
+def test_column_filters():
+    class TestTable(Table):
+        class Meta:
+            auto__model = TFoo
+            columns__a__filter__include = True
+            columns__edit = Column.edit()
+
+    t = TestTable().bind()
+
+    assert list(t.query.filters.keys()) == ['a']
+    assert list(t.query.form.fields.keys()) == ['a']
+
+
+@pytest.mark.django_db
+def test_column_filter_include():
+    t = Table(
+        auto__model=TFoo,
+        columns__a__filter__include=False,
+        columns__a__filter__field__include=True,
+    ).bind()
+    assert list(t.query.filters.keys()) == []
+    assert list(t.query.form.fields.keys()) == []
+
+
+@pytest.mark.django_db
+def test_column_filter_include_order():
+    t = Table(
+        auto__model=TFoo,
+        columns__a__filter__include=lambda **_: False,
+        columns__a__filter__field__include=False,
+        columns__b__filter__include=lambda **_: True,
+        columns__b__filter__field__include=True,
+    ).bind()
+    assert list(t.query.filters.keys()) == ['b']
+    assert list(t.query.form.fields.keys()) == ['b']
+
+
+@pytest.mark.django_db
+def test_column_filter_include_lambda():
+    t = Table(
+        auto__model=TFoo,
+        columns__a__filter__include=lambda **_: False,
+        columns__a__filter__field__include=True,
+    ).bind()
+    assert list(t.query.filters.keys()) == []
+    assert list(t.query.form.fields.keys()) == []
+
+
+@pytest.mark.django_db
+def test_column_filter_include_lambda2():
+    t = Table(
+        auto__model=TFoo,
+        columns__b__filter__include=lambda **_: False,
+        columns__b__filter__field__include=True,
+    ).bind()
+    assert list(t.query.filters.keys()) == []
+    assert list(t.query.form.fields.keys()) == []
+
+
+@pytest.mark.django_db
+def test_django_table_pagination():
+    for x in range(30):
+        TFoo(a=x, b="foo").save()
+
+    class TestTable(Table):
+        a = Column.number(sortable=False)  # turn off sorting to not get the link with random query params
+        b = Column(include=False)  # should still be able to filter on this though!
+
+    a, b, c, d = TFoo.objects.all().order_by('pk')[:4]
+
+    verify_table_html(
+        table=TestTable(rows=TFoo.objects.all().order_by('pk')),
+        query=dict(page_size=2, page=1, query='b="foo"'),
+        # language=html
+        expected_html=f"""
+            <table class="table" >
+                <thead>
+                    <tr> <th class="first_column subheader"> A </th> </tr>
+                </thead>
+                <tbody>
+                    <tr data-pk="{a.pk}"> <td class="rj"> 0 </td> </tr>
+                    <tr data-pk="{b.pk}"> <td class="rj"> 1 </td> </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+    verify_table_html(
+        table=TestTable(rows=TFoo.objects.all().order_by('pk')),
+        query=dict(page_size=2, page=2, query='b="foo"'),
+        # language=html
+        expected_html=f"""
+            <table class="table" >
+                <thead>
+                    <tr> <th class="first_column subheader"> A </th> </tr>
+                </thead>
+                <tbody>
+                    <tr data-pk="{c.pk}"> <td class="rj"> 2 </td> </tr>
+                    <tr data-pk="{d.pk}"> <td class="rj"> 3 </td> </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+@pytest.mark.django_db
+def test_page_size():
+    for x in range(10):
+        TFoo(a=x, b='foo').save()
+
+    class TestTable(Table):
+        class Meta:
+            page_size = 3
+
+            @staticmethod
+            def rows(**_):
+                return TFoo.objects.all()
+
+        a = Column()
+
+    a, b, c, d = TFoo.objects.all()[:4]
+
+    verify_table_html(
+        table=TestTable(),
+        find__name='tbody',
+        # language=html
+        expected_html=f"""
+            <tbody>
+                <tr data-pk="{a.pk}"> <td> 0 </td> </tr>
+                <tr data-pk="{b.pk}"> <td> 1 </td> </tr>
+                <tr data-pk="{c.pk}"> <td> 2 </td> </tr>
+            </tbody>
+        """,
+    )
+
+    verify_table_html(
+        table=TestTable(),
+        query=dict(page_size=2),
+        find__name='tbody',
+        # language=html
+        expected_html=f"""
+            <tbody>
+                <tr data-pk="{a.pk}"> <td> 0 </td> </tr>
+                <tr data-pk="{b.pk}"> <td> 1 </td> </tr>
+            </tbody>
+        """,
+    )
+
+    verify_table_html(
+        table=TestTable(),
+        query=dict(page_size='string'),
+        find__name='tbody',
+        # language=html
+        expected_html=f"""
+            <tbody>
+                <tr data-pk="{a.pk}"> <td> 0 </td> </tr>
+                <tr data-pk="{b.pk}"> <td> 1 </td> </tr>
+                <tr data-pk="{c.pk}"> <td> 2 </td> </tr>
+            </tbody>
+        """,
+    )
+
+
+@pytest.mark.django_db
+def test_bulk_edit_table():
+    assert TFoo.objects.all().count() == 0
+
+    foos = [
+        TFoo.objects.create(a=1, b=""),
+        TFoo.objects.create(a=2, b=""),
+        TFoo.objects.create(a=3, b=""),
+        TFoo.objects.create(a=4, b=""),
+    ]
+
+    class TestTable(Table):
+        a = Column.integer(
+            sortable=False, bulk__include=True
+        )  # turn off sorting to not get the link with random query params
+        b = Column(bulk__include=True)
+
+        class Meta:
+            rows = TFoo.objects.all().order_by('pk')
+
+    result = (
+        TestTable()
+        .bind(
+            request=req('get'),
+        )
+        .__html__()
+    )
+    assert '<form action="" enctype="multipart/form-data" method="post">' in result, result
+    assert '<button accesskey="s" name="-bulk/submit">Bulk change</button>' in result, result
+
+    def post_bulk_edit(table, pks, queryset, updates, **_):
+        assert isinstance(table, TestTable)
+        assert isinstance(queryset, QuerySet)
+        assert {x.pk for x in queryset} == {foos[0].pk, foos[1].pk}
+        assert set(pks) == {foos[0].pk, foos[1].pk}
+        assert updates == dict(a=0, b='changed')
+
+    # The most important part of the test: don't bulk update with an invalid form!
+    t = TestTable(post_bulk_edit=post_bulk_edit).bind(
+        request=req(
+            'post', **{f'pk_{x.pk}': '' for x in foos[:2]}, **{'bulk/a': 'asd', 'bulk/b': 'changed', '-bulk/submit': ''}
+        ),
+    )
+    assert t._is_bound
+    assert t.bulk._name == 'bulk'
+    t.render_to_response()
+
+    assert [(x.pk, x.a, x.b) for x in TFoo.objects.all()] == [
+        (foos[0].pk, 1, ''),
+        (foos[1].pk, 2, ''),
+        (foos[2].pk, 3, ''),
+        (foos[3].pk, 4, ''),
+    ]
+
+    # Now do the bulk update
+    t = TestTable(post_bulk_edit=post_bulk_edit).bind(
+        request=req(
+            'post', **{f'pk_{x.pk}': '' for x in foos[:2]}, **{'bulk/a': '0', 'bulk/b': 'changed', '-bulk/submit': ''}
+        ),
+    )
+    assert t._is_bound
+    assert t.bulk._name == 'bulk'
+    t.render_to_response()
+
+    assert [(x.pk, x.a, x.b) for x in TFoo.objects.all()] == [
+        (foos[0].pk, 0, 'changed'),
+        (foos[1].pk, 0, 'changed'),
+        (foos[2].pk, 3, ''),
+        (foos[3].pk, 4, ''),
+    ]
+
+    # Test that empty field means "no change", even with the form set to not parse empty as None
+    t = TestTable(
+        # TODO: this doesn't do anything, but imo it should work :(
+        # bulk__fields__b__parse_empty_string_as_none=False,
+        columns__b__bulk__parse_empty_string_as_none=False,
+    ).bind(
+        request=req('post', **{f'pk_{x.pk}': '' for x in foos[:2]}, **{'bulk/a': '', 'bulk/b': '', '-bulk/submit': ''}),
+    )
+    t.render_to_response()
+    assert t.bulk.fields.b.value == ''
+    assert [(x.pk, x.a, x.b) for x in TFoo.objects.all()] == [
+        (foos[0].pk, 0, 'changed'),
+        (foos[1].pk, 0, 'changed'),
+        (foos[2].pk, 3, ''),
+        (foos[3].pk, 4, ''),
+    ]
+
+    # Test edit all feature
+    TestTable().bind(
+        request=req('post', _all_pks_='1', **{'bulk/a': '11', 'bulk/b': 'changed2', '-bulk/submit': ''}),
+    ).render_to_response()
+
+    assert [(x.pk, x.a, x.b) for x in TFoo.objects.all()] == [
+        (foos[0].pk, 11, 'changed2'),
+        (foos[1].pk, 11, 'changed2'),
+        (foos[2].pk, 11, 'changed2'),
+        (foos[3].pk, 11, 'changed2'),
+    ]
+
+
+@pytest.mark.django_db
+def test_bulk_edit_all_multiple_tables():
+    assert TFoo.objects.all().count() == 0
+
+    foos = [
+        TFoo.objects.create(a=1, b=""),
+        TFoo.objects.create(a=2, b=""),
+        TFoo.objects.create(a=3, b=""),
+        TFoo.objects.create(a=4, b=""),
+    ]
+
+    class FirstTable(Table):
+        a = Column.integer(sortable=False, bulk__include=True)
+        b = Column()
+        class Meta:
+            page_size = 2
+            rows = TFoo.objects.all().order_by('pk')
+
+    class SecondTable(Table):
+        a = Column.integer(sortable=False)
+        b = Column(bulk__include=True)
+
+        class Meta:
+            page_size = 2
+            rows = TFoo.objects.all().order_by('pk')
+
+    p = Page(parts__first_table=FirstTable(), parts__second_table=SecondTable()).bind(request=req('get'))
+    # These asserts are assumptions for the later requests and asserts to make sense
+    assert p.parts.first_table.bulk.fields._all_pks_.iommi_path == "_all_pks_"
+    assert p.parts.first_table.bulk.fields.a.iommi_path == "bulk/a"
+    assert p.parts.first_table.bulk.actions.submit.iommi_path == "bulk/submit"
+    assert p.parts.second_table.bulk.fields._all_pks_.iommi_path == "bulk/_all_pks_"
+    assert p.parts.second_table.bulk.fields.b.iommi_path == "bulk/b"
+    assert p.parts.second_table.bulk.actions.submit.iommi_path == "second_table/bulk/submit"
+
+    result = p.__html__()
+    assert '<button accesskey="s" name="-bulk/submit">Bulk change</button>' in result, result
+    assert '<button accesskey="s" name="-second_table/bulk/submit">Bulk change</button>' in result, result
+
+    # Test edit all on first table
+    Page(
+        parts__first_table=FirstTable(),
+        parts__second_table=SecondTable()
+    ).bind(
+        request=req('post', **{'_all_pks_': '1', 'bulk/a': '11', '-bulk/submit': ''}),
+    ).render_to_response()
+
+    assert [(x.pk, x.a, x.b) for x in TFoo.objects.all()] == [
+        (foos[0].pk, 11, ''),
+        (foos[1].pk, 11, ''),
+        (foos[2].pk, 11, ''),
+        (foos[3].pk, 11, ''),
+    ]
+
+    # Test edit all on second table
+    Page(
+        parts__first_table=FirstTable(),
+        parts__second_table=SecondTable()
+    ).bind(
+        request=req('post', **{'bulk/_all_pks_': '1', 'bulk/b': 'changed2', '-second_table/bulk/submit': ''}),
+    ).render_to_response()
+
+    assert [(x.pk, x.a, x.b) for x in TFoo.objects.all()] == [
+        (foos[0].pk, 11, 'changed2'),
+        (foos[1].pk, 11, 'changed2'),
+        (foos[2].pk, 11, 'changed2'),
+        (foos[3].pk, 11, 'changed2'),
+    ]
+
+@pytest.mark.django_db
+def test_bulk_edit_filtered():
+    foo1 = TFoo.objects.create(a=1, b="")
+    foo2 = TFoo.objects.create(a=2, b="")
+
+    class TestTable(Table):
+        class Meta:
+            rows = TFoo.objects.all()
+
+        a = Column(filter__include=True)
+        b = Column(bulk__include=True)
+
+    response = (
+        TestTable()
+        .bind(
+            request=req(
+                'post',
+                **{
+                    '_all_pks_': '1',
+                    'a': '1',
+                    'bulk/b': 'banana',
+                    '-bulk/submit': '',
+                },
+            ),
+        )
+        .render_to_response()
+    )
+
+    assert response.status_code == 302
+    foo1.refresh_from_db()
+    assert foo1.b == 'banana'
+
+    foo2.refresh_from_db()
+    assert foo2.b == ''
+
+
+@pytest.mark.django_db
+def test_bulk_edit_advance_filtered():
+    foo1 = TFoo.objects.create(a=1, b="")
+    foo2 = TFoo.objects.create(a=2, b="")
+
+    class TestTable(Table):
+        class Meta:
+            rows = TFoo.objects.all()
+
+        a = Column(filter__include=True)
+        b = Column(bulk__include=True)
+
+    response = (
+        TestTable()
+        .bind(
+            request=req(
+                'post',
+                url='?' + urlencode({'-query/query': 'a=1'}),
+                **{
+                    '_all_pks_': '1',
+                    'bulk/b': 'banana',
+                    '-bulk/submit': '',
+                },
+            ),
+        )
+        .render_to_response()
+    )
+
+    assert response.status_code == 302
+    foo1.refresh_from_db()
+    assert foo1.b == 'banana'
+
+    foo2.refresh_from_db()
+    assert foo2.b == ''
+
+
+@pytest.mark.django_db
+def test_bulk_edit_fk():
+    foo1 = TFoo.objects.create(a=1, b="")
+    foo2 = TFoo.objects.create(a=2, b="")
+
+    bar = TBar.objects.create(c=True, foo=foo1)
+
+    class TestTable(Table):
+        class Meta:
+            rows = TBar.objects.all()
+
+        foo = Column(bulk__include=True)
+
+    response = (
+        TestTable()
+        .bind(
+            request=req(
+                'post',
+                **{
+                    '_all_pks_': '1',
+                    'bulk/foo': str(foo2.pk),
+                    '-bulk/submit': '',
+                },
+            ),
+        )
+        .render_to_response()
+    )
+
+    assert response.status_code == 302
+    bar.refresh_from_db()
+    assert bar.foo == foo2
+
+
+@pytest.mark.django_db
+def test_bulk_edit_m2m():
+    foo1 = TFoo.objects.create(a=1, b="")
+    foo2 = TFoo.objects.create(a=2, b="")
+
+    baz = TBaz.objects.create()
+    baz.foo.set([foo1])
+
+    class TestTable(Table):
+        class Meta:
+            rows = TBaz.objects.all()
+
+            @staticmethod
+            def post_bulk_edit(m2m_updates, **_):
+                assert m2m_updates == dict(foo=[foo2])
+
+        foo = Column.from_model(
+            model=TBaz,
+            model_field_name='foo',
+            bulk__include=True,
+        )
+
+    response = (
+        TestTable()
+        .bind(
+            request=req(
+                'post',
+                **{
+                    '_all_pks_': '1',
+                    'bulk/foo': str(foo2.pk),
+                    '-bulk/submit': '',
+                },
+            ),
+        )
+        .render_to_response()
+    )
+
+    assert response.status_code == 302
+    baz.refresh_from_db()
+    assert list(baz.foo.all()) == [foo2]
+
+
+@pytest.mark.django_db
+def test_bulk_edit_custom_response():
+    class TestTable(Table):
+        class Meta:
+            @staticmethod
+            def post_bulk_edit(**_):
+                return HttpResponse('custom response')
+
+        a = Column(bulk__include=True)
+
+    t = TestTable(rows=TFoo.objects.none()).bind(
+        request=req('post', **{'bulk/a': '1', '-bulk/submit': ''}),
+    )
+    assert t.render_to_response().content == b'custom response'
+
+
+@pytest.mark.skip('Django trips up on update when there is an annotation to a foreign table')
+@pytest.mark.django_db
+def test_django_broken_update():
+    TBar.objects.annotate(a=F('foo__a')).order_by('a').update(c=True)
+
+    assert True
+
+
+@pytest.mark.django_db
+def test_bulk_edit_with_annotate():
+    assert TBar.objects.all().count() == 0
+
+    tbar = TBar.objects.create(
+        c=False,
+        foo=TFoo.objects.create(a=2, b=''),
+    )
+
+    class TestTable(Table):
+        class Meta:
+            rows = TBar.objects.annotate(a=F('foo__a'))
+            default_sort_order = 'a'
+
+        a = Column()
+        c = Column(
+            bulk__include=True,
+        )
+
+    TestTable().bind(
+        request=req(
+            'post',
+            **{
+                f'pk_{tbar.pk}': '',
+                'bulk/c': 'True',
+                '-bulk/submit': '',
+            },
+        ),
+    ).render_to_response()
+
+    x = TBar.objects.get()
+    assert (x.pk, x.c) == (tbar.pk, True)
+
+
+@pytest.mark.django_db
+def test_bulk_edit_from_model_has_tristate_for_booleans():
+    t = Table(
+        auto__model=BooleanFromModelTestModel,
+        columns__b__bulk__include=True,
+    )
+
+    t2 = t.bind(request=req('get'))
+    assert t2.bulk.fields.b.iommi_shortcut_stack[0] == 'boolean_tristate'
+
+
+def test_from_model_field():
+    class MyTable(Table):
+        class Meta:
+            model = TBar
+
+        c = Column.from_model(
+            model_field=TBar.c.field,
+            filter__include=True,
+        )
+        foo_a = Column.from_model(attr='foo__a', model_field=TFoo.a.field)
+
+    f = MyTable().bind()
+    assert list(f.columns.keys()) == ['c', 'foo_a']
+    assert f.columns['foo_a'].attr == 'foo__a'
+
+
+@pytest.mark.django_db
+def test_bulk_edit_container():
+    t = Table(
+        auto__model=BooleanFromModelTestModel,
+        columns__b__bulk__include=True,
+        bulk_container__tag='megatag',
+        bulk_container__attrs__class__foo=True,
+    ).bind(request=req('get'))
+    assert '<megatag class="foo">' in str(t)
+
+
+@pytest.mark.django_db
+def test_bulk_edit_for_m2m_relations():
+    f1 = TFoo.objects.create(a=1, b='a')
+    f2 = TFoo.objects.create(a=2, b='b')
+    baz = TBaz.objects.create()
+    baz.foo.set([f1, f2])
+
+    t = Table(
+        auto__model=TBaz,
+        columns__foo__bulk__include=True,
+    ).bind(request=req('post', _all_pks_='1', **{'bulk/foo': [f1.pk], '-bulk/submit': ''}))
+    t.render_to_response()
+    baz.refresh_from_db()
+    assert list(baz.foo.all()) == [f1]
+
+
+@pytest.mark.django_db
+@override_settings(DEBUG=True)
+def test_bulk_delete():
+    TFoo.objects.create(a=1, b='a')
+    TFoo.objects.create(a=2, b='b')
+    table = Table(
+        auto__model=TFoo,
+        bulk__actions__delete__include=True,
+    ).refine_done()
+    t = table.bind(request=req('post', _all_pks_='1', **{'-delete': ''}))
+    assert 'Are you sure you want to delete these' in t.render_to_response().content.decode()
+
+    t = table.bind(request=req('post', _all_pks_='1', **{'-delete': '', 'confirmed': 'confirmed'}))
+    response = t.render_to_response()
+    assert response.status_code == 302, response.content.decode()
+
+    assert TFoo.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_bulk_delete_all_uses_original_rows():
+    TFoo.objects.create(a=1, b='a')
+    TFoo.objects.create(a=2, b='b')
+    TFoo.objects.create(a=3, b='a')
+    table = Table(
+        rows=TFoo.objects.all().filter(b='a'),
+        page_size=1,
+        bulk__actions__delete__include=True,
+    )
+
+    t = table.bind(request=req('post', _all_pks_='1', **{'-delete': ''}))
+
+    assert 'Are you sure you want to delete these' in t.render_to_response().content.decode()
+
+    t = table.bind(request=req('post', _all_pks_='1', confirmed='confirmed', **{'-delete': ''}))
+    response = t.render_to_response()
+
+    assert response.status_code == 302, response.content.decode()
+    # Deleting all should not have touched objects in TFoo that were not in rows.
+    assert list(TFoo.objects.all().order_by('a').values_list('a', flat=True)) == [2]
+
+
+@pytest.mark.django_db
+def test_bulk_include_false():
+    table = Table(
+        auto__rows=TFoo.objects.all(),
+        columns__a__bulk__include=True,
+        bulk__include=False,
+    ).bind(request=req('get'))
+
+    assert table.bulk is None
+    # we want to see that we can render the table with no crash
+    table.__html__()
+
+
+@pytest.mark.django_db
+def test_bulk_delete_all_respects_query():
+    TFoo.objects.create(a=1, b='a')
+    TFoo.objects.create(a=2, b='b')
+    TFoo.objects.create(a=3, b='a')
+    table = Table(
+        auto__model=TFoo,
+        page_size=1,
+        bulk__actions__delete__include=True,
+        columns__b__filter__include=True,
+    ).refine_done()
+    t = table.bind(request=req('post', b='a', _all_pks_='1', **{'-delete': ''}))
+
+    assert 'Are you sure you want to delete these' in t.render_to_response().content.decode()
+
+    t = table.bind(request=req('post', b='a', _all_pks_='1', confirmed='confirmed', **{'-delete': ''}))
+    response = t.render_to_response()
+
+    assert response.status_code == 302, response.content.decode()
+    # Deleting all should not have touched objects in TFoo that were filtered out.
+    assert list(TFoo.objects.all().order_by('a').values_list('a', flat=True)) == [2]
+
+
+def test_bulk_delete_post_handler_does_nothing_on_invalid_form():
+    assert bulk_delete__post_handler(table=None, form=Struct(is_valid=lambda: False)) is None
+
+
+@pytest.mark.django_db
+def test_bulk_custom_action_on_list():
+    class Row:
+        def __init__(self, name):
+            self.name = name
+
+        def __eq__(self, other):
+            return self.name == other.name
+
+    selected = []
+
+    def my_handler(table, **_):
+        nonlocal selected
+        selected = table.selection()
+
+    table = Table(
+        page_size=None,
+        rows=[
+            Row('Kaa'),
+            Row('Nagini'),
+            Row('Mrs. Plithiver'),
+        ],
+        columns__name=Column(),
+        bulk__actions__my_handler=Action.submit(post_handler=my_handler),
+    )
+    verify_table_html(
+        table=table.bind(request=req('get')),
+        find__class="links",
+        # language=html
+        expected_html="""
+            <div class="links">
+                <button accesskey="s" name="-my_handler"> Submit </button>
+            </div>
+        """,
+    )
+    response = table.bind(request=req('post', pk_1='on', **{'-my_handler': ''})).render_to_response()
+    assert response.status_code == 200, response.content.decode()
+    assert selected == [Row(name='Nagini')]
+
+
+@pytest.mark.django_db
+def test_bulk_fields_empty_by_default():
+    t = Table(
+        auto__model=DefaultsInForms,
+        columns__name__bulk__include=True,
+        columns__number__bulk__include=True,
+    ).bind()
+    assert t.bulk.fields.name.initial is None
+    assert t.bulk.fields.number.initial is None
+
+    t = Table(
+        auto__model=DefaultsInForms,
+        columns__name__bulk__include=True,
+        columns__number__bulk__include=True,
+        columns__number__bulk__initial=11,
+    ).bind()
+    assert t.bulk.fields.name.initial is None
+    assert t.bulk.fields.number.initial == 11
+
+
+@pytest.mark.django_db
+def test_bulk_form_when_not_needed():
+    t = Table(
+        auto__model=DefaultsInForms,
+        bulk__actions__banana__include=False,
+    ).bind()
+    assert t.bulk is None
+
+
+@pytest.mark.django_db
+def test_invalid_syntax_query():
+    class TestTable(Table):
+        a = Column.number(sortable=False, filter__include=True)
+
+    adv_query_param = TestTable(model=TFoo).bind(request=req('get')).query.get_advanced_query_param()
+
+    verify_table_html(
+        query={adv_query_param: '!!!'},
+        table=TestTable(rows=TFoo.objects.all().order_by('pk')),
+        find__class='iommi_query_error',
+        # language=html
+        expected_html='<div class="iommi_query_error"> Invalid syntax for query </div>',
+    )
+
+
+@pytest.mark.django_db
+def test_freetext_searching():
+    objects = [
+        T2.objects.create(foo='q', bar='q'),
+        T2.objects.create(foo='A', bar='q'),  # <- we should find this
+        T2.objects.create(foo='q', bar='a'),  # <- ...and this
+        T2.objects.create(foo='w', bar='w'),
+    ]
+
+    t = Table(
+        auto__model=T2,
+        columns=dict(
+            foo__filter=dict(include=True, freetext=True),
+            bar__filter=dict(include=True, freetext=True),
+        ),
+    ).bind(request=req('get', freetext_search='a'))
+
+    assert not t.query.form.get_errors()
+    t.__html__()
+    assert set(t.visible_rows) == set(objects[1:-1])
+    assert set(t.rows) == set(objects[1:-1])
+
+
+@pytest.mark.django_db
+def test_query_form_freetext():
+    class TestTable(Table):
+        b = Column(filter__include=True, filter__freetext=True)
+
+    verify_table_html(
+        table=TestTable(rows=TFoo.objects.all()[:1]),
+        find__class="iommi_query_form_simple",
+        # language=html
+        expected_html="""
+            <span class="iommi_query_form_simple">
+                <div>
+                    <label for="id_freetext_search">Search</label>
+                    <input id="id_freetext_search" name="freetext_search" type="text" value="">
+                </div>
+            </span>
+        """,
+    )
+
+
+@pytest.mark.django_db
+def test_query_form_freetext__exclude_label():
+    # As of right now this test does not pass!  But I claim it should.
+    class TestTable(Table):
+        b = Column(filter__include=True, filter__freetext=True)
+
+        class Meta:
+            query__form__fields__freetext_search__label__include = False
+
+    verify_table_html(
+        table=TestTable(rows=TFoo.objects.all()[:1]),
+        find__class="iommi_query_form_simple",
+        # language=html
+        expected_html="""
+            <span class="iommi_query_form_simple">
+                <div>
+                    <input id="id_freetext_search" name="freetext_search" type="text" value="">
+                </div>
+            </span>
+        """,
+    )
+
+
+@pytest.mark.django_db
+def test_query_form_foo__exclude_label():
+    # As of right now this test does not pass!  But I claim it should.
+    class TestTable(Table):
+        b = Column(filter__include=True)
+
+        class Meta:
+            query__form__fields__b__label__include = False
+
+    verify_table_html(
+        table=TestTable(rows=TFoo.objects.all()[:1]),
+        find__class="iommi_query_form_simple",
+        # language=html
+        expected_html="""
+            <span class="iommi_query_form_simple">
+                <div> <input id="id_b" name="b" type="text" value=""> </div>
+            </span>
+        """,
+    )
+
+
+@pytest.mark.django_db
+def test_query_filtering():
+    assert TFoo.objects.all().count() == 0
+
+    foos = [
+        TFoo.objects.create(a=1, b="foo"),
+        TFoo.objects.create(a=2, b="foo"),
+        TFoo.objects.create(a=3, b="bar"),
+        TFoo.objects.create(a=4, b="bar"),
+    ]
+
+    class TestTable(Table):
+        a = Column.number(
+            sortable=False, filter__include=True
+        )  # turn off sorting to not get the link with random query params
+        b = Column.substring(filter__include=True)
+
+        class Meta:
+            sortable = False
+
+    rows = TFoo.objects.all().order_by('pk')
+    t = TestTable(rows=rows).refine_done()
+    t2 = t.bind(request=req('get'))
+    assert t2.query.filters.a.iommi_path == 'query/a'
+    assert t2.query.form.fields.a.iommi_path == 'a'
+
+    assert t2.query.filters.b.query_operator_for_field == ':'
+
+    verify_table_html(
+        table=t,
+        query=dict(a='1'),
+        find__name='tbody',
+        # language=html
+        expected_html=f"""
+            <tbody>
+                <tr data-pk="{foos[0].pk}">
+                    <td class="rj"> 1 </td>
+                    <td> foo </td>
+                </tr>
+            </table>
+        """,
+    )
+    verify_table_html(
+        table=t,
+        query=dict(b='bar'),
+        find__name='tbody',
+        # language=html
+        expected_html=f"""
+            <tbody>
+                <tr data-pk="{foos[2].pk}">
+                    <td class="rj"> 3 </td>
+                    <td> bar </td>
+                </tr>
+                <tr data-pk="{foos[3].pk}">
+                    <td class="rj"> 4 </td>
+                    <td> bar </td>
+                </tr>
+            </tbody>
+        """,
+    )
+    verify_table_html(
+        table=t,
+        query={t2.query.get_advanced_query_param(): 'b="bar"'},
+        find__name='tbody',
+        # language=html
+        expected_html=f"""
+            <tbody>
+                <tr data-pk="{foos[2].pk}">
+                    <td class="rj"> 3 </td>
+                    <td> bar </td>
+                </tr>
+                <tr data-pk="{foos[3].pk}">
+                    <td class="rj"> 4 </td>
+                    <td> bar </td>
+                </tr>
+            </tbody>
+        """,
+    )
+    verify_table_html(
+        table=t,
+        query=dict(b='fo'),
+        find__name='tbody',
+        # language=html
+        expected_html=f"""
+            <tbody>
+                <tr data-pk="{foos[0].pk}">
+                    <td class="rj"> 1 </td>
+                    <td> foo </td>
+                </tr>
+                <tr data-pk="{foos[1].pk}">
+                    <td class="rj"> 2 </td>
+                    <td> foo </td>
+                </tr>
+            </table>
+        """,
+    )
+
+
+def test_cell_template(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        foo = Column(cell__template='test_cell_template.html')
+
+    rows = [Struct(foo="sentinel")]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr> <th class="first_column subheader"> Foo </th> </tr>
+                </thead>
+                <tbody>
+                    <tr> Custom rendered: sentinel </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_no_cell_tag(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        foo = Column(cell__tag=None)
+
+    rows = [Struct(foo="sentinel")]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr> <th class="first_column subheader"> Foo </th> </tr>
+                </thead>
+                <tbody>
+                    <tr> sentinel </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_no_row_tag(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        foo = Column()
+
+        class Meta:
+            row__tag = None
+
+    rows = [Struct(foo="sentinel")]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr> <th class="first_column subheader"> Foo </th> </tr>
+                </thead>
+                <tbody>
+                    <td> sentinel </td>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_cell_format_escape(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        foo = Column(cell__format=lambda request, value, **_: '<foo>')
+
+    rows = [Struct(foo="foo")]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr> <th class="first_column subheader"> Foo </th> </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td> &lt;foo&gt; </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_cell_format_no_escape(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        foo = Column(cell__format=lambda value, **_: mark_safe('<foo/>'))
+
+    rows = [Struct(foo="foo")]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr> <th class="first_column subheader"> Foo </th> </tr>
+                </thead>
+                <tbody>
+                    <tr> <td> <foo/> </td> </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+@pytest.mark.django_db
+def test_template_string(NoSortTable):  # noqa: N803
+    TFoo.objects.create(a=1)
+
+    class TestTable(NoSortTable):
+        class Meta:
+            model = TFoo
+            actions_template = Template('What links')
+            header__template = Template('What headers')
+            query__template = Template('What filters')
+
+            row__template = Template('Oh, rows: {% for cell in cells %}{{ cell }}{% endfor %}')
+
+        a = Column(
+            cell__template=Template('Custom cell: {{ row.a }}'),
+            filter__include=True,
+        )
+
+    verify_table_html(
+        table=TestTable(
+            actions__foo=Action(display_name='foo', attrs__href='bar'),
+        ),
+        # language=html
+        expected_html="""
+            What filters
+            <div class="iommi-table-container">
+                <form action="." method="post">
+                    <table class="table" >
+                        What headers
+                        <tbody>
+                            Oh, rows: Custom cell: 1
+                        </tbody>
+                    </table>
+                    What links
+                </form>
+            </div>
+        """,
+    )
+
+
+def test_cell_template_string(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        foo = Column(
+            cell__template=Template('Custom renderedXXXX: {{ row.foo }}'),
+        )
+
+    rows = [Struct(foo="sentinel")]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr> <th class="first_column subheader"> Foo </th> </tr>
+                </thead>
+                <tbody>
+                    <tr> Custom renderedXXXX: sentinel </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_row_template(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        foo = Column()
+        bar = Column()
+
+        class Meta:
+            @staticmethod
+            def row__template(table, **_):
+                return 'test_table_row.html'
+
+    rows = [Struct(foo="sentinel", bar="schmentinel")]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr>
+                      <th class="first_column subheader"> Foo </th>
+                      <th class="first_column subheader"> Bar </th>
+                    </tr>
+                </thead>
+                <tbody>
+
+                 All columns:
+                 <td> sentinel </td>
+                 <td> schmentinel </td>
+
+                 One by name:
+                  <td> sentinel </td>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_cell_lambda(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        sentinel1 = 'sentinel1'
+
+        sentinel2 = Column(
+            cell__value=lambda table, column, row, **_: '{} {} {}'.format(table.sentinel1, column._name, row.sentinel3)
+        )
+
+    rows = [Struct(sentinel3="sentinel3")]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr> <th class="first_column subheader"> Sentinel2 </th> </tr>
+                </thead>
+                <tbody>
+                    <tr> <td> sentinel1 sentinel2 sentinel3 </td> </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_auto_rowspan_and_render_twice(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        foo = Column(auto_rowspan=True)
+
+    rows = [
+        Struct(foo=1),
+        Struct(foo=1),
+        Struct(foo=2),
+        Struct(foo=2),
+    ]
+
+    # language=html
+    expected_html = """
+        <table class="table" >
+            <thead>
+                <tr> <th class="first_column subheader"> Foo </th> </tr>
+            </thead>
+            <tbody>
+                <tr> <td rowspan="2"> 1 </td> </tr>
+                <tr> <td style="display: none"> 1 </td> </tr>
+                <tr> <td rowspan="2"> 2 </td> </tr>
+                <tr> <td style="display: none"> 2 </td> </tr>
+            </tbody>
+        </table>"""
+
+    t = TestTable(rows=rows)
+    t = t.bind(request=req('get'))
+    verify_table_html(table=t, expected_html=expected_html)
+    verify_table_html(table=t, expected_html=expected_html)
+
+
+def test_auto_rowspan_fail_on_override():
+    with pytest.raises(AssertionError) as e:
+        Table(
+            columns__foo=Column(
+                auto_rowspan=True,
+                cell__attrs__rowspan=17,
+            )
+        ).bind()
+
+    assert str(e.value) == 'Explicitly set rowspan html attribute collides with auto_rowspan on column foo'
+
+
+def test_render_table(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        foo = Column(display_name="TBar")
+
+    rows = [Struct(foo="foo")]
+
+    response = TestTable(rows=rows).bind(request=req('get')).render_to_response()
+    assert isinstance(response, HttpResponse)
+    assert b'<table' in response.content
+
+
+@pytest.mark.django_db
+@override_settings(TIME_ZONE="Europe/Prague")
+def test_default_formatters(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        foo = Column()
+
+    class SomeType:
+        def __str__(self):
+            return 'this should not end up in the table'  # pragma: no cover
+
+    register_cell_formatter(SomeType, lambda value, **_: 'sentinel')
+
+    assert TFoo.objects.all().count() == 0
+
+    TFoo(a=1, b="3").save()
+    TFoo(a=2, b="5").save()
+
+    dt = datetime(2020, 1, 2, 3, 4, 5)
+    assert datetime_formatter(timezone.make_aware(dt), format='DATETIME_FORMAT') == 'datetime: Jan. 2, 2020, 3:04 a.m.'
+    assert datetime_formatter(dt, format='DATETIME_FORMAT') == 'datetime: Jan. 2, 2020, 3:04 a.m.'
+
+    rows = [
+        Struct(foo=1),
+        Struct(foo=True),
+        Struct(foo=False),
+        Struct(foo=[1, 2, 3]),
+        Struct(foo=SomeType()),
+        Struct(foo=TFoo.objects.all()),
+        Struct(foo=None),
+        Struct(foo=dt),
+        Struct(foo=date(2020, 1, 2)),
+        Struct(foo=time(3, 4, 5)),
+    ]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr> <th class="first_column subheader"> Foo </th> </tr>
+                </thead>
+                <tbody>
+                    <tr> <td> 1 </td> </tr>
+                    <tr> <td> Yes </td> </tr>
+                    <tr> <td> No </td> </tr>
+                    <tr> <td> 1, 2, 3 </td> </tr>
+                    <tr> <td> sentinel </td> </tr>
+                    <tr> <td> Foo(1, 3), Foo(2, 5) </td> </tr>
+                    <tr> <td> </td> </tr>
+                    <tr> <td> datetime: Jan. 2, 2020, 3:04 a.m. </td> </tr>
+                    <tr> <td> date: Jan. 2, 2020 </td> </tr>
+                    <tr> <td> time: 3:04 a.m. </td> </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_missing_choices():
+    with pytest.raises(AssertionError, match='To use Column.choice, you must pass the choices list'):
+        Column.choice().refine_done()
+
+    with pytest.raises(AssertionError, match='To use Column.choice, you must pass the choices list'):
+        Column.multi_choice().refine_done()
+
+    with pytest.raises(AssertionError, match='To use Column.choice, you must pass the choices list'):
+        Column.choice_queryset().refine_done()
+
+
+@pytest.mark.django_db
+def test_choice_queryset():
+    assert TFoo.objects.all().count() == 0
+
+    TFoo.objects.create(a=1)
+    TFoo.objects.create(a=2)
+
+    class FooTable(Table):
+        foo = Column.choice_queryset(
+            attr='a', filter__include=True, bulk__include=True, choices=lambda table, **_: TFoo.objects.filter(a=1)
+        )
+
+        class Meta:
+            model = TFoo
+
+    foo_table = FooTable(
+        rows=TFoo.objects.all(),
+    )
+    foo_table = foo_table.bind(request=req('get'))
+
+    assert repr(foo_table.columns['foo'].choices) == repr(TFoo.objects.filter(a=1))
+    assert repr(foo_table.bulk.fields['foo'].choices) == repr(TFoo.objects.filter(a=1))
+    assert repr(foo_table.query.form.fields['foo'].choices) == repr(TFoo.objects.filter(a=1))
+
+
+@pytest.mark.django_db
+def test_multi_choice_queryset():
+    assert TFoo.objects.all().count() == 0
+
+    TFoo.objects.create(a=1)
+    TFoo.objects.create(a=2)
+    TFoo.objects.create(a=3)
+    TFoo.objects.create(a=4)
+
+    class FooTable(Table):
+        foo = Column.multi_choice_queryset(
+            filter__include=True, bulk__include=True, choices=lambda table, **_: TFoo.objects.exclude(a=3).exclude(a=4)
+        )
+
+        class Meta:
+            model = TFoo
+
+    table = FooTable(rows=TFoo.objects.all())
+    table = table.bind(request=req('get'))
+
+    assert repr(table.columns['foo'].choices) == repr(TFoo.objects.exclude(a=3).exclude(a=4))
+    assert repr(table.bulk.fields['foo'].choices) == repr(TFoo.objects.exclude(a=3).exclude(a=4))
+    assert repr(table.query.form.fields['foo'].choices) == repr(TFoo.objects.exclude(a=3).exclude(a=4))
+
+
+@pytest.mark.django_db
+def test_query_namespace_inject():
+    class FooException(Exception):
+        pass
+
+    def post_validation(**_):
+        raise FooException()
+
+    with pytest.raises(FooException):
+        Table(
+            rows=[],
+            model=TFoo,
+            columns__a=Column(_name='a', filter__include=True),
+            query__form__post_validation=post_validation,
+        ).bind(
+            request=Struct(method='POST', POST={'-submit': '-'}, GET=Struct(urlencode=lambda: '')),
+        )
+
+
+def test_float():
+    x = Column.float().refine_done()
+    assert getattr_path(x, 'filter__call_target__attribute') == 'float'
+    assert getattr_path(x, 'bulk__call_target__attribute') == 'float'
+
+
+def test_integer():
+    x = Column.integer().refine_done()
+    assert getattr_path(x, 'filter__call_target__attribute') == 'integer'
+    assert getattr_path(x, 'bulk__call_target__attribute') == 'integer'
+
+
+def test_date():
+    x = Column.date().refine_done()
+    assert getattr_path(x, 'filter__call_target__attribute') == 'date'
+    assert getattr_path(x, 'bulk__call_target__attribute') == 'date'
+
+
+def test_datetime():
+    x = Column.datetime().refine_done()
+    assert getattr_path(x, 'filter__call_target__attribute') == 'datetime'
+    assert getattr_path(x, 'bulk__call_target__attribute') == 'datetime'
+
+
+def test_email():
+    x = Column.email().refine_done()
+    assert getattr_path(x, 'filter__call_target__attribute') == 'email'
+    assert getattr_path(x, 'bulk__call_target__attribute') == 'email'
+
+
+def test_extra():
+    class TestTable(Table):
+        foo = Column(extra__foo=1, extra__bar=2)
+
+    assert TestTable(rows=[]).bind(request=None).columns.foo.extra.foo == 1
+    assert TestTable(rows=[]).bind(request=None).columns.foo.extra.bar == 2
+
+
+def test_row_extra():
+    class TestTable(Table):
+        result = Column(cell__value=lambda cells, **_: cells.extra_evaluated.foo)
+
+        class Meta:
+            row__extra__foo = 7
+
+            @staticmethod
+            def row__extra_evaluated__foo(table, row, **_):
+                return row.a + row.b
+
+    table = TestTable(rows=[Struct(a=5, b=7)]).bind(
+        request=req('get'),
+    )
+    cells = list(table.cells_for_rows())[0]
+
+    assert cells.extra.foo == 7
+    assert cells.extra_evaluated.foo == 5 + 7
+    assert cells['result'].value == 5 + 7
+
+
+def test_row_extra_evaluated():
+    def some_callable(row, **_):
+        return row.a + row.b
+
+    class TestTable(Table):
+        result = Column(cell__value=lambda cells, **_: cells.extra_evaluated.foo)
+
+        class Meta:
+            row__extra__foo = some_callable
+            row__extra_evaluated__foo = some_callable
+
+    table = TestTable(
+        rows=[Struct(a=5, b=7)],
+    )
+    table = table.bind(request=req('get'))
+    cells = list(table.cells_for_rows())[0]
+    assert cells.extra.foo is some_callable
+    assert cells.extra_evaluated.foo == 5 + 7
+    assert cells['result'].value == 5 + 7
+
+
+@pytest.mark.django_db
+def test_from_model():
+    t = Table(
+        auto__model=TFoo,
+        columns__a__display_name='Some a',
+        columns__a__extra__stuff='Some stuff',
+    )
+    t = t.bind(request=None)
+    assert set(get_field_by_name(TFoo).keys()) == {'id', 'a', 'b', 'tbar_set'}
+    assert set(t.iommi_namespace.columns.keys()) == {'select', 'id', 'a', 'b', 'tbar_set'}
+    assert list(t.columns.keys()) == ['a', 'b']
+    assert t.columns['a'].display_name == 'Some a'
+    assert t.columns['a'].extra.stuff == 'Some stuff'
+
+
+@pytest.mark.django_db
+def test_from_model_foreign_key():
+    t = Table(
+        auto__model=TBar,
+    ).bind(request=None)
+    assert set(t.iommi_namespace.columns.keys()) == {'select', 'id', 'foo', 'c', 'tbar2_set'}
+    assert list(t.columns.keys()) == ['foo', 'c']
+
+
+@pytest.mark.django_db
+def test_select_ordering():
+    t = Table(
+        auto__model=TBar,
+        columns__select__include=True,
+    ).bind(request=None)
+    assert set(t.iommi_namespace.columns.keys()) == {'select', 'id', 'foo', 'c', 'tbar2_set'}
+    assert list(t.columns.keys()) == ['select', 'foo', 'c']
+
+
+@pytest.mark.django_db
+def test_explicit_table_does_not_use_from_model():
+    class TestTable(Table):
+        foo = Column.choice_queryset(
+            model=TFoo,
+            choices=lambda table, **_: TFoo.objects.all(),
+            filter__include=True,
+            bulk__include=True,
+        )
+
+    t = TestTable().bind(request=None)
+    assert list(t.iommi_namespace.columns.keys()) == ['select', 'foo']
+    assert list(t.iommi_bound_members().columns._bound_members.keys()) == ['foo']
+
+
+@pytest.mark.django_db
+def test_from_model_implicit():
+    t = Table(auto__rows=TBar.objects.all()).bind(request=None)
+    assert set(t.iommi_namespace.columns.keys()) == {'select', 'id', 'foo', 'c', 'tbar2_set'}
+    assert list(t.columns.keys()) == ['foo', 'c']
+
+
+@pytest.mark.django_db
+def test_from_model_implicit_not_break_sorting():
+    t = Table(auto__model=TBar, rows=lambda table, **_: TBar.objects.all()).bind(request=None)
+    assert isinstance(t.rows, QuerySet)
+
+
+@override_settings(DEBUG=True)
+@pytest.mark.django_db
+def test_ajax_endpoint():
+    f1 = TFoo.objects.create(a=17, b="Hej")
+    f2 = TFoo.objects.create(a=42, b="Hopp")
+
+    TBar(foo=f1, c=True).save()
+    TBar(foo=f2, c=False).save()
+
+    class TestTable(Table):
+        foo = Column.choice_queryset(
+            model=TFoo,
+            choices=lambda table, **_: TFoo.objects.all(),
+            filter__include=True,
+            bulk__include=True,
+        )
+
+    # This test could also have been made with perform_ajax_dispatch directly, but it's nice to have a test that tests more of the code path
+    result = request_with_middleware(
+        Page(
+            parts__table=TestTable(rows=TBar.objects.all()),
+        ),
+        req('get', **{'/parts/table/query/form/fields/foo/endpoints/choices': 'hopp'}),
+    )
+    assert json.loads(result.content) == {
+        'results': [
+            {'id': f2.pk, 'text': 'Foo(42, Hopp)'},
+        ],
+        'pagination': {'more': False},
+        'page': 1,
+    }
+
+
+@pytest.mark.django_db
+def test_ajax_endpoint_empty_response():
+    class TestTable(Table):
+        class Meta:
+            @staticmethod
+            def endpoints__foo__func(**_):
+                return []
+
+        bar = Column()
+
+    actual = perform_ajax_dispatch(root=TestTable(rows=[]).bind(request=req('get')), path='/foo', value='')
+    assert actual == []
+
+
+def test_ajax_data_endpoint():
+    class TestTable(Table):
+        class Meta:
+            @staticmethod
+            def endpoints__data__func(table, **_):
+                return [{cell.column._name: cell.value for cell in cells} for cells in table.cells_for_rows()]
+
+        foo = Column()
+        bar = Column()
+
+    table = TestTable(
+        rows=[
+            Struct(foo=1, bar=2),
+            Struct(foo=3, bar=4),
+        ]
+    )
+    table = table.bind(request=req('get'))
+
+    actual = perform_ajax_dispatch(root=table, path='/data', value='')
+    expected = [dict(foo=1, bar=2), dict(foo=3, bar=4)]
+    assert actual == expected
+
+
+def test_ajax_endpoint_namespacing():
+    class TestTable(Table):
+        class Meta:
+            @staticmethod
+            def endpoints__bar__func(**_):
+                return 17
+
+        baz = Column()
+
+    with pytest.raises(InvalidEndpointPathException):
+        perform_ajax_dispatch(root=TestTable(rows=[]).bind(request=req('get')), path='/baz', value='')
+
+    actual = perform_ajax_dispatch(root=TestTable(rows=[]).bind(request=req('get')), path='/bar', value='')
+    assert 17 == actual
+
+
+def test_table_iteration():
+    class TestTable(Table):
+        class Meta:
+            rows = [Struct(foo='a', bar=1), Struct(foo='b', bar=2)]
+
+        foo = Column()
+        bar = Column(cell__value=lambda row, **_: row['bar'] + 1)
+
+    table = TestTable().bind(request=req('get'))
+
+    assert [
+        {bound_cell.column._name: bound_cell.value for bound_cell in cells} for cells in table.cells_for_rows()
+    ] == [
+        dict(foo='a', bar=2),
+        dict(foo='b', bar=3),
+    ]
+
+
+def test_ajax_custom_endpoint():
+    class TestTable(Table):
+        class Meta:
+            @staticmethod
+            def endpoints__foo__func(value, **_):
+                return dict(baz=value)
+
+        spam = Column()
+
+    actual = perform_ajax_dispatch(root=TestTable(rows=[]).bind(request=req('get')), path='/foo', value='bar')
+    assert actual == dict(baz='bar')
+
+
+def test_table_extra_namespace():
+    class TestTable(Table):
+        class Meta:
+            extra__foo = 17
+
+        foo = Column()
+
+    assert TestTable(rows=[]).bind(request=req('get')).extra.foo == 17
+
+
+def test_defaults():
+    class TestTable(Table):
+        foo = Column()
+
+    table = TestTable()
+    table = table.bind(request=None)
+
+    col = table.columns.foo
+    assert table.query is None
+    assert table.bulk is None
+    assert not col.auto_rowspan
+    assert not col.sort_default_desc
+    assert col.sortable
+    assert col.include
+
+
+def test_yes_no_formatter():
+    assert yes_no_formatter(None) == ''
+    assert yes_no_formatter(True) == 'Yes'
+    assert yes_no_formatter(1) == 'Yes'
+    assert yes_no_formatter(False) == 'No'
+    assert yes_no_formatter(0) == 'No'
+
+    with pytest.raises(AssertionError) as e:
+        yes_no_formatter({})
+
+    assert str(e.value) == 'Unable to convert {} to Yes/No'
+
+
+def test_repr():
+    assert repr(Column(_name='foo')) == '<iommi.table.Column foo>'
+
+
+@pytest.mark.django_db
+def test_ordering():
+    TFoo.objects.create(a=1, b='d')
+    TFoo.objects.create(a=2, b='c')
+    TFoo.objects.create(a=3, b='b')
+    TFoo.objects.create(a=4, b='a')
+
+    # no ordering
+    t = Table(auto__model=TFoo)
+    t = t.bind(request=req('get'))
+    assert not t.sorted_rows.query.order_by
+
+    # ordering from GET parameter
+    t = Table(auto__model=TFoo)
+    t = t.bind(request=req('get', order='a'))
+    assert list(t.sorted_rows.query.order_by) == ['a', 'pk']
+
+    # default ordering
+    t = Table(auto__model=TFoo, default_sort_order='b')
+    t = t.bind(request=req('get', order='b'))
+    assert list(t.sorted_rows.query.order_by) == ['b', 'pk']
+
+
+@pytest.mark.django_db
+def test_many_to_many():
+    f1 = TFoo.objects.create(a=17, b="Hej")
+    f2 = TFoo.objects.create(a=23, b="Hopp")
+
+    baz = TBaz.objects.create()
+    f1.tbaz_set.add(baz)
+    f2.tbaz_set.add(baz)
+
+    verify_table_html(
+        table=Table(auto__model=TBaz),
+        # language=html
+        expected_html=f"""
+            <table class="table" >
+              <thead>
+                  <tr> <th class="first_column subheader"> Foo </th> </tr>
+              </thead>
+              <tbody>
+                  <tr data-pk="{baz.pk}"> <td> Foo(17, Hej), Foo(23, Hopp) </td> </tr>
+              </tbody>
+            </table>
+        """,
+    )
+
+
+@pytest.mark.django_db
+def test_preprocess_row():
+    foo = TFoo.objects.create(a=1, b='d')
+
+    def preprocess(row, **_):
+        row.some_non_existent_property = 1
+        return row
+
+    class PreprocessedTable(Table):
+        some_non_existent_property = Column()
+
+        class Meta:
+            preprocess_row = preprocess
+            rows = TFoo.objects.all().order_by('pk')
+
+    verify_table_html(
+        table=PreprocessedTable(),
+        # language=html
+        expected_html=f"""
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="first_column  iommi_sort_header subheader">
+                            <a href="?order=some_non_existent_property"> Some non existent property </a>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr data-pk="{foo.pk}">
+                        <td> 1 </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+@pytest.mark.django_db
+def test_preprocess_row_parameters():
+    p = Page(
+        extra__x=17,
+        parts__table=Table(
+            rows=[Struct()],
+            preprocess_row=lambda page, **_: Struct(y=page.extra.x),
+        ),
+    ).bind()
+    assert [c.row for c in p.parts.table.cells_for_rows()] == [Struct(y=17)]
+
+
+@pytest.mark.django_db
+def test_yield_rows():
+    f = TFoo.objects.create(a=3, b='d')
+
+    def my_preprocess_rows(rows, **_):
+        for row in rows:
+            yield row
+            yield Struct(a=row.a * 5)
+
+    class MyTable(Table):
+        a = Column()
+
+        class Meta:
+            preprocess_rows = my_preprocess_rows
+
+    table = MyTable(rows=TFoo.objects.all())
+    table = table.bind(request=None)
+    results = list(table.cells_for_rows())
+    assert len(results) == 2
+    assert results[0].row == f
+    assert results[1].row == Struct(a=15)
+
+
+@pytest.mark.skip('This assert is broken currently, due to value_to_q being a function by default which is truthy')
+@pytest.mark.django_db
+def test_error_on_invalid_filter_setup():  # pragma: no cover
+    class MyTable(Table):
+        c = Column(attr=None, filter__include=True)
+
+        class Meta:
+            model = TFoo
+
+    table = MyTable()
+    with pytest.raises(AssertionError):
+        table.bind(request=req('get'))
+
+
+@pytest.mark.django_db
+def test_from_model_with_inheritance():
+    was_called = defaultdict(int)
+
+    class MyField(Field):
+        @classmethod
+        @with_defaults
+        def float(cls, **kwargs):
+            was_called['MyField.float'] += 1
+            return cls(**kwargs)
+
+    class MyForm(Form):
+        class Meta:
+            member_class = MyField
+
+    class MyFilter(Filter):
+        @classmethod
+        @with_defaults(
+            field__call_target__attribute='float',
+        )
+        def float(cls, **kwargs):
+            was_called['MyVariable.float'] += 1
+            return cls(**kwargs)
+
+    class MyQuery(Query):
+        class Meta:
+            member_class = MyFilter
+            form_class = MyForm
+
+    class MyColumn(Column):
+        @classmethod
+        @with_defaults(
+            filter__call_target__attribute='float',
+            bulk__call_target__attribute='float',
+        )
+        def float(cls, **kwargs):
+            was_called['MyColumn.float'] += 1
+            return cls.number(**kwargs)
+
+    class MyTable(Table):
+        class Meta:
+            member_class = MyColumn
+            form_class = MyForm
+            query_class = MyQuery
+
+    MyTable(
+        auto__rows=FromModelWithInheritanceTest.objects.all(),
+        auto__model=FromModelWithInheritanceTest,
+        columns__value__filter__include=True,
+        columns__value__bulk__include=True,
+    ).bind(
+        request=req('get'),
+    )
+
+    assert was_called == {
+        'MyField.float': 2,
+        'MyVariable.float': 1,
+        'MyColumn.float': 1,
+    }
+
+
+def test_column_merge():
+    table = Table(
+        columns__foo={},
+        rows=[
+            Struct(foo=1),
+        ],
+    )
+    table = table.bind(request=None)
+    assert len(table.columns) == 1
+    assert table.columns.foo._name == 'foo'
+    for row in table.cells_for_rows():
+        assert row['foo'].value == 1
+
+
+def test_hide_named_column():
+    class MyTable(Table):
+        foo = Column()
+
+    table = MyTable(columns__foo__include=False, rows=[])
+    table = table.bind(request=None)
+    assert len(table.columns) == 0
+
+
+def test_override_doesnt_stick():
+    class MyTable(Table):
+        foo = Column()
+
+    table = MyTable(columns__foo__include=False, rows=[])
+    table = table.bind(request=None)
+    assert len(table.columns) == 0
+
+    table2 = MyTable(rows=[])
+    table2 = table2.bind(request=None)
+    assert len(table2.columns) == 1
+
+
+@pytest.mark.django_db
+@override_settings(DEBUG=True)
+def test_new_style_ajax_dispatch():
+    foos = [
+        TFoo.objects.create(a=1, b='A'),
+        TFoo.objects.create(a=2, b='B'),
+        TFoo.objects.create(a=3, b='C'),
+    ]
+
+    def get_response(request):
+        del request
+        return Table(auto__model=TBar, columns__foo__filter=dict(include=True, field__include=True))
+
+    from iommi import middleware
+
+    m = middleware(get_response)
+    response = m(request=req('get', **{'/query/form/fields/foo/endpoints/choices': ''}))
+
+    assert json.loads(response.content) == {
+        'results': [
+            {'id': foos[0].pk, 'text': 'Foo(1, A)'},
+            {'id': foos[1].pk, 'text': 'Foo(2, B)'},
+            {'id': foos[2].pk, 'text': 'Foo(3, C)'},
+        ],
+        'page': 1,
+        'pagination': {'more': False},
+    }
+
+
+@pytest.mark.django_db
+@override_settings(DEBUG=True)
+def test_endpoint_path_of_nested_part():
+    table = Table(
+        auto__model=TBar,
+        columns__foo__filter=dict(
+            include=True,
+            field__include=True,
+        ),
+    ).bind(request=None)
+    target = find_target(path='/query/form/fields/foo/endpoints/choices', root=table)
+    assert target.endpoint_path == '/choices'
+    assert target.iommi_dunder_path == 'query__form__fields__foo__endpoints__choices'
+
+
+@pytest.mark.django_db
+def test_dunder_name_for_column():
+    class FooTable(Table):
+        class Meta:
+            model = TBar
+
+        foo = Column(filter__include=True)
+        a = Column(attr='foo__a', filter__include=True)
+
+    table = FooTable()
+    table = table.bind(request=None)
+
+    assert list(table.columns.keys()) == ['foo', 'a']
+    assert list(table.query.filters.keys()) == ['foo', 'a']
+    assert list(table.query.form.fields.keys()) == ['foo', 'a']
+
+
+@pytest.mark.django_db
+def test_render_column_attribute():
+    class FooTable(Table):
+        class Meta:
+            model = TBar
+
+        a = Column()
+        b = Column(render_column=False)
+        c = Column(render_column=lambda column, **_: False)
+        d = Column(filter__include=True, include=False)
+
+    t = FooTable()
+    t = t.bind(request=None)
+
+    assert not keys(t.query.filters)
+
+    assert list(t.columns.keys()) == ['a', 'b', 'c']
+    assert [k for k, v in items(t.columns) if v.render_column] == ['a']
+    assert [h.display_name for h in t.header_levels[0]] == ['A']
+
+    verify_table_html(
+        table=FooTable(rows=[Struct(a=1)]),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="first_column  iommi_sort_header subheader">
+                            <a href="?order=a"> A </a>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr> <td> 1 </td> </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+@pytest.mark.parametrize('name, shortcut', get_shortcuts_by_name(Column).items())
+def test_shortcuts_map_to_form_and_query(name, shortcut):
+    whitelist = {
+        'boolean_tristate',
+        # this is special in the bulk case where you want a boolean_quadstate: don't change, clear, True, False. For now, we'll wait for someone to report this misfeature/bug :)
+        'delete',
+        'download',
+        'edit',
+        'icon',
+        'link',
+        'number',  # no equivalent in Field or Filter, there you have to choose integer or float
+        'run',
+        'select',
+        'substring',
+        'textarea',
+    }
+    if name in whitelist:
+        return
+
+    if (
+        'call_target' in getattr(shortcut, '__iommi_with_defaults_kwargs', [])
+        and shortcut.__iommi_with_defaults_kwargs.call_target.attribute in whitelist
+    ):
+        # shortcuts that in turn point to whitelisted ones are also whitelisted
+        return
+
+    assert Namespace(shortcut.__iommi_with_defaults_kwargs).filter.call_target.attribute == name
+    assert Namespace(shortcut.__iommi_with_defaults_kwargs).bulk.call_target.attribute == name
+
+
+@pytest.mark.django_db
+def test_display_name_from_column_to_field():
+    t = Table(
+        auto__model=TFoo,
+        columns__a__display_name='7',
+        columns__a__filter__include=True,
+    )
+    t = t.bind(request=req('get'))
+    assert t.query.form.fields.a.display_name == '7'
+
+
+@pytest.mark.django_db
+def test_bulk_namespaces_are_merged():
+    t = Table(
+        auto__model=TFoo,
+        bulk__fields__a__initial=3,
+        columns__a__bulk=dict(
+            display_name='7',
+            include=True,
+        ),
+    )
+    t = t.bind(request=req('get'))
+    assert t.bulk.fields.a.initial == 3
+    assert t.bulk.fields.a.display_name == '7'
+
+
+@pytest.mark.django_db
+def test_bulk_namespaces_are_merged2():
+    t = Table(
+        auto__model=TFoo,
+        bulk__fields__a__initial=3,
+        columns__a__bulk__extra__fisk='fisk',
+        columns__a__bulk__display_name='7',
+        columns__a__bulk__include=True,
+    )
+    t = t.bind(request=req('get'))
+    assert t.bulk.fields.a.initial == 3
+    assert t.bulk.fields.a.extra.fisk == 'fisk'
+    assert t.bulk.fields.a.display_name == '7'
+
+
+@override_settings(IOMMI_DEBUG=True)
+def test_data_iommi_path():
+    class FooTable(Table):
+        a = Column(group='foo')
+
+    verify_table_html(
+        table=FooTable(rows=[Struct(a=1)]),
+        # language=html
+        expected_html="""
+            <table class="table"  data-iommi-path="" data-iommi-type="FooTable">
+                <thead data-iommi-path="header" data-iommi-type="HeaderConfig">
+                    <tr>
+                        <th class="superheader" colspan="1" data-iommi-type="ColumnHeader"> foo </th>
+                    </tr>
+                    <tr>
+                        <th class="first_column iommi_sort_header subheader" data-iommi-path="columns__a__header" data-iommi-type="ColumnHeader">
+                            <a href="?order=a"> A </a>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody data-iommi-path="tbody" data-iommi-type="Fragment">
+                    <tr data-iommi-path="row" data-iommi-type="Cells">
+                        <td data-iommi-path="columns__a__cell" data-iommi-type="Cell"> 1 </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+@pytest.mark.django_db
+def test_csv_download_error_message_column():
+    TFoo.objects.create(a=1, b='a')
+    TFoo.objects.create(a=2, b='b')
+    t = Table(
+        auto__model=TFoo,
+    ).bind(request=req('get', **{'/csv': ''}))
+    with pytest.raises(AssertionError) as e:
+        t.render_to_response()
+
+    assert str(e.value) == 'To get CSV output you must specify at least one column with extra_evaluated__report_name'
+
+
+@pytest.mark.django_db
+def test_csv_download_error_message_filename():
+    TFoo.objects.create(a=1, b='a')
+    TFoo.objects.create(a=2, b='b')
+    t = Table(
+        auto__model=TFoo,
+        columns__a__extra_evaluated__report_name='A',
+    ).bind(request=req('get', **{'/csv': ''}))
+    with pytest.raises(AssertionError) as e:
+        t.render_to_response()
+
+    assert str(e.value) == 'To get CSV output you must specify extra_evaluated__report_name on the table'
+
+
+@pytest.mark.django_db
+@override_settings(DEBUG=True)
+def test_csv_download():
+    CSVExportTestModel.objects.create(a=1, b='a', c=2.3)
+    CSVExportTestModel.objects.create(a=2, b='b', c=5.0)
+    t = Table(
+        auto__model=CSVExportTestModel,
+        columns__a__row_group__include=True,
+        columns__a__extra_evaluated__report_name='A',
+        columns__b__extra_evaluated__report_name='B',
+        columns__c__extra_evaluated__report_name='C',
+        columns__d__extra_evaluated__report_name='D',
+        columns__danger__extra_evaluated__report_name='DANGER',
+        extra_evaluated__report_name='foo',
+    ).bind(request=req('get', **{'/csv': ''}))
+    response = t.render_to_response()
+    assert response['Content-Type'] == 'text/csv'
+    assert response['Content-Disposition'] == "attachment; filename*=UTF-8''foo.csv"
+    assert (
+        response.getvalue().decode().replace('\r\n', '\n')
+        == """\
+A,B,C,D,DANGER
+1,a,2.3,,\t=2+5+cmd|' /C calc'!A0
+2,b,5.0,,\t=2+5+cmd|' /C calc'!A0
+"""
+    )
+
+
+@pytest.mark.django_db
+@override_settings(DEBUG=True)
+def test_csv_pagination():
+    CSVExportTestModel.objects.create(a=1, b='a', c=2.3)
+    CSVExportTestModel.objects.create(a=2, b='b', c=5.0)
+    CSVExportTestModel.objects.create(a=3, b='c', c=7.0)
+    t = Table(
+        auto__model=CSVExportTestModel,
+        columns__a__extra_evaluated__report_name='A',
+        columns__b__extra_evaluated__report_name='B',
+        columns__c__extra_evaluated__report_name='C',
+        extra_evaluated__report_name='foo',
+        page_size=2,
+    ).bind(request=req('get', **{'/csv': ''}))
+    response = t.render_to_response()
+    assert (
+        response.getvalue().decode().replace('\r\n', '\n')
+        == """\
+A,B,C
+1,a,2.3
+2,b,5.0
+3,c,7.0
+"""
+    )
+
+
+@pytest.mark.django_db
+@override_settings(DEBUG=True)
+def test_csv_writer_kwargs():
+    CSVExportTestModel.objects.create(a=1, b='a', c=2.3)
+    CSVExportTestModel.objects.create(a=2, b='b', c=5.0)
+    CSVExportTestModel.objects.create(a=3, b='c', c=7.0)
+    t = Table(
+        auto__model=CSVExportTestModel,
+        columns__a__extra_evaluated__report_name='A',
+        columns__b__extra_evaluated__report_name='B',
+        columns__c__extra_evaluated__report_name='C',
+        extra_evaluated__report_name='foo',
+        extra_evaluated__csv_writer_kwargs={'delimiter': ';'},
+    ).bind(request=req('get', **{'/csv': ''}))
+    response = t.render_to_response()
+    assert (
+        response.getvalue().decode().replace('\r\n', '\n')
+        == """\
+A;B;C
+1;a;2.3
+2;b;5.0
+3;c;7.0
+"""
+    )
+
+
+@pytest.mark.django_db
+def test_query_from_indexes():
+    t = Table(
+        auto__model=QueryFromIndexesTestModel,
+        query_from_indexes=True,
+    ).bind(request=req('get'))
+    assert list(t.query.filters.keys()) == ['b', 'c', 'd']
+    assert list(t.query.form.fields.keys()) == ['b', 'c', 'd']
+
+
+@pytest.mark.django_db
+def test_table_as_view():
+    render_to_response_path = (
+        Table(
+            auto__model=TFoo,
+            query_from_indexes=True,
+        )
+        .bind(request=req('get'))
+        .render_to_response()
+        .content
+    )
+
+    as_view_path = Table(auto__model=TFoo, query_from_indexes=True).as_view()(request=req('get')).content
+    assert render_to_response_path == as_view_path
+
+
+@pytest.mark.django_db
+def test_all_column_shortcuts():
+    class MyFancyColumn(Column):
+        class Meta:
+            extra__fancy = True
+
+    class MyFancyTable(Table):
+        class Meta:
+            member_class = MyFancyColumn
+
+    all_shortcut_names = keys(
+        get_members(
+            cls=MyFancyColumn,
+            member_class=Shortcut,
+            is_member=is_shortcut,
+        )
+    )
+
+    config = {f'columns__column_of_type_{t}__call_target__attribute': t for t in all_shortcut_names}
+
+    type_specifics = Namespace(
+        columns__column_of_type_choice__choices=[],
+        columns__column_of_type_multi_choice__choices=[],
+        columns__column_of_type_checkboxes__choices=[],
+        columns__column_of_type_choice_queryset__choices=TFoo.objects.none(),
+        columns__column_of_type_multi_choice_queryset__choices=TFoo.objects.none(),
+        columns__column_of_type_many_to_many__model_field=TBaz.foo.field,
+        columns__column_of_type_foreign_key__model_field=TBar.foo.field,
+        columns__column_of_type_foreign_key_reverse__model_field=TFoo.tbar_set.field,
+        columns__column_of_type_many_to_many_reverse__model_field=TFoo.tbar_set.field,
+    )
+
+    table = MyFancyTable(
+        **config,
+        **type_specifics,
+    )
+    table = table.bind(request=req('get'))
+
+    for name, column in items(table.columns):
+        assert column.extra.get('fancy'), name
+
+
+@pytest.mark.django_db
+def test_paginator_rendered():
+    TFoo.objects.create(a=17, b="Hej")
+    TFoo.objects.create(a=42, b="Hopp")
+
+    table = Table(
+        auto__model=TFoo,
+        query_from_indexes=True,
+        page_size=1,
+    ).bind(request=req('get'))
+    assert table.paginator.page_size == 1
+    assert table.paginator.count == 2
+    assert table.paginator.number_of_pages == 2
+    assert table.paginator.is_paginated() is True
+    content = table.render_to_response().content.decode()
+
+    assert 'aria-label="Pages"' in content
+
+
+def test_paginator_clamping():
+    t = Table(page_size=1, rows=list(range(10)))
+    assert t.bind(request=req('get', page='0')).paginator.page == 1
+    assert t.bind(request=req('get', page='3')).paginator.page == 3
+    assert t.bind(request=req('get', page='11')).paginator.page == 10
+
+
+@pytest.mark.django_db
+def test_reinvoke():
+    class MyTable(Table):
+        class Meta:
+            auto__model = TFoo
+
+    class MyPage(Page):
+        my_table = MyTable(columns__a__filter__include=True)
+
+    assert 'a' in MyPage().bind(request=req('get')).parts.my_table.query.filters
+    assert (
+        'a'
+        not in MyPage(parts__my_table__columns__a__filter__include=False)
+        .bind(request=req('get'))
+        .parts.my_table.query.filters
+    )
+
+
+@pytest.mark.django_db
+def test_reinvoke_2():
+    class MyTable(Table):
+        class Meta:
+            auto__model = TFoo
+            columns__a__filter__include = True
+
+    assert 'a' in MyTable().bind(request=req('get')).query.filters
+
+    class MyPage(Page):
+        my_table = MyTable()
+
+        class Meta:
+            parts__my_table__columns__a__filter__include = False
+
+    assert 'a' not in MyPage().bind(request=req('get')).parts.my_table.query.filters
+    assert (
+        'a'
+        in MyPage(parts__my_table__columns__a__filter__include=True)
+        .bind(request=req('get'))
+        .parts.my_table.query.filters
+    )
+
+
+def test_cell_value_is_none_if_attr_is_none():
+    class MyTable(Table):
+        foo = Column(attr=None)
+
+    rows = [11]  # this would blow up if we tried to access pretty much any attribute from it
+
+    t = MyTable(rows=rows).bind(request=req('get'))
+    bound_rows = list(t.cells_for_rows())
+    assert len(bound_rows) == 1
+    cells = bound_rows[0]
+    assert cells['foo'].value is None
+
+    # Check some random stuff on Cells, Cell and ColumnHeader for coverage
+    assert cells.__html__() == str(cells)
+    cell = cells['foo']
+    assert cell.iommi_evaluate_parameters() is cell._evaluate_parameters
+    assert cell.get_request() is cells.get_request()
+    assert cell.get_context() == cells.get_context()
+    assert repr(cell) == '<Cell column=<iommi.table.Column foo> row=11>'
+    assert repr(t.header_levels[0][0]) == '<Header: foo>'
+
+
+@pytest.mark.django_db
+def test_automatic_url():
+    foo = AutomaticUrl.objects.create(a=7)
+    AutomaticUrl2.objects.create(foo=foo)
+
+    t = Table(auto__model=AutomaticUrl2).bind(request=req('get'))
+    bound_rows = list(t.cells_for_rows())
+    assert len(bound_rows) == 1
+    cells = bound_rows[0]
+    assert cells['foo'].__html__() == '<td><a href="url here!">the str of AutomaticUrl</a></td>'
+
+
+def test_icon_value():
+    class TestTable(Table):
+        foo = Column.icon(
+            extra__icon='foo',
+            cell__value=lambda row, **_: row.foo,
+        )
+        bar = Column.icon(
+            display_name='bar',
+            cell__value=lambda row, **_: row.foo,
+        )
+
+    rows = [
+        Struct(foo=False),
+        Struct(foo=True),
+    ]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        find__name='tbody',
+        # language=html
+        expected_html="""
+            <tbody>
+                <tr>
+                    <td> </td>
+                    <td> </td>
+                </tr>
+                <tr>
+                    <td> <i class="fa fa-foo fa-lg"> </td>
+                    <td> bar </td>
+                </tr>
+            </tbody>
+        """,
+    )
+
+
+@pytest.mark.django_db
+def test_no_dispatch_parameter_in_sorting_or_pagination_links():
+    foos = [TFoo.objects.create(a=x, b="foo") for x in range(4)]
+
+    class TestTable(Table):
+        a = Column.number()
+
+    verify_table_html(
+        table=TestTable(rows=TFoo.objects.all().order_by('pk')),
+        query={'page_size': 2, 'page': 1, 'query': 'b="foo"'},
+        find__class='iommi-table-plus-paginator',
+        # language=html
+        expected_html=f"""
+            <div class="iommi-table-plus-paginator">
+                <table class="table" >
+                    <thead>
+                        <tr>
+                            <th class="first_column iommi_sort_header subheader">
+                                <a href="?page_size=2&amp;query=b%3D%22foo%22&amp;order=a"> A </a>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr data-pk="{foos[0].pk}">
+                            <td class="rj"> 0 </td>
+                        </tr>
+                        <tr data-pk="{foos[1].pk}">
+                            <td class="rj"> 1 </td>
+                        </tr>
+                    </tbody>
+                </table>
+                <nav aria-label="Pages" data-iommi-page-parameter="page">
+                    <ul>
+                        <li> <a aria-label="Page 1" class="iommi_page_link" href="?page_size=2&amp;query=b%3D%22foo%22&amp;page=1"> 1 </a> </li>
+                        <li> <a aria-label="Page 2" class="iommi_page_link" href="?page_size=2&amp;query=b%3D%22foo%22&amp;page=2"> 2 </a> </li>
+                        <li> <a aria-label="Next Page" class="iommi_page_link" href="?page_size=2&amp;query=b%3D%22foo%22&amp;page=2"> &gt; </a> </li>
+                    </ul>
+                </nav>
+            </div>
+        """,
+    )
+
+    verify_table_html(
+        table=TestTable(rows=TFoo.objects.all().order_by('pk')),
+        query={'page_size': 2, 'page': 1, 'query': 'b="foo"', '/tbody': ''},
+        find__class='iommi-table-plus-paginator',
+        # language=html
+        expected_html=f"""
+            <div class="iommi-table-plus-paginator">
+                <table class="table" >
+                    <thead>
+                        <tr>
+                            <th class="first_column iommi_sort_header subheader">
+                                <a href="?page_size=2&amp;query=b%3D%22foo%22&amp;order=a"> A </a>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr data-pk="{foos[0].pk}">
+                            <td class="rj"> 0 </td>
+                        </tr>
+                        <tr data-pk="{foos[1].pk}">
+                            <td class="rj"> 1 </td>
+                        </tr>
+                    </tbody>
+                </table>
+                <nav aria-label="Pages" data-iommi-page-parameter="page">
+                    <ul>
+                        <li> <a aria-label="Page 1" class="iommi_page_link" href="?page_size=2&amp;query=b%3D%22foo%22&amp;page=1"> 1 </a> </li>
+                        <li> <a aria-label="Page 2" class="iommi_page_link" href="?page_size=2&amp;query=b%3D%22foo%22&amp;page=2"> 2 </a> </li>
+                        <li> <a aria-label="Next Page" class="iommi_page_link" href="?page_size=2&amp;query=b%3D%22foo%22&amp;page=2"> &gt; </a> </li>
+                    </ul>
+                </nav>
+            </div>
+        """,
+    )
+
+
+@pytest.mark.django_db
+def test_evil_names():
+    from tests.models import EvilNames
+
+    Table(auto__model=EvilNames)
+
+
+def test_sort_list():
+    class TestTable(Table):
+        foo = Column()
+        bar = Column.number(sort_key=lambda **_: 'bar')
+
+    rows = [
+        Struct(foo='c', bar=3),
+        Struct(foo='b', bar=2),
+        Struct(foo='a', bar=1),
+    ]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        query=dict(order='bar'),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="first_column iommi_sort_header subheader"> <a href="?order=foo"> Foo </a> </th>
+                        <th class="ascending first_column iommi_sort_header sorted subheader"> <a href="?order=-bar"> Bar </a> </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td> a </td>
+                        <td class="rj"> 1 </td>
+                    </tr>
+                    <tr>
+                        <td> b </td>
+                        <td class="rj"> 2 </td>
+                    </tr>
+                    <tr>
+                        <td> c </td>
+                        <td class="rj"> 3 </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+    # now reversed
+    verify_table_html(
+        table=TestTable(rows=rows),
+        query=dict(order='-bar'),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="first_column iommi_sort_header subheader"> <a href="?order=foo"> Foo </a> </th>
+                        <th class="descending first_column iommi_sort_header sorted subheader"> <a href="?order=bar"> Bar </a> </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td> c </td>
+                        <td class="rj"> 3 </td>
+                    </tr>
+                    <tr>
+                        <td> b </td>
+                        <td class="rj"> 2 </td>
+                    </tr>
+                    <tr>
+                        <td> a </td>
+                        <td class="rj"> 1 </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_sort_with_name():
+    class TestTable(Table):
+        foo = Column()
+        bar = Column.number(sort_key='bar')
+
+    rows = [
+        Struct(foo='c', bar=3),
+        Struct(foo='b', bar=2),
+        Struct(foo='a', bar=1),
+    ]
+
+    table = TestTable(rows=rows)
+    verify_table_html(
+        table=table,
+        query={'order': 'bar'},
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="first_column iommi_sort_header subheader"> <a href="?order=foo"> Foo </a> </th>
+                        <th class="ascending first_column iommi_sort_header sorted subheader"> <a href="?order=-bar"> Bar </a> </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td> a </td>
+                        <td class="rj"> 1 </td>
+                    </tr>
+                    <tr>
+                        <td> b </td>
+                        <td class="rj"> 2 </td>
+                    </tr>
+                    <tr>
+                        <td> c </td>
+                        <td class="rj"> 3 </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_sort_list_with_none_values():
+    class TestTable(Table):
+        foo = Column()
+        bar = Column.number(sort_key='bar')
+
+    rows = [
+        Struct(foo='c', bar=3),
+        Struct(foo='b', bar=2),
+        Struct(foo='a', bar=None),
+        Struct(foo='a', bar=None),
+    ]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        query=dict(order='bar'),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="first_column iommi_sort_header subheader"> <a href="?order=foo"> Foo </a> </th>
+                        <th class="ascending first_column iommi_sort_header sorted subheader"> <a href="?order=-bar"> Bar </a> </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td> a </td>
+                        <td class="rj">  </td>
+                    </tr>
+                    <tr>
+                        <td> a </td>
+                        <td class="rj">  </td>
+                    </tr>
+                    <tr>
+                        <td> b </td>
+                        <td class="rj"> 2 </td>
+                    </tr>
+                    <tr>
+                        <td> c </td>
+                        <td class="rj"> 3 </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+def test_sort_list_bad_parameter():
+    class TestTable(Table):
+        foo = Column()
+        bar = Column.number(sort_key='bar')
+
+    rows = [
+        Struct(foo='b', bar=2),
+        Struct(foo='a', bar=1),
+    ]
+
+    verify_table_html(
+        table=TestTable(rows=rows),
+        query=dict(order='barfology'),
+        # language=html
+        expected_html="""
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="first_column iommi_sort_header subheader"> <a href="?order=foo"> Foo </a> </th>
+                        <th class="first_column iommi_sort_header subheader"> <a href="?order=bar"> Bar </a> </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td> b </td>
+                        <td class="rj"> 2 </td>
+                    </tr>
+                    <tr>
+                        <td> a </td>
+                        <td class="rj"> 1 </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+@pytest.mark.django_db
+def test_sort_django_table():
+    foos = [
+        TFoo.objects.create(a=4711, b="c"),
+        TFoo.objects.create(a=17, b="a"),
+        TFoo.objects.create(a=42, b="b"),
+    ]
+
+    class TestTable(Table):
+        a = Column.number()
+        b = Column()
+
+    verify_table_html(
+        table=TestTable(rows=TFoo.objects.all()),
+        query=dict(order='a'),
+        # language=html
+        expected_html=f"""\
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="ascending first_column iommi_sort_header sorted subheader"> <a href="?order=-a"> A </a> </th>
+                        <th class="first_column iommi_sort_header subheader"> <a href="?order=b"> B </a> </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr data-pk="{foos[1].pk}">
+                        <td class="rj"> 17 </td>
+                        <td> a </td>
+                    </tr>
+                    <tr data-pk="{foos[2].pk}">
+                        <td class="rj"> 42 </td>
+                        <td> b </td>
+                    </tr>
+                    <tr data-pk="{foos[0].pk}">
+                        <td class="rj"> 4711 </td>
+                        <td> c </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+    # now reversed
+    verify_table_html(
+        table=TestTable(rows=TFoo.objects.all()),
+        query=dict(order='-a'),
+        # language=html
+        expected_html=f"""\
+            <table class="table" >
+                 <thead>
+                     <tr>
+                         <th class="descending first_column iommi_sort_header sorted subheader"> <a href="?order=a"> A </a> </th>
+                         <th class="first_column iommi_sort_header subheader"> <a href="?order=b"> B </a> </th>
+                     </tr>
+                 </thead>
+                 <tbody>
+                     <tr data-pk="{foos[0].pk}">
+                         <td class="rj"> 4711 </td>
+                         <td> c </td>
+                     </tr>
+                     <tr data-pk="{foos[2].pk}">
+                         <td class="rj"> 42 </td>
+                         <td> b </td>
+                     </tr>
+                     <tr data-pk="{foos[1].pk}">
+                         <td class="rj"> 17 </td>
+                         <td> a </td>
+                     </tr>
+                 </tbody>
+            </table>
+        """,
+    )
+
+
+def test_order_by_on_list_nested():
+    rows = [
+        Struct(foo=Struct(bar='c')),
+        Struct(foo=Struct(bar='b')),
+        Struct(foo=Struct(bar='a')),
+    ]
+
+    sorted_rows = ordered_by_on_list(rows, 'foo__bar', False)
+    assert sorted_rows == list(reversed(rows))
+
+
+def test_sort_default_desc_no_sort():
+    class TestTable(Table):
+        foo = Column()
+        bar = Column(sort_default_desc=True)
+
+    verify_table_html(
+        table=TestTable(rows=[]),
+        query=dict(),
+        find__name='thead',
+        # language=html
+        expected_html="""
+            <thead>
+                <tr>
+                    <th class="first_column iommi_sort_header subheader"> <a href="?order=foo"> Foo </a> </th>
+                    <th class="first_column iommi_sort_header subheader"> <a href="?order=-bar"> Bar </a> </th>
+                </tr>
+            </thead>
+        """,
+    )
+
+
+def test_sort_default_desc_other_col_sorted():
+    class TestTable(Table):
+        foo = Column()
+        bar = Column(sort_default_desc=True)
+
+    verify_table_html(
+        table=TestTable(rows=[]),
+        query=dict(order='foo'),
+        find__name='thead',
+        # language=html
+        expected_html="""\
+            <thead>
+                <tr>
+                    <th class="ascending first_column iommi_sort_header sorted subheader">
+                        <a href="?order=-foo"> Foo </a>
+                    </th>
+                    <th class="first_column iommi_sort_header subheader">
+                        <a href="?order=-bar"> Bar </a>
+                    </th>
+                </tr>
+            </thead>
+        """,
+    )
+
+
+def test_sort_default_desc_already_sorted():
+    class TestTable(Table):
+        foo = Column()
+        bar = Column(sort_default_desc=True)
+
+    verify_table_html(
+        table=TestTable(rows=[]),
+        query=dict(order='bar'),
+        find__name='thead',
+        # language=html
+        expected_html="""
+            <thead>
+                <tr>
+                    <th class="first_column iommi_sort_header subheader"> <a href="?order=foo"> Foo </a> </th>
+                    <th class="ascending first_column iommi_sort_header sorted subheader"> <a href="?order=-bar"> Bar </a> </th>
+                </tr>
+            </thead>
+        """,
+    )
+
+
+@pytest.mark.django_db
+def test_sort_django_table_from_model():
+    foos = [
+        TFoo.objects.create(a=4711, b="c"),
+        TFoo.objects.create(a=17, b="a"),
+        TFoo.objects.create(a=42, b="b"),
+    ]
+
+    verify_table_html(
+        table=Table(auto__rows=TFoo.objects.all()),
+        query=dict(order='a'),
+        # language=html
+        expected_html=f"""
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="ascending first_column iommi_sort_header sorted subheader"> <a href="?order=-a"> A </a> </th>
+                        <th class="first_column iommi_sort_header subheader"> <a href="?order=b"> B </a> </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr data-pk="{foos[1].pk}">
+                        <td class="rj"> 17 </td>
+                        <td> a </td>
+                    </tr>
+                    <tr data-pk="{foos[2].pk}">
+                        <td class="rj"> 42 </td>
+                        <td> b </td>
+                    </tr>
+                    <tr data-pk="{foos[0].pk}">
+                        <td class="rj"> 4711 </td>
+                         <td> c </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+@pytest.mark.django_db
+def test_default_sort_key_on_foreign_key():
+    table = Table(auto__model=SortKeyOnForeignKeyB).bind(request=req('get'))
+    assert table.columns.remote.sort_key == 'remote__name'
+
+
+def test_title_default_to_none():
+    table = Table(rows=[]).bind(request=req('get'))
+    assert table.title is None
+
+    assert 'None' not in str(table)
+
+
+@pytest.mark.skip('This assert is broken currently, due to value_to_q being a function by default which is truthy')
+@pytest.mark.django_db
+def test_error_when_inserting_field_into_query_form_with_no_attr():  # pragma: no cover
+    with pytest.raises(AssertionError):
+        Table(
+            auto__model=TFoo,
+            auto__include=[],
+            query__filters__not_in_t_foo=Filter.choice(attr=None, choices=['Foo', 'Track']),
+        ).bind(request=req('get'))
+
+
+@pytest.mark.django_db
+def test_inserting_field_into_query_form_with_no_attr_and_bypassing_check():
+    # Does not raise
+    Table(
+        auto__model=TFoo,
+        auto__include=[],
+        query__filters__not_in_t_foo=Filter.choice(
+            attr=None,
+            choices=['Foo', 'Track'],
+            is_valid_filter=lambda **_: (True, ''),
+        ),
+    ).bind(request=req('get'))
+
+
+@pytest.mark.django_db
+def test_insert_into_query_form_bypassing_query():
+    t = Table(
+        auto__model=TFoo,
+        auto__include=[],
+        query__form__fields__not_in_t_foo=Field.choice(choices=['Foo', 'Track']),
+    ).bind(request=req('get'))
+
+    assert 'not_in_t_foo' in keys(t.query.form.fields)
+
+
+@pytest.mark.django_db
+def test_insert_field_into_query_form():
+    table = Table(
+        auto__model=TFoo,
+        query__form__fields__not_in_t_foo=Field.choice(choices=['Foo', 'Track']),
+    ).bind(request=req('get'))
+
+    assert 'not_in_t_foo' in keys(table.query.form.fields)
+
+
+@pytest.mark.django_db
+def test_auto_model_dunder_path():
+    tfoo = TFoo.objects.create(a=1, b='2')
+    tbar = TBar.objects.create(foo=tfoo, c=True)
+    TBar2.objects.create(bar=tbar)
+
+    table = Table(
+        auto__model=TBar2,
+        auto__include=['bar__foo'],
+        # columns__bar_foo__bulk__include=True,
+    ).bind(request=req('get'))
+
+    assert 'bar_foo' in keys(table.columns)
+    table.__html__()
+
+
+@pytest.mark.django_db
+def test_auto_model_dunder_path_1to1_reverse():
+    foo = Foo.objects.create(foo=1)
+    FieldFromModelOneToOneTest.objects.create(foo_one_to_one=foo, f_char="dunder_1to1")
+    assert foo.fieldfrommodelonetoonetest.f_char == "dunder_1to1"
+    table = Table(
+        auto__model=Foo,
+        auto__include=[
+            "foo",
+            "fieldfrommodelonetoonetest__f_char",
+        ],
+    ).bind(request=req('get'))
+    assert "fieldfrommodelonetoonetest_f_char" in keys(table.columns)
+
+
+@pytest.mark.django_db
+def test_custom_related_query_name():
+    foo = Foo.objects.create(foo=1)
+    Qux.objects.create(foo=foo, lang='en', name='first english item')
+    Qux.objects.create(foo=foo, lang='cs', name='první česká položka')
+    foo2 = Foo.objects.create(foo=1)
+    Qux.objects.create(foo=foo2, lang='en', name='second english item')
+    Qux.objects.create(foo=foo2, lang='cs', name='druhá česká položka')
+
+    table = Table(
+        auto__model=Foo,
+        auto__include=['qux__name'],
+        rows=Foo.objects.prefetch_related('quxes').filter(qux__lang='en'),
+        columns__qux_name__filter__include=True,
+        columns__qux_name__filter__freetext=True,
+    )
+
+    bound_table1 = table.bind(request=req('get', freetext_search='first'))
+    assert 'qux_name' in keys(bound_table1.columns)
+    assert len(bound_table1.get_visible_rows()) == 1
+    bound_table1.__html__()
+
+    bound_table2 = table.bind(request=req('get', order='-qux_name'))
+    assert 'qux_name' in keys(bound_table2.columns)
+    assert len(bound_table2.get_visible_rows()) == 2
+    assert bound_table2.get_visible_rows().first().qux.name == 'second english item'
+    bound_table2.__html__()
+
+
+@pytest.mark.django_db
+def test_invalid_form_message():
+    invalid_form_message = 'Seventh Star'
+    table = Table(
+        auto__model=TBar,
+        columns__foo__filter__include=True,
+        invalid_form_message=invalid_form_message,
+    )
+    table = table.bind(request=req('get', foo=11))  # 11 isn't in valid choices!
+    assert invalid_form_message in table.__html__()
+
+
+@pytest.mark.django_db
+def test_invalid_form_message_callable():
+    invalid_form_message = 'Seventh Star'
+    table = Table(
+        auto__model=TBar,
+        columns__foo__filter__include=True,
+        invalid_form_message=lambda user, **_: invalid_form_message,
+    )
+    table = table.bind(request=req('get', foo=11))  # 11 isn't in valid choices!
+    assert invalid_form_message in table.__html__()
+
+
+@pytest.mark.django_db
+def test_empty_message():
+    empty_message = 'Destruction of the empty spaces was my one and only crime'
+    verify_table_html(
+        table=Table(empty_message=empty_message, rows=[]),
+        find__class='iommi-table-container',
+        # language=html
+        expected_html=f"""
+            <div class='iommi-table-container' data-endpoint='/endpoints/tbody' data-iommi-id=''>
+                {empty_message}
+            </div>
+        """,
+    )
+
+
+@pytest.mark.django_db
+def test_empty_message_callable():
+    empty_message = 'Destruction of the empty spaces was my one and only crime'
+    verify_table_html(
+        table=Table(empty_message=lambda user, **_: empty_message, rows=[]),
+        find__class='iommi-table-container',
+        # language=html
+        expected_html=f"""
+            <div class='iommi-table-container' data-endpoint='/endpoints/tbody' data-iommi-id=''>
+                {empty_message}
+            </div>
+        """,
+    )
+
+
+def test_empty_empty_message():
+    verify_table_html(
+        table=Table(empty_message='', rows=[]),
+        find__class='iommi-table-container',
+        # language=html
+        expected_html="""
+            <div class='iommi-table-container' data-endpoint='/endpoints/tbody' data-iommi-id='' />
+        """,
+    )
+
+
+@pytest.mark.django_db
+def test_column_include_false_excludes_bulk_and_filter():
+    class MyTable(Table):
+        foo = Column(
+            include=False,
+            filter__include=True,
+            bulk__include=True,
+        )
+
+        bar = Column(
+            include=lambda **_: False,
+            filter__include=True,
+            bulk__include=True,
+        )
+
+        c = Column(
+            filter__include=True,
+            bulk__include=True,
+        )
+
+        class Meta:
+            model = TBar
+
+    t = MyTable().bind(request=req('get'))
+
+    assert 'foo' not in t.columns
+    assert 'bar' not in t.columns
+    assert set(t.query.filters.keys()) == {'c'}
+    assert set(t.query.form.fields.keys()) == {'c'}
+    assert set(t.bulk.fields.keys()) == {'_all_pks_', 'c'}
+
+
+@pytest.mark.django_db
+def test_auto_model_include_pk():
+    t = Table(
+        auto__model=TBar,
+        auto__include=['pk'],
+    ).bind(request=req('get'))
+    assert 'pk' in t.columns
+
+
+def test_h_tag():
+    class TestTable(Table):
+        foo = Column()
+
+    rows = [
+        Struct(foo=False),
+    ]
+
+    verify_table_html(
+        table=TestTable(rows=rows, h_tag=html.h1('foo', attrs__class__foo=True)),
+        find__name='h1',
+        # language=html
+        expected_html="<h1 class='foo'> foo </h1>",
+    )
+
+    verify_table_html(
+        table=TestTable(rows=rows, title='bar', h_tag__attrs__class__bar=True),
+        find__name='h1',
+        # language=html
+        expected_html=" <h1 class='bar'> Bar </h1>",
+    )
+
+
+@pytest.mark.django_db
+def test_lazy_rows(settings):
+    settings.DEBUG = True
+    set_sql_debug(SQL_DEBUG_LEVEL_ALL)
+    q = TBar.objects.all()
+    choices = [1, 2, 3]
+    t = Table(
+        model=TBar,
+        rows=lambda **_: q,
+        columns__foo=Column.choice(
+            choices=choices,
+            filter__include=True,
+        ),
+    ).bind()
+    assert t.query.form.fields.foo.choices == choices
+    assert q._result_cache is None, "No peeking!"
+
+
+@pytest.mark.django_db
+def test_lazy_paginator(settings):
+    settings.DEBUG = True
+    set_sql_debug(SQL_DEBUG_LEVEL_ALL)
+    q = TBar.objects.all()
+    choices = [1, 2, 3]
+    t = Table(
+        model=TBar,
+        rows=lambda **_: q,
+        columns__foo=Column.choice(
+            choices=choices,
+            filter__include=True,
+        ),
+    ).bind(request=req('get'))
+    assert t.query.form.fields.foo.choices == choices
+    assert 'page' not in t._bound_members.parts._bound_members, "No peeking!"
+    t.__html__()
+    assert t.visible_rows is not None
+    assert 'page' in t._bound_members.parts._bound_members, "Did you not peek?"
+
+
+@pytest.mark.django_db
+def test_rows_should_not_cache():
+    q = TBar.objects.all()
+    assert q._result_cache is None, "Cache should be empty"
+    Table(
+        model=TBar,
+        rows=lambda **_: q,
+    ).bind(request=req('get')).render_to_response()
+    assert q._result_cache is None, "Cache should be empty"
+
+
+@pytest.mark.django_db
+def test_auto_model_for_text_choices():
+    class TestTable(Table):
+        class Meta:
+            auto__model = ChoicesModel
+
+    verify_table_html(
+        table=TestTable(rows=[]),
+        find__name='tbody',
+        expected_html="<tbody></tbody>",
+    )
+
+
+@pytest.mark.django_db
+def test_auto_model_for_text_choices_with_choices_class():
+    from tests.models import ChoicesClassModel
+
+    ChoicesClassModel.objects.create(color='purple_thing-thing')
+
+    class TestTable(Table):
+        class Meta:
+            auto__model = ChoicesClassModel
+
+    verify_table_html(table=TestTable(), find__name='td', expected_html="<td>Purple</td>")
+
+
+@pytest.mark.django_db
+def test_table_foreign_key_column_name():
+    t = Table(
+        auto__model=TBar,
+        auto__include=['foo'],
+    ).bind(request=req('get'))
+    assert t.columns.foo.display_name == 'Foo'
+
+
+def test_filter_model_mixup():
+    t = Table(auto__model=TBar, page_size=None).bind(request=req('get'))
+    assert t.columns.foo.model == TFoo
+
+
+@pytest.mark.django_db
+def test_nest_table_inside_form_does_not_crash_due_to_nested_forms():
+    # This used to crash
+    Form(auto__instance=TFoo(), fields__a_table=Table(auto__model=TFoo)).bind(request=req('get'))
+
+
+@pytest.mark.django_db
+def test_tbody_refined():
+    TFoo.objects.create(a=1, b='middle')
+    t = Table(
+        auto__model=TFoo,
+        auto__include=['b'],
+        tbody__children__before=Fragment('before', after=0),
+        tbody__children__after=Fragment('after', after=LAST),
+    ).bind(request=req('get'))
+    rendered = t.__html__()
+    assert rendered.index('before') < rendered.index('middle') < rendered.index('after')
+
+
+def test_filter_model_mixup2():
+    t = Table(auto__model=TBar, auto__include=['foo__a']).bind(request=req('get'))
+    assert t.columns.foo_a.model == TFoo
+
+
+def test_turn_off_entire_query():
+    t = Table(auto__model=TBar, columns__foo__filter__include=True, query__include=False).bind(request=req('get'))
+    assert t.query is None
+
+
+@pytest.mark.django_db
+def test_text_choices():
+    from tests.models import ChoicesClassModel
+
+    ChoicesClassModel(color='purple').save()
+    ChoicesClassModel(color='orange').save()
+
+    table = Table(
+        auto__rows=ChoicesClassModel.objects.all(),
+        columns__color__filter__include=True,
+    )
+    table = table.bind(request=req('get', color='orange'))
+
+    assert table.get_visible_rows().get().color == 'orange'
+
+    form = table.query.form
+    field = form.fields.color
+    assert field.choices == ['purple_thing-thing', 'orange']
+
+    choice, label = list(ChoicesClassModel.ColorChoices.choices)[0]
+    assert field.invoke_callback(field.choice_id_formatter, choice=choice) == choice
+    assert field.invoke_callback(field.choice_display_name_formatter, choice=choice) == label
+    assert field.choice_tuples == [
+        (None, '', '---', False, 0),
+        ('purple_thing-thing', 'purple_thing-thing', 'Purple', False, 1),
+        ('orange', 'orange', 'Orange', True, 2),
+    ]
+
+
+@pytest.mark.django_db
+def test_int_choices():
+    from tests.models import IntChoicesModel
+
+    IntChoicesModel(status=303).save()
+    IntChoicesModel(status=301).save()
+    IntChoicesModel(status=302).save()
+
+    table = Table(
+        auto__rows=IntChoicesModel.objects.all(),
+        columns__status__filter__include=True,
+    )
+    table = table.bind(request=req('get', status='302'))
+
+    assert table.get_visible_rows().get().status == 302
+
+    form = table.query.form
+    field = form.fields.status
+    assert field.choices == [301, 302, 303]
+
+    choice, label = list(IntChoicesModel.CHOICES)[0]
+    assert field.invoke_callback(field.choice_id_formatter, choice=choice) == str(choice)
+    assert field.invoke_callback(field.choice_display_name_formatter, choice=choice) == label
+    assert field.choice_tuples == [
+        (None, '', '---', False, 0),
+        (301, '301', '301 Moved Permanently', False, 1),
+        (302, '302', '302 Found', True, 2),
+        (303, '303', '303 See Other', False, 3),
+    ]
+
+
+def test_auto_rowspan_twice():
+    table = Table(rows=[Struct(a=1), Struct(a=1)], columns__a__auto_rowspan=True).refine_done()
+    table.bind(request=req('get')).__html__()
+    table.bind(request=req('get')).__html__()
+
+
+@pytest.mark.django_db
+def test_pagination_with_thousands_separator(settings):
+    settings.USE_THOUSAND_SEPARATOR = True
+    settings.USE_L10N = True
+
+    for x in range(1_002):
+        TFoo(a=x, b="foo").save()
+
+    class TestTable(Table):
+        a = Column.number()
+
+    verify_table_html(
+        table=TestTable(rows=TFoo.objects.all().order_by('pk')),
+        query={'page_size': 1, 'page': 10001},
+        find__name='nav',
+        # language=html
+        expected_html="""
+            <nav aria-label="Pages" data-iommi-page-parameter="page">
+                <ul>
+                    <li> <a href="?page_size=1&amp;page=1" aria-label="First Page" class="iommi_page_link">&laquo;</a> </li>
+                    <li> <a href="?page_size=1&amp;page=1001" aria-label="Previous Page" class="iommi_page_link">&lt;</a> </li>
+                    <li> <a href="?page_size=1&amp;page=996" aria-label="Page 996" class="iommi_page_link">996</a> </li>
+                    <li> <a href="?page_size=1&amp;page=997" aria-label="Page 997" class="iommi_page_link">997</a> </li>
+                    <li> <a href="?page_size=1&amp;page=998" aria-label="Page 998" class="iommi_page_link">998</a> </li>
+                    <li> <a href="?page_size=1&amp;page=999" aria-label="Page 999" class="iommi_page_link">999</a> </li>
+                    <li> <a href="?page_size=1&amp;page=1000" aria-label="Page 1,000" class="iommi_page_link">1,000</a> </li>
+                    <li> <a href="?page_size=1&amp;page=1001" aria-label="Page 1,001" class="iommi_page_link">1,001</a> </li>
+                    <li> <a href="?page_size=1&amp;page=1002" aria-label="Page 1,002" class="iommi_page_link">1,002</a> </li>
+                </ul>
+            </nav>
+        """,
+    )
+
+
+def test_insert_subtitle():
+    class MyTable(Table):
+        class Meta:
+            title = 'title'
+            outer__children__subtitle = html.h2('subtitle', after='h_tag')
+
+    t = MyTable(rows=[]).bind().__html__()
+    h1 = '<h1>Title</h1>'
+    h2 = '<h2>subtitle</h2>'
+    assert h1 in t
+    assert h2 in t
+    assert t.index(h1) < t.index(h2)
+
+
+def test_custom_sorter():
+    class MyTable(Table):
+        class Meta:
+            @staticmethod
+            def sorter(rows, sort_key, descending, **_):
+                assert sort_key == 'banana'
+                assert descending is False
+
+                rows.reverse()
+                return rows
+
+            default_sort_order = 'banana'
+
+        banana = Column()
+
+    table = MyTable(
+        rows=[
+            Struct(banana='yellow'),
+            Struct(banana='green'),
+        ],
+    ).bind(request=req('get'))
+    table.render_to_response()
+    assert table.visible_rows == [
+        Struct(banana='green'),
+        Struct(banana='yellow'),
+    ]
+
+
+def test_custom_rows():
+    class CustomRows:
+        def __len__(self):
+            return 8
+
+        def __getitem__(self, key):
+            assert key == slice(3, 6)
+            return [
+                Struct(banana='green'),
+                Struct(banana='yellow'),
+                Struct(banana='black'),
+            ]
+
+    class MyTable(Table):
+        class Meta:
+            page_size = 3
+            rows = CustomRows()
+
+            @staticmethod
+            def sorter(rows, sort_key, descending, **_):
+                assert sort_key == 'banana'
+                assert descending is False
+                return rows
+
+        banana = Column()
+
+    verify_table_html(
+        table=MyTable(),
+        query=dict(page=2, order='banana'),
+        find__class="iommi-table-container",
+        # language=html
+        expected_html="""
+            <div class="iommi-table-container" data-endpoint="/endpoints/tbody" data-iommi-id="">
+                <div class="iommi-table-plus-paginator">
+                    <table class="table" >
+                        <thead>
+                            <tr>
+                                <th class="ascending first_column iommi_sort_header sorted subheader">
+                                    <a href="?order=-banana"> Banana </a>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr> <td> green </td> </tr>
+                            <tr> <td> yellow </td> </tr>
+                            <tr> <td> black </td> </tr>
+                        </tbody>
+                    </table>
+                    <nav aria-label="Pages" data-iommi-page-parameter="page">
+                        <ul>
+                            <li> <a aria-label="Previous Page" class="iommi_page_link" href="?order=banana&amp;page=1"> &lt; </li>
+                            <li> <a aria-label="Page 1" class="iommi_page_link" href="?order=banana&amp;page=1"> 1 </a> </li>
+                            <li> <a aria-label="Page 2" class="iommi_page_link" href="?order=banana&amp;page=2"> 2 </a> </li>
+                            <li> <a aria-label="Page 3" class="iommi_page_link" href="?order=banana&amp;page=3"> 3 </a> </li>
+                            <li> <a aria-label="Next Page" class="iommi_page_link" href="?order=banana&amp;page=3"> &gt; </a> </li>
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+        """,
+    )
+
+
+def test_reverse_mappings():
+    form = Form(auto__model=Album).bind(request=req('get'))
+    assert form.fields.artist.model_field is Album._meta.get_field('artist')
+    assert form.fields.genres.model_field is Album._meta.get_field('genres')
+
+    query = Query(auto__model=Album).bind(request=req('get'))
+    assert query.filters.artist.model_field is Album._meta.get_field('artist')
+    assert query.filters.genres.model_field is Album._meta.get_field('genres')
+
+    t = Table(auto__model=Album).bind(request=req('get'))
+    assert t.columns.artist.model_field is Album._meta.get_field('artist')
+    # Fails:
+    assert t.columns.genres.model_field is Album._meta.get_field('genres')
+
+
+def assert_same_query(a, b):
+    assert str(a.query) == str(b.query)
+
+
+@pytest.mark.django_db
+def test_choices_passed_down_through_shortcuts(big_discography):
+    choices = Album.objects.filter(name__startswith='H')
+    t = Table(
+        model=Track,
+        columns__album=Column.choice_queryset(
+            choices=choices,
+            filter__include=True,
+        ),
+    ).bind(request=req('get'))
+
+    assert_same_query(t.columns.album.choices, choices)
+    assert_same_query(t.query.filters.album.choices, choices)
+    assert_same_query(t.query.form.fields.album.choices, choices)
+
+
+@pytest.mark.django_db
+def test_choices_passed_down_through_shortcuts_from_from_model(big_discography):
+    choices = Album.objects.filter(name__startswith='H')
+    t = Table(
+        model=Track,
+        columns__album=Column.from_model(
+            model_field=Track.album.field,
+            choices=choices,
+            filter__include=True,
+        ),
+    ).bind(request=req('get'))
+
+    assert_same_query(t.columns.album.choices, choices)
+    assert_same_query(t.query.filters.album.choices, choices)
+    assert_same_query(t.query.form.fields.album.choices, choices)
+
+
+@pytest.mark.django_db
+def test_choices_passed_down_through_shortcuts_from_from_model_declared(big_discography):
+    choices = Album.objects.filter(name__startswith='H')
+
+    class MyTable(Table):
+        album = Column.from_model(
+            model_field=Track.album.field,
+            choices=choices,
+            filter__include=True,
+        )
+
+    t = MyTable(model=Track).bind(request=req('get'))
+
+    assert_same_query(t.columns.album.choices, choices)
+    assert_same_query(t.query.filters.album.choices, choices)
+    assert_same_query(t.query.form.fields.album.choices, choices)
+
+
+@pytest.mark.django_db
+def test_choices_passed_down_through_shortcuts_from_auto(big_discography):
+    choices = Album.objects.filter(name__startswith='H')
+    t = Table(
+        auto__model=Track,
+        auto__include=['album'],
+        columns__album=dict(
+            choices=choices,
+            filter__include=True,
+        ),
+    ).bind(request=req('get'))
+
+    assert_same_query(t.columns.album.choices, choices)
+    assert_same_query(t.query.filters.album.choices, choices)
+    assert_same_query(t.query.form.fields.album.choices, choices)
+
+
+class MyTable(Table):
+    class Meta:
+        rows = Album.objects.none()
+
+    goosfraba = Column(
+        include=lambda request, **_: request.user.is_staff,
+        filter__include=True,
+    )
+
+
+def test_filter_include1():
+    view = MyTable().refine_done()
+    assert list(view.bind(request=staff_req('get')).query.form.fields.keys()) == ['goosfraba']
+    assert list(view.bind(request=user_req('get')).query.form.fields.keys()) == []
+
+
+def test_filter_include2():
+    view = MyTable().refine_done()
+    assert list(view.bind(request=user_req('get')).query.form.fields.keys()) == []
+    assert list(view.bind(request=staff_req('get')).query.form.fields.keys()) == ['goosfraba']
+
+
+def test_filter_include_parts():
+    view = MyTable().refine_done()
+    assert list(view.bind(request=staff_req('get')).query.form.parts.keys()) == ['goosfraba']
+    assert list(view.bind(request=user_req('get')).query.form.parts.keys()) == []
+
+
+@pytest.mark.django_db
+def test_table_tag_wrapper():
+    foos = [TFoo.objects.create(a=x, b="foo") for x in range(4)]
+
+    class TestTable(Table):
+        a = Column.number()
+
+    verify_table_html(
+        table=TestTable(
+            rows=TFoo.objects.all().order_by('pk'),
+            table_tag_wrapper=dict(tag='div', attrs__class__foo=True),
+        ),
+        query={'page_size': 2, 'page': 1, 'query': 'b="foo"'},
+        find__class='iommi-table-plus-paginator',
+        # language=html
+        expected_html=f"""
+            <div class="iommi-table-plus-paginator">
+                <div class="foo">
+                    <table class="table" >
+                        <thead>
+                            <tr>
+                                <th class="first_column iommi_sort_header subheader">
+                                    <a href="?page_size=2&amp;query=b%3D%22foo%22&amp;order=a"> A </a>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr data-pk="{foos[0].pk}">
+                                <td class="rj"> 0 </td>
+                            </tr>
+                            <tr data-pk="{foos[1].pk}">
+                                <td class="rj"> 1 </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <nav aria-label="Pages" data-iommi-page-parameter="page">
+                    <ul>
+                        <li> <a aria-label="Page 1" class="iommi_page_link" href="?page_size=2&amp;query=b%3D%22foo%22&amp;page=1"> 1 </a> </li>
+                        <li> <a aria-label="Page 2" class="iommi_page_link" href="?page_size=2&amp;query=b%3D%22foo%22&amp;page=2"> 2 </a> </li>
+                        <li> <a aria-label="Next Page" class="iommi_page_link" href="?page_size=2&amp;query=b%3D%22foo%22&amp;page=2"> &gt; </a> </li>
+                    </ul>
+                </nav>
+            </div>
+        """,
+    )
+
+
+@pytest.mark.django_db
+def test_late_column_include_removal_trip_up_filter_choices():
+    t = Table(
+        model=Album,
+        rows=Album.objects.none(),
+        columns__artist=Column.choice_queryset(
+            include=lambda **_: False,
+            choices=Artist.objects.all(),
+            filter__include=True,  # This tried to read the choices from the non-included column
+        ),
+    )
+    verify_table_html(
+        table=t,
+        # language=HTML
+        expected_html='''
+            <table class="table" >
+                <thead> <tr/> </thead>
+                <tbody/>
+            </table>
+        ''',
+    )
+
+
+def test_tbody_endpoint():
+    class TestTable(Table):
+        class Meta:
+            rows = [Struct(foo="foo", bar="bar")]
+            container__children__top_thing = html.div('top', after=0)
+            container__children__bottom_thing = html.div('bottom')
+
+        foo = Column()
+        bar = Column()
+
+    # language=html
+    expected_container_content = '''
+        <div> top </div>
+        <div class="iommi-table-plus-paginator">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th class="first_column iommi_sort_header subheader"> <a href="?order=foo"> Foo </a> </th>
+                        <th class="first_column iommi_sort_header subheader"> <a href="?order=bar"> Bar </a> </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td> foo </td>
+                        <td> bar </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div> bottom </div>
+    '''
+
+    verify_table_html(
+        table=TestTable(),
+        find=dict(class_='iommi-table-container'),
+        # language=html
+        expected_html=f"""
+            <div class="iommi-table-container" data-endpoint="/endpoints/tbody" data-iommi-id="">
+                {expected_container_content}
+            </div>
+        """,
+    )
+
+    new_html = perform_ajax_dispatch(root=TestTable().bind(request=req('get')), path='/endpoints/tbody', value='')[
+        'html'
+    ]
+    verify_html(
+        actual_html=new_html,
+        expected_html=expected_container_content,
+    )
+
+
+@pytest.mark.django_db
+def test_default_sort_order_django_table_from_model():
+    foos = [
+        TFoo.objects.create(a=4711, b="c"),
+        TFoo.objects.create(a=17, b="a"),
+        TFoo.objects.create(a=42, b="b"),
+    ]
+
+    verify_table_html(
+        table=Table(auto__rows=TFoo.objects.all(), default_sort_order="-a"),
+        # language=html
+        expected_html=f"""
+            <table class="table" >
+                <thead>
+                    <tr>
+                        <th class="descending first_column iommi_sort_header sorted subheader"> <a href="?order=a"> A </a> </th>
+                        <th class="first_column iommi_sort_header subheader"> <a href="?order=b"> B </a> </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr data-pk="{foos[0].pk}">
+                        <td class="rj"> 4711 </td>
+                         <td> c </td>
+                    </tr>
+                    <tr data-pk="{foos[2].pk}">
+                        <td class="rj"> 42 </td>
+                        <td> b </td>
+                    </tr>
+                    <tr data-pk="{foos[1].pk}">
+                        <td class="rj"> 17 </td>
+                        <td> a </td>
+                    </tr>
+                </tbody>
+            </table>
+        """,
+    )
+
+
+@pytest.mark.django_db
+def test_invalid_query_results_in_no_rows():
+    TFoo.objects.create(a=4711, b="c")
+    TFoo.objects.create(a=17, b="a")
+    TFoo.objects.create(a=42, b="b")
+
+    t = Table(
+        auto__model=TFoo,
+        columns__a__filter__include=True,
+        columns__a__filter__field__include=True,
+    )
+
+    t_b = t.bind(request=req('get', a='not a number'))
+    assert t_b.query.form.get_errors() == {'fields': {'a': {"invalid literal for int() with base 10: 'not a number'"}}}
+    assert not t_b.rows
+
+    t_b = t.bind(request=req('get', **{'-query/query': 'a="not a number"'}))
+    assert (
+        t_b.query.query_error
+        == """Invalid value for filter "a": invalid literal for int() with base 10: 'not a number'"""
+    )
+    assert not t_b.rows
+
+
+@pytest.mark.django_db
+def test_data_retrieval_method(really_big_discography, django_assert_num_queries):
+    class ArtistsTable(Table):
+        albums = Column(cell__format=lambda row, **_: ', '.join([str(x) for x in row.albums.all()]))
+
+        class Meta:
+            rows = Artist.objects.all()
+
+    with django_assert_num_queries(9):
+        ArtistsTable().bind(request=req('get')).__html__()
+
+    with django_assert_num_queries(3):
+        ArtistsTable().refine(columns__albums__data_retrieval_method=DataRetrievalMethods.prefetch).bind(request=req('get')).__html__()
+
+    with django_assert_num_queries(3):
+        ArtistsTable().refine(columns__albums__data_retrieval_method='prefetch').bind(request=req('get')).__html__()
+
+
+@pytest.mark.django_db
+def test_annotate_on_broken_filters():
+    t = Table(
+        auto__model=TFoo,
+        preprocess_rows=lambda rows, **_: rows.annotate(foo=F('a')),
+    ).bind(
+        request=req(
+            'get',
+            **{'-query/query': 'banana'},
+        )
+    )
+    verify_table_html(
+        table=t,
+        find__name='tbody',
+        # language=html
+        expected_html="""
+            <tbody>
+            </tbody>
+        """,
+    )
+
+
+def test_auto_rowspan_and_render_twice_generator(NoSortTable):  # noqa: N803
+    class TestTable(NoSortTable):
+        foo = Column(auto_rowspan=True)
+
+    rows = [
+        Struct(foo=1),
+        Struct(foo=1),
+        Struct(foo=2),
+        Struct(foo=2),
+    ]
+
+    # language=html
+    expected_html = """
+        <table class="table" >
+            <thead>
+                <tr> <th class="first_column subheader"> Foo </th> </tr>
+            </thead>
+            <tbody>
+                <tr> <td rowspan="2"> 1 </td> </tr>
+                <tr> <td style="display: none"> 1 </td> </tr>
+                <tr> <td rowspan="2"> 2 </td> </tr>
+                <tr> <td style="display: none"> 2 </td> </tr>
+            </tbody>
+        </table>"""
+
+    t = TestTable(rows=(x for x in rows))
+    t = t.bind(request=req('get'))
+    verify_table_html(table=t, expected_html=expected_html)
+    verify_table_html(table=t, expected_html=expected_html)
+
+
+def test_table_explicit_query():
+    Table(
+        rows=[],
+        query=Query(
+            filter=lambda rows, **_: rows,
+        ),
+    ).bind(request=req('get'))
+
+
+def test_table_list_custom_query():
+    Table(
+        rows=[],
+        query__filter=lambda rows, **_: rows,
+        query__filters__foo=Filter(),
+    ).bind(request=req('get'))
