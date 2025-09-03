@@ -1,0 +1,460 @@
+#!python
+"""
+QECore "config" that provides user friendly option for gnome-monitor-config tool.
+"""
+
+########################################################################################
+# Experimental feature for virtual monitors and switching between them.                #
+########################################################################################
+
+import os
+from subprocess import check_output, STDOUT, CalledProcessError
+import sys
+import argparse
+
+from qecore.logger import Logging
+
+logging_class = Logging()
+log = logging_class.logger
+
+
+NO_VALUES = ["", "n", "no", "f", "false", "0"]
+
+
+# Handling environment variables.
+def _get_env_value_lower(env_value_to_get):
+    return os.environ.get(env_value_to_get, "").lower()
+
+_logging_to_console = _get_env_value_lower("LOGGING") not in NO_VALUES
+
+
+def run(command) -> str:
+    """
+    Utility function to execute given command and return its output.
+    """
+
+    try:
+        output = check_output(command, shell=True, env=os.environ, stderr=STDOUT, encoding="utf-8")
+        return output.strip("\n")
+    except CalledProcessError as error:
+        return error.output
+
+
+def run_verbose(command) -> tuple:
+    """
+    Utility function to execute given command and return its output.
+    """
+
+    try:
+        output = check_output(command, shell=True, env=os.environ, stderr=STDOUT, encoding="utf-8")
+        return (output.strip("\n"), 0, None)
+    except CalledProcessError as error:
+        return (error.output, error.returncode, error)
+
+
+# If the gnome-shell has no unsafe mode, do not use it.
+gnome_monitor_config_available = run_verbose("gnome-monitor-config --help")
+if gnome_monitor_config_available[1] != 0:
+    print("The 'gnome-monitor-config' is NOT available. Exiting.")
+    sys.exit(1)
+
+
+class LogicalMonitor:
+    """
+    LogicalMonitor class.
+    """
+
+    def __init__(self, name=None, primary=None, mode=None, offset_x=None):
+
+        # Monitor name.
+        self.name = name
+
+        # Is monitor a primary monitor?
+        self.primary = primary
+
+        # Base configuration.
+        self.base_config = f" -LpM {self.name}" if self.primary else f"-LM {self.name} "
+
+        # Keep the X axis position.
+        self.x = mode.split("x")[0] if mode else 0
+
+        # Do not use mode unless needed.
+        self.mode = ""
+        # Save current resolution.
+        self.current_resolution = mode
+
+        # Offset in X Axis.
+        self.x_offset = offset_x
+        self.offset_x = f"-x {self.x_offset} " if self.x_offset else " "
+
+        self.config = self.base_config + self.mode + self.offset_x
+
+    def update_offset(self, offset_x):
+        """
+        Method of LogicalMonitor class to update offset in X axis.
+
+        :param offset_x: Offset in X axis.
+        :type offset_x: int
+        """
+
+        self.x_offset = offset_x
+        self.offset_x = f"-x {self.x_offset} " if self.x_offset else " "
+
+    def update_mode_with(self, mode):
+        """
+        Update the Monitor with a mode.
+
+        :param mode: Resolution to use.
+        :type mode: string
+        """
+
+        self.mode = f"-m {mode} " if mode else " "
+
+    def reload_config(self):
+        """
+        Reload the configuration of a monitor.
+        """
+
+        self.base_config = f" -LpM {self.name} " if self.primary else " " f"-LM {self.name} "
+        self.config = self.base_config + self.mode + self.offset_x
+
+
+    def __str__(self):
+        return "".join((
+            "Logical monitor: ",
+            f"name:{self.name} ",
+            f"primary:{str(self.primary)} ",
+            f"mode:{self.mode} ",
+            f"offset_x:{self.offset_x}",
+        ))
+
+
+class GNOMEMonitorConfig:
+    """
+    GNOMEMonitorConfig class.
+    """
+
+    def __init__(self) -> None:
+        self.arguments = None
+
+        self.target_resolution = None
+
+        # Store all resolutions.
+        self.resolution_list = []
+
+        # Currently available monitors
+        #####
+        # 1 # - no virtual monitors from qecore-headless
+        #####
+
+        #####   #####
+        # 1 #   # 2 # - 1 virtual monitor
+        #####   #####
+
+        #####   #####   #####
+        # 1 #   # 2 #   # 3 # - 2 virtual monitors
+        #####   #####   #####
+
+        self.leftmost_position = 0
+
+        self.currently_focused_monitor = 0
+
+        self.logical_monitors = []
+
+        self.get_available_resolutions()
+        self.load_current_configuration()
+
+        self.rightmost_position = len(self.logical_monitors) - 1
+
+
+        for resolution in self.resolution_list:
+            if self.logical_monitors[0].current_resolution in resolution[0]:
+                log.debug(f"Set current resolution: {resolution}")
+                self.logical_monitors[0].update_mode_with(resolution[1])
+                log.debug(f"Set first monitor resolution: {self.logical_monitors[0].mode}")
+                break
+
+        log.debug("Ending init")
+
+    def get_available_resolutions(self):
+        """
+        Get all available configurations.
+        """
+
+        self.monitor_config_list = run("gnome-monitor-config list").split("\n")
+
+        for line in self.monitor_config_list:
+            if "id:" in line:
+                # Do this better to react to issues.
+                _, wanted_section = line.split(" [id: '")
+                full_resolution_id, _ = wanted_section.split("'] ")
+                resolution, _ = full_resolution_id.split("@")
+
+                self.resolution_list.append((resolution, full_resolution_id))
+
+        for resolution in self.resolution_list:
+            log.debug(resolution)
+
+    def load_current_configuration(self):
+        """
+        Get current configuration.
+        """
+        self.logical_monitor_name = None
+        self.logical_monitor_primary = None
+        self.logical_monitor_mode = None
+        self.logical_monitor_offset_x = None
+
+        parse_next_line = False
+        for line in self.monitor_config_list:
+            if parse_next_line:
+                self.logical_monitor_name = line.replace(" ", "").replace("\n", "")
+                self.logical_monitors.append(
+                    LogicalMonitor(
+                        name=self.logical_monitor_name,
+                        primary=self.logical_monitor_primary,
+                        mode=self.logical_monitor_mode,
+                        offset_x=self.logical_monitor_offset_x,
+                    )
+                )
+                # End of logical monitor
+                log.debug("Ending the monitor setup")
+                parse_next_line = False
+
+            # Logical monitor [ 1024x768+0+0 ], PRIMARY, scale = 1, transform = normal
+            if "Logical monitor" in line:
+                log.debug("Starting new monitor setup")
+                # Start of the logical monitor.
+                _, mode_plus_offset_with_the_rest = line.split(" [ ")
+                mode_plus_offset, _ = mode_plus_offset_with_the_rest.split(" ], ")
+                self.logical_monitor_mode, offset = mode_plus_offset.split("+", 1)
+                log.debug(f"Setting logical monitor mode: {self.logical_monitor_mode}")
+                self.logical_monitor_offset_x = offset.split("+")[0]
+
+                parse_next_line = True
+                if "PRIMARY" in line:
+                    self.logical_monitor_primary = True
+                else:
+                    self.logical_monitor_primary = False
+
+        # Save number of monitors to variable.
+        self.current_available_monitors = len(self.logical_monitors)
+
+        self.logical_monitors.sort(key=lambda x: x.offset_x)
+        for index, monitor in enumerate(self.logical_monitors):
+            if monitor.primary:
+                self.currently_focused_monitor = index
+            log.debug(monitor)
+
+        log.debug(f"Currently focused monitor: {self.currently_focused_monitor}")
+
+
+    def handle_arguments(self) -> None:
+        """
+        Makes all necessary steps for arguments passed along the headless script.
+        """
+
+        # Parse arguments of config script.
+        self.arguments = parse()
+
+        if self.arguments.move_left:
+            self.move_left()
+
+        if self.arguments.move_right:
+            self.move_right()
+
+        if self.arguments.move_to:
+            self.move_to(int(self.arguments.move_to))
+
+        if self.arguments.resolution:
+            self.resize_monitor_to(self.arguments.resolution)
+
+
+
+    def execute(self):
+        """
+        Handle arguments and apply configuration based on them.
+        """
+
+        self.handle_arguments()
+        self.apply_configuration()
+
+
+    def move_left(self) -> None:
+        """
+        Move to the Monitor on the Left by setting it as a Primary Monitor.
+        """
+
+        if self.currently_focused_monitor == self.leftmost_position:
+            log.info("There is no monitor on the left, exiting.")
+            sys.exit(1)
+
+        log.debug("Moving to the monitor on left.")
+
+        self.logical_monitors[self.currently_focused_monitor].primary = False
+        self.logical_monitors[self.currently_focused_monitor - 1].primary = True
+        for monitor in self.logical_monitors:
+            monitor.reload_config()
+
+    def move_right(self) -> None:
+        """
+        Move to the Monitor on the Right by setting it as a Primary Monitor.
+        """
+
+        if self.currently_focused_monitor == self.rightmost_position:
+            log.info("There is no monitor on the right, exiting.")
+            sys.exit(1)
+
+        log.debug("Moving to the monitor on right.")
+
+        self.logical_monitors[self.currently_focused_monitor].primary = False
+        self.logical_monitors[self.currently_focused_monitor + 1].primary = True
+        for monitor in self.logical_monitors:
+            monitor.reload_config()
+
+
+    def move_to(self, number) -> None:
+        """
+        Move to the Monitor number given by the user by setting it as a Primary Monitor.
+
+        :param number: Monitor number 1, 2 or 3
+        :type number: int
+        """
+
+        if self.currently_focused_monitor == number - 1:
+            log.info("You already are on wanted monitor, exiting.")
+            sys.exit(1)
+
+        if number > len(self.logical_monitors):
+            log.info("There is no such monitor, exiting.")
+            sys.exit(1)
+
+        log.debug(f"Moving to the monitor '{number}'")
+
+        self.logical_monitors[self.currently_focused_monitor].primary = False
+        self.logical_monitors[number - 1].primary = True
+        for monitor in self.logical_monitors:
+            monitor.reload_config()
+
+
+    def resize_monitor_to(self, target_resolution) -> None:
+        """
+        Resize the main Monitor to wanted resolution.
+
+        :param target_resolution: Resolution to change the Monitor to
+        :type target_resolution: string
+        """
+
+        log.debug(f"Currently focused monitor: {self.currently_focused_monitor}")
+        if self.currently_focused_monitor != 0:
+            log.debug("Currently unable to change virtual monitor.")
+            sys.exit(1)
+
+        self.target_resolution = target_resolution
+
+        found_valid_resolution = False
+        valid_resolution = None
+        for resolution in self.resolution_list:
+            if target_resolution in resolution[0] or target_resolution in resolution[1]:
+                log.debug(f"Found valid resolution: {resolution}")
+                valid_resolution = resolution[1]
+                found_valid_resolution = True
+            else:
+                log.debug(f"Resolution '{target_resolution}' not matched with '{resolution}'.")
+
+
+        if found_valid_resolution:
+            self.logical_monitors[self.currently_focused_monitor].update_mode_with(valid_resolution)
+            self.logical_monitors[self.currently_focused_monitor].reload_config()
+
+        previous_x_size = None
+        previous_x_offset = None
+
+        for monitor in self.logical_monitors:
+            if previous_x_size and previous_x_offset:
+                monitor.update_offset(int(previous_x_size) + int(previous_x_offset))
+            monitor.reload_config()
+
+            previous_x_size = monitor.x
+            previous_x_offset = monitor.x_offset
+
+
+    def apply_configuration(self):
+        """
+        Applying the configuration.
+        """
+
+        log.debug("Creating configuration.")
+
+        configuration_string = ""
+        for monitor in self.logical_monitors:
+            monitor.reload_config()
+
+            configuration_string += monitor.config
+
+        log.debug(f"Possible configuration: '{configuration_string}'")
+
+        log.debug("Attempt to execute the configuration.")
+        conf_run_result = run_verbose(f"gnome-monitor-config set {configuration_string}")
+        if conf_run_result[1] != 0:
+            log.debug(conf_run_result)
+        else:
+            log.debug("Success.")
+            return
+
+def parse():
+    """
+    Parser for arguments given to the script.
+
+    :return: Namespace object with attributes parsed out of the command line.
+    :rtype: Namespace
+    """
+
+    parser = argparse.ArgumentParser(
+        prog="$ qecore-config",
+        description="User friendly wrapper for gnome-monitor-config.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    parser.add_argument(
+        "--move-left",
+        required=False,
+        action="store_true",
+        help="Move to the monitor on the left.",
+    )
+
+    parser.add_argument(
+        "--move-right",
+        required=False,
+        action="store_true",
+        help="Move to the monitor on the right.",
+    )
+    parser.add_argument(
+        "--move-to",
+        required=False,
+        choices=("1", "2", "3"),
+        help="Move to the wanted monitor.",
+    )
+    parser.add_argument(
+        "--resolution",
+        required=False,
+        help="Change resolution.",
+    )
+    return parser.parse_args()
+
+
+def main():
+    """
+    Main function.
+    """
+
+    # Logging to the console.
+    if _logging_to_console:
+        log.info("Setting qecore-config to log in console.")
+        logging_class.qecore_debug_to_console()
+
+    gnome_monitor_config = GNOMEMonitorConfig()
+    gnome_monitor_config.execute()
+
+
+if __name__ == "__main__":
+    main()

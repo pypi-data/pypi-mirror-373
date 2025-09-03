@@ -1,0 +1,412 @@
+#!python
+
+import os
+import sys
+import subprocess
+
+class QECore:
+    def __init__(self):
+        self.list_of_files = []
+        self.list_of_files_length = 0
+        self.feature_file_longest_name = 0
+        self.feature_base_height = 0
+        self.feature_real_height = 0
+        self.feature_base_width = 0
+        self.feature_real_width = 0
+        self.feature_base_width_with_characters = 0
+        self.zenity_command = None
+        self.zenity_feature_not_selected_error = None
+        self.chosen_feature_files = None
+
+        self.tags_base_height = 0
+        self.tags_real_height = 0
+        self.tags_base_width = 0
+        self.tags_real_width = 0
+        self.tags_height_adder = 0
+        self.tags_width_adder = 0
+        self.zenity_tags_command_string = None
+
+        self.zenity_tags_command_result = None
+        self.process = None
+        self.final_result = None
+
+
+    def select_feature_files(self):
+        is_this_working_project_directory = os.path.isdir("features/")
+        if not is_this_working_project_directory:
+            print("Missing 'features/' directory suggests this is not a project directory.")
+            print("Enter directory with your test project and try again.")
+            sys.exit(1)
+
+        for (dirpath, _, filenames) in os.walk("features/"):
+            self.list_of_files += [os.path.join(dirpath, _file) \
+                for _file in filenames if ".feature" in _file]
+        self.list_of_files_length = len(self.list_of_files)
+
+        for name in self.list_of_files:
+            self.feature_file_longest_name = max(self.feature_file_longest_name, len(name))
+
+        self.feature_base_height = 200
+        self.feature_base_width = 285
+        self.feature_base_width_with_characters = 29
+
+        self.feature_real_height = self.feature_base_height
+        self.feature_real_width = self.feature_base_width
+
+        if self.feature_file_longest_name > self.feature_base_width_with_characters:
+            self.feature_real_width = int(self.feature_file_longest_name / self.feature_base_width_with_characters * self.feature_base_width)
+
+        if self.list_of_files_length > 3:
+            self.feature_real_height = self.feature_base_height + (self.list_of_files_length - 3) * 25
+
+        self.zenity_command = " ".join((
+            "zenity --list",
+            "--text='Select wanted Feature file'",
+            "--multiple",
+            "--separator=' '",
+            f"--height={self.feature_real_height}",
+            f"--width={self.feature_real_width}",
+            "--column='Feature files'",
+            *(self.list_of_files),
+        ))
+
+        self.zenity_feature_not_selected_error = "zenity --error --text='You have to select a feature file to continue.'"
+
+        for _ in range(3):
+            self.process = subprocess.Popen(self.zenity_command,
+                                            shell=True,
+                                            stdout=subprocess.PIPE,
+                                            stderr=subprocess.PIPE)
+            result, _ = self.process.communicate()
+
+            if not result:
+                self.process = subprocess.Popen(self.zenity_feature_not_selected_error,
+                                                shell=True,
+                                                stdout=subprocess.PIPE,
+                                                stderr=subprocess.PIPE).wait()
+            else:
+                break
+
+        if not result:
+            print("Feature file was not selected 3 times.")
+            print("Terminating the script.")
+            sys.exit(1)
+
+        self.chosen_feature_files = os.path.abspath(result.decode("utf-8").strip("\n"))
+
+
+    def select_testing_tags(self):
+        self.tags_base_height = 150
+        self.tags_height_adder = 25
+
+        self.tags_base_width = 110
+        self.tags_width_adder = 7
+
+        self.tags_real_height = self.tags_base_height
+        self.tags_real_width = self.tags_base_width
+
+        feature_file_lines = []
+        for _file in self.chosen_feature_files.split(" "):
+            with open(_file, "r") as _file:
+                feature_file_lines.extend(_file.readlines())
+
+        zenity_tags_lines = ""
+        last_feature_file_line = ""
+        longest_feature_file_line = 0
+        for feature_file_line in feature_file_lines:
+            if feature_file_line.strip(" ").startswith("Scenario:"):
+                last_feature_file_line = last_feature_file_line.strip(" ")
+                if last_feature_file_line[0] == "@" and \
+                    "feature" not in feature_file_lines and \
+                    "rhbz" not in feature_file_lines and \
+                    "known_issue" not in feature_file_lines and \
+                    "gate" not in feature_file_lines:
+                    zenity_tags_lines += last_feature_file_line.lstrip("@")
+                    longest_feature_file_line = max(longest_feature_file_line, len(last_feature_file_line.lstrip("@")))
+
+            last_feature_file_line = feature_file_line
+
+        self.tags_real_width = self.tags_base_width + longest_feature_file_line * self.tags_width_adder
+
+        number_of_tags = len(zenity_tags_lines.split("\n"))
+        self.tags_real_height = self.tags_base_height + (number_of_tags) * self.tags_height_adder
+
+        zenity_tags_list = zenity_tags_lines.split("\n")
+
+        final_zenity_command_for_tags = ""
+        for tag in zenity_tags_list:
+            if tag:
+                final_zenity_command_for_tags += f"check {tag} "
+
+        self.zenity_tags_command_string = " ".join((
+            "zenity",
+            "--list",
+            "--title='Select Tests'",
+            f"--height={self.tags_real_height}",
+            f"--width={self.tags_real_width}",
+            "--column='check'",
+            "--checklist",
+            "--separator=','",
+            "--column='Select your tests'",
+            final_zenity_command_for_tags
+        ))
+
+        self.process = subprocess.Popen(self.zenity_tags_command_string,
+                                        shell=True,
+                                        stdout=subprocess.PIPE,
+                                        stderr=subprocess.PIPE)
+        self.zenity_tags_command_result, _ = self.process.communicate()
+        self.final_result = self.zenity_tags_command_result.decode("utf-8").strip("\n")
+
+
+    def generate_terminal_commands(self):
+        # Behave command to use
+        print("============================== behave-3 ==============================")
+        print(f"$ behave-3 -kt {self.final_result}")
+        print("======================================================================\n")
+
+        # Using headless script to start behave command to use
+        headless_string = "$ "
+        for test in self.final_result.split(","):
+            headless_string += f"dogtail-run-headless-next 'behave -kt {test}';"
+        print("============================== headless ==============================")
+        print(headless_string)
+        print("======================================================================\n")
+
+        # Using runtest script to start headless script with behave command to use
+        runtest_string = "$ "
+        for test in self.final_result.split(","):
+            runtest_string += f"export TEST={test};./runtest.sh $TEST;"
+        print("============================== runtest ===============================")
+        print(runtest_string)
+        print("======================================================================\n")
+
+
+    def fix_decorators(self):
+        from pathlib import Path
+        import re
+
+        changes_needed = 0
+        default_application = None
+        environment = list(Path(".").rglob("*environment.py"))[0]
+        with open(environment, "r") as _file:
+            target = _file.readlines()
+            for line in target:
+                result = re.match(r"(.*)(context|ctx).([A-Za-z0-9_]+)\s*=", line)
+                if result and "sandbox" not in result.group(3):
+                    default_application = result.group(3)
+                    break
+
+        if not default_application:
+            print("Default application was not found.")
+            assert False
+
+        features = list(Path(".").rglob("*.feature"))
+        for found_file in features:
+            print(found_file)
+            with open(found_file, "r") as _file:
+                target = _file.readlines()
+
+            for line in [x.strip("\n") for x in target]:
+
+                result = re.match(r"(.*)Start\s([A-Za-z0-9]*)\svia\s(menu|command)", line)
+                if result and "Scenario" not in result.group(0):
+                    changes_needed += 1
+                    print("Old:")
+                    print(f"{result.group(0)}")
+                    final_change = f"{result.group(1)}Start application \"{result.group(2)}\" via \"{result.group(3)}\""
+                    print("New:")
+                    print(final_change)
+                    print()
+
+
+                result = re.match(r"(.*)Start\s\"([A-Za-z0-9]*)\"\svia\scommand\sin\s([A-Za-z0-9]*)", line)
+                if result and "Scenario" not in result.group(0):
+                    changes_needed += 1
+                    print("Old:")
+                    print(f"{result.group(0)}")
+                    final_change = f"{result.group(1)}Start application \"{result.group(2)}\" via command in \"{result.group(3)}\""
+                    print("New:")
+                    print(final_change)
+                    print()
+
+
+                result = re.match(r"(.*)Close app via gnome panel", line)
+                if result and "Scenario" not in result.group(0):
+                    changes_needed += 1
+                    print(f"Default application is: '{default_application}'")
+                    print("Old:")
+                    print(f"{result.group(0)}")
+                    final_change = f"{result.group(1)}Close application \"{default_application}\" via \"gnome panel\""
+                    print("New:")
+                    print(final_change)
+                    print()
+
+                result = re.match(r"(.*)\s([A-Za-z0-9]*)\sshouldn\'t\sbe\srunning\sanymore", line)
+                if result and "Scenario" not in result.group(0):
+                    changes_needed += 1
+                    print("Old:")
+                    print(f"{result.group(0)}")
+                    final_change = f"{result.group(1)} Application \"{result.group(2)}\" is no longer running"
+                    print("New:")
+                    print(final_change)
+                    print()
+
+                result = re.match(r"(.*)\s([A-Za-z0-9]*)\sshould\sstart", line)
+                if result and "Scenario" not in result.group(0):
+                    changes_needed += 1
+                    print("Old:")
+                    print(f"{result.group(0)}")
+                    final_change = f"{result.group(1)} Application \"{result.group(2)}\" is running"
+                    print("New:")
+                    print(final_change)
+                    print()
+
+
+                result = re.match(r"(.*)Click\s\"([A-Za-z0-9]*)\"\sin\sGApplication\smenu", line)
+                if result and "Scenario" not in result.group(0):
+                    changes_needed += 1
+                    print(f"Default application is: '{default_application}'")
+                    print("Old:")
+                    print(f"{result.group(0)}")
+                    final_change = "\n".join((
+                        f"{result.group(1)}Left click \"{default_application}\" \"menu\" in \"gnome-shell\"",
+                        f"{result.group(1)}Left click \"{result.group(2)}\" \"label\" in \"gnome-shell\""
+                    ))
+                    print("New:")
+                    print(final_change)
+                    print()
+
+                result = re.match(r"(.*)Press\s\"([A-Za-z0-9<>_]*)\"", line)
+                if result and "Scenario" not in result.group(0):
+                    changes_needed += 1
+                    print("Old:")
+                    print(f"{result.group(0)}")
+                    final_change = f"{result.group(1)}Key combo: \"{result.group(2)}\""
+                    print("New:")
+                    print(final_change)
+                    print()
+
+        if changes_needed == 0:
+            print("No changes needed.")
+            sys.exit(0)
+
+        print(f"Changes required: {changes_needed}")
+
+        # User confirmation
+        prompt = f"Confirm changes [yes]|no: "
+        while True:
+            answer = input(prompt)
+            if not answer:
+                print("No answer given, terminating.")
+                sys.exit(0)
+            if answer not in ["yes", "Yes", "y", "no", "No", "n"]:
+                print("please enter 'yes' or 'no'")
+                continue
+            if answer in ["yes", "Yes", "y"]:
+                break
+            if answer in ["no", "No", "n"]:
+                sys.exit(0)
+
+        for found_file in features:
+            with open(found_file, "r") as _file:
+                read_target = _file.readlines()
+
+            with open(found_file, "w") as write_target:
+
+                for line in [x for x in read_target]:
+                    final_change = line
+
+                    result = re.match(r"(.*)Start\s([A-Za-z0-9]*)\svia\s(menu|command)", line)
+                    if result and "Scenario" not in result.group(0):
+                        final_change = f"{result.group(1)}Start application \"{result.group(2)}\" via \"{result.group(3)}\"\n"
+
+                    result = re.match(r"(.*)Start\s\"([A-Za-z0-9]*)\"\svia\scommand\sin\s([A-Za-z0-9]*)", line)
+                    if result and "Scenario" not in result.group(0):
+                        final_change = f"{result.group(1)}Start application \"{result.group(2)}\" via command in \"{result.group(3)}\"\n"
+
+                    result = re.match(r"(.*)Close app via gnome panel", line)
+                    if result and "Scenario" not in result.group(0):
+                        final_change = f"{result.group(1)}Close application \"{default_application}\" via \"gnome panel\"\n"
+
+                    result = re.match(r"(.*)\s([A-Za-z0-9]*)\sshouldn\'t\sbe\srunning\sanymore", line)
+                    if result and "Scenario" not in result.group(0):
+                        final_change = f"{result.group(1)} Application \"{result.group(2)}\" is no longer running\n"
+
+                    result = re.match(r"(.*)\s([A-Za-z0-9]*)\sshould\sstart", line)
+                    if result and "Scenario" not in result.group(0):
+                        final_change = f"{result.group(1)} Application \"{result.group(2)}\" is running\n"
+
+                    result = re.match(r"(.*)Click\s\"([A-Za-z0-9]*)\"\sin\sGApplication\smenu", line)
+                    if result and "Scenario" not in result.group(0):
+                        final_change = "".join((
+                            f"{result.group(1)}Left click \"{default_application}\" \"menu\" in \"gnome-shell\"\n",
+                            f"{result.group(1)}Left click \"{result.group(2)}\" \"label\" in \"gnome-shell\"\n"
+                        ))
+
+                    result = re.match(r"(.*)Press\s\"([A-Za-z0-9<>_]*)\"", line)
+                    if result and "Scenario" not in result.group(0):
+                        final_change = f"{result.group(1)}Key combo: \"{result.group(2)}\"\n"
+
+                    write_target.write(final_change)
+
+
+    @staticmethod
+    def bash_completion():
+        if os.geteuid() == 0:
+            res = subprocess.call(["cp", "/usr/local/bin/qecore_bash_completion", "/etc/bash_completion.d/qecore"])
+            if res == 0:
+                print("Installed succesfully. Restart bash, or run 'source /etc/bash_completion.d/qecore'.")
+            else:
+                print("Unable to install bash_completion file.")
+        else:
+            print("Must be root to install bash completion system-wide.")
+
+
+def parse():
+    import argparse
+    parser = argparse.ArgumentParser(prog="$ qecore",
+                                     description="DesktopQE helper tool.",
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("-d", "--get-active-display",
+                        action="store_true",
+                        help="Get number of currently active display.")
+    parser.add_argument("-g", "--generate",
+                        action="store_true",
+                        help="With help of zenity lets you generate commands for tests.")
+    parser.add_argument("-s", "--source",
+                        action="store_true",
+                        help="With help of xdg-utils opens the source page in your favourite browser.")
+    parser.add_argument("--fix-decorators",
+                        action="store_true",
+                        help="Check every .feature file to change deprecated steps decorator format to supported one.")
+    parser.add_argument("-b", "--bash-completion",
+                        action="store_true",
+                        help="Enable bash completion for runtest.sh and qecore-runtest")
+    return parser.parse_args()
+
+
+def main():
+    arguments = parse()
+
+    if arguments.get_active_display:
+        subprocess.Popen("qecore_get_active_display", shell=True)
+
+    if arguments.generate:
+        qecore = QECore()
+        qecore.select_feature_files()
+        qecore.select_testing_tags()
+        qecore.generate_terminal_commands()
+
+    if arguments.source:
+        subprocess.Popen("qecore_help", shell=True)
+
+    if arguments.fix_decorators:
+        qecore = QECore()
+        qecore.fix_decorators()
+
+    if arguments.bash_completion:
+        QECore.bash_completion()
+
+if __name__ == "__main__":
+    main()
