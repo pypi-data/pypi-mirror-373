@@ -1,0 +1,265 @@
+syntax = "proto3";
+
+package file;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+// ========= 服务定义 =========
+
+service FileService {
+    rpc UploadFile (UploadFileRequest) returns (UploadFileResponse);
+    rpc GenerateUploadUrl (UploadUrlRequest) returns (UploadUrlResponse);
+    rpc GenerateResumableUploadUrl (UploadUrlRequest) returns (UploadUrlResponse);
+    rpc ConfirmUploadCompleted (UploadCompletedRequest) returns (Empty);
+    rpc GenerateDownloadUrl (DownloadUrlRequest) returns (DownloadUrlResponse);
+    rpc BatchGenerateDownloadUrl (BatchDownloadUrlRequest) returns (BatchDownloadUrlResponse);
+    rpc GetGcsUrl (GetGcsUrlRequest) returns (GetGcsUrlResponse);
+    rpc BatchGetGcsUrl (BatchGetGcsUrlRequest) returns (BatchGetGcsUrlResponse);
+    rpc GenerateShareLink (ShareLinkRequest) returns (ShareLinkResponse);
+    rpc VisitFile (FileVisitRequest) returns (Empty);
+    rpc GetFile (GetFileRequest) returns (GetFileResponse);
+    rpc RenameFile (RenameFileRequest) returns (File);
+    rpc DeleteFile (DeleteFileRequest) returns (Empty);
+    rpc ListFiles (ListFilesRequest) returns (FileListResponse);
+    
+    // 压缩服务相关API
+    rpc GetCompressionStatus (CompressionStatusRequest) returns (CompressionStatusResponse);
+    rpc GetCompressedVariants (GetVariantsRequest) returns (GetVariantsResponse);
+    rpc TriggerRecompression (RecompressionRequest) returns (RecompressionResponse);
+    rpc GenerateVariantDownloadUrl (VariantDownloadUrlRequest) returns (VariantDownloadUrlResponse);
+}
+
+// ========= 数据结构定义 =========
+
+message File {
+    string id = 1;
+    string folder_id = 2;
+    string file_name = 3;
+    string file_type = 4;
+    google.protobuf.Timestamp created_at = 5;
+    google.protobuf.Timestamp updated_at = 6;
+}
+
+message UploadFile {
+    string id = 1;
+    string folder_id = 2;
+    string file_id = 3;
+    string storage_type = 4;
+    string stored_name = 5;
+    string stored_path = 6;
+    string file_name = 7;
+    int64 file_size = 8;
+    string file_ext = 9;
+    string mime_type = 10;
+    string status = 11;
+    google.protobuf.Timestamp created_at = 12;
+    google.protobuf.Timestamp updated_at = 13;
+}
+
+// ========= 请求结构 =========
+
+message UploadFileRequest {
+    optional string folder_id = 1;
+    string file_name = 2;
+    bytes content = 3;
+    string file_type = 4;
+    string mime_type = 5;
+    optional bool is_temporary = 6;
+    optional int32 expire_seconds = 7;
+    optional bool keep_original_filename = 8;  // 保留原始文件名，默认false
+}
+
+message UploadUrlRequest {
+    optional string folder_id = 1;
+    string file_name = 2;
+    string file_type = 3;
+    string mime_type = 4;
+    int64 file_size = 5;
+    string file_hash = 6;
+    optional bool is_temporary = 7;
+    optional int32 expire_seconds = 8;
+    optional bool keep_original_filename = 9;  // 保留原始文件名，默认false
+}
+
+message UploadCompletedRequest {
+    string file_id = 1;
+}
+
+message DownloadUrlRequest {
+    string file_id = 1;
+    optional bool is_cdn = 3;
+    optional int32 expire_seconds = 2;
+}
+
+message ShareLinkRequest {
+    string file_id = 1;
+    bool is_public = 2;
+    string access_scope = 3;
+    optional int32 expire_seconds = 4;
+    optional int32 max_access = 5;
+    optional string share_password = 6;
+}
+
+message FileVisitRequest {
+    string file_share_id = 1;
+    string access_type = 2;
+    int32 access_duration = 3;
+    google.protobuf.Struct metadata = 4;
+}
+
+message GetFileRequest {
+    string file_id = 1;
+}
+
+message RenameFileRequest {
+    string file_id = 1;
+    string new_name = 2;
+}
+
+message DeleteFileRequest {
+    string file_id = 1;
+}
+
+message ListFilesRequest {
+    optional string folder_id = 1;
+    optional string file_name = 2;
+    repeated string file_type = 3;
+    optional string created_by_role = 4;
+    optional string created_by = 5;
+    optional int32 page_size = 6;
+    optional int32 page = 7;
+}
+
+message BatchDownloadUrlRequest {
+    repeated string file_ids = 1;
+    optional bool is_cdn = 2;
+    optional int32 expire_seconds = 3;
+}
+
+message GetGcsUrlRequest {
+    string file_id = 1;
+}
+
+message BatchGetGcsUrlRequest {
+    repeated string file_ids = 1;
+}
+
+// ========= 响应结构 =========
+
+message UploadFileResponse {
+    File file = 1;
+    UploadFile upload_file = 2;
+}
+
+message UploadUrlResponse {
+    File file = 1;
+    UploadFile upload_file = 2;
+    string url = 3;
+}
+
+message DownloadUrlResponse {
+    string url = 1;
+}
+
+message ShareLinkResponse {
+    string file_share_id = 1;
+}
+
+message FileListResponse {
+    repeated File files = 1;
+}
+
+message GetFileResponse {
+    File file = 1;
+    optional UploadFile upload_file = 2;
+}
+
+message BatchDownloadUrlResponse {
+    repeated DownloadUrlInfo download_urls = 1;
+}
+
+message DownloadUrlInfo {
+    string file_id = 1;
+    string url = 2;
+    string mime_type = 3;
+    optional string error = 4;
+}
+
+message GetGcsUrlResponse {
+    string gcs_url = 1;
+    string mime_type = 2;
+}
+
+message BatchGetGcsUrlResponse {
+    repeated GcsUrlInfo gcs_urls = 1;
+}
+
+message GcsUrlInfo {
+    string file_id = 1;
+    string gcs_url = 2;
+    string mime_type = 3;
+    optional string error = 4;
+}
+
+// ========= 压缩服务相关结构 =========
+
+message CompressionStatusRequest {
+    string file_id = 1;
+}
+
+message CompressionStatusResponse {
+    string status = 1;  // pending, processing, completed, failed
+    optional string error_message = 2;
+    repeated CompressedVariant variants = 3;
+}
+
+message GetVariantsRequest {
+    string file_id = 1;
+    optional string variant_type = 2;  // image, video, thumbnail
+}
+
+message GetVariantsResponse {
+    repeated CompressedVariant variants = 1;
+}
+
+message CompressedVariant {
+    string variant_name = 1;
+    string variant_type = 2;
+    string media_type = 3;
+    int32 width = 4;
+    int32 height = 5;
+    int64 file_size = 6;
+    string format = 7;
+    optional int32 quality = 8;
+    optional double duration = 9;
+    optional int64 bitrate = 10;
+    optional int32 fps = 11;
+    double compression_ratio = 12;
+    string stored_path = 13;
+}
+
+message RecompressionRequest {
+    string file_id = 1;
+    optional bool force_reprocess = 2;
+}
+
+message RecompressionResponse {
+    string task_id = 1;
+    string status = 2;
+}
+
+message VariantDownloadUrlRequest {
+    string file_id = 1;
+    string variant_name = 2;  // large/medium/small/thumbnail
+    optional int32 expire_seconds = 3;
+    optional bool is_cdn = 4;
+}
+
+message VariantDownloadUrlResponse {
+    string url = 1;
+    optional string error = 2;
+    optional CompressedVariant variant_info = 3;  // 返回变体详细信息
+}
+
+message Empty {}
