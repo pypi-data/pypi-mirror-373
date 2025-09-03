@@ -1,0 +1,1 @@
+self.__NEXT_FONT_MANIFEST='{"pages":{},"app":{"/tmp/build-via-sdist-0grvx0uw/voice_mode-4.3.2/voice_mode/frontend/app/layout":["static/media/39883d31a7792467-s.p.woff2"]},"appUsingSizeAdjust":true,"pagesUsingSizeAdjust":false}';
