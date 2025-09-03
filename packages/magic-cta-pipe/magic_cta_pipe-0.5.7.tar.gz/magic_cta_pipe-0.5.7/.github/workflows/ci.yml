@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - '**'
+  pull_request:
+
+env:
+  NUMBA_NUM_THREADS: 1
+  MPLBACKEND: Agg
+  PYTEST_ADDOPTS: --color=yes
+
+jobs:
+  lint:
+    if: contains(github.event.pull_request.labels.*.name, 'documentation-only') == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.9
+      - uses: pre-commit/action@v3.0.1
+        with:
+          extra_args: --files $(git diff origin/master --name-only)
+
+  pyflakes:
+    if: contains(github.event.pull_request.labels.*.name, 'documentation-only') == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.9
+
+      - name: pyflakes
+        run: |
+          pip install pyflakes
+          pyflakes magicctapipe
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.9
+
+      - name: Install doc dependencies
+        run: |
+          pip install -U pip
+          pip install -e .[docs,dev]
+          git describe --tags
+          python -c 'import magicctapipe; print(magicctapipe.__version__)'
+
+      - name: Build docs
+        run: make doc
+
+  tests:
+    if: contains(fromJSON('["documentation-only", "auto-MCP-only"]'), github.event.pull_request.labels.*.name) == false
+    needs: lint
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11"]
+        ctapipe-version: ["v0.19.2"]
+
+    defaults:
+      run:
+        # We need login shells (-l) for micromamba to work.
+        shell: bash -leo pipefail {0}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: cache test data
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/magicctapipe
+          key: mcp-test-data
+
+      - name: Set python version ${{ matrix.python-version }}
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: |
+          sed -i -e "s/- python.*/- python=$PYTHON_VERSION/g" environment.yml
+          echo "Resulting environment file:"
+          cat environment.yml
+
+      - name: mamba setup
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: environment.yml
+          cache-downloads: true
+
+      - name: Install dependencies
+        env:
+          CTAPIPE_VERSION: ${{ matrix.ctapipe-version }}
+        run: |
+          python --version
+          pip install .[all]
+          pip install pytest-cov
+          pip install pyflakes
+          pip install "git+https://github.com/cta-observatory/ctapipe@$CTAPIPE_VERSION"
+          ctapipe-info --all
+          pip freeze
+
+      - name: Tests
+        env:
+          MAGIC_CTA_DATA_USER: ${{ secrets.magic_cta_data_user }}
+          MAGIC_CTA_DATA_PASSWORD: ${{ secrets.magic_cta_data_password }}
+        run: |
+          coverage run -m pytest -vra
+          coverage xml
+
+      - uses: codecov/codecov-action@v5
+        if: contains(github.event.pull_request.labels.*.name, 'documentation-only') == false
+        with:
+            fail_ci_if_error: true
+            token: ${{ secrets.CODECOV_TOKEN }}
