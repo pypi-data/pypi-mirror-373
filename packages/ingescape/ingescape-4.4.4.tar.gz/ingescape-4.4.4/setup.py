@@ -1,0 +1,80 @@
+# -*- coding: utf-8 -*-
+#  =========================================================================
+# setup.py - fichier de configuration du module Ingescape
+#
+# Copyright (c) the Contributors as noted in the AUTHORS file.
+# This file is part of Ingescape, see https://github.com/zeromq/ingescape.
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+# =========================================================================
+#
+
+import sys
+from setuptools import setup
+from setuptools.extension import Extension
+import os
+import platform
+
+__version__ = "4.4.4"
+
+macos_lib_dirs_from_artifacts = './dependencies/macos/'
+linux_lib_dirs_from_artifacts = './dependencies/linux/'
+windows_x64_lib_dirs_from_artifacts = './dependencies/windows/x64/'
+windows_x86_lib_dirs_from_artifacts = './dependencies/windows/x86/'
+
+extra_objects = []
+librairies = []
+librairies_dirs = []
+
+compile_args = []
+link_args = []
+
+if platform.system() == "Linux":
+    extra_objects.append(linux_lib_dirs_from_artifacts + 'libingescape.a')
+    extra_objects.append(linux_lib_dirs_from_artifacts + 'libzyre.a')
+    extra_objects.append(linux_lib_dirs_from_artifacts + 'libczmq.a')
+    extra_objects.append(linux_lib_dirs_from_artifacts + 'libzmq.a')
+    extra_objects.append(linux_lib_dirs_from_artifacts + 'libsodium.a')
+    compile_args = ["-Wno-unused-result", "-Wsign-compare", "-g", "-fwrapv", "-O3", "-Wall"]
+    link_args = ["-lcrypt", "-lpthread", "-ldl",  "-lutil", "-lm", "-lstdc++"]
+elif platform.system() == "Darwin":
+    extra_objects.append(macos_lib_dirs_from_artifacts + 'libingescape.a')
+    extra_objects.append(macos_lib_dirs_from_artifacts + 'libzyre.a')
+    extra_objects.append(macos_lib_dirs_from_artifacts + 'libczmq.a')
+    extra_objects.append(macos_lib_dirs_from_artifacts + 'libzmq.a')
+    extra_objects.append(macos_lib_dirs_from_artifacts + 'libsodium.a')
+    compile_args = ["-Wno-nullability-completeness", "-Wno-expansion-to-defined"]
+elif platform.system() == "Windows":
+    if platform.machine().endswith('64'):
+        librairies = ["libzmq",'libingescape', 'libzyre', 'libczmq', 'libsodium', "ws2_32", "Iphlpapi", 'Rpcrt4']
+        librairies_dirs.append(windows_x64_lib_dirs_from_artifacts)
+        sys.path.extend(windows_x64_lib_dirs_from_artifacts)
+    compile_args = ["-DINGESCAPE_STATIC"]
+
+setup(
+    ext_modules = [
+        Extension(
+            name = "ingescape",
+            sources = [
+                "./src/admin.c",
+                "./src/agent.c",
+                "./src/channels.c",
+                "./src/compat.c",
+                "./src/core.c",
+                "./src/ingescape_python.c",
+                "./src/monitor.c",
+                "./src/network.c",
+                "./src/performance.c",
+                "./src/util.c"
+            ],
+            include_dirs = ["./include", "./dependencies/include/"],
+            libraries = librairies,
+            library_dirs = librairies_dirs,
+            extra_objects = extra_objects,
+            extra_compile_args = compile_args,
+            extra_link_args = link_args
+        )
+    ]
+)
