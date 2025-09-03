@@ -1,0 +1,410 @@
+[build-system]
+requires = [
+  "setuptools >= 61",
+  "setuptools_scm[toml] >= 8",
+]
+build-backend = 'setuptools.build_meta'
+
+[project]
+name="NREL-COMPASS"
+dynamic = ["version"]
+description = "INFRA-COMPASS is a tool that leverages Large Language Models (LLMs) to create and maintain an inventory of state and local codes and ordinances applicable to energy infrastructure."
+readme = "README.rst"
+authors = [
+  {name = "Paul Pinchuk", email = "ppinchuk@nrel.gov"},
+  {name = "Guilherme Castelão", email = "gpimenta@nrel.gov"},
+]
+maintainers = [
+  {name = "Paul Pinchuk", email = "ppinchuk@nrel.gov"},
+  {name = "Guilherme Castelão", email = "gpimenta@nrel.gov"},
+]
+license = "BSD-3-Clause"
+keywords = ["COMPASS", "NREL", "Ordinance", "Database"]
+requires-python = ">= 3.12"
+classifiers=[
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+dependencies = [
+  "click>=8.1.7,<9",
+  "html5lib>=1.1,<2",
+  "langchain>=0.3.7,<0.4",
+  "networkx>=3.4.2,<4",
+  "nltk>=3.9.1,<4",
+  "nrel-elm>=0.0.24,<1",
+  "openai>=1.1.0",
+  "pandas>=2.2.3,<3",
+  "pdftotext>=2.2.2,<3",
+  "pyjson5>=1.6.8,<2",
+  "rich>=13.9.4,<14",
+]
+
+[project.optional-dependencies]
+ocr = [
+  "pytesseract>=0.3.13,<0.4"
+]
+dev = [
+  "jupyter>=1.0.0,<1.1",
+  "pipreqs>=0.4.13,<0.5",
+  "ruff>=0.8.0,<0.9",
+  "ruff-lsp>=0.0.60,<0.0.61",
+]
+test = [
+  "flaky>=3.8.1,<4",
+  "pytest>=8.3.3,<9",
+  "pytest-asyncio>=0.25.2,<0.26",
+  "pytest-cases>=3.8.6,<4",
+  "pytest-cov>=6.0.0,<7",
+  "pytest-mock>=3.14.0,<4",
+  "pytest-profiling>=1.7.0,<2",
+  "pytest-xdist>=3.6.1,<4",
+  "snakeviz>=2.2.2,<3",
+  "tox>=4.23.2,<5",
+]
+doc = [
+  "ghp-import>=2.1",
+  "make>=0.1",
+  "pydata-sphinx-theme>=0.16.1,<0.17",
+  "sphinx-click>=5.1",
+  "sphinx-copybutton>=0.5",
+  "sphinx-tabs>=3.4",
+  "sphinxcontrib-mermaid>=1.0.0",
+]
+anthropic = [
+  "anthropic>=0.40.0,<0.41",
+  "botocore>=1.35.72,<2",
+  "boto3>=1.35.71,<2",
+]
+build = [
+  "build>=1.2.2,<2",
+  "pkginfo>=1.12.1.2,<2",
+  "twine>=6.1.0,<7",
+]
+
+[project.scripts]
+compass = "compass._cli.main:main"
+
+[project.urls]
+homepage = "https://github.com/NREL/COMPASS"
+documentation = "https://nrel.github.io/COMPASS/"
+repository = "https://github.com/NREL/COMPASS"
+
+[tool.setuptools.packages]
+find = { include = ["compass*"] }
+
+[tool.setuptools_scm]
+# Default git command uses "*[0-9]*", which breaks with cX.X.X tags.
+# This spec below forces setuptools_scm to look strictly for vX.X.X tags
+git_describe_command = [ "git", "describe", "--dirty", "--tags", "--long", "--match", "v*[0-9]*" ]
+version_file = "compass/_version.py"
+
+[tool.pixi.project]
+channels = ["conda-forge", "microsoft", "anaconda", "main"]
+platforms = ["win-64", "osx-arm64", "osx-64", "linux-64", "linux-aarch64"]
+
+[tool.pixi.environments]
+default = { features = ["python-default", "elm"], solve-group = "default" }
+rdev = { features = ["rust-dev"], solve-group = "rust" }
+pdev = { features = ["python-default", "elm", "python-dev", "python-build", "python-test", "python-doc", "python-anthropic", "ocr", "dev", "test", "doc"], solve-group = "python" }
+ptest = { features = ["python-default", "elm", "python-test", "test"], solve-group = "python" }
+pdoc = { features = ["python-default", "elm", "python-doc", "doc"], solve-group = "python" }
+pbuild = { features = ["python-build", "python-default", "elm"], solve-group = "python" }
+
+[tool.pixi.tasks]
+openai-solar-demo = { cmd = "export OPENAI_API_KEY={{ api_key }}; compass process -c config.json5", args = ["api_key"], cwd = "examples/openai_solar_demo"}
+
+[tool.pixi.feature.rust-dev.tasks]
+tests-r = "cargo test --locked --workspace --no-fail-fast"
+publish-db = "cargo publish --locked -p infra-compass-db --all-features"
+publish-cli = "cargo publish --locked -p infra-compass-cli --all-features"
+
+[tool.pixi.feature.python-test.tasks]
+tests-p = "pytest --durations=20 tests/python"
+# ut = "pytest --durations=20 tests/unit"
+# it = "pytest --durations=20 tests/integration"
+
+[tool.pixi.feature.python-doc.tasks]
+make-html = { cmd = "make html", cwd = "docs"}
+
+[tool.pixi.feature.python-build.tasks]
+build-wheels = { cmd = "uv build --sdist --wheel --out-dir dist/ ." }
+check-wheels = { cmd = ["twine", "check", "dist/*"], depends-on = ["build-wheels"] }
+upload-wheels = { cmd = ["twine", "upload", "dist/*"], depends-on = ["check-wheels"] }
+
+[tool.pixi.dependencies]
+poppler = ">=24.8.0,<25"
+
+[tool.pixi.feature.rust-dev.dependencies]
+rust = ">=1.88.0,<1.89"
+cxx-compiler = ">=1.9.0,<2"
+graphviz = ">=12.2.1,<13"
+
+[tool.pixi.feature.python-default.dependencies]
+aiohttp = ">=3.11.6,<4"
+beautifulsoup4 = ">=4.12.3,<5"
+click = ">=8.1.7,<9"
+google-api-python-client = ">=2.160.0,<3"
+html2text = ">=2024.2.26,<2025"
+html5lib = ">=1.1,<2"
+httpx = ">=0.28.1,<0.29"
+ipython = ">=8.29.0,<9"
+langchain = ">=0.3.7,<0.4"
+lxml = ">=5.3.0,<6"
+networkx = ">=3.4.2,<4"
+nltk = ">=3.9.1,<4"
+numpy = ">=1.26.4,<2"
+openai = ">=1.1.0"
+pandas = ">=2.2.3,<3"
+pdf2image = ">=1.17.0,<2"
+pillow = ">=10.4,<11.dev0"  # version range required for c4ai
+playwright = ">=1.49.0,<1.52"  # version range required for c4ai
+pypdf2 = ">=3.0.1,<4"
+pytesseract = ">=0.3.13,<0.4"
+python = ">=3.12"
+python-dotenv = ">=1.0.1,<2"
+python-slugify = ">=8.0.4,<9"
+rich = ">=13.9.4,<14"
+scipy = ">=1.14.1,<2"
+snowballstemmer = ">=2.2,<3.dev0"  # version range required for c4ai
+tabulate = ">=0.9.0,<0.10"
+tesseract = ">=5.5.0,<6"
+tiktoken = ">=0.8.0,<0.9"
+
+# rebrowser-playwright
+greenlet = "==3.1.1"  # version pin required for rebrowser-playwright
+pyee = "==12.0.0"  # version pin required for rebrowser-playwright
+
+[tool.pixi.feature.python-default.pypi-dependencies]
+NREL-COMPASS = { path = ".", editable = true}
+
+[tool.pixi.target.linux-aarch64.dependencies]
+compilers = ">=1.11.0,<2"
+clangdev = ">=20.1.8,<21"
+libclang = ">=20.1.8,<21"
+maturin = ">=1.8.6,<2"
+rust = ">=1.88.0,<1.89"
+
+[tool.pixi.target.win-64.dependencies]
+pdftotext = ">=2.2.2,<3"
+
+# ELM dependencies explicitly enumerated
+# We should remove this once ELM better defines its dependencies
+[tool.pixi.feature.elm.pypi-dependencies]
+camoufox = ">=0.4.11,<0.5"
+crawl4ai = ">=0.6.3"
+ddgs = ">=9.2.3,<10"
+fake-useragent = ">=2.0.3,<3"
+rebrowser-playwright = ">=1.47.0,<2"
+scrapling = ">=0.2.99,<0.3"
+tavily-python = ">=0.5.0,<0.6"
+tf-playwright-stealth = ">=1.2.0,<2"
+
+[tool.pixi.feature.python-dev.dependencies]
+geopandas = ">=1.0.1,<2"
+jupyter = ">=1.0.0,<1.1"
+pipreqs = ">=0.4.13,<0.5"
+ruff = ">=0.8.0,<0.9"
+ruff-lsp = ">=0.0.60,<0.0.61"
+seaborn = ">=0.13.2,<0.14"
+
+[tool.pixi.feature.python-test.dependencies]
+flaky = ">=3.8.1,<4"
+pytest = ">=8.3.3,<9"
+pytest-asyncio = ">=0.25.2,<0.26"
+pytest-cases = ">=3.8.6,<4"
+pytest-cov = ">=6.0.0,<7"
+pytest-mock = ">=3.14.0,<4"
+pytest-profiling = ">=1.7.0,<2"
+pytest-xdist = ">=3.6.1,<4"
+snakeviz = ">=2.2.2,<3"
+tox = ">=4.23.2,<5"
+
+[tool.pixi.feature.python-doc.dependencies]
+ghp-import = ">=2.1.0,<3"
+make = ">=4.4.1,<5"
+pydata-sphinx-theme = ">=0.16.1,<0.17"
+sphinx-click = ">=6.0.0,<7"
+sphinx-copybutton = ">=0.5.2,<0.6"
+sphinx-tabs = ">=3.4.1,<4"
+sphinxcontrib-mermaid = ">=1.0.0,<2"
+
+[tool.pixi.feature.python-anthropic.dependencies]
+anthropic = ">=0.40.0,<0.41"
+botocore = ">=1.35.72,<2"
+boto3 = ">=1.35.71,<2"
+
+[tool.pixi.feature.python-build.dependencies]
+python-build = ">=1.2.2,<2"
+pkginfo = ">=1.12.1.2,<2"
+twine = ">=6.1.0,<7"
+uv = ">=0.8.4,<0.9"
+
+
+[tool.ruff]
+line-length = 79
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint]
+preview = true
+select = [
+  "A", # flake8-builtins
+  "B", # flake8-bugbear
+  "ARG", # flake8-unused-arguments
+  "BLE", # flake8-blind-except
+  "C4", # flake8-comprehensions
+  "C90", # mccabe
+  "COM", # flake8-commas
+  "D", # pydocstyle
+  "E", # pycodestyle
+  "EM", # flake8-errmsg
+  "F", # Pyflakes
+  "FURB", # refurb
+  "FLY", #  flynt
+  "G", # flake8-logging-format
+  "I", # isort
+  "INP", # flake8-no-pep420
+  "ISC", # flake8-implicit-str-concat
+  "LOG", # flake8-logging
+  "N", # pep8-naming
+  "NPY", # numpy-specific
+  "PD", # pandas-vet
+  "PERF", # Perflint
+  "PIE", # flake8-pie
+  "PL", # Pylint
+  "PTH", # flake8-use-pathlib
+  "PYI", # flake8-pyi
+  "Q", # flake8-quotes
+  "RET", # flake8-return
+  "RSE", # flake8-raise
+  "RUF", # Ruff-specific rules
+  "S", # flake8-bandit
+  "SLF", # flake8-self
+  "SIM", # flake8-simplify
+  "TID", # flake8-tidy-imports (absolute imports)
+  "TRY", # tryceratops
+  "UP", # pyupgrade
+  "W", # Warning
+]
+ignore = [
+  "B028", # no-explicit-stacklevel
+  "COM812", # missing-trailing-comma (incompatible with formatter)
+  "D105", # undocumented-magic-method
+  "D205", # blank-line-after-summary
+  "D202", # no-blank-lines-after-function
+  "D210", # surrounded-whitespace
+  "D400", # first-line-should-end-with-a-period
+  "D401", # non-imperative-mood
+  "D403", # first-line-capitalized
+  "FURB140", # reimplemented-starmap
+  "I001", # unsorted-imports
+  "PYI024", # collections-named-tuple
+  "RUF012", # mutable-class-default
+  "RUF031", # incorrectly-parenthesized-tuple-in-subscript
+  "S101", # assert
+  "S324", # hashlib-insecure-hash-function
+  "S403", # suspicious-pickle-import
+  "TRY003", # raise-vanilla-args
+]
+
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 72
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = [
+  "F401", # unused-import
+]
+"tests/**.py" = [
+  "ARG001", # unused-function-argument
+  "ARG002", # unused-method-argument
+  "D101", # undocumented-public-class
+  "D102", # undocumented-public-method
+  "EM101", # raw-string-in-exception
+  "G004", # logging-f-string
+  "INP001", # implicit-namespace-package
+  "N806", # non-lowercase-variable-in-function
+  "PLC2701", # import-private-name
+  "PLR0914", # too-many-locals
+  "PLR0915", # too-many-statements
+  "PLR2004", # magic-value-comparison
+  "PLR6301", # no-self-use
+  "SLF001", # private-member-access
+  "TRY301", # raise-within-try
+  "W505", # doc-line-too-long
+]
+
+[tool.ruff.lint.pylint]
+max-args = 10
+max-positional-args = 10
+
+[tool.coverage.run]
+branch = true
+
+[tool.coverage.report]
+# Regexes for lines to exclude from consideration
+exclude_also = [
+  # Have to re-enable the standard pragma
+  "pragma: no cover",
+
+  # Don't complain about missing debug-only code:
+  "if self\\.debug",
+
+  # Don't complain about repr methods
+  "def __repr__",
+  "def _repr_markdown_",
+
+  # Don't complain about data I/O code
+  "def load*",
+  "def _load*",
+
+  # Don't complain if tests don't hit defensive assertion code:
+  "raise AssertionError",
+  "raise NotImplementedError",
+
+  # Don't complain if non-runnable code isn't run:
+  "if __name__ == .__main__.:",
+
+  # Don't complain about abstract methods, they aren't run:
+  "@(abc\\.)?abstractmethod",
+
+  # Don't complain about logging debugging functions
+  "def print_logging_info*",
+  "def __cls_name",
+]
+
+omit = [
+  # omit test files
+  "tests/*",
+  # omit init files
+  "__init__.py",
+  # omit version file
+  "_version.py",
+  # omit log file copied over from other repo
+  "compass/utilities/log.py",
+  # omit config loading code for now
+  "compass/utilities/config.py",
+  # omit pixi files
+  ".pixi/*",
+]
+
+
+[tool.pytest.ini_options]
+addopts = "--cov=compass --cov-report=html --cov-report=xml:coverage.xml --disable-warnings --cov-fail-under=80"
+asyncio_mode="auto"
+asyncio_default_fixture_loop_scope="function"
+testpaths = [
+  "tests"
+  # "tests/unit",
+  # "tests/integration",
+]
