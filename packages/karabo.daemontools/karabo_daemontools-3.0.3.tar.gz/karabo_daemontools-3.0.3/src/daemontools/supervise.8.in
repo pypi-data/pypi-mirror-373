@@ -1,0 +1,156 @@
+.TH supervise 8
+.SH NAME
+supervise \- starts and monitors a service.
+.SH SYNOPSIS
+.B supervise
+.I s
+.SH DESCRIPTION
+.B supervise
+switches to the directory named
+.I s
+and starts the service there by executing first
+.B ./start
+(if it is executable), and then
+.BR ./run ,
+if it exists.
+It restarts
+.B ./run
+if
+.B ./start
+exits zero or
+.B ./run
+exits with any value other than 100.
+It pauses for a second after starting
+.BR ./run ,
+so that it does not loop
+too quickly if
+.B ./run
+exits immediately.
+After
+.B ./run
+exits for the last time (ie after
+.B svc -d
+has been issued), it runs
+.B ./stop
+once.
+
+Unless the file
+.B ./no-setsid
+exists,
+.B supervise
+will run subordinate processes in a new process group.
+
+If
+.B ./log
+is an executable file,
+.B supervise
+starts it before any of the above, and will restart it if it exits.
+Standard output from the main script
+will be redirected through a pipe to standard input of the log process.
+As a special case, if
+.B svc -dx
+is issued, the log will be stopped after the main service has stopped.
+
+If the file
+.IB s /down
+exists,
+.B supervise
+does not start the service immediately. You can use
+.BR svc (8)
+to start the service and to give other commands to
+.BR supervise .
+
+If the file
+.IB s /notify
+exists and is executable,
+.B supervise
+executes it when any script starts or stops.  It is given four
+command-line arguments: The first is the name of the script being
+executed, one of
+.BR start ,
+.BR run ,
+.BR stop ,
+or
+.BR log .
+The second is a status code, one of:
+.TP
+.B start
+The script started executing.
+.TP
+.B exit
+The running script exited.
+.TP
+.B killed
+The running script was killed by a signal.
+.P
+The third is the process ID of the newly created or just exited process.
+The fourth is the exit code or kill signal number, or
+.B 0
+on start.
+
+If the file
+.IB s /orphanage
+exists,
+.B supervise
+will wait until all ancestors of the supervised process have also exited,
+before it will consider the process stopped. In the meantime, the process
+is considered to be in an "orphanage" state.
+
+.B supervise
+maintains status information in a binary format inside the directory
+.IR s\fB/supervise ,
+which must be writable to
+.BR supervise .
+The status information can be read by
+.BR svstat (8).
+
+.B supervise
+may exit immediately after startup if it cannot find the files it needs in
+.I s
+or if another copy of
+.B supervise
+is already running in
+.IR s .
+Once
+.B supervise
+is successfully running, it will not exit unless it is killed or specifically
+asked to exit. You can use
+.BR svok (8)
+to check whether
+.B supervise
+is successfully running and
+.BR svup (8)
+to check if the supervised process is running. You can use
+.BR svscan (8)
+to reliably start a collection of
+.B supervise
+processes. 
+.SH ENVIRONMENT
+.TP
+.B SUPERVISEDIR
+If set, the named directory is used instead of
+.B @SUPERVISEDIR@
+for the status information and control files.  If
+.B $SUPERVISEDIR
+is an absolute path, it is suffixed with the path to
+.I s
+with all slashes ("/") replaced with colons (":").
+.SH SEE ALSO
+envdir(8),
+envini(8),
+envuidgid(8),
+fghack(8),  
+multilog(8),
+pgrphack(8),
+readproctitle(8),
+setlock(8),
+setuidgid(8),
+softlimit(8),
+svc(8),
+svok(8),
+svscan(8),
+svscanboot(8),
+svstat(8),
+svup(8),
+tai64n(8),
+tai64nlocal(8)
