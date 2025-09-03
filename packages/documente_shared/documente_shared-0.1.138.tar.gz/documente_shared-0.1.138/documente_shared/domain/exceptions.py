@@ -1,0 +1,5 @@
+
+
+
+class InMemoryDocumentContentError(Exception):
+    pass
