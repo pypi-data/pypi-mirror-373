@@ -1,0 +1,54 @@
+name: Python Device Manager CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  static:
+    # Only run linting and type checking on the latest version of python
+    # It's a hassle to maintain the flake8/pyright dependencies for all versions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+      - name: Set Up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.x
+      - name: Install libav
+        run: sudo apt-get update && sudo apt-get install -y libavdevice-dev libavformat-dev libavcodec-dev
+      - name: Install flit
+        run: pip install flit==3.8.0
+      - name: Install test deps
+        run: python3 -m flit install --deps=develop
+      - name: Flake8
+        run: flake8
+      - name: Pyright
+        run: pyright
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        # Test with versions of python installed on common devices
+        python-version: [3.9, 3.12, 3.13, 3.x]
+    env:
+      PICTORUS_ENV: ci
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+      - name: Set Up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install libav
+        run: sudo apt-get update && sudo apt-get install -y libavdevice-dev libavformat-dev libavcodec-dev
+      - name: Install flit
+        run: pip install flit==3.8.0
+      - name: Install test deps
+        run: python3 -m flit install --deps=production --extras=test
+      - name: Run tests
+        run: pytest
