@@ -1,0 +1,170 @@
+{% load wagtailimages_tags %}
+{% load static %}
+{% load wagtailcore_tags %}
+{% block content %}
+<div class="team-outer-wrapper">
+    <div class="team-sectionmodern">
+        <div class="header-teammodern">
+            <div class="wrapper-texts-60">
+            <h2 class="title-center">{{ value.title }}</h2>
+            <p>{{ value.subtitle }}</p>
+            </div>
+        </div>
+        
+        <div class="team-containermodern">
+            <div class="arrow arrow-left" id="arrow-left-{{ id }}" onclick="scrollTeam('{{ id }}', -1)">
+                <img style="width: 40px; height: 40px;" src="{% static 'enap_designsystem/icons/iconleft.svg' %}" alt="Anterior">
+            </div>
+            
+            <div class="team-row-wrapper">
+                <div class="team-row" id="team-row-{{ id }}">
+                    {% for member in value.team_members %}
+                        <div class="team-membermodern">
+                            {% image member.photo fill-270x320 class="member-photo" alt="Foto de {{ member.name }}" %}
+                            <div class="wrapper-text-button">
+                            <div class="wrapper-text-card">
+                                <h3 class="member-name">{{ member.name }}</h3>
+                                <div class="member-role">{{ member.role }}</div>
+                            </div>
+                            {% if member.links_perfil %}
+                                    <a href="{{ member.links_perfil }}" 
+                                       target="_blank" 
+                                       rel="noopener noreferrer" 
+                                       class="wrapper-saibamais">
+                                        Saiba mais
+                                        <i class="fas fa-external-link-alt"></i>
+                                    </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+            
+            <div class="arrow arrow-right" id="arrow-right-{{ id }}" onclick="scrollTeam('{{ id }}', 1)">
+                <img style="width: 40px; height: 40px;" src="{% static 'enap_designsystem/icons/iconrig.svg' %}" alt="Próximo">
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Usar o seletor correto para pegar o ID
+        const teamRow = document.getElementById('team-row-{{ id }}');
+        if (teamRow) {
+            const id = teamRow.id.split('-').pop();
+            initializeTeamCarousel(id);
+        }
+    });
+    
+    function initializeTeamCarousel(id) {
+        const container = document.getElementById('team-row-' + id);
+        const leftArrow = document.getElementById('arrow-left-' + id);
+        const rightArrow = document.getElementById('arrow-right-' + id);
+        
+        if (!container || !leftArrow || !rightArrow) return;
+        
+        // Verificar se estamos em mobile - se sim, não precisamos configurar as setas
+        const isMobile = window.innerWidth < 768;
+        if (!isMobile) {
+            // Verificar se precisamos da seta direita (se há conteúdo suficiente para rolar)
+            updateArrows(container, leftArrow, rightArrow);
+            
+            // Ouvinte para rolagem
+            container.addEventListener('scroll', function() {
+                updateArrows(container, leftArrow, rightArrow);
+            });
+        }
+        
+        // Ouvinte para redimensionamento
+        window.addEventListener('resize', function() {
+            const currentMobile = window.innerWidth < 768;
+            
+            // Se mudou de mobile para desktop ou vice-versa
+            if (currentMobile !== isMobile) {
+                location.reload(); // Recarregar a página para ajustar comportamento
+            } else if (!currentMobile) {
+                // Se estamos no desktop, atualizar as setas
+                updateArrows(container, leftArrow, rightArrow);
+            }
+        });
+        
+        // Adicionar suporte a swipe para mobile
+        setupTouchSwipe(container, id);
+    }
+    
+    function setupTouchSwipe(container, id) {
+        let touchStartX = 0;
+        let touchEndX = 0;
+        
+        // Eventos de toque
+        container.addEventListener('touchstart', function(e) {
+            touchStartX = e.changedTouches[0].screenX;
+        }, { passive: true });
+        
+        container.addEventListener('touchend', function(e) {
+            touchEndX = e.changedTouches[0].screenX;
+            handleSwipe(id);
+        }, { passive: true });
+        
+        function handleSwipe(id) {
+            const swipeThreshold = 50; // Mínimo de pixels para considerar um swipe
+            const direction = touchStartX - touchEndX > 0 ? 1 : -1; // 1 = direita, -1 = esquerda
+            
+            // Se o movimento foi significativo o suficiente para ser um swipe
+            if (Math.abs(touchStartX - touchEndX) > swipeThreshold) {
+                scrollTeam(id, direction);
+            }
+        }
+    }
+    
+    function updateArrows(container, leftArrow, rightArrow) {
+        // Não mostrar setas em mobile
+        if (window.innerWidth < 768) return;
+        
+        // Verifica se há rolagem para a esquerda
+        if (container.scrollLeft <= 5) {
+            leftArrow.style.display = 'none';
+        } else {
+            leftArrow.style.display = 'flex';
+        }
+        
+        // Verifica se há rolagem para a direita
+        // Cálculo mais preciso para determinar se estamos no fim
+        const maxScroll = container.scrollWidth - container.clientWidth;
+        if (container.scrollLeft >= maxScroll - 5) {
+            rightArrow.style.display = 'none';
+        } else {
+            rightArrow.style.display = 'flex';
+        }
+    }
+    
+    function scrollTeam(id, direction) {
+        const container = document.getElementById('team-row-' + id);
+        const leftArrow = document.getElementById('arrow-left-' + id);
+        const rightArrow = document.getElementById('arrow-right-' + id);
+        
+        if (!container) return;
+        
+        // Rolar 3 cards de cada vez em desktop, ou 1 card em mobile
+        const cardWidth = window.innerWidth < 768 ? 240 : 270;
+        const gap = window.innerWidth < 768 ? 15 : 20;
+        const isMobile = window.innerWidth < 768;
+        const cardsToScroll = isMobile ? 1 : 3;
+        const scrollAmount = (cardWidth + gap) * cardsToScroll * direction;
+        
+        container.scrollBy({
+            left: scrollAmount,
+            behavior: 'smooth'
+        });
+        
+        // Atualizar setas após a animação completar (apenas em desktop)
+        if (!isMobile && leftArrow && rightArrow) {
+            setTimeout(function() {
+                updateArrows(container, leftArrow, rightArrow);
+            }, 500);
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,317 @@
+{% extends "coderedcms/blocks/base_block.html" %}
+{% load wagtailcore_tags wagtailimages_tags %}
+{% block block_render %}
+{% load static %}
+
+<script src="https://kit.fontawesome.com/2e8803d931.js" crossorigin="anonymous"></script>
+<section class="section-curso-cards">
+    <div class="wrapper-text-cursos">
+        {% if value.title %}
+            <h2 class="h2-cursos">{{ value.title }}</h2>
+        {% else %}
+            <h2 class="h2-cursos">Cursos</h2>
+        {% endif %}
+        
+        {% if value.description %}
+            <div class="h4-desc">{{ value.description|richtext }}</div>
+        {% else %}
+            <h3 class="h4-desc">Disponibilizamos cursos de excelência voltados à capacitação e ao aperfeiçoamento profissional em múltiplas áreas do conhecimento.</h3>
+        {% endif %}
+    </div>
+
+    <div class="wrapper-carousel-container01">
+        <div class="carousel-container01">
+            <div class="carousel-items01" id="cursos-carousel">
+                {% for course_data in pages %}
+                {% if course_data.page %}
+                <div class="carousel-item-wrapper">
+                    <div class="carousel-item-curso">
+                        <div class="image-curso">
+                            {% if course_data.first_image %}
+                                {% image course_data.first_image fill-236x140 format-webp preserve-svg as card_img %}
+                                <a href="{% pageurl course_data.page %}" title="{{ course_data.page.title }}">
+                                    <img class="img-fluid" src="{{ card_img.url }}" alt="{{ course_data.page.title }}">
+                                </a>
+                            {% else %}
+                                {% comment %} Placeholder elegante quando não há imagem {% endcomment %}
+                                <a href="{% pageurl course_data.page %}" title="{{ course_data.page.title }}">
+                                    <div style="width: 236px; height: 140px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; font-weight: 500; text-align: center; padding: 15px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+                                    </div>
+                                </a>
+                            {% endif %}
+                        </div>
+                        <div class="content-curso">
+                            <div class="card-body">
+                                <a class="h3-card" href="{% pageurl course_data.page %}" style="
+                                display: -webkit-box;
+                                -webkit-line-clamp: 3;
+                                -webkit-box-orient: vertical;
+                                overflow: hidden;
+                                text-overflow: ellipsis;
+                                ">{{ course_data.page.title }}</a>
+                                <p class="card-text">{{ course_data.page.body_preview|truncatewords:10 }}</p>
+                            </div>
+                            <p><a href="{% pageurl course_data.page %}" class="btn_cards_courses btn-primary">Leia mais <i class="fa-solid fa-circle-chevron-right"></i></a></p>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                {% empty %}
+                <div class="carousel-item-wrapper">
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    {% if value.indexed_by %}
+        <div class="text-center mt-4">
+            <a href="{% pageurl value.indexed_by %}" class="btn-todos">Ver todos</a>
+        </div>
+    {% endif %}
+</section>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const carousel = document.getElementById('cursos-carousel');
+        const prevButton = document.querySelector('.carousel-control-curso-prev');
+        const nextButton = document.querySelector('.carousel-control-curso-next');
+        const items = carousel.querySelectorAll('.carousel-item-wrapper');
+        
+        if (!carousel || !items.length) return;
+        
+        let currentIndex = 0;
+        let startX, moveX, initialPosition;
+        let isDragging = false;
+        let itemWidth = 0;
+        let itemsGap = 25;
+        let cardsPerView = 1;
+        let maxIndex = 0;
+        
+        // Função para calcular dimensões e configurações
+        function calculateDimensions() {
+            const windowWidth = window.innerWidth;
+            
+            // Determinar quantos cards por view baseado na largura da tela
+            if (windowWidth >= 1200) {
+                cardsPerView = 4;
+            } else if (windowWidth >= 992) {
+                cardsPerView = 3;
+            } else if (windowWidth >= 768) {
+                cardsPerView = 2;
+            } else {
+                cardsPerView = 1; // Mobile: sempre 1 card por vez
+            }
+            
+            // Calcular largura do item
+            itemWidth = items[0].offsetWidth;
+            
+            // Calcular maxIndex baseado no tipo de dispositivo
+            if (windowWidth < 768) {
+                // Mobile: pode navegar até o último card individual
+                maxIndex = Math.max(0, items.length - 1);
+            } else {
+                // Desktop: navegar por grupos de cards
+                maxIndex = Math.max(0, items.length - cardsPerView);
+            }
+            
+            console.log('Dimensões calculadas:', {
+                windowWidth,
+                cardsPerView,
+                itemWidth,
+                maxIndex,
+                totalItems: items.length
+            });
+        }
+        
+        // Função para exibir o slide
+        function showSlide(index) {
+            // Limitar índice aos valores válidos
+            currentIndex = Math.max(0, Math.min(index, maxIndex));
+            
+            // Calcular offset baseado no tipo de dispositivo
+            let offset;
+            if (window.innerWidth < 768) {
+                // Mobile: mover card por card (100% da largura do container)
+                const containerWidth = carousel.parentElement.offsetWidth;
+                offset = currentIndex * containerWidth;
+            } else {
+                // Desktop: mover baseado na largura do item + gap
+                offset = currentIndex * (itemWidth + itemsGap);
+            }
+            
+            carousel.style.transform = `translateX(-${offset}px)`;
+            
+            console.log('Mostrando slide:', {
+                currentIndex,
+                maxIndex,
+                offset,
+                isMobile: window.innerWidth < 768
+            });
+            
+            // Atualizar botões de navegação
+            updateNavigationButtons();
+        }
+        
+        // Função para atualizar a visibilidade dos botões de navegação
+        function updateNavigationButtons() {
+            // Botão anterior
+            if (currentIndex <= 0) {
+                prevButton.style.display = 'none';
+            } else {
+                prevButton.style.display = 'block';
+            }
+            
+            // Botão próximo
+            if (currentIndex >= maxIndex) {
+                nextButton.style.display = 'none';
+            } else {
+                nextButton.style.display = 'block';
+            }
+            
+            console.log('Botões atualizados:', {
+                currentIndex,
+                maxIndex,
+                prevVisible: currentIndex > 0,
+                nextVisible: currentIndex < maxIndex
+            });
+        }
+        
+        // Função para navegar (baseada no tipo de dispositivo)
+        function navigateCarousel(direction) {
+            let step;
+            
+            if (window.innerWidth < 768) {
+                // Mobile: navegar 1 card por vez
+                step = 1;
+            } else {
+                // Desktop: navegar por grupos (dependendo do cardsPerView)
+                step = cardsPerView;
+            }
+            
+            if (direction === 'prev') {
+                showSlide(currentIndex - step);
+            } else {
+                showSlide(currentIndex + step);
+            }
+        }
+        
+        // Inicialização
+        function initialize() {
+            calculateDimensions();
+            showSlide(0);
+        }
+        
+        // Controles de seta
+        prevButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            navigateCarousel('prev');
+        });
+        
+        nextButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            navigateCarousel('next');
+        });
+        
+        // Touch e arraste para mobile
+        carousel.addEventListener('touchstart', handleStart, { passive: true });
+        carousel.addEventListener('touchmove', handleMove, { passive: false });
+        carousel.addEventListener('touchend', handleEnd, { passive: true });
+        
+        // Mouse para desktop
+        carousel.addEventListener('mousedown', handleStart);
+        carousel.addEventListener('mousemove', handleMove);
+        carousel.addEventListener('mouseup', handleEnd);
+        carousel.addEventListener('mouseleave', handleEnd);
+        
+        function handleStart(e) {
+            isDragging = true;
+            startX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
+            
+            // Calcular posição inicial baseada no tipo de dispositivo
+            if (window.innerWidth < 768) {
+                const containerWidth = carousel.parentElement.offsetWidth;
+                initialPosition = currentIndex * containerWidth;
+            } else {
+                initialPosition = currentIndex * (itemWidth + itemsGap);
+            }
+            
+            // Desativar transição durante o arrasto
+            carousel.style.transition = 'none';
+            
+            // Prevenir seleção de texto
+            e.preventDefault();
+        }
+        
+        function handleMove(e) {
+            if (!isDragging) return;
+            
+            moveX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
+            const diff = moveX - startX;
+            
+            // Aplicar resistência nas bordas
+            if (currentIndex === 0 && diff > 0) {
+                // Resistência no início
+                carousel.style.transform = `translateX(${(diff * 0.3) - initialPosition}px)`;
+            } else if (currentIndex >= maxIndex && diff < 0) {
+                // Resistência no final
+                carousel.style.transform = `translateX(${(diff * 0.3) - initialPosition}px)`;
+            } else {
+                // Movimento normal
+                carousel.style.transform = `translateX(${diff - initialPosition}px)`;
+            }
+            
+            // Prevenir scroll vertical no mobile durante swipe horizontal
+            if (Math.abs(diff) > 10) {
+                e.preventDefault();
+            }
+        }
+        
+        function handleEnd() {
+            if (!isDragging) return;
+            isDragging = false;
+            
+            // Restaurar transição
+            carousel.style.transition = 'transform 0.3s ease-in-out';
+            
+            const diff = moveX - startX;
+            const threshold = 50; // Threshold mínimo para mudança de slide
+            
+            if (Math.abs(diff) > threshold) {
+                if (diff > 0) {
+                    // Swipe para direita - slide anterior
+                    navigateCarousel('prev');
+                } else {
+                    // Swipe para esquerda - próximo slide
+                    navigateCarousel('next');
+                }
+            } else {
+                // Voltar para posição atual
+                showSlide(currentIndex);
+            }
+        }
+        
+        // Ajustar o carrossel quando a janela é redimensionada
+        let resizeTimeout;
+        window.addEventListener('resize', function() {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(function() {
+                const oldCardsPerView = cardsPerView;
+                calculateDimensions();
+                
+                // Se o número de cards por view mudou, ajustar o currentIndex
+                if (oldCardsPerView !== cardsPerView) {
+                    // Tentar manter o card visível aproximadamente na mesma posição
+                    const newIndex = Math.min(currentIndex, maxIndex);
+                    showSlide(newIndex);
+                } else {
+                    showSlide(currentIndex);
+                }
+            }, 250);
+        });
+        
+        // Inicializar o carrossel
+        initialize();
+    });
+</script>
+{% endblock %}

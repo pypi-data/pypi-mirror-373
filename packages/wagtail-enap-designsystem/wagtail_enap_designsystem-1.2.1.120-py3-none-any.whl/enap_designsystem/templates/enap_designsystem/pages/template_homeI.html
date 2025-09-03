@@ -1,0 +1,482 @@
+{% extends "enap_designsystem/base.html" %}
+{% load static %}
+{% load wagtailcore_tags wagtailimages_tags %}
+
+
+{% block metadata %}
+    {% comment %} <meta name="viewport" content="width=device-width, initial-scale=1.0"> {% endcomment %}
+{% endblock %}
+
+
+{% block title %}
+    <title>{{ page.page_title }}</title>
+{% endblock %}
+
+
+{%block govnavbar %}
+    <div style="background-color: #071E41;">
+        <div class="menu">
+            <div class="logo">
+                <img style="width: 51px; height: 18px;" src="{% static 'enap_designsystem/icons/logo-white.png' %}" alt="Passar pro lado esquerdo" alt="Logo GovBR" height="40">
+            </div>
+            <a href="https://www.gov.br/secom/pt-br/acesso-a-informacao/comunicabr">Comunica BR</a>
+            <div class="separator"></div>
+            <a href="https://www.gov.br/acessoainformacao/pt-br">Acesso à informação</a>
+            <div class="separator"></div>
+            <a href="https://www.gov.br/pt-br/participacao-social/">Participe</a>
+            <div class="separator"></div>
+            <a href="https://www4.planalto.gov.br/legislacao/">Legislação</a>
+            <div class="separator"></div>
+            <a href="https://www.gov.br/pt-br/orgaos-do-governo">Órgãos do Governo</a>
+        </div>
+    </div>
+{% endblock %}
+
+
+{% block navbar %}
+    {% if page.navbar %}
+        {% include "enap_designsystem/blocks/navbar/navbar_block.html" with navbar=page.navbar %}
+    {% else %}
+        <p style="color: red;">DEBUG: Nenhuma Navbar foi definida.</p>
+    {% endif %}
+{% endblock %}
+
+
+{% block content %}
+    <!-- Enap Banner Video Block -->
+    <section class="wrapperhero">
+        <div style="background-color: black; opacity: 0.3; height: 100%; width: 100%; position: absolute; z-index: 99;"></div>
+        
+        {% if page.video_background %}
+            <video autoplay loop muted style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;">
+                <source src="{{ page.video_background.url }}" type="video/mp4">
+                Seu navegador não suporta o vídeo.
+            </video>
+        {% endif %}
+        
+        <div style="max-width: 1146px; margin: auto; width: 100%; position: relative; z-index: 999;">
+            <div class="wrapper-menu-hero" style="color: white;">
+                <!-- Menu lateral do hero -->
+                <div class="hero-menu-box">
+                    {% if page.hero_menu_items %}
+                        {% for menu_block in page.hero_menu_items %}
+                            {% with parent_page=menu_block.value.parent_page %}
+                                {% with children=parent_page.get_children.live %}
+                                    {% with additional_links=menu_block.value.additional_links %}
+                                        {% with sort_order=menu_block.value.sort_order %}
+                                            <div class="hero-menu-row">
+                                                <!-- Verifica se tem filhas OU links adicionais -->
+                                                {% if children.count > 0 or additional_links %}
+                                                    <!-- TEM FILHAS OU LINKS ADICIONAIS: Botão com dropdown -->
+                                                    <div class="hero-menu-button has-children" onclick="toggleHeroDropdown(this)">
+                                                        <span>{{ menu_block.value.title }}</span>
+                                                        <i class="fa-solid fa-chevron-down hero-arrow"></i>
+                                                    </div>
+                                                    
+                                                    <!-- Painel lateral -->
+                                                    <div class="hero-children-panel">
+                                                        <!-- Páginas filhas -->
+                                                        {% if sort_order == '-first_published_at' %}
+                                                            {% for child in children|dictsort:"first_published_at"|slice:":10" reversed %}
+                                                                <a href="{% pageurl child %}" class="child-link">
+                                                                    {{ child.title }}
+                                                                </a>
+                                                            {% endfor %}
+                                                        {% elif sort_order == 'first_published_at' %}
+                                                            {% for child in children|dictsort:"first_published_at"|slice:":10" %}
+                                                                <a href="{% pageurl child %}" class="child-link">
+                                                                    {{ child.title }}
+                                                                </a>
+                                                            {% endfor %}
+                                                        {% elif sort_order == 'title' %}
+                                                            {% for child in children|dictsort:"title"|slice:":10" %}
+                                                                <a href="{% pageurl child %}" class="child-link">
+                                                                    {{ child.title }}
+                                                                </a>
+                                                            {% endfor %}
+                                                        {% else %}
+                                                            <!-- Fallback: ordenação padrão por data mais recente -->
+                                                            {% for child in children|dictsort:"first_published_at"|slice:":10" reversed %}
+                                                                <a href="{% pageurl child %}" class="child-link">
+                                                                    {{ child.title }}
+                                                                </a>
+                                                            {% endfor %}
+                                                        {% endif %}
+                                                        
+                                                        <!-- Links adicionais (páginas e URLs) -->
+                                                        {% for link in additional_links %}
+                                                            {% if link.link_type == 'page' and link.page and link.page.live %}
+                                                                <a href="{% pageurl link.page %}" class="child-link additional-link">
+                                                                    {{ link.title|default:link.page.title }}
+                                                                </a>
+                                                            {% elif link.link_type == 'url' and link.url %}
+                                                                <a href="{{ link.url }}" class="child-link additional-link external-link" 
+                                                                   {% if 'http' in link.url %}target="_blank" rel="noopener"{% endif %}>
+                                                                    {{ link.title }}
+                                                                    {% if 'http' in link.url %}
+                                                                        <i class="fa-solid fa-external-link-alt" style="margin-left: 5px; font-size: 0.8em;"></i>
+                                                                    {% endif %}
+                                                                </a>
+                                                            {% endif %}
+                                                        {% endfor %}
+                                                    </div>
+                                                {% else %}
+                                                    <!-- SEM FILHAS NEM LINKS ADICIONAIS: Link direto, sem seta -->
+                                                    <a href="{% pageurl parent_page %}" class="hero-menu-button no-children">
+                                                        <span>{{ menu_block.value.title }}</span>
+                                                    </a>
+                                                {% endif %}
+                                            </div>
+                                        {% endwith %}
+                                    {% endwith %}
+                                {% endwith %}
+                            {% endwith %}
+                        {% endfor %}
+                    {% else %}
+                        <!-- Menu fallback -->
+                        <div class="hero-menu-row">
+                            <div class="hero-menu-button no-children">
+                                <span>Quem somos</span>
+                            </div>
+                        </div>
+                        <div class="hero-menu-row">
+                            <div class="hero-menu-button has-children">
+                                <span>Pós-Graduação</span>
+                                <i class="fa-solid fa-chevron-down hero-arrow"></i>
+                            </div>
+                        </div>
+                        <div class="hero-menu-row">
+                            <div class="hero-menu-button has-children">
+                                <span>Inovação</span>
+                                <i class="fa-solid fa-chevron-down hero-arrow"></i>
+                            </div>
+                        </div>
+                        <div class="hero-menu-row">
+                            <div class="hero-menu-button has-children">
+                                <span>Pesquisa e Conhecimento</span>
+                                <i class="fa-solid fa-chevron-down hero-arrow"></i>
+                            </div>
+                        </div>
+                        <div class="hero-menu-row">
+                            <div class="hero-menu-button has-children">
+                                <span>Outras Categorias</span>
+                                <i class="fa-solid fa-chevron-down hero-arrow"></i>
+                            </div>
+                        </div>
+                        <div class="hero-menu-row">
+                            <div class="hero-menu-button no-children">
+                                <span>Notícias</span>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    
+    <!-- Big Numbers -->
+    <div class="wrapper-big-numbers" >
+        <div class="container-big">
+            <h2 class="h2-title">Conhecimento e
+                prática <span class="span-bold">para a
+                    transformação do Estado </span></h2>
+        </div>
+        <div class="big-numbers">
+            <div class="big-number">
+                <h2 class="h2-numbers">+14 milhões <br> <span class="span-numbers">de inscrições</span></h2>
+                <h3 class="frase-numbers">em cursos, oficinas ou eventos</h3>
+            </div>
+    
+            <div class="big-number">
+                <h2 class="h2-numbers">+1,5 milhão<br> <span class="span-numbers">de certificados</span></h2>
+                <h3 class="frase-numbers">emitidos somente 
+                    em 2024</h3>
+            </div>
+    
+    
+            <div class="big-number">
+                <h2 class="h2-numbers">+900 <br> <span class="span-numbers">cursos</span></h2>
+                <h3 class="frase-numbers">para enriquecer o 
+                    seu conhecimento</h3>
+            </div>
+            
+        
+        </div>
+    </div>
+    
+
+    <div class="main">
+        {% include_block page.body_stream %}
+    </div>
+
+    <!-- Card dinamico -->
+    <section class="card-dinamico">
+        <div class="card-dinamico__content">
+            <div class="card-dinamico__text">
+                <h2 class="title-dinamico"> {{ page.page_destaque|richtext }} </h2>
+                <button class="btn-cta" onclick="window.location.href='{{ page.button_link }}';">Saiba mais <i class="fa-solid fa-circle-chevron-right"></i></button>
+    
+                {% for block in page.body %}
+                    {% if block.block_type != 'button' %}
+                        {{ block }}
+                    {% endif %}
+                {% endfor %}
+            </div>
+            <div class="card-dinamico__content-image">
+                <div class="img-cta">
+                {% for block in page.background_image %}
+                {{ block }}  {# Renderiza cada bloco no StreamField 'background_image' #}
+                {% empty %}
+                {% endfor %}
+                </div>
+                    <p>{{ page.paragrafo|safe }}</p>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    
+    <!-- Card holofotes -->
+    <section class="page-preview">
+        
+    
+            <div class="wrapper-cards-holofotes">
+            {% for block in page.teste_preview %}
+                {{ block }}  {# Renderiza cada bloco no StreamField 'teste_preview' #}
+            {% empty %}
+            {% endfor %}
+            </div>
+        </div>
+    </section>
+
+    <!-- Card cursos SUAP -->
+    <div>
+        {% for block in page.suap_courses %}
+            {{ block }}
+        {% empty %}
+            <p>Nenhum conteúdo encontrado.</p>
+        {% endfor %}
+    </div>
+
+    <!-- Card eventos SUAP -->
+    <section style="background-color: #F5F7FA; padding: 60px 15px;">
+        {% for block in page.suap_events %}
+            {{ block }}
+        {% empty %}
+            <p>Nenhum conteúdo encontrado.</p>
+        {% endfor %}
+    </section>
+    
+    
+    <!-- Cards noticias -->
+    <section class="section-noticias">
+        {% for block in page.teste_noticia %}
+            {% if block.block_type == "noticias_carousel" %}
+                {{ block }}  {# Renderiza o bloco de carrossel de notícias #}
+            {% else %}
+            {% endif %}
+        {% empty %}
+        {% endfor %}
+    </section >
+
+    {% for block in page.parceiros %}
+    {{ block }}
+{% endfor %}
+    
+
+    <section class="ouvidoria">
+        <div class="container">
+            <div class="canais-atendimento" style="padding: 0 15px;">
+                <div class="title">
+                    Ouvidoria e Acesso à Informação
+                </div>
+                <div class="title-header">
+                    <p>
+                        Você pode realizar manifestações nos seguintes canais
+                    </p>
+                </div>
+                <div class="row cards">
+                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 d-flex justify-content-center mb-3">
+                        <a href="https://falabr.cgu.gov.br/Login/Identificacao/Identificacao.aspx?idFormulario=4&tipo=1&ReturnUrl=%2fpublico%2fManifestacao%2fRegistrarManifestacao.aspx%3fidFormulario%3d4%26tipo%3d1%26origem%3didp%26modo%3d" class="card-item">
+                            <span class="fas fa-bullhorn"></span>
+                            <div class="title">Denúncia</div>
+                        </a>
+                    </div>
+                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 d-flex justify-content-center mb-3">
+                        <a href="https://falabr.cgu.gov.br/Login/Identificacao/Identificacao.aspx?idFormulario=1&tipo=5&ReturnUrl=%2fpublico%2fManifestacao%2fRegistrarManifestacao.aspx%3fidFormulario%3d1%26tipo%3d5%26origem%3didp%26modo%3d" class="card-item">
+                            <span class="fa fa-comments"></span>
+                            <div class="title">Solicitação</div>
+                        </a>
+                    </div>
+                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 d-flex justify-content-center mb-3">
+                        <a href="https://falabr.cgu.gov.br/Login/Identificacao/Identificacao.aspx?idFormulario=1&tipo=4&ReturnUrl=%2fpublico%2fManifestacao%2fRegistrarManifestacao.aspx%3fidFormulario%3d1%26tipo%3d4%26origem%3didp%26modo%3d" class="card-item">
+                            <span class="fa fa-comment"></span>
+                            <div class="title">Sugestão</div>
+                        </a>
+                    </div>
+                </div>
+    
+                <div class="row cards" style="margin-top: 30px;">
+                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 d-flex justify-content-center mb-3">
+                        <a href="https://falabr.cgu.gov.br/Login/Identificacao/Identificacao.aspx?idFormulario=1&tipo=3&ReturnUrl=%2fpublico%2fManifestacao%2fRegistrarManifestacao.aspx%3fidFormulario%3d1%26tipo%3d3%26origem%3didp%26modo%3d" class="card-item">
+                            <span class="fa fa-thumbs-up"></span>
+                            <div class="title">Elogio</div>
+                        </a>
+                    </div>
+                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 d-flex justify-content-center mb-3">
+                        <a href="https://falabr.cgu.gov.br/web/login?tipo=2&redirect=/manifestacao/criar?tipo=2" class="card-item">
+                            <span class="fa fa-thumbs-down"></span>
+                            <div class="title">Reclamação</div>
+                        </a>
+                    </div>
+                    <div class="col-12 col-sm-6 col-md-4 col-lg-3 d-flex justify-content-center mb-3">
+                        <a href="https://falabr.cgu.gov.br/web/home" class="card-item">
+                            <span class="fa fa-info-circle"></span>
+                            <div class="title">Acesso à informação</div>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+{% endblock %}
+    
+
+{% block footer %}
+    {% include "enap_designsystem/includes/footer.html" %}
+{% endblock %}
+
+
+
+{% block scriptinline %}
+<script>
+    function clearInput() {
+        document.getElementById('searchInput').value = '';
+        document.getElementById('searchInput').focus();
+        toggleClearButton();
+    }
+
+    function toggleClearButton() {
+        const input = document.getElementById('searchInput');
+        const clearButton = document.getElementById('clearButton');
+        clearButton.style.display = input.value ? 'block' : 'none';
+    }
+
+    // Função para verificar se é dispositivo móvel
+    function isMobile() {
+        return window.innerWidth <= 768; // Defina o breakpoint apropriado para seu site
+    }
+
+    // Quando o documento carrega, torna o search container visível apenas no desktop
+    document.addEventListener('DOMContentLoaded', function() {
+        const searchContainer = document.querySelector('.search-container');
+        
+        if (!isMobile()) {
+            // Versão desktop - sempre visível
+            searchContainer.classList.add('visible');
+            searchContainer.classList.add('show');
+        }
+    });
+
+    // Durante o scroll, comportamento responsivo
+    window.addEventListener('scroll', function() {
+        const searchContainer = document.querySelector('.search-container');
+        const scrollPosition = window.scrollY;
+        
+        if (isMobile()) {
+            // Versão mobile - só visível após scroll
+            if (scrollPosition > 200) {
+                searchContainer.classList.add('show');
+            } else {
+                searchContainer.classList.remove('show');
+            }
+        } else {
+            // Versão desktop - sempre visível
+            searchContainer.classList.add('visible');
+            searchContainer.classList.add('show');
+        }
+    });
+
+    // Recalcular quando a janela for redimensionada
+    window.addEventListener('resize', function() {
+        const searchContainer = document.querySelector('.search-container');
+        
+        if (!isMobile()) {
+            // Versão desktop - sempre visível
+            searchContainer.classList.add('visible');
+            searchContainer.classList.add('show');
+        } else {
+            // Versão mobile - verificar posição de scroll
+            const scrollPosition = window.scrollY;
+            if (scrollPosition <= 200) {
+                searchContainer.classList.remove('show');
+            }
+        }
+    });
+
+
+    function toggleHeroItem(element) {
+        const dropdown = element.nextElementSibling;
+        const isActive = element.classList.contains('active');
+        
+        // Fecha todos os outros dropdowns
+        document.querySelectorAll('.hero-menu-trigger.active').forEach(trigger => {
+            trigger.classList.remove('active');
+            trigger.nextElementSibling.classList.remove('active');
+        });
+        
+        // Toggle do dropdown atual
+        if (!isActive) {
+            element.classList.add('active');
+            if (dropdown) {
+                dropdown.classList.add('active');
+            }
+        }
+    }
+    
+    // Fecha dropdown ao clicar fora
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.hero-sidebar-container')) {
+            document.querySelectorAll('.hero-menu-trigger.active').forEach(trigger => {
+                trigger.classList.remove('active');
+                if (trigger.nextElementSibling) {
+                    trigger.nextElementSibling.classList.remove('active');
+                }
+            });
+        }
+    });
+
+
+    function toggleHeroDropdown(button) {
+        const panel = button.nextElementSibling;
+        const isActive = button.classList.contains('active');
+        
+        // Fecha todos os outros painéis
+        document.querySelectorAll('.hero-menu-button.active').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.nextElementSibling && btn.nextElementSibling.classList.contains('hero-children-panel')) {
+                btn.nextElementSibling.classList.remove('active');
+            }
+        });
+        
+        // Toggle do painel atual
+        if (!isActive && panel) {
+            button.classList.add('active');
+            panel.classList.add('active');
+        }
+    }
+    
+    // Fecha painel ao clicar fora
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.hero-menu-box')) {
+            document.querySelectorAll('.hero-menu-button.active').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.nextElementSibling && btn.nextElementSibling.classList.contains('hero-children-panel')) {
+                    btn.nextElementSibling.classList.remove('active');
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

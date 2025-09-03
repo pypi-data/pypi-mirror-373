@@ -1,0 +1,378 @@
+{% load wagtailcore_tags %}
+
+{% block extra_css %}
+<style>
+    .date-picker-container {
+        position: relative;
+        width: 100%;
+        max-width: 400px;
+    }
+
+    .date-picker-input {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .custom-calendar {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        width: 300px;
+        background: white;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        z-index: 1000;
+        display: none;
+        padding: 10px;
+        margin-top: 5px;
+    }
+
+    .custom-calendar.show {
+        display: block;
+    }
+
+    .calendar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 5px;
+        text-align: center;
+    }
+
+    .calendar-day {
+        padding: 8px;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: background-color 0.3s;
+    }
+
+    .calendar-day:hover {
+        background-color: #e6f3e6;
+    }
+
+    .calendar-day.start-date {
+        background-color: #1a5f1a;
+        color: white;
+    }
+
+    .calendar-day.end-date {
+        background-color: #1a5f1a;
+        color: white;
+    }
+
+    .calendar-day.in-range {
+        background-color: #90ee90;
+        color: #1a5f1a;
+    }
+
+    .calendar-day.today {
+        border: 1px solid #1a5f1a;
+    }
+
+    .calendar-nav-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 18px;
+    }
+</style>
+{% endblock %}
+
+{% block index_content %}
+{% if page.index_show_subpages %}
+<div class="container">
+  <div class="row mb-4">
+    <div class="col-12">
+      <form method="GET" action="{% pageurl page %}">
+        {% for key, value in request.GET.items %}
+            {% if key != 'start_date' and key != 'end_date' %}
+                <input type="hidden" name="{{ key }}" value="{{ value }}">
+            {% endif %}
+        {% endfor %}
+        
+        <div class="row">
+          <div class="col-md-6 col-lg-4">
+            <div class="date-picker-container">
+              <label for="date-range">Filtrar por período</label>
+              <input 
+                id="date-range" 
+                type="text" 
+                class="date-picker-input" 
+                placeholder="Selecione um intervalo de datas" 
+                name="date_range"
+                readonly
+                value="{% if start_date %}{{ start_date|date:'d/m/Y' }}{% endif %}{% if start_date and end_date %} até {% endif %}{% if end_date %}{{ end_date|date:'d/m/Y' }}{% endif %}"
+              />
+              <input 
+                type="hidden" 
+                name="start_date" 
+                value="{{ start_date|date:'Y-m-d' }}"
+              >
+              <input 
+                type="hidden" 
+                name="end_date" 
+                value="{{ end_date|date:'Y-m-d' }}"
+              >
+            </div>
+          </div>
+          
+          <div class="col-md-6 col-lg-2 d-flex align-items-end">
+            <div class="mb-3">
+              <button type="submit" class="btn btn-primary">Filtrar</button>
+              
+              {% if start_date or end_date %}
+                <a href="?{% for key, value in request.GET.items %}{% if key != 'start_date' and key != 'end_date' %}{{ key }}={{ value }}&{% endif %}{% endfor %}" 
+                   class="btn btn-outline-secondary ml-2">Limpar</a>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-md-9" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
+      {% for article in index_paginated %}
+      {% include article.miniview_template with page=article h="h2" miniview_css_class="mb-5" %}
+      {% endfor %}
+    </div>
+    {% if page.index_classifiers.exists %}
+    <div class="col-md-3">
+      {% include "coderedcms/includes/classifier_nav.html" with navclass="nav-pills flex-column" %}
+    </div>
+    {% endif %}
+  </div>
+  {% include "enap_designsystem/blocks/pagination.html" with items=index_paginated %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+class CustomDatePicker {
+    constructor(inputId) {
+        this.input = document.getElementById(inputId);
+        this.container = this.createCalendarContainer();
+        this.currentDate = new Date();
+        this.selectedStartDate = null;
+        this.selectedEndDate = null;
+
+        this.initializeDatesFromForm();
+        this.setupEventListeners();
+        this.renderCalendar();
+    }
+
+    initializeDatesFromForm() {
+        const startDateInput = document.querySelector('input[name="start_date"]');
+        const endDateInput = document.querySelector('input[name="end_date"]');
+
+        if (startDateInput && startDateInput.value) {
+            this.selectedStartDate = new Date(startDateInput.value);
+        }
+
+        if (endDateInput && endDateInput.value) {
+            this.selectedEndDate = new Date(endDateInput.value);
+        }
+    }
+
+    createCalendarContainer() {
+        const container = document.createElement('div');
+        container.className = 'custom-calendar';
+        this.input.parentNode.insertBefore(container, this.input.nextSibling);
+        return container;
+    }
+
+    setupEventListeners() {
+        this.input.addEventListener('click', () => this.toggleCalendar());
+        document.addEventListener('click', (e) => this.handleOutsideClick(e));
+    }
+
+    toggleCalendar() {
+        this.container.classList.toggle('show');
+        if (this.container.classList.contains('show')) {
+            this.renderCalendar();
+        }
+    }
+
+    handleOutsideClick(e) {
+        if (!this.container.contains(e.target) && e.target !== this.input) {
+            this.container.classList.remove('show');
+        }
+    }
+
+    renderCalendar() {
+        const year = this.currentDate.getFullYear();
+        const month = this.currentDate.getMonth();
+
+        this.container.innerHTML = `
+            <div class="calendar-header">
+                <button class="calendar-nav-btn prev-month">&lt;</button>
+                <div>${this.getMonthName(month)} ${year}</div>
+                <button class="calendar-nav-btn next-month">&gt;</button>
+            </div>
+            <div class="calendar-grid">
+                ${this.generateDaysGrid(year, month)}
+            </div>
+        `;
+
+        this.attachCalendarListeners();
+    }
+
+    generateDaysGrid(year, month) {
+        const firstDay = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const today = new Date();
+        let gridHtml = this.generateWeekdayHeaders();
+
+        // Add empty cells for days before the first day of the month
+        for (let i = 0; i < firstDay; i++) {
+            gridHtml += '<div></div>';
+        }
+
+        // Generate days
+        for (let day = 1; day <= daysInMonth; day++) {
+            const currentDate = new Date(year, month, day);
+            let dayClass = '';
+
+            if (this.isSameDay(currentDate, this.selectedStartDate)) {
+                dayClass += ' start-date';
+            }
+            
+            if (this.isSameDay(currentDate, this.selectedEndDate)) {
+                dayClass += ' end-date';
+            }
+
+            if (this.isDateInRange(currentDate)) {
+                dayClass += ' in-range';
+            }
+
+            if (this.isSameDay(currentDate, today)) {
+                dayClass += ' today';
+            }
+
+            gridHtml += `
+                <div class="calendar-day${dayClass}" 
+                     data-date="${year}-${month + 1}-${day}">
+                    ${day}
+                </div>
+            `;
+        }
+
+        return gridHtml;
+    }
+
+    generateWeekdayHeaders() {
+        const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+        return weekdays.map(day => `<div>${day}</div>`).join('');
+    }
+
+    attachCalendarListeners() {
+        const prevMonthBtn = this.container.querySelector('.prev-month');
+        const nextMonthBtn = this.container.querySelector('.next-month');
+        const dayElements = this.container.querySelectorAll('.calendar-day');
+
+        prevMonthBtn.addEventListener('click', () => this.changeMonth(-1));
+        nextMonthBtn.addEventListener('click', () => this.changeMonth(1));
+
+        dayElements.forEach(day => {
+            day.addEventListener('click', (e) => this.handleDayClick(e));
+        });
+    }
+
+    changeMonth(delta) {
+        this.currentDate.setMonth(this.currentDate.getMonth() + delta);
+        this.renderCalendar();
+    }
+
+    handleDayClick(e) {
+        const clickedDate = new Date(e.target.dataset.date);
+
+        if (!this.selectedStartDate || this.selectedEndDate) {
+            // Start a new range
+            this.selectedStartDate = clickedDate;
+            this.selectedEndDate = null;
+        } else if (clickedDate >= this.selectedStartDate) {
+            // End of range
+            this.selectedEndDate = clickedDate;
+        } else {
+            // Swap if new date is before start date
+            [this.selectedStartDate, this.selectedEndDate] = [clickedDate, this.selectedStartDate];
+        }
+
+        this.updateInputValue();
+        this.updateHiddenInputs();
+        this.renderCalendar();
+    }
+
+    updateInputValue() {
+        if (this.selectedStartDate && this.selectedEndDate) {
+            const start = this.formatDate(this.selectedStartDate);
+            const end = this.formatDate(this.selectedEndDate);
+            this.input.value = `${start} até ${end}`;
+        } else if (this.selectedStartDate) {
+            this.input.value = this.formatDate(this.selectedStartDate);
+        }
+    }
+
+    updateHiddenInputs() {
+        const startDateInput = document.querySelector('input[name="start_date"]');
+        const endDateInput = document.querySelector('input[name="end_date"]');
+
+        if (startDateInput) {
+            startDateInput.value = this.selectedStartDate 
+                ? this.formatDateForInput(this.selectedStartDate) 
+                : '';
+        }
+
+        if (endDateInput) {
+            endDateInput.value = this.selectedEndDate 
+                ? this.formatDateForInput(this.selectedEndDate) 
+                : '';
+        }
+    }
+
+    formatDate(date) {
+        return date.toLocaleDateString('pt-BR');
+    }
+
+    formatDateForInput(date) {
+        return date.toISOString().split('T')[0];
+    }
+
+    isDateInRange(date) {
+        if (!this.selectedStartDate || !this.selectedEndDate) return false;
+        return date >= this.selectedStartDate && date <= this.selectedEndDate;
+    }
+
+    isSameDay(date1, date2) {
+        if (!date1 || !date2) return false;
+        return date1.getFullYear() === date2.getFullYear() &&
+               date1.getMonth() === date2.getMonth() &&
+               date1.getDate() === date2.getDate();
+    }
+
+    getMonthName(month) {
+        const months = [
+            'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
+            'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+        ];
+        return months[month];
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    new CustomDatePicker('date-range');
+});
+</script>
+{% endblock %}
