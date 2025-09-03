@@ -1,0 +1,274 @@
+Metadata-Version: 2.4
+Name: concept_sentinel_data_capturer
+Version: 1.1.5
+Summary: A python package to capture, monitor, store all data communications across agents and It further extracts key entities from the data which will be used to detect the behavioral changes of the agents
+Description-Content-Type: text/markdown
+Requires-Dist: langchain==0.3.25
+Requires-Dist: langchain-community==0.3.25
+Requires-Dist: openai==1.97.1
+Requires-Dist: pymongo==4.13.2
+Requires-Dist: pydantic==2.11.5
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: requires-dist
+Dynamic: summary
+
+# concept_sentinel_data_capturer
+
+A Python package for capturing, storing, and analyzing LLM interactions with context information.
+
+## Installation
+
+```bash
+pip install concept_sentinel_data_capturer
+```
+
+## Overview
+
+This package provides functionality to store and analyze prompt-response pairs from LLM interactions, with support for agent metadata tracking.
+
+## API Reference
+
+### `concept_sentinel_data_capturer` Class
+
+The main class exposing the following methods:
+
+#### `set_env_variables(env_vars)`
+
+Configures the necessary environment variables required for operation.
+
+**Input**: 
+- `env_vars`: An `env_variables` object containing:
+  - `AZURE_OPENAI_API_KEY`: API key for Azure OpenAI
+  - `AZURE_OPENAI_ENDPOINT`: Endpoint URL for Azure OpenAI
+  - `AZURE_OPENAI_API_VERSION`: API version (e.g., "2024-02-01")
+  - `AZURE_DEPLOYMENT_ENGINE`: Deployment model name (e.g., "gpt4")
+  - `DB_NAME`: Database name to store interactions
+  - `COSMOS_PATH`: MongoDB connection string
+
+**Output**: None (sets internal state)
+
+**Example**:
+```python
+variables = env_variables(
+    AZURE_OPENAI_API_KEY = "your-api-key-here",
+    AZURE_OPENAI_API_VERSION = "2024-02-01",
+    AZURE_OPENAI_ENDPOINT = "https://your-endpoint.openai.azure.com/",
+    AZURE_DEPLOYMENT_ENGINE = "gpt4",
+    COSMOS_PATH = "your-mongodb-connection-string",
+    DB_NAME = "your-database-name"
+)
+concept_sentinel_data_capturer.set_env_variables(variables)
+```
+
+#### `insertion_with_context(payload)`
+
+Stores and analyzes an LLM interaction with context.
+
+**Input**:
+- `payload`: A `ContextRequest` object containing:
+  - `inputPrompt`: The user's prompt or query (required)
+  - `llmResponse`: The response from the LLM (required)
+  - `agent_flag`: Boolean indicating if this is an agent interaction (default: False)
+  - `agent_name`: Name of the agent if applicable (required when agent_flag is True)
+  - `agent_metadata`: List of dictionaries with agent information (required when agent_flag is True)
+    - Each dictionary should have "name" and "description" keys
+
+**Usage Scenarios**:
+
+1. **For LLM Interactions**: Provide only `inputPrompt` and `llmResponse`
+2. **For Agent Interactions**: Provide `inputPrompt`, `llmResponse`, set `agent_flag=True`, and include `agent_name` and `agent_metadata`
+
+**Output**:
+- A `ContextResponse` object containing:
+  - `prompt_context`: Extracted context from the prompt (string)
+  - `response_context`: Extracted context from the response (string)
+  - `success_status`: Boolean indicating storage success
+  - `intent_satisfied`: Evaluation of intent satisfaction (string)
+  - `accuracy`: Accuracy score assessment (float)
+  - `hallucination`: Hallucination detection score (float)
+
+**Example for LLM Interaction**:
+```python
+# Simple LLM interaction - only inputPrompt and llmResponse required
+input_data = ContextRequest(
+    inputPrompt = "Who are the co-founders of Infosys?",
+    llmResponse = "Infosys was co-founded by Narayana Murthy along with six other engineers..."
+)
+response = concept_sentinel_data_capturer.insertion_with_context(input_data)
+```
+
+**Example for Agent Interaction**:
+```python
+# Agent interaction - requires agent_flag=True, agent_name, and agent_metadata
+input_data = ContextRequest(
+    inputPrompt = "Schedule an interview with the candidate",
+    llmResponse = "Interview scheduled for Monday at 2pm",
+    agent_flag = True,
+    agent_name = "InterviewAgent",
+    agent_metadata = [
+        {"name": "CandidateSelectionAgent", "description": "Agent for Selection of a candidate"},
+        {"name": "InterviewSchedulingAgent", "description": "Agent to Schedule Interview of a candidate"}
+    ]
+)
+response = concept_sentinel_data_capturer.insertion_with_context(input_data)
+```
+
+## Usage Examples
+
+### LLM Interaction Example (Simple)
+
+For basic LLM interactions, only provide the prompt and response:
+
+```python
+from concept_sentinel_data_capturer import concept_sentinel_data_capturer
+from concept_sentinel_data_capturer.mappers import env_variables, ContextRequest
+
+# Step 1: Configure environment variables
+variables = env_variables(
+    AZURE_OPENAI_API_KEY = "your-api-key-here",
+    AZURE_OPENAI_API_VERSION = "2024-02-01",
+    AZURE_OPENAI_ENDPOINT = "https://your-endpoint.openai.azure.com/",
+    AZURE_DEPLOYMENT_ENGINE = "gpt4",
+    COSMOS_PATH = "your-mongodb-connection-string",
+    DB_NAME = "your-database-name"
+)
+
+concept_sentinel_data_capturer.set_env_variables(variables)
+
+# Step 2: Create and store LLM interaction (simple case)
+input_data = ContextRequest(
+    inputPrompt = "Who are the co-founders of Infosys?",
+    llmResponse = "Infosys was co-founded by Narayana Murthy along with six other engineers: Nandan Nilekani, S. Gopalakrishnan (Kris), S. D. Shibulal, K. Dinesh, N. S. Raghavan, and Ashok Arora."
+)
+
+response = concept_sentinel_data_capturer.insertion_with_context(input_data)
+print(response)
+```
+
+### Agent Integration Example (Advanced)
+
+For agent interactions, set `agent_flag=True` and provide agent metadata:
+
+```python
+from concept_sentinel_data_capturer import concept_sentinel_data_capturer
+from concept_sentinel_data_capturer.mappers import env_variables, ContextRequest
+
+# Environment setup (same as above)
+variables = env_variables(
+    AZURE_OPENAI_API_KEY = "your-api-key-here",
+    AZURE_OPENAI_API_VERSION = "2024-02-01",
+    AZURE_OPENAI_ENDPOINT = "https://your-endpoint.openai.azure.com/",
+    AZURE_DEPLOYMENT_ENGINE = "gpt4",
+    COSMOS_PATH = "your-mongodb-connection-string",
+    DB_NAME = "your-database-name"
+)
+
+concept_sentinel_data_capturer.set_env_variables(variables)
+
+# Agent interaction with full metadata
+input_data = ContextRequest(
+    inputPrompt = "Schedule an interview with the candidate",
+    llmResponse = "Interview scheduled for Monday at 2pm",
+    agent_flag = True,
+    agent_name = "InterviewAgent",
+    agent_metadata = [
+        {"name": "CandidateSelectionAgent", "description": "Agent for Selection of a candidate"},
+        {"name": "InterviewSchedulingAgent", "description": "Agent to Schedule Interview of a candidate"}
+    ]
+)
+response = concept_sentinel_data_capturer.insertion_with_context(input_data)
+print(response)
+```
+
+## Important Notes
+
+- You must call `set_env_variables()` before using any other functionality
+- The package requires valid Azure OpenAI and MongoDB credentials
+- **For LLM interactions**: Only `inputPrompt` and `llmResponse` are required
+- **For Agent interactions**: Set `agent_flag=True` and provide both `agent_name` and `agent_metadata`
+- When `agent_flag` is set to True, both `agent_name` and `agent_metadata` must be provided
+
+## Error Handling
+
+The package will raise:
+- `RuntimeError`: If methods are called before setting environment variables
+- `ValueError`: If validation fails for agent-related fields
+- Other exceptions may be raised for DB connection or API issues
+
+## Data Models
+
+### `env_variables`
+Configuration model with required environment variables for Azure OpenAI and MongoDB connectivity.
+
+### `ContextRequest`
+Input model for storing LLM interactions with optional agent metadata. **Note**: `llmResponse` is now required.
+
+### `ContextResponse`
+Output model returned after successful data storage with comprehensive analysis results including context extraction, accuracy assessment, intent satisfaction evaluation, and hallucination detection.
+
+## Database Schema
+
+The package stores LLM interactions in MongoDB with the following document structure:
+
+### Document Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `_id` | ObjectId | Unique document identifier (auto-generated) |
+| `prompt` | String | The original user prompt/query |
+| `response` | String | The LLM's response |
+| `prompt_context` | String | Extracted context from the prompt |
+| `response_context` | String | Extracted context from the response |
+| `create_date` | Date | Timestamp when the interaction was stored |
+| `agent_metadata` | Array | List of agent information objects (when agent_flag=True) |
+| `agent_name` | String | Name of the primary agent (when agent_flag=True) |
+| `accuracy` | Float | Accuracy score assessment |
+| `intent_satisfied` | String | Evaluation of whether the intent was satisfied |
+| `hallucination` | Float | Hallucination detection score |
+
+### Sample Document
+
+```json
+{
+  "_id": {
+    "$oid": "68900704e2854ac27dba0ebc"
+  },
+  "prompt": "Find the candidates who are expert in Python,schedule an interview and evaluate them.",
+  "response": "Here are some candidates with skill in python, c++ and java:- Rahul, Shiv",
+  "prompt_context": "Expert candidates in Python",
+  "response_context": "candidates with python c++ java",
+  "create_date": {
+    "$date": "2025-08-04T06:34:04.786Z"
+  },
+  "agent_metadata": [
+    {
+      "description": "Agent for Selection of a candidate",
+      "name": "CandidateSelectionAgent"
+    },
+    {
+      "description": "Agent to Schedule Interview of a candidate",
+      "name": "InterviewSchedulingAgent"
+    }
+  ],
+  "agent_name": "ExplanationAgent",
+  "accuracy": "30",
+  "intent_satisfied": "No - The agent provided a list of candidates but did not schedule interviews or evaluate them as requested in the task. The response only partially addressed the task and missed key components.",
+  "hallucination": "0"
+}
+```
+
+### Agent Metadata Structure
+
+When `agent_flag` is set to `True`, the `agent_metadata` field contains an array of objects with:
+
+- `name`: String - The name of the agent
+- `description`: String - Description of the agent's purpose/functionality
+
+### Analysis Fields
+
+The package automatically generates analysis fields:
+
+- **accuracy**: Numerical score (float) indicating response accuracy (0-100)
+- **intent_satisfied**: Detailed evaluation of whether the user's intent was fulfilled (string)
+- **hallucination**: Score (float) indicating potential hallucination in the response (0-100)
