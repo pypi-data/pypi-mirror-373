@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+
+########################################################################
+# Regenerate auto-generated files, using information in SAGE_ROOT/build/
+#
+# This script is run by SAGE_ROOT/bootstrap as part of the bootstrapping phase
+# (before configure, before creating source distributions).
+#
+# The BOOTSTRAP_QUIET variable is set by the top-level
+# bootstrap script and controls how verbose we are.
+########################################################################
+
+set -e
+
+if [ -z "$SAGE_ROOT" ]; then
+    echo Please run the top-level bootstrap script of the Sage distribution.
+    exit 1
+fi
+
+./bootstrap_m4
+
+shopt -s extglob
+
+echo arch conda debian fedora gentoo homebrew opensuse void | xargs -P 16 -n 1 ./bootstrap_system_packages
+
+cd "$SAGE_ROOT"
+
+OUTPUT_DIR="src/doc/en/reference/spkg"
+mkdir -p "$OUTPUT_DIR"
+if [ "${BOOTSTRAP_QUIET}" = "no" ]; then
+    echo >&2 $0:$LINENO: installing "$OUTPUT_DIR"/"*.rst"
+fi
+(cat <<EOF
+Mathematics
+~~~~~~~~~~~
+
+EOF
+for PKG_BASE in $(sage-package list --has-file SPKG.rst --has-file math :standard: | grep -v '^sagemath_'); do
+    echo "* :ref:\`spkg_$PKG_BASE\`"
+done
+cat <<EOF
+
+Front-end, graphics, document preparation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+EOF
+for PKG_BASE in $(sage-package list --has-file SPKG.rst --no-file math --has-file front-end :standard: | grep -v '^sagemath_'); do
+    echo "* :ref:\`spkg_$PKG_BASE\`"
+done
+cat <<EOF
+
+Other dependencies
+~~~~~~~~~~~~~~~~~~
+
+EOF
+for PKG_BASE in $(sage-package list --has-file SPKG.rst --no-file math --no-file front-end :standard: | grep -v '^sagemath_'); do
+    echo "* :ref:\`spkg_$PKG_BASE\`"
+done) > "$OUTPUT_DIR"/index_standard.rst
+(cat <<EOF
+Mathematics
+~~~~~~~~~~~
+
+EOF
+for PKG_BASE in $(sage-package list --has-file SPKG.rst --has-file math :optional: | grep -v '^sagemath_'); do
+    echo "* :ref:\`spkg_$PKG_BASE\`"
+done
+cat <<EOF
+
+Front-end, graphics, document preparation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+EOF
+for PKG_BASE in $(sage-package list --has-file SPKG.rst --no-file math --has-file front-end :optional: | grep -v '^sagemath_'); do
+    echo "* :ref:\`spkg_$PKG_BASE\`"
+done
+cat <<EOF
+
+Other dependencies
+~~~~~~~~~~~~~~~~~~
+
+EOF
+for PKG_BASE in $(sage-package list --has-file SPKG.rst --no-file math --no-file front-end :optional: | grep -v '^sagemath_'); do
+    echo "* :ref:\`spkg_$PKG_BASE\`"
+done) > "$OUTPUT_DIR"/index_optional.rst
+for PKG_BASE in $(sage-package list --has-file SPKG.rst | grep '^sagemath_'); do
+    echo "* :ref:\`spkg_$PKG_BASE\`"
+done > "$OUTPUT_DIR"/index_sagemath.rst
+(cat <<EOF
+Mathematics
+~~~~~~~~~~~
+
+EOF
+for PKG_BASE in $(sage-package list --has-file SPKG.rst --has-file math :experimental: | grep -v '^sagemath_'); do
+    echo "* :ref:\`spkg_$PKG_BASE\`"
+done
+
+cat <<EOF
+
+Other dependencies
+~~~~~~~~~~~~~~~~~~
+
+EOF
+for PKG_BASE in $(sage-package list --has-file SPKG.rst --no-file math :experimental: | grep -v '^sagemath_'); do
+    echo "* :ref:\`spkg_$PKG_BASE\`"
+done) > "$OUTPUT_DIR"/index_experimental.rst
+(cat <<EOF
+
+Details of external packages
+============================
+
+Packages are in alphabetical order.
+
+.. default-role:: code
+
+.. toctree::
+   :maxdepth: 1
+
+EOF
+for PKG_BASE in $(sage-package list --has-file SPKG.rst); do
+    echo "   $PKG_BASE"
+done
+cat <<EOF
+
+.. default-role::
+
+EOF
+) > "$OUTPUT_DIR"/index_alph.rst
+sage-package list --has-file SPKG.rst | xargs -P 16 -n 20 sage-spkg-info --output-rst --output-dir="$OUTPUT_DIR"
