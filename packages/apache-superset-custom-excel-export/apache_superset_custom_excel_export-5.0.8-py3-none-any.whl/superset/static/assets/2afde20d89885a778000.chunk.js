@@ -1,0 +1,14 @@
+"use strict";(globalThis.webpackChunksuperset=globalThis.webpackChunksuperset||[]).push([[4923],{54923:(e,t,n)=>{n.r(t),n.d(t,{default:()=>c});var a=n(2445),l=n(62952),i=n(87903),o=n(95579),r=n(96540),s=n(56268),u=n(71781),d=n(67874);function c(e){const{data:t,formData:n,height:c,width:h,setDataMask:m,setHoveredFilter:f,unsetHoveredFilter:p,setFocusedFilter:v,unsetFocusedFilter:g,setFilterActive:b,filterState:S,inputRef:x}=e,{defaultValue:$}=n,[w,F]=(0,r.useState)(null!=$?$:[]),M=e=>{const t=(0,l.A)(e);F(t);const n={};t.length&&(n.granularity_sqla=t[0]),m({extraFormData:n,filterState:{value:t.length?t:null}})};(0,r.useEffect)((()=>{M(null!=$?$:null)}),[JSON.stringify($)]),(0,r.useEffect)((()=>{var e;M(null!=(e=S.value)?e:null)}),[JSON.stringify(S.value)]);const y=(t||[]).filter((e=>e.dtype===i.s.Temporal)),k=0===y.length?(0,o.t)("No time columns"):(0,o.tn)("%s option","%s options",y.length,y.length),z={};S.validateMessage&&(z.extra=(0,a.Y)(d.Mo,{status:S.validateStatus,children:S.validateMessage}));const I=y.map((e=>{const{column_name:t,verbose_name:n}=e;return{label:null!=n?n:t,value:t}}));return(0,a.Y)(d.j3,{height:c,width:h,children:(0,a.Y)(s.e,{validateStatus:S.validateStatus,...z,children:(0,a.Y)(u.A,{name:n.nativeFilterId,allowClear:!0,value:w,placeholder:k,onChange:M,onBlur:g,onFocus:v,onMouseEnter:f,onMouseLeave:p,ref:x,options:I,onOpenChange:b})})})}},56268:(e,t,n)=>{n.d(t,{e:()=>l});var a=n(89467);const l=(0,n(72234).I4)(a.A.Item)`
+  ${({theme:e})=>`\n    &.ant-form-item > .ant-row > .ant-form-item-label {\n      padding-bottom: ${e.paddingXXS}px;\n    }\n    .ant-form-item-label {\n      & > label {\n        font-size: ${e.fontSizeSM}px;\n        &.ant-form-item-required:not(.ant-form-item-required-mark-optional) {\n          &::before {\n            display: none;\n          }\n          &::after {\n            display: inline-block;\n            visibility: visible;\n            color: ${e.colorError};\n            font-size: ${e.fontSizeSM}px;\n            content: '*';\n          }\n        }\n      }\n    }\n    .ant-form-item-extra {\n      margin-top: ${e.sizeUnit}px;\n      font-size: ${e.fontSizeSM}px;\n    }\n  `}
+`},67874:(e,t,n)=>{n.d(t,{Mo:()=>r,YH:()=>i,j3:()=>o});var a=n(72234),l=n(56268);const i=0,o=a.I4.div`
+  min-height: ${({height:e})=>e}px;
+  width: ${({width:e})=>e===i?"100%":`${e}px`};
+`,r=((0,a.I4)(l.e)`
+  &.ant-row.ant-form-item {
+    margin: 0;
+  }
+`,a.I4.div`
+  color: ${({theme:e,status:t="error"})=>{var n;return"help"===t?e.colors.grayscale.light1:null==(n=e.colors[t])?void 0:n.base}};
+  text-align: ${({centerText:e})=>e?"center":"left"};
+  width: 100%;
+`)}}]);
