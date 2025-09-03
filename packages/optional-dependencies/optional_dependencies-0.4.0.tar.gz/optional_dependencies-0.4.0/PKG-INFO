@@ -1,0 +1,197 @@
+Metadata-Version: 2.4
+Name: optional_dependencies
+Version: 0.4.0
+Summary: Construct Checks for Optional Dependencies
+Project-URL: Bug Tracker, https://github.com/GalacticDynamics/optional_dependencies/issues
+Project-URL: Changelog, https://github.com/GalacticDynamics/optional_dependencies/releases
+Project-URL: Discussions, https://github.com/GalacticDynamics/optional_dependencies/discussions
+Project-URL: Homepage, https://github.com/GalacticDynamics/optional_dependencies
+Author-email: GalacticDynamics Maintainers <nstarman@users.noreply.github.com>
+License: Copyright 2024 GalacticDynamics Maintainers
+        
+        Permission is hereby granted, free of charge, to any person obtaining a copy of
+        this software and associated documentation files (the "Software"), to deal in
+        the Software without restriction, including without limitation the rights to
+        use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+        of the Software, and to permit persons to whom the Software is furnished to do
+        so, subject to the following conditions:
+        
+        The above copyright notice and this permission notice shall be included in all
+        copies or substantial portions of the Software.
+        
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+        SOFTWARE.
+License-File: LICENSE
+Classifier: Development Status :: 1 - Planning
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Scientific/Engineering
+Classifier: Typing :: Typed
+Requires-Python: >=3.9
+Requires-Dist: packaging>=23.2
+Description-Content-Type: text/markdown
+
+<h1 align='center'> optional_dependencies </h1>
+<h3 align="center">Construct Checks for Optional Dependencies</h3>
+
+## Installation
+
+[![PyPI version][pypi-version]][pypi-link]
+[![PyPI platforms][pypi-platforms]][pypi-link]
+
+<!-- [![Conda-Forge][conda-badge]][conda-link] -->
+
+```bash
+pip install optional_dependencies
+```
+
+## Documentation
+
+### High-Level API
+
+This package allows for easy construction of checks for optional dependencies.
+As every Python project can have its own unique set of optional dependencies,
+`optional_dependencies` provides the [`enum.Enum`][Enum-link] base class
+`OptionalDependencyEnum` for enumerating the optional dependencies.
+
+A constructed `OptionalDependencyEnum` [`enum.Enum`][Enum-link] has members that
+are the package names with values that are either a
+[`packaging.Version`][Version-link] or a `NOT_INSTALLED` sentinel value.
+
+As an example:
+
+```python
+# Note that `auto` is a convenience re-export of enum.auto
+from optional_dependencies import OptionalDependencyEnum, auto
+
+
+class OptDeps(OptionalDependencyEnum):
+    PACKAGING = auto()
+    THIS_IS_NOT_INSTALLED = auto()
+
+
+OptDeps.PACKAGING
+# <OptDeps.PACKAGING: <Version('...')>>
+
+OptDeps.PACKAGING.installed
+# True
+
+OptDeps.PACKAGING.version
+# <Version('...')>
+
+OptDeps.THIS_IS_NOT_INSTALLED
+# <OptDeps.THIS_IS_NOT_A_PACKAGE: <InstalledState.NOT_INSTALLED: False>>
+```
+
+`enum.auto` on a `OptionalDependencyEnum` passes version parsing to
+[`packaging.utils.canonicalize_name`](https://packaging.pypa.io/en/stable/utils.html#packaging.utils.canonicalize_name)
+then
+[`importlib.metadata.version`](https://docs.python.org/3/library/importlib.metadata.html)
+then [`packaging.version.parse`][Version-link]. If the package cannot be found
+then it is considered `InstalledState.NOT_INSTALLED`
+
+`InstalledState.NOT_INSTALLED` is an [`enum.Enum`][Enum-link] member that has a
+truthy value of `False`. This can be useful for boolean checks, as
+[`packaging.Version`][Version-link] always has a truthy value of `True`.
+
+```python
+if not OptDeps.THIS_IS_NOT_INSTALLED:
+    print("NOT_INSTALLED has a truthy value of False")
+# NOT_INSTALLED has a truthy value of False
+
+if OptDeps.PACKAGING:  # truthy value of `True`
+    print(OptDeps.PACKAGING)
+# OptDeps.PACKAGING
+```
+
+### Low-Level API
+
+Sometimes the high-level API is insufficient to determine whether an optional
+dependency is present. For example, this can sometimes happen with compiled
+packages, where the package appears to be installed, but something is wrong. In
+these cases you can customize the enum members using the low-level API.
+
+The low-level functions are:
+
+- `optional_dependencies.utils.is_installed(pkg_name: str, /) -> bool`: a
+  regularized form of
+  [`importlib.util.find_spec`](https://docs.python.org/3/library/importlib.html#importlib.util.find_spec).
+
+- `optional_dependencies.utils.get_version(pkg_name: str, /) -> Version | Literal[InstalledState.NOT_INSTALLED]`:
+  for getting the [`packaging.Version`][Version-link] of a package if it is
+  installed, or returning `NOT_INSTALLED` otherwise.
+
+- `optional_dependencies.utils.chain_checks(version: Version, /, *checks: bool)`:
+  for chaining checks together and ensuring the returned value is still a
+  [`packaging.Version`][Version-link] or `NOT_INSTALLED`.
+
+As a pseudo-code example of a package with c-compiled code that :
+
+```python
+from optional_dependencies.utils import is_installed, get_version, chain_checks
+
+# A subpackage needs to be checked.
+chain_checks(get_version("package1"), is_installed("package1.subpackage"))
+# <Version('...')>
+
+# This package is not installed correctly
+chain_checks(get_version("package2"), is_installed("package2.subpackage"))
+# <InstalledState.NOT_INSTALLED: False>
+```
+
+The low-level API can be used with `OptionalDependencyEnum`
+
+```python
+class OptDeps(OptionalDependencyEnum):
+    PACKAGING = auto()
+    THIS_IS_NOT_INSTALLED = chain_checks(
+        get_version("package2"), is_installed("package2.subpackage")
+    )
+```
+
+## Citation
+
+[![DOI][zenodo-badge]][zenodo-link]
+
+If you found this library to be useful and want to support the development and
+maintenance of lower-level code libraries for the scientific community, please
+consider citing this work.
+
+## Development
+
+[![codecov][codecov-badge]][codecov-link]
+[![Actions Status][actions-badge]][actions-link]
+
+We welcome contributions!
+
+<!-- prettier-ignore-start -->
+
+[Enum-link]: https://docs.python.org/3/library/enum.html
+[Version-link]: https://packaging.pypa.io/en/stable/version.html#packaging.version.Version
+
+[actions-badge]:            https://github.com/GalacticDynamics/optional_dependencies/workflows/CI/badge.svg
+[actions-link]:             https://github.com/GalacticDynamics/optional_dependencies/actions
+[codecov-badge]:            https://codecov.io/gh/GalacticDynamics/optional_dependencies/graph/badge.svg
+[codecov-link]:             https://codecov.io/gh/GalacticDynamics/optional_dependencies
+[pypi-link]:                https://pypi.org/project/optional_dependencies/
+[pypi-platforms]:           https://img.shields.io/pypi/pyversions/optional_dependencies
+[pypi-version]:             https://img.shields.io/pypi/v/optional_dependencies
+[zenodo-badge]:             https://zenodo.org/badge/DOI/10.5281/zenodo.13738124.svg
+[zenodo-link]:              https://zenodo.org/doi/10.5281/zenodo.13738123
+
+<!-- prettier-ignore-end -->
