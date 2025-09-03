@@ -1,0 +1,312 @@
+
+<p align="center">
+    <img src="calculadorapnav/data/assets/logo_pnav.png" alt="calculadorapnav logo" width="450"/>
+</p>
+
+# calculadorapnav
+
+**calculadorapnav** is a Python library library based on the codecarbon to track and calculate energy consumption and carbon dioxide (CO₂e) emissions produced by computational processes. It is designed for scientific computing and machine learning environments, helping measure the environmental impact of executed models and programs.
+
+<p align="center">
+    <img src="calculadorapnav/data/assets/flow_calculator.jpg" alt="calculadorapnav logo" width="750"/>
+</p>
+
+---
+
+## Features
+
+- Measures power consumption by CPU, GPU, and RAM.
+- Calculates CO₂e emissions based on local and cloud energy intensity.
+- Tracking modes: full machine or specific process.
+- Data persistence in CSV files, logs, or HTTP endpoints.
+- Decorators to automatically measure emissions in functions.
+- Concurrency control to avoid simultaneous multiple executions.
+- Flexible configuration via parameters or external files.
+- Integration of geographic and cloud metadata for accuracy.
+
+---
+
+## Installation
+
+Install the library via pip (from PyPI or public repository if available):
+
+```bash
+pip install calculadorapnav
+```
+
+*If not published, clone the repository and install locally:*
+
+```bash
+git clone <repository_URL>
+cd calculadorapnav
+pip install -e .
+```
+
+## Decorator Usage
+
+Use the `@track_emissions` decorator to automatically measure energy consumption and CO₂e emissions during the execution of a function.
+
+All the training or inference logic must be packaged in a function to which the already built model must be passed as a parameter in order to extract all the data related to the model.
+
+To calculate energy, time, and emissions metrics by epoch and batch, "n_epoch" and "n_batch" must be passed as parameters in the decorator.
+
+e.g.
+
+```python
+from calculadorapnav import track_emissions
+@track_emissions(
+        type_process="training",
+        n_epoch=10,
+        n_batch=100,
+        token="your_api_token",
+        model_id="your_model_id",
+        endpoint_url="https://fake_endpoint",
+        measure_power_secs=0.5,
+        output_dir="./results",
+        output_file="results.csv",
+        save_to_file=True,
+        save_to_logger=True,
+        logging_logger=None,
+        offline=False,
+        gpu_ids=None,
+        log_level="INFO",
+        on_csv_write=None,
+        logger_preamble="Training process",
+        default_cpu_power=50,
+        pue=1.5,
+        country_iso_code="ESP",
+        allow_multiple_runs=False,
+        region=None,
+        cloud_provider=None,
+        cloud_region=None
+)
+def train_model(model, n_epoch=10, n_batch=100):
+        # muestra un entremiento por epocas de ejemplo
+        for epoch in range(n_epoch):
+                print(f"Training epoch {epoch + 1}/{n_epoch} with {n_batch} batches.")
+                # Simulate training logic here
+        pass
+
+```
+
+### Parameters of the `@track_emissions` decorator
+
+Parameters include:
+
+- `token` (str, optional): API token for online communication.
+- `model_id` (str, optional): Identifier for the model being tracked.
+- `endpoint_url` (str, optional): URL for the API endpoint to send results.
+- `type_process` (str): Type of process ("training" or "inference").
+- `type_ram` (str, optional): Specific RAM type.
+- `n_batch` (int, optional): Number of batches processed.
+- `n_epoch` (int, optional): Number of epochs for training.
+- `measure_power_secs` (float, optional): Power measurement interval in seconds (default 0.5).
+- `output_dir` (str, optional): Directory path for storing results.
+- `output_file` (str, optional): Filename to save data.
+- `save_to_file` (bool, optional): Whether to save results in a CSV file.
+- `save_to_logger` (bool, optional): Whether to save information to logs.
+- `output_handlers` (List, optional): List of custom output handlers.
+- `logging_logger` (LoggerOutput, optional): Logger instance for output.
+- `offline` (bool, optional): Run in offline mode (no remote communication).
+- `gpu_ids` (List, optional): List of GPU IDs to track.
+- `log_level` (int or str, optional): Logging level.
+- `on_csv_write` (Callable, optional): Callback or hook for CSV writing events.
+- `logger_preamble` (str, optional): Preamble text for logger output.
+- `default_cpu_power` (int, optional): Default CPU power value (in watts).
+- `pue` (float, optional): Power Usage Effectiveness value.
+- `country_iso_code` (str, optional): ISO code for the country (for energy intensity).
+- `allow_multiple_runs` (bool, optional): Allow multiple instances running concurrently.
+- `region` (str, optional): Geographic region for energy intensity.
+- `cloud_provider` (str, optional): Cloud provider for energy intensity.
+- `cloud_region` (str, optional): Cloud region for energy intensity.
+
+---
+
+### Example usage of the decorator with parameters
+
+The parameter `type_process` is **required** and determines the type of process to be measured; allowed values are `"training"` and `"inference"`.
+
+If the `offline` parameter is not entered as `True` by default the process will be online mode
+
+#### Offline mode
+
+When running offline, use:
+
+- `offline=True`
+- `country_iso_code`, e.g. `"ESP"`
+- `type_process` (process type: `"training"` or `"inference"`)
+- When running on cloud services you can specify:
+    - `cloud_provider`
+    - `cloud_region`
+
+**For executions in private infrastructure:**
+
+```python
+from calculadorapnav import track_emissions
+
+@track_emissions(
+        offline=True,
+        country_iso_code="ESP",
+        type_process="training",
+        # other parameters...
+)
+def train_model(model=model, n_epoch=10, n_batch=100):
+        # Your model training code
+        pass
+
+train_model()
+```
+
+**For cloud executions:**
+
+```python
+from calculadorapnav import track_emissions
+
+@track_emissions(
+        offline=True,
+        cloud_provider="aws",
+        cloud_region="eu-west-1",
+        type_process="training",
+        # other parameters...
+)
+def train_model(model=model, n_epoch=10, n_batch=100):
+        # Your model training code
+        pass
+
+train_model()
+```
+
+---
+
+#### Online mode
+
+When running online, it requires at least:
+
+Geospatial location will be obtained automatically. If it cannot be determined, "Madrid, Spain" will be used by default.
+
+**If the training or inference time is too long, it is recommended to enter the token when prompted by the console, not as a parameter in the decorator.**
+
+Example:
+
+```python
+from calculadorapnav import track_emissions
+
+@track_emissions(
+    token="your_api_token",
+    type_process="training",
+    model_id="your_model_id",
+    endpoint_url="https://fake_endpoint",
+    # other parameters...
+)
+def train_model(model=model, n_epoch=10, n_batch=100):
+    # Your model training code
+    pass
+
+train_model()
+```
+
+---
+
+## Extraction of general data from the model
+
+To extract general model data and calculate energy consumption, time, and CO₂ emissions associated with the output, the following apply:
+
+- `"n_epoch"` and `"n_batch"` must be passed as decorator inputs to estimate time and energy consumption.
+- Model-related data like `"model_size"`, `"n_parameters"`, `"n_features"`, or `"size_weights"` must be set outside the training/inference function and passed as arguments to the decorated function.
+
+**Example of custom model initialization:**
+
+```python
+from calculadorapnav import track_emissions
+import tensorflow as tf
+from tensorflow.keras import layers, losses, optimizers
+
+# Define the model
+class MiModelo(tf.keras.Model):
+    def __init__(self):
+        super(MiModelo, self).__init__()
+        self.fc1 = layers.Dense(5, activation='relu')
+        self.fc2 = layers.Dense(1)
+
+    def call(self, x):
+        x = self.fc1(x)
+        x = self.fc2(x)
+        return x
+
+def build_model():
+    modelo = MiModelo()
+    criterio = losses.MeanSquaredError()
+    optimizador = optimizers.SGD(learning_rate=0.01, momentum=0.9)
+    return modelo, criterio, optimizador
+
+@track_emissions(
+    type_process="training",
+    token="token",
+    measure_power_secs=10,
+    type_ram="DDR5",
+    n_epoch=10,
+    n_batch=100,
+    endpoint_url="https://fake_endpoint",
+)
+def train(modelo, criterio, optimizador, inputs, targets):
+    for epoch in range(10):
+        with tf.GradientTape() as tape:
+            outputs = modelo(inputs)
+            loss = criterio(targets, outputs)
+
+        grads = tape.gradient(loss, modelo.trainable_variables)
+        optimizador.apply_gradients(zip(grads, modelo.trainable_variables))
+
+        print(f'Epoch {epoch + 1}/10, Loss: {loss.numpy():.4f}')
+
+def orquestador():
+    inputs = tf.random.normal([100, 10])
+    targets = tf.random.normal([100, 1])
+    modelo, criterio, optimizador = build_model()
+    train(modelo, criterio, optimizador, inputs, targets)
+
+orquestador()
+```
+
+---
+
+## Output Handlers
+
+The outputs available include:
+
+### `save_to_file`
+
+Stores measurement results in CSV files, one for each process type ("training" and "inference"). The writing mode (`"append"` or `"update"`) can be controlled with the `on_csv_write` parameter.
+
+### `save_endpoint`
+
+Sends results to the calculadorapnav API for output calculations and result storage in a database. Available only in online mode. Requires `token` and `model_id`. These will be requested if not provided.
+
+---
+
+## Advanced Usage
+
+- Metadata capture functions.
+- Locking mechanisms to control concurrency.
+- Persistence and output customization.
+- Online mode uses up-to-date emission data from the calculadorapnav API.
+- Offline mode uses local stored data for emission estimates.
+- Easy instrumentation of existing code with `@track_emissions`.
+- Results include hardware energy consumption, CO₂e emission estimates and general data of the model.
+
+---
+
+## License
+
+This project is licensed under the MIT License. See the LICENSE file for details.
+
+---
+
+## Contact
+
+https://algoritmosverdes.gob.es/es
+
+<p align="center">
+    <img src="calculadorapnav/data/assets/foot_pnav.jpg" alt="calculadorapnav logo" width="650"/>
+</p>
+
