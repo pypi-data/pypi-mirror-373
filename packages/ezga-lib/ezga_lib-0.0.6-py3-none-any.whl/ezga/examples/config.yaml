@@ -1,0 +1,153 @@
+#######################################################################
+# BANS‑GA configuration file                                         #
+#                                                                    #
+# Any scalar expression wrapped in quotes is evaluated in Python     #
+# with the local context {sp, si} when the factory is instantiated.  #
+#######################################################################
+
+# ---------- Supercells ----------
+supercells:
+  # List each multiplicity vector you want to explore.
+  - [1, 1, 1]
+  - [2, 1, 1]
+  - [2, 2, 1]
+  - [4, 2, 1]
+  - [4, 4, 1]
+  - [8, 4, 1]
+  - [8, 8, 1]
+
+# ---------- GA core parameters ----------
+ga:
+  max_generations: 600
+  min_size_for_filter: 5
+
+filter_duplicates: true
+
+thermostat:
+  initial_temperature: 1.0
+  period: 30
+  decay_rate: 0.005
+  stall_growth_rate: 0.01
+
+mutation:                       # rate / schedule
+  min_rate: 1
+  initial_rate: 30.0
+  max_prob: 0.9
+  min_prob: 0.01
+  alpha: 0.01
+  use_magnitude_scaling: true
+  crossover_probability: 0.1
+
+  # ---- Mutation factories (dynamic) ----
+  functions:
+    - mutation_change_ID:
+        ID_initial: Cu
+        ID_final: O
+        constraints:
+          - component_greater_than:
+              component: 2
+              threshold: 10.5
+
+    - mutation_rattle:
+        std: 0.5
+        species: [Cu]
+        seed: 42
+
+multiobjective:
+  num_select: 30
+  repulsion_weight: 0.0
+
+convergence:
+  objective_threshold: 0.01
+  feature_threshold: 0.01
+  stall_threshold: 40
+
+# ---------- I/O paths ----------
+paths:
+  calc_path: "config.xyz"
+  #template: ""
+  dataset: "config.xyz"
+  output: "."          # default output directory
+
+# ---------- Constraints (feature‑space) ----------
+constraints:
+  - name: "Feature0 ≤ (4+1)*sp"
+    type: less_or_equal
+    feature_index: 0
+    threshold_expr: "(4+1)*sp"
+
+  - name: "Feature1 ≤ sp"
+    type: less_or_equal
+    feature_index: 1
+    threshold_expr: "1*sp"
+
+  # - name: "custom_cc0"
+  #   type: custom
+  #   fn_path: "bansga.constraints.constraint_fns.cc0"
+  #   args: [sp, si]
+
+  # - name: "custom_cc1"
+  #   type: custom
+  #   fn_path: "bansga.constraints.constraint_fns.cc1"
+  #   args: [sp, si]
+
+  # - name: "Feature0 ≥ 4*sp"
+  #   type: greater_or_equal
+  #   feature_index: 0
+  #   threshold_expr: "4*sp"
+
+# ---------- Design of Experiments ----------
+DoE:
+  space_filling:
+    n_factors: 2
+    n_points: 1
+    bounds:
+      - ["4", "(4+1)"]    # note: strings evaluated with {sp}
+      - ["0", "sp"]
+  logic: all
+
+# ---------- Bayesian Optimisation ----------
+bayesian_optimization:
+  weights: [1]
+  bounds:
+    - ["4*sp", "(4+1)*sp"]
+    - ["0", "sp"]
+  n_objectives: 1
+
+# ---------- Objective functions (dynamic) ----------
+objectives:
+  - name: min_distance_to_hull
+    params:
+      reference_potentials:
+        Cu: -3.7291
+        O: -4.4380
+      variable_species: O
+      mu_range: [-2.0, -1.2]
+
+  - name: similarity         # built‑in, needs no params
+    params: {}
+
+# ---------- Feature functions (dynamic) ----------
+features:
+  - name: composition
+    params: ["Cu", "O"]
+
+physical_model:
+  T_mode: 'sampling' # Mode for per‐structure sampling temperatures: uniform, random, or sampling [default:sampling]
+  name: 'MACE'
+  params:
+      calc_path: '/Users/dimitry/Documents/Data/MACE/mace_5_swa.model' # Filesystem path to the trained MACE model
+      nvt_steps: 0  # Scalar or sequence of NVT steps; if sequence, interpolated by sampling_temperature
+      fmax: 0.050     # Scalar or sequence of force thresholds (eV/A); if sequence, interpolated by sampling_temperature
+      hydrostatic_strain: True
+      constant_volume: False
+      T: [0, 300]    # Scalar or [T_min, T_max] (K); if list, interpolated by sampling_temperature across INTERPOLATION_PREC
+      T_ramp: False  # If True, ramp temperature; if False, hold constant at sampled value
+      default_dtype: 'float32'  # Floating‐point precision for MACE inference
+      device: 'cpu'  # Compute device for MACE: 'cpu' or 'cuda'
+      fixed_height: -1.0  # Height (A) below which atoms remain fixed during the simulation
+      debug: False  # If True, skip MD and return mock outputs immediately
+
+# ---------- Misc flags ----------
+debug: false
+restart: false
