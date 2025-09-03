@@ -1,0 +1,359 @@
+Metadata-Version: 2.4
+Name: sverification
+Version: 0.1.1
+Summary: A tool for verifying PDF statements from Tanzanian and beyond institutions
+Home-page: https://github.com/Tausi-Africa/statement-verification
+Author: Alex Mkwizu @ Black Swan AI
+Author-email: alex@bsa.ai
+Project-URL: Bug Tracker, https://github.com/Tausi-Africa/statement-verification/issues
+Project-URL: Repository, https://github.com/Tausi-Africa/statement-verification
+Keywords: pdf verification statements metadata financial
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Financial and Insurance Industry
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: License :: Other/Proprietary License
+Classifier: Operating System :: MacOS
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Topic :: Office/Business :: Financial
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pdforensic-authentic-check>=0.1.41
+Requires-Dist: pdfplumber>=0.6.0
+Provides-Extra: test
+Requires-Dist: pytest>=7.0.0; extra == "test"
+Requires-Dist: pytest-cov>=4.0.0; extra == "test"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: black; extra == "dev"
+Requires-Dist: flake8; extra == "dev"
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: license-file
+Dynamic: project-url
+Dynamic: provides-extra
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# Statement Verification
+
+A Python package for verifying PDF statements from financial institutions. Extracts metadata, detects the issuing institution, and provides verification scores.
+
+## Installation
+
+```bash
+# From PyPI (recommended)
+pip install sverification
+
+# Or from source
+git clone https://github.com/Tausi-Africa/statement-verification.git
+cd statement-verification
+pip install -e .
+```
+
+## Quick Start
+
+```bash
+# Command line usage
+verify-statement path/to/statement.pdf --brands statements_metadata.json
+```
+
+```python
+# Python API - Simple verification
+import sverification
+
+result = sverification.verify_statement_verbose("statement.pdf")
+print(f"Brand: {result['detected_brand']}, Score: {result['verification_score']:.1f}%")
+```
+
+## 📚 Function Reference
+
+### 1. `verify_statement_verbose()` - Complete Verification
+
+**Purpose**: Performs complete statement verification with detailed results.
+
+```python
+import sverification
+
+# Basic usage
+result = sverification.verify_statement_verbose("statement.pdf")
+
+# With custom brands file
+result = sverification.verify_statement_verbose(
+    pdf_path="statement.pdf",
+    brands_json_path="custom_brands.json"
+)
+
+# Access results
+print(f"Detected Brand: {result['detected_brand']}")
+print(f"Verification Score: {result['verification_score']:.1f}%")
+print(f"Total Fields Checked: {result['total_fields']}")
+print(f"Fields Matched: {result['matched_fields']}")
+
+# Get detailed field results
+for field in result['field_results']:
+    status = "✓" if field['match'] else "✗"
+    print(f"[{status}] {field['field']}: {field['actual']} (expected: {field['expected']})")
+```
+
+**Returns**: Dictionary with complete verification data
+- `detected_brand`: Institution name
+- `verification_score`: Percentage score (0-100)
+- `field_results`: List of field comparisons
+- `total_fields`: Number of fields checked
+- `matched_fields`: Number of matching fields
+- `summary`: Human-readable summary
+
+### 2. `print_verification_report()` - Formatted Output
+
+**Purpose**: Prints a formatted verification report.
+
+```python
+import sverification
+
+# Get verification results
+result = sverification.verify_statement_verbose("statement.pdf")
+
+# Print formatted report (same as CLI output)
+sverification.print_verification_report(result)
+
+# Output example:
+# ========================================================================
+# PDF: statement.pdf
+# Detected brand: selcom
+# Template used: selcom
+# Fields checked: 5
+# Fields matched: 5
+# Verification score: 100.0%
+# ------------------------------------------------------------------------
+# Field Comparison (expected vs. actual):
+#   [✓] pdf_version      expected='1.4'  actual='1.4'
+#   [✓] creator          expected='Selcom'  actual='Selcom'
+# ========================================================================
+```
+
+### 3. `extract_all()` - PDF Metadata Extraction
+
+**Purpose**: Extracts comprehensive metadata from PDF files.
+
+```python
+import sverification
+
+# Extract metadata
+metadata = sverification.extract_all("statement.pdf")
+
+# Access specific metadata
+print(f"PDF Version: {metadata['pdf_version']}")
+print(f"Creator: {metadata['creator']}")
+print(f"Producer: {metadata['producer']}")
+print(f"Creation Date: {metadata['creationdate']}")
+print(f"Modification Date: {metadata['moddate']}")
+print(f"EOF Markers: {metadata['eof_markers']}")
+print(f"PDF Versions: {metadata['pdf_versions']}")
+
+# Check for potential issues
+if metadata['eof_markers'] > 1:
+    print("⚠️  Multiple EOF markers detected")
+
+if metadata['creationdate'] != metadata['moddate']:
+    print("⚠️  Creation and modification dates differ")
+```
+
+**Returns**: Dictionary with extracted metadata
+- `pdf_version`: PDF specification version
+- `creator`: Application that created the PDF
+- `producer`: Software that produced the PDF
+- `creationdate`: When PDF was created
+- `moddate`: When PDF was last modified
+- `eof_markers`: Number of EOF markers (security indicator)
+- `pdf_versions`: Number of PDF versions
+
+### 4. `get_company_name()` - Institution Detection
+
+**Purpose**: Automatically detects the financial institution from PDF content.
+
+```python
+import sverification
+
+# Detect institution
+company = sverification.get_company_name("statement.pdf")
+print(f"Detected Institution: {company}")
+
+# Handle unknown institutions
+if company == "unknown":
+    print("⚠️  Institution not recognized")
+    print("Consider adding detection rules for this institution")
+
+# Examples of detected institutions:
+# "selcom", "vodacom", "airtel", "absa", "crdb", "nmb", etc.
+```
+
+**Returns**: String with institution code
+- Returns standardized institution codes (e.g., "selcom", "vodacom")
+- Returns "unknown" if institution cannot be detected
+
+### 5. `load_brands()` - Template Management
+
+**Purpose**: Loads institution templates for comparison.
+
+```python
+import sverification
+
+# Load default templates
+brands = sverification.load_brands("statements_metadata.json")
+
+# Check available institutions
+print("Available institutions:")
+for brand_code, templates in brands.items():
+    print(f"  - {brand_code}: {len(templates)} template(s)")
+
+# Get template for specific institution
+selcom_templates = brands.get("selcom", [])
+if selcom_templates:
+    template = selcom_templates[0]  # Use first template
+    print(f"Expected PDF version for Selcom: {template.get('pdf_version')}")
+    print(f"Expected creator: {template.get('creator')}")
+```
+
+**Returns**: Dictionary mapping institution codes to template lists
+
+### 6. `compare_fields()` - Field-by-Field Comparison
+
+**Purpose**: Compares extracted metadata against expected template.
+
+```python
+import sverification
+
+# Extract metadata and load templates
+metadata = sverification.extract_all("statement.pdf")
+brands = sverification.load_brands("statements_metadata.json")
+company = sverification.get_company_name("statement.pdf")
+
+# Get expected template
+expected = brands.get(company.lower(), [{}])[0]
+
+# Compare fields
+results, score = sverification.compare_fields(metadata, expected)
+
+print(f"Overall Score: {score:.1f}%")
+print("\nField-by-field results:")
+
+for field_name, expected_val, actual_val, is_match in results:
+    status = "✓ PASS" if is_match else "✗ FAIL"
+    print(f"{status} {field_name}")
+    print(f"  Expected: {expected_val}")
+    print(f"  Actual:   {actual_val}")
+    print()
+```
+
+**Returns**: Tuple of (results_list, percentage_score)
+- `results_list`: List of tuples (field, expected, actual, match_bool)
+- `percentage_score`: Float between 0-100
+
+## 🔄 Common Workflows
+
+### Batch Processing Multiple Files
+
+```python
+import sverification
+import os
+
+def process_directory(pdf_directory):
+    """Process all PDFs in a directory"""
+    results = []
+    
+    for filename in os.listdir(pdf_directory):
+        if filename.endswith('.pdf'):
+            pdf_path = os.path.join(pdf_directory, filename)
+            
+            try:
+                result = sverification.verify_statement_verbose(pdf_path)
+                results.append({
+                    'file': filename,
+                    'brand': result['detected_brand'],
+                    'score': result['verification_score']
+                })
+                print(f"✓ {filename}: {result['verification_score']:.1f}%")
+            except Exception as e:
+                print(f"✗ {filename}: Error - {e}")
+    
+    return results
+
+# Process all PDFs in a folder
+results = process_directory("./statements/")
+```
+
+### Custom Analysis
+
+```python
+import sverification
+
+def analyze_statement_quality(pdf_path):
+    """Analyze statement quality indicators"""
+    metadata = sverification.extract_all(pdf_path)
+    company = sverification.get_company_name(pdf_path)
+    
+    issues = []
+    
+    # Check for multiple EOF markers (potential tampering)
+    if metadata['eof_markers'] > 1:
+        issues.append("Multiple EOF markers detected")
+    
+    # Check for date inconsistencies
+    if metadata['creationdate'] != metadata['moddate']:
+        issues.append("Creation and modification dates differ")
+    
+    # Check for unknown institution
+    if company == "unknown":
+        issues.append("Institution not recognized")
+    
+    return {
+        'company': company,
+        'issues': issues,
+        'metadata': metadata
+    }
+
+# Analyze a statement
+analysis = analyze_statement_quality("statement.pdf")
+print(f"Institution: {analysis['company']}")
+if analysis['issues']:
+    print("⚠️  Issues found:")
+    for issue in analysis['issues']:
+        print(f"  - {issue}")
+else:
+    print("✓ No issues detected")
+```
+
+## 🏦 Supported Institutions
+
+Banks: ABSA, CRDB, DTB, Exim, NMB, NBC, TCB, UBA  
+Mobile Money: Airtel, Tigo, Vodacom, Halotel, Selcom  
+Others: Azam Pesa, PayMaart, and more...
+
+## 🧪 Testing
+
+```bash
+# Run tests
+pytest
+
+# Run with coverage
+pytest --cov=sverification
+```
+
+## 📄 License
+
+Proprietary software licensed under Black Swan AI Global. See [LICENSE](LICENSE) for details.
