@@ -1,0 +1,22 @@
+global
+  master-worker
+  log stdout format raw local0
+  stats socket /var/run/haproxy.sock mode 666 expose-fd listeners level user
+  pidfile {{ pid_file }}
+
+defaults
+  log global
+  timeout connect 5s
+  timeout client  10s
+  timeout server  10s
+
+frontend magnum
+  bind {{ bind }}:{{ port }}
+  tcp-request inspect-delay 5s
+  tcp-request content accept if { req.ssl_hello_type 1 }
+  use_backend %[req.ssl_sni,lower]
+
+{% for cluster in clusters -%}
+backend {{ cluster.name }}.magnum-system
+  server apiserver {{ cluster.internal_ip }}:6443 namespace {{ cluster.namespace }} check
+{% endfor %}

@@ -1,0 +1,32 @@
+#!/bin/bash -e
+
+# Copyright (c) 2023 VEXXHOST, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License. You may obtain
+# a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+
+RELEASES=(
+  "v1.23"
+  "v1.24"
+  "v1.25"
+)
+
+# Loop over all of the releases and get the latest patch release
+for RELEASE in ${RELEASES[@]}; do
+  LATEST_TAG=$(gh release list --repo kubernetes/kubernetes | grep ${RELEASE} | head -1 | awk '{ print $2 }')
+
+  magnum-cluster-api-image-builder --version ${LATEST_TAG}
+  openstack object create --name ubuntu-2004-${LATEST_TAG}.qcow2 magnum-capi /tmp/image-builder-*/images/capi/output/ubuntu-2004-kube-${LATEST_TAG}/ubuntu-2004-kube-${LATEST_TAG}
+
+  LINE="* [${LATEST_TAG}](https://object-storage.public.mtl1.vexxhost.net/swift/v1/a91f106f55e64246babde7402c21b87a/magnum-capi/ubuntu-2004-${LATEST_TAG}.qcow2)"
+  sed -i "s%* \[${RELEASE}.*%${LINE}%g" README.md
+done
