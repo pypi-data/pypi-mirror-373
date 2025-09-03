@@ -1,0 +1,86 @@
+name: build_and_test_biomesh
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 3 * * *"
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install libglu
+        run: sudo apt install -y libglu1-mesa
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -e .
+      - name: Test with pytest
+        run: |
+          pytest
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+      - name: Install libglu
+        run: sudo apt install -y libglu1-mesa
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -e .
+      - name: Generate Coverage report
+        run: |
+          pytest --cov=./ --cov-report=xml
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@v2
+
+  version_check:
+    runs-on: ubuntu-latest
+    if: ${{ github.ref != 'refs/heads/main' || ( github.event_name == 'push' && github.ref == 'refs/heads/main' )}}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Check Version
+        run: |
+          VERSION=$(sed -n 's/^ *version.*=.*"\([^"]*\)".*/\1/p' pyproject.toml)
+          echo Version is $VERSION
+          if pip install biomesh==$VERSION ; then echo Version does already exist; exit 1; else echo Version is unique; fi
+
+  publish_pypi:
+    runs-on: ubuntu-latest
+    needs: ["build_and_test", "version_check"]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+      - name: Build package
+        run: python -m build
+      - name: Publish package
+        uses: pypa/gh-action-pypi-publish@27b31702a0e7fc50959f5ad993c78deac1bdfc29
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
