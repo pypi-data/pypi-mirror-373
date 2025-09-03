@@ -1,0 +1,88 @@
+# powerplan (v1.2.0)
+
+Simple Windows-only Python package to read your current power plan (name and GUID) and switch to one of the standard Windows power plans using `powercfg`.
+
+## Features
+
+- Get the GUID of the active Windows power plan
+- Get the name of the active Windows power plan
+- Switch the power plan to Power saver, Balanced, or High performance
+- Recognizes Ultimate Performance and the Atlas Power Scheme when active (read-only detection)
+
+## Requirements
+
+- Windows (10/11)
+- Python 3.0+
+- `powercfg` available on PATH (comes with Windows)
+
+## Installation
+
+From PyPI:
+
+```bash
+pip install powerplan
+```
+
+From source (local wheel):
+
+```bash
+python3 setup.py sdist bdist_wheel
+pip install dist/powerplan-{VERSION}-py3-none-any.whl 
+```
+
+## Usage
+
+```py
+import powerplan
+
+# Read current plan
+name = powerplan.get_current_scheme_name()
+guid = powerplan.get_current_scheme_guid()
+print(name, guid)
+
+# Change plan
+powerplan.change_current_scheme_to_powersaver()
+powerplan.change_current_scheme_to_balanced()
+powerplan.change_current_scheme_to_high()
+```
+
+## API
+
+- `get_current_scheme_name() -> str`
+  - Returns the name of the currently active power plan.
+- `get_current_scheme_guid() -> str`
+  - Returns the GUID of the currently active power plan.
+- `change_current_scheme_to_powersaver() -> bool`
+- `change_current_scheme_to_balanced() -> bool`
+- `change_current_scheme_to_high() -> bool`
+  - Current behavior: returns `True` if the subprocess call did not raise an exception, and `False` only if an exception occurred (e.g., `powercfg` not found). The implementation does not check the `powercfg` exit code, so a failed switch (non-zero return code) may still return `True`.
+
+Notes:
+- Detection supports the standard plan GUIDs:
+  - Power saver: `a1841308-3541-4fab-bc81-f71556f20b4a`
+  - Balanced: `381b4222-f694-41f0-9685-ff5bb260df2e`
+  - High performance: `8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c`
+  - Ultimate performance: `e9a42b02-d5df-448d-aa00-03f14749eb61`
+  - Atlas Power Scheme: `11111111-1111-1111-1111-111111111111`
+- The active plan is determined by running `powercfg -getactivescheme`.
+- Plan information is captured at import time. If the system power plan changes after importing the module, restart the Python process or re-import the module to refresh values.
+
+### Verifying a switch
+If you need to confirm a switch occurred, either:
+- Check the return code yourself (update the code to use `subprocess.run(..., check=True)`), or
+- Re-query after switching:
+
+```py
+powerplan.change_current_scheme_to_balanced()
+# Re-import or reload to refresh cached values
+import importlib; importlib.reload(powerplan)
+print(powerplan.get_current_scheme_name())
+```
+
+## License
+
+MIT
+
+## Author
+
+Made in Germany by Temal - https://colinm.de/
