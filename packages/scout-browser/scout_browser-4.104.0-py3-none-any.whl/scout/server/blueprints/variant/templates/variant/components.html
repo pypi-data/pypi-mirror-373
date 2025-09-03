@@ -1,0 +1,553 @@
+{% from "cases/chanjo2_form.html" import chanjo2_report_form %}
+{% from "variant/buttons.html" import variant_tag_button, variant_tier_button, variant_escat_button, dismiss_variant_button, mosaic_variant_button %}
+{% from "variants/utils.html" import compounds_table %}
+{% from "variant/buttons.html" import reviewer_button, splice_junctions_button %}
+{% from "variant/utils.html" import igv_track_selection  %}
+
+{% macro clinsig_table(variant) %}
+  {% if variant.clinsig_human %}
+    <table id='clinsig_table' class="table table-bordered table-sm">
+      <thead>
+        <tr class="active">
+          <th>CLINSIG</th>
+          <th>Accession</th>
+          <th>Revstat</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for clinsig in variant.clinsig_human %}
+          <tr>
+            <td>{{ clinsig.human }} {% if clinsig.low_penetrance %}(low penetrance){% endif %}</td>
+            {% if clinsig.accession %}
+              <td><a href="{{ clinsig.link }}" target="_blank">{{ clinsig.accession }}</a></td>
+            {% else %}
+              <td>n.a.</td>
+            {% endif %}
+            <td><div class="text-break">{{ clinsig.revstat or "n.a." }}</div></td>
+          </tr>
+        {% else %}
+          <i>No annotations</i>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  {% if variant.clnsig_onc %}
+    <table id='clinsig_table' class="table table-bordered table-sm">
+      <thead>
+        <th>Oncogenicity</th>
+        <th>Disease name</th>
+        <th>Revstat</th>
+      </thead>
+      <tbody>
+        {% for classif in variant.clnsig_onc %}
+          <tr>
+            <td>{{ classif.value|capitalize }}</td>
+            <td>{{ classif.dn|replace("_", " ")|replace(",", ", ") }}</td>
+            <td>{{ classif.revstat }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% endmacro %}
+
+{% macro acmg_classification_item(variant, data) %}
+  {% set current_variant = (data.variant_specific == variant._id) %}
+  <li class="list-group-item {{ 'list-group-item-info' if current_variant }}">
+    <div class="d-flex">
+      <span>
+        {% if variant.category in ["snv", "cancer"] %}
+          <a href="{{ url_for('variant.evaluation', evaluation_id=data._id) }}">
+            {{ data.classification.label }}
+          </a>
+        {% else %}
+          {{ data.classification.label }}
+        {% endif %}
+        <span class="badge bg-info">{{ data.classification.short }}</span>
+      </span>
+      <span>
+        {% if not current_variant %}
+          <small>{{ data.case.display_name }}</small>
+        {% endif %}
+      </span>
+    </div>
+    <span>
+      <small class="text-muted">
+      {{ data.user_name }} on {{ data.created_at.date() }}
+      {% if current_variant %}
+          <form action="{{ url_for('variant.evaluation', evaluation_id=data._id) }}" method="POST" style="display: inline-block;">
+            <button class="btn btn-xs btn-link" >Delete</button>
+          </form>
+          {% if data.criteria %}
+            <a class="btn btn-xs btn-link" href="{{ url_for('variant.evaluation', evaluation_id=data._id, edit=True) }}" data-bs-toggle="tooltip" title="Editing this classification will result in a new classification">Edit</a>
+          {% endif %}
+      {% endif %}
+      </small>
+    </span>
+  </li>
+{% endmacro %}
+
+{% macro alignments(institute, case, variant, current_user, config, igv_tracks, has_rna_tracks=False) %}
+  <ul class="list-group">
+    <li class="list-group-item d-flex justify-content-between">
+      {% if variant.is_mitochondrial and not case.mt_bams %}
+        <span data-bs-toggle="tooltip" title="Alignment file(s) missing">
+          <a href="{{url_for('alignviewers.igv', institute_id=institute['_id'], case_name=case['display_name'], variant_id=variant['_id'])}}"
+             target="_blank"
+             class="btn btn-secondary btn-sm text-white disabled" aria-disabled="true"><span class="fa fa-times-circle fa-fw me-1"></span>IGV mtDNA
+          </a>
+        </span>
+      {% elif not case.bam_files and not variant.is_mitochondrial %}
+        <span data-bs-toggle="tooltip" title="Alignment file(s) missing">
+          <a href="{{url_for('alignviewers.igv', institute_id=institute['_id'], case_name=case['display_name'], variant_id=variant['_id'])}}"
+            target="_blank"
+            class="btn btn-secondary btn-sm text-white disabled"
+            aria-disabled="true"><span class="fa fa-times-circle fa-fw me-1"></span>IGV gDNA
+          </a>
+        </span>
+      {% else %}
+        <span>
+          <a href="{{url_for('alignviewers.igv', institute_id=institute['_id'], case_name=case['display_name'], variant_id=variant['_id'])}}"
+            target="_blank"
+            class="btn btn-secondary btn-sm text-white"><span class="fa fa-magnifying-glass fa-fw me-1"></span>
+            IGV {% if variant.is_mitochondrial %}mt{% else %}g{% endif %}DNA
+          </a>
+        </span>
+      {% endif %}
+      {% if variant.category == "str" %}
+        <div class="ms-1">
+          {{ reviewer_button(case,variant,case_groups,institute._id) }}
+        </div>
+      {% endif %}
+      {% if has_rna_tracks %}
+        <div class="ms-1">
+          {{ splice_junctions_button(institute._id, case, variant._id) }}
+        </div>
+      {% endif %}
+      {% if variant.alamut_link %}
+        <div class="ms-1">
+          <a href="{{ variant.alamut_link }}" class="btn btn-sm btn-secondary" target="_blank" data-bs-toggle="tooltip" title="Alamut Visual (Plus) - Open variant - with genome g. coordinate">Alamut g.</a>
+        </div>
+      {% endif %}
+      {% for gene in variant.genes %}
+        <div class="ms-1">
+        {% if gene.alamut_link %}
+          <a href="{{ gene.alamut_link }}" class="btn btn-sm btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank" data-bs-toggle="tooltip" title="Alamut Visual (Plus) - Open variant - with gene transcript c. coordinate">Alamut {{ gene.common.hgnc_symbol if gene.common else gene.hgnc_id }} c.</a>
+        {% endif %}
+        </div>
+      {% endfor %}
+    </li>
+    <li class="list-group-item">
+      <div>
+        {{ igv_track_selection(igv_tracks, current_user) }}
+      </div>
+    </li>
+    {% if (case.chanjo_coverage and config.chanjo_report) or case.chanjo2_coverage %}
+      <li class="list-group-item d-flex justify-content-between">
+        {{ gene_coverage(institute, variant, case, config) }}
+      </li>
+    {% endif %}
+  </ul>
+{% endmacro %}
+
+{% macro gene_coverage(institute, variant, case, config) %}
+  {% if case.chanjo_coverage and config.chanjo_report %}
+    <div class="d-flex flex-wrap ms-1" data-bs-toggle="tooltip" title="Chanjo coverage reports">
+      {% for gene in variant.genes %}
+        <a class="btn btn-sm btn-secondary text-white" rel="noopener noreferrer" target="_blank" href="{{ url_for('report.gene', gene_id=gene.hgnc_id, sample_id=variant.samples|map(attribute='sample_id')|list) }}">
+          Gene coverage: {{ gene.common.hgnc_symbol if gene.common else gene.hgnc_id }}
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+  {% if case.chanjo2_coverage %}
+    <div class="d-flex flex-wrap ms-1" data-bs-toggle="tooltip" title="Chanjo2 coverage reports">
+        {% for gene in variant.genes %}
+          <div class="btn-group" style="display:flex">
+            {{ chanjo2_report_form(institute, case, gene.hgnc_symbol if gene.hgnc_symbol else gene.hgnc_id, 'overview', gene.hgnc_id, "Gene coverage " ~ (gene.hgnc_symbol if gene.hgnc_symbol else gene.hgnc_id), "btn btn-sm btn-secondary text-white") }} <!--chanjo2 genes overview -->
+          <span class="btn complete-coverage-indicator align-items-center btn-info text-white btn-sm" style="display:flex" id="coverage-indicator-{{gene.hgnc_id}}-button" data-bs-toggle="tooltip" data-bs-placement="bottom" data-loading-text="Checking completeness..." title="Checking completeness..."><span style="display:flex" id="coverage-indicator-{{gene.hgnc_id}}-icon" class='align-self-center blink_me fa-solid fa-circle-question'></span><span style="display:flex" id="coverage-indicator-{{gene.hgnc_id}}-text" class='align-self-center'>Checking</span></span>
+          </div>
+        {% endfor %}
+    </div>
+  {% endif %}
+{% endmacro %}
+
+{% macro acmg_form(institute, case, variant, ACMG_OPTIONS, selected=None) %}
+  <form action="{{ url_for('variant.variant_update', institute_id=institute._id, case_name=case.display_name, variant_id=variant._id) }}" method="POST">
+    <div class="d-flex justify-content-between">
+      {% for option in ACMG_OPTIONS %}
+        <button class="btn btn-{{ option.color if (option.code == selected or not selected) else 'outline-secondary' }} form-control {{ 'me-1' if not loop.last }}" name="acmg_classification" value="{{ option.code }}" title="{{ option.label }}">
+          {{ option.short }}
+        </button>
+      {% endfor %}
+    </div>
+  </form>
+{% endmacro %}
+
+{% macro ccv_classification_item(variant, data) %}
+  {% set current_variant = (data.variant_specific == variant._id) %}
+  <li class="list-group-item {{ 'list-group-item-info' if current_variant }}">
+    <div class="d-flex">
+      <span>
+        <a href="{{ url_for('variant.ccv_evaluation', evaluation_id=data._id) }}">
+          {{ data.ccv_classification.label }}
+        </a>
+        <span class="badge bg-info">{{ data.ccv_classification.short }}</span>
+      </span>
+      <span>
+        {% if not current_variant %}
+          <small>{{ data.case.display_name }}</small>
+        {% endif %}
+      </span>
+    </div>
+    <span>
+      <small class="text-muted">
+      {{ data.user_name }} on {{ data.created_at.date() }}
+      {% if current_variant %}
+          <form action="{{ url_for('variant.ccv_evaluation', evaluation_id=data._id) }}" method="POST" style="display: inline-block;">
+            <button class="btn btn-xs btn-link" >Delete</button>
+          </form>
+          {% if data.ccv_criteria %}
+            <a class="btn btn-xs btn-link" href="{{ url_for('variant.ccv_evaluation', evaluation_id=data._id, edit=True) }}" data-bs-toggle="tooltip" title="Editing this classification will result in a new classification">Edit</a>
+          {% endif %}
+      {% endif %}
+      </small>
+    </span>
+  </li>
+{% endmacro %}
+
+
+{% macro ccv_form(institute, case, variant, CCV_OPTIONS, selected=None) %}
+  <label class="mt-3" data-bs-toggle="tooltip" title="Horak et al 2022"><a href="https://doi.org/10.1016/j.gim.2022.01.001" rel="noopener noreferrer" target="_blank" style="color: inherit;  text-decoration: inherit;">ClinGen-CGC-VICC Oncogenicity classification</a></label>
+  <form action="{{ url_for('variant.variant_update', institute_id=institute._id, case_name=case.display_name, variant_id=variant._id) }}" method="POST">
+    <div class="d-flex justify-content-between">
+      {% for option in CCV_OPTIONS %}
+      <button class="btn btn-{{ option.color if (option.code == selected or not selected) else 'outline-secondary' }} form-control {{ 'me-1' if not loop.last }}" name="ccv_classification" value="{{ option.code }}" title="{{ option.label }}">
+          {{ option.short }}
+        </button>
+      {% endfor %}
+    </div>
+  </form>
+{% endmacro %}
+
+{% macro panel_classify_sv(variant, institute, case, ACMG_OPTIONS, evaluations) %}
+  <div class="mt-3">
+    ACMG (INDEL) <a href="https://www.acmg.net/docs/standards_guidelines_for_the_interpretation_of_sequence_variants.pdf"  rel="noopener noreferrer" target="_blank" style="text-decoration: inherit;" data-bs-toggle="tooltip" title="Richards et al 2015">classification</a>
+  </div>
+  <div>
+    {{ acmg_form(institute, case, variant, ACMG_OPTIONS, variant.acmg_classification.code if variant.acmg_classification) }}
+  </div>
+  <div class="mt-3">
+    ACMG SV classification <a href="https://pubmed.ncbi.nlm.nih.gov/31690835/" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">guidelines</a> & <a href="https://cnvcalc.clinicalgenome.org/cnvcalc/" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">guide</a>.
+  </div>
+  {% if evaluations %} <!-- scrollable previous ACMG evaluations div-->
+    <div class="list-group mt-3" style="max-height:200px;overflow-y: scroll;">
+      {% for evaluation in evaluations %}
+        {{ acmg_classification_item(variant, evaluation) }}
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endmacro %}
+
+{% macro panel_classify(variant, institute, case, ACMG_OPTIONS, CCV_OPTIONS, manual_rank_options, cancer_tier_options, escat_tier_options, dismiss_variant_options, mosaic_variant_options, evaluations, ccv_evaluations) %}
+  <div class="card panel-default">
+    <div class="panel-heading">Classify</div>
+    <div class="card-body" style="margin-top: -30px">
+      {{ variant_tag_button(variant, institute, case, manual_rank_options) }}
+      {% if case.track == "cancer" %}
+       {{ variant_tier_button(variant, institute, case, cancer_tier_options,) }}
+       {{ variant_escat_button(variant, institute, case, escat_tier_options) }}
+       {% endif %}
+        {{ dismiss_variant_button(variant, institute, case, dismiss_variant_options) }}
+      {% if case.track != "cancer" %}
+        {{ mosaic_variant_button(variant, institute, case, mosaic_variant_options) }}
+      {% endif %}
+      ACMG <a href="https://www.acmg.net/docs/standards_guidelines_for_the_interpretation_of_sequence_variants.pdf"  rel="noopener noreferrer" target="_blank" style="text-decoration: inherit;" data-bs-toggle="tooltip" title="Richards et al 2015">classification</a>
+      {{ acmg_form(institute, case, variant, ACMG_OPTIONS, variant.acmg_classification.code if variant.acmg_classification) }}
+      <div class="mt-3">
+        <a href="{{ url_for('variant.variant_acmg', institute_id=institute._id, case_name=case.display_name, variant_id=variant._id) }}" class="btn btn-outline-secondary form-control">Classify</a>
+      </div>
+      {% if evaluations %} <!-- scrollable previous ACMG evaluations div-->
+        <div class="list-group mt-3" style="max-height:200px;overflow-y: scroll;">
+          {% for evaluation in evaluations %}
+            {{ acmg_classification_item(variant, evaluation) }}
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% if case.track == "cancer" %}
+      {{ ccv_form(institute, case, variant, CCV_OPTIONS, variant.ccv_classification.code if variant.ccv_classification) }}
+      <div class="mt-3">
+        <a href="{{ url_for('variant.variant_ccv', institute_id=institute._id, case_name=case.display_name, variant_id=variant._id) }}" class="btn btn-outline-secondary form-control">Classify</a>
+      </div>
+      {% if ccv_evaluations %} <!-- scrollable previous ClinGen-CGC-VICC evaluations div-->
+        <div class="list-group mt-3" style="max-height:200px;overflow-y: scroll;">
+          {% for ccv_evaluation in ccv_evaluations %}
+            {{ ccv_classification_item(variant, ccv_evaluation) }}
+          {% endfor %}
+        </div>
+      {% endif %}
+     {% endif %}
+    </div>
+  </div>
+{% endmacro %}
+
+
+{% macro matching_variants(managed_variant, causatives, matching_manual_ranked=None, matching_tiered=None, matching_escat_tiered=None) %}
+  {% if causatives %}
+    <div class="card mt-3">
+      <div class="card-body mt-1 ms-3 mb-1" style="padding: 0;">
+        Matching causatives from other cases:&nbsp;
+        {% for other_variant in causatives %}
+          <a href="{{ url_for('variant.variant',
+                              institute_id=other_variant.institute_id,
+                              case_name=other_variant.case_display_name,
+                              variant_id=other_variant._id) }}" target="_blank">
+            {{ other_variant.case_display_name }}
+          </a>&nbsp;
+          {% if other_variant.partial %}
+            <span class="badge bg-warning" data-bs-toggle="tooltip" title="Partial causative variants explain part of the case phenotype">partial</span>
+          {% endif %}
+        {% endfor %}
+      </div> <!--end of card body-->
+    </div><!--end of card-->
+  {% endif %}
+  {% if managed_variant %}
+    <div class="card mt-3">
+      <div class="card-body mt-1 ms-3 mb-1" style="padding: 0;">
+        Matching managed variant:
+        <div class="row">
+          <div class="col-2">
+            {{ managed_variant.display_id }}
+          </div>
+          <div class="col-10">
+            {{ managed_variant.description }}
+          </div>
+        </div>
+      </div> <!--end of card body-->
+    </div><!--end of card-->
+  {% endif %}
+  {% if not managed_variant and not causatives %}
+    <div class="card mt-3">
+      <div class="card-body mt-1 ms-3" style="padding: 0;">
+        No matching causative or managed variants
+      </div> <!--end of card body-->
+    </div><!--end of card-->
+  {% endif %}
+
+  {% if matching_manual_ranked %}
+    <div class="card">
+      <div class="card-body mt-1 ms-3 mb-1" style="padding: 0;">
+        Matching manually ranked variants:&nbsp;
+        {% for manual_rank, manual_rank_info in matching_manual_ranked.items() %}
+          <a style="padding: 0;" class="btn btn-{{manual_rank_info.label_class}} btn-small" data-bs-toggle="collapse" href="#collapse_mr{{manual_rank}}" role="button" aria-expanded="false" aria-controls="#collapse_mr{{manual_rank}}">
+            <span class="collapse-button-icon me-1"></span>{{manual_rank_info.label}} ({{manual_rank_info.links|length}}x)
+          </a>
+          <div class="collapse" id="collapse_mr{{manual_rank}}">
+            <div>
+              {{manual_rank_info.label}}:
+              {% for link in manual_rank_info["links"] %}
+                {% set match_case = link.split('/') %}
+                  <a style="padding: 0;" href="{{link}}" target="_blank">{{match_case[4]}}</a>&nbsp;
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  {% for match, name in [[matching_tiered, "AMP"], [matching_escat_tiered, "ESCAT"]] %}
+    {% if match%}
+    <div class="card">
+      <div class="card-body mt-1 ms-3 mb-1" style="padding: 0;">
+        Matching {{name}} tiered:&nbsp;
+        {% for tier, tiered_info in match.items() %}
+          <a style="padding: 0;" class="btn btn-{{tiered_info.label_class}} btn-xs" data-bs-toggle="collapse" href="#collapse_{{tier}}" aria-expanded="false" aria-controls="collapse_{{tier}}">
+            <span class="collapse-button-icon me-1"></span>{{tier}} ({{tiered_info.links|length}}x)
+          </a>
+          <div class="collapse" id="collapse_{{tier}}">
+            <div>
+              {{tier}}:
+              {% for link in tiered_info["links"] %}
+                {% set match_case = link.split('/') %}
+                  <a style="padding: 0;" href="{{link}}" target="_blank">{{match_case[4]}}</a>&nbsp;
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  {% endfor %}
+
+{% endmacro %}
+
+{% macro compounds_panel(institute, case, variant) %}
+  <div class="card panel-default">
+    <div class="panel-heading">Compounds (top 20)</div>
+    <div class="card-body">
+      {{ compounds_table(institute, case, variant.compounds[:20], is_popover=false) }}
+    </div>
+  </div>
+{% endmacro %}
+
+
+{% macro external_links(case, variant, cancer, str) %}
+  <div class="panel panel-default">
+    {% for gene in variant.genes %}
+      <div class="panel-heading">
+        External links: {{ gene.common.hgnc_symbol if gene.common else gene.hgnc_id }}
+      </div>
+      <div class="panel-body">
+          <a href="{{ gene.ensembl_link }}" class="btn btn-secondary text-white" rel="noopener" oreferrerpolicy="no-referrer" target="_blank">Ensembl</a>
+          <a href="{{ gene.hpa_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">HPA</a>
+          <a href="{{ gene.string_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">STRING</a>
+          <a href="{{ gene.genemania_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">GENEMANIA</a>
+          <a href="{{ variant.ucsc_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">UCSC</a>
+          {% if gene.entrez_link %}
+            <a href="{{ gene.entrez_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">Entrez</a>
+          {% endif %}
+          {% if gene.pubmed_link %}
+            <a href="{{ gene.pubmed_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">PubMed</a>
+          {% endif %}
+          {% if gene.decipher_link %}
+            <a href="{{ gene.decipher_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">Decipher</a>
+          {% endif %}
+          <a href="{{ gene.reactome_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">Reactome</a>
+          <a href="{{ gene.expression_atlas_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">Expr. Atlas</a>
+          <a href="{{ gene.clingen_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">ClinGen</a>
+          <a href="{{ gene.gencc_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">GenCC</a>
+          <a href="{{ gene.ppaint_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">Protein Paint</a>
+          {% if variant.is_mitochondrial %}
+            <a href="{{ variant.mitomap_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">MitoMap</a>
+          {% endif %}
+          {% if variant.hmtvar_variant_id %}
+            <a href="{{ variant.hmtvar_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">HmtVar</a>
+          {% endif %}
+          {% if gene.tp53_link %}
+            <a href="{{ gene.tp53_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">MutanTP53</a>
+          {% endif %}
+          {% if gene.iarctp53_link %}
+            <a href="{{ gene.iarctp53_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">TP53 Database</a>
+          {% endif %}
+          {% if cancer %}
+            <a href="{{ gene.cbioportal_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">cBioPortal</a>
+            <a href="{{ gene.oncokb_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">OncoKB</a>
+            <a href="{{ gene.civic_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">CIViC</a>
+            <a href="{{ gene.ckb_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">CKB</a>
+            <a href="{{ gene.cancer_hotspots_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">Cancer Hotspots</a>
+          {% endif %}
+          {% if str %}
+            <a href="{{ gene.stripy_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">STRipy</a>
+            <a href="{{ gene.gnomad_str_link}}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">GnomAD STR</a>
+          {% endif %}
+          <a href="{{ gene.panelapp_link }}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">PanelApp</a>
+          <a href="{{ url_for('variant.marrvel_link', build=case.genome_build or '37', variant_id=variant._id)}}" class="btn btn-secondary text-white" rel="noopener" referrerpolicy="no-referrer" target="_blank">MARRVEL</a>
+      </div>
+    {% endfor %}
+  </div>
+{% endmacro %}
+
+{% macro external_stylesheets() %}
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.14.0-beta3/css/bootstrap-select.min.css" integrity="sha512-g2SduJKxa4Lbn3GW+Q7rNz+pKP9AWMR++Ta8fgwsZRCUsawjPvF/BxSMkGS61VsR9yinGoEgrHPGPn2mrj8+4w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="https://cdn.datatables.net/v/bs5/dt-1.12.1/datatables.min.css" integrity="sha512-bfZ6SJK+x5kn87VNNCKAhhLy8P/cTuVML3N/z6k7OJWo0mkU4EA7UdRey6QjqiihOpbZ0TT4vdTddbplLX6YEg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+{% endmacro %}
+
+{% macro external_scripts() %}
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.3.8/purify.min.js" integrity="sha512-M72KfQy4kPuLYC6CeTrN0eA17U1lXEMrr5qEJC/40CLdZGC3HpwPS0esQLqBHnxty2FIcuNdP9EqwSOCLEVJXQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.14.0-beta3/js/bootstrap-select.min.js" integrity="sha512-yrOmjPdp8qH8hgLfWpSFhC/+R9Cj9USL8uJxYIveJZGAiedxyIxwNw4RsLDlcjNlIRR4kkHaDHSmNHAkxFTmgg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdn.datatables.net/v/bs5/dt-1.12.1/datatables.min.js" integrity="sha512-4qmoJLDdNz51vzA75oiktlu1NkJgOJKkDDCrSyg3joGHi8W0YR6jqlivtTwql84y7Q0wjbQtZMe2obI7pQ+vjQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+{% endmacro %}
+
+{% macro variant_scripts() %}
+  <script>
+     var triggerGenesTabList = [].slice.call(document.querySelectorAll('#nav-genes-tab'))
+      triggerGenesTabList.forEach(function (triggerEl) {
+        var tabTrigger = new bootstrap.Tab(triggerEl)
+
+        triggerEl.addEventListener('click', function (event) {
+        event.preventDefault()
+        tabTrigger.show()
+      })
+    })
+
+    var triggerTransTabList = [].slice.call(document.querySelectorAll('#nav-transcripts-tab'))
+      triggerTransTabList.forEach(function (triggerEl) {
+        var tabTrigger = new bootstrap.Tab(triggerEl)
+
+        triggerEl.addEventListener('click', function (event) {
+        event.preventDefault()
+        tabTrigger.show()
+      })
+    })
+
+   var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+   var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+      return new bootstrap.Tooltip(tooltipTriggerEl, {container: 'body'})
+    })
+
+    var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'))
+    var popoverList = popoverTriggerList.map(function (popoverTriggerEl) {
+      return new bootstrap.Popover(popoverTriggerEl, { sanitizeFn: function (content) {
+          return DOMPurify.sanitize(content)
+        },
+        container: 'body'})
+    })
+
+    // Tab hidden thead are not always drawn well, as they have no size. Force adjust and redraw on show.
+    $('a[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
+      $($.fn.dataTable.tables(true)).DataTable()
+      .columns.adjust().draw();
+    });
+
+    $('select[multiple]').selectpicker({
+      width: '100%'
+    });
+
+    $('.js-copy').click(function() {
+      var text = $(this).attr('data-copy');
+      var el = $(this);
+      copyToClipboard(text, el);
+    });
+
+    // Code from https://codepen.io/nathanlong/pen/ZpAmjv
+    function copyToClipboard(text, el) {
+      var copyTest = document.queryCommandSupported('copy');
+      var elOriginalText = el.attr('data-original-title');
+
+      if (copyTest === true) {
+        var copyTextArea = document.createElement("textarea");
+        copyTextArea.value = text;
+        document.body.appendChild(copyTextArea);
+        copyTextArea.select();
+        try {
+          var successful = document.execCommand('copy');
+          var msg = successful ? 'Copied!' : 'Whoops, not copied!';
+          el.attr('data-original-title', msg).tooltip('show');
+        } catch (err) {
+          console.log('Oops, unable to copy');
+        }
+        document.body.removeChild(copyTextArea);
+        el.attr('data-original-title', elOriginalText);
+      } else {
+        // Fallback if browser doesn't support .execCommand('copy')
+        window.prompt("Copy to clipboard: Ctrl+C or Command+C, Enter", text);
+      }
+    }
+
+    function set_scrolly_table(table_id) {
+      if (document.getElementById(table_id).rows.length > 5) {
+        $('#' + table_id).DataTable({
+          scrollY: 350,
+          stripeClasses: [],
+          scrollCollapse: true,
+          paging: false,
+          searching: false,
+          ordering: true,
+          info: false})
+      }
+    }
+
+  </script>
+{% endmacro %}

@@ -1,0 +1,168 @@
+{% extends "layout.html" %}
+{% from "overview/utils.html" import cases_search_form %}
+
+{% block top_nav %}
+  {{ super() }}
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('cases.index') }}">Institutes</a>
+  </li>
+  <li class="nav-item active d-flex align-items-center">
+    <span class="navbar-text">Dashboard</span>
+  </li>
+{% endblock %}
+
+{% block content_main %}
+  <div class="container-float mt-3">
+      <!--filter panel -->
+      <div>
+        {{ cases_search_form(dashboard_form, url_for('dashboard.index'), url_for('dashboard.index'), urlnone) }}
+        {% if total_cases == 0 %}
+          <div class="alert alert-danger mt-3">Your search didn't return any results!</div>
+        {% elif not total_cases %}
+            <div class="alert alert-info mt-3">Use the form above to restrict your search</div>
+        {% else %}
+          {{ general_stats_panels() }}
+          {{ cases_stats_panels() }}
+        {% endif %}
+      </div>
+
+  </div>
+{% endblock %}
+
+
+{% macro dashboard_search_form() %}
+<div class="card">
+  <form class="mt-3 ms-3 form-horizontal" id='form' method='POST' action="{{ url_for('dashboard.index') }}" accept-charset="utf-8">
+      <div class="row align-items-center mb-3">
+        <!--Search institute select-->
+        <div class="col-2 ms-3">
+          {{ dashboard_form.search_institute.label(class="control-label") }}
+          {{ dashboard_form.search_institute(class="form-control") }}
+        </div>
+        <!--Search type select field-->
+        <div class="col-3 ms-3">
+          {{ dashboard_form.search_type.label(class="control-label") }}
+          {{ dashboard_form.search_type(class="form-control", id="search_type") }}
+        </div>
+        <!--Search term textfield-->
+        <div class="col-4 ms-3">
+          <label class="control-label" for="search_term">Search term</label>
+          <input class="form-control" id="search_term" name="search_term" placeholder="Search term" type="text" pattern="[^<>?!=\\/]*" title="Characters ^<>?!=\/ are not allowed">
+        </div>
+        <!--Search term textfield-->
+        <div class="col-1 ms-3 mt-4">
+          {{ dashboard_form.search(class="form-control") }}
+        </div>
+      </div> <!--end of class="row align-items-center"-->
+    </form>
+  </div>
+{% endmacro %}
+
+{% macro general_stats_panels() %}
+<div class="mt-3 text-center" id="general">
+  <div class="row">
+    <div class="col-md-4">
+      <h1>Samples</h1>
+      <div>
+        <canvas id="ngsType" height="120"></canvas><br>
+        <table class="table table-sm text-start" role="presentation" aria-label="Total case count per preparation type">
+          {% for group in analysis_types %}
+            <tr>
+              <td>Total {{ group.name|upper }} samples (not cases)</td>
+              <td>{{ group.count }}</td>
+            </tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div> <!--  end of sample statistics div -->
+    <div class="col-md-4">
+      <h1>Cases</h1>
+      <div>
+          <canvas id="casesType" height="120"></canvas><br>
+          <table class="table table-sm text-start" role="presentation" aria-label="Case counts grouped by status">
+            {% for group in cases %}
+              <tr>
+                <td>Cases {{ group.status|capitalize }}: {{ group.count }}</td>
+                <td>{{(group.percent * 100)|round(1)}}%</td>
+              </tr>
+            {% endfor %}
+          </table>
+      </div>
+    </div> <!--  end of case statistics div -->
+    <div class="col-md-4">
+      <h1>Pedigree info</h1>
+      <div>
+        <canvas id="pedigreeTypes" height="120"></canvas><br>
+        <table class="table table-sm text-start" role="presentation" aria-label="Fraction of cases grouped by pedigree type">
+          {% for topic in pedigree %}
+            <tr>
+              <td>{{ topic.title }} Cases</td>
+              <td>{{ (topic.percent * 100)|round(1) }}%</td>
+            </tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div> <!--  end of pedigree info div -->
+
+  </div> <!-- end of class="row"-->
+</div>
+{% endmacro %}
+
+{% macro cases_stats_panels() %}
+<div class="mt-3 mb-1" id="cases">
+  <div class="row">
+    <div class="col-md-8">
+        <canvas id="cases-bar-horiz" height="80"></canvas>
+    </div>
+    <div class="col-md-4">
+      <table class="table table-sm text-start" role="presentation" aria-label="Cases grouped after interactions">
+        {% for topic in overview %}
+          <tr>
+            <td>{{ topic.title }} Cases: {{ topic.count }}</td>
+            <td>{{ (topic.percent * 100)|round(1) }}%</td>
+          </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{% block scripts %}
+  {{ super() }}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" integrity="sha512-NqRhTU0DQNHNUO0pTx6zPLJ11YhOqj4MRcvv0+amxJk+re07ykGhFuhMmrQpfTRAUx8nQ4EcMuX/m8cz2K8vIQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="{{ url_for('dashboard.static', filename='charts.js') }}"></script>
+  <script type="text/javascript">
+
+    // Show/hide advanced search options
+    let advSearchBlock = $('#advancesSearchOptions');
+
+    let advBlockCheckbox = $('#advanced_search');
+
+    window.onload = function(){
+      if(!advBlockCheckbox.is(':checked'))
+      advSearchBlock.hide();
+    }
+
+    advBlockCheckbox.on('click', function() {
+      if($(this).is(':checked')) {
+        advSearchBlock.show();
+      } else {
+        advSearchBlock.hide();
+      }
+    })
+
+    {% if cases %}
+      //create analysis type chart ===> general stats
+      createChart(document.getElementById("ngsType").getContext('2d'), analysisTypeData( {{analysis_types|safe }} ))
+      //create cases types chart
+      createChart(document.getElementById("casesType").getContext('2d'), casesType( {{cases[1:]|safe}} ))
+      //create pedigree info chart
+      createChart(document.getElementById("pedigreeTypes").getContext('2d'), pedigreeTypes( {{pedigree|safe}} ))
+
+      // create cases detailed stats chart ===> case stats
+      createChart(document.getElementById("cases-bar-horiz").getContext('2d'), casesDetailed( {{overview|safe}}, {{cases[0].count}} ))
+    {% endif %}
+
+  </script>
+{% endblock %}

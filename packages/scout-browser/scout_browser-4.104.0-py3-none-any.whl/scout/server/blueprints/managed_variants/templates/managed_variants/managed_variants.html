@@ -1,0 +1,435 @@
+{% extends "layout.html" %}
+
+{% import "bootstrap/wtf.html" as wtf %}
+
+{% from "variants/utils.html" import pagination_footer, pagination_hidden_div %}
+
+{% block title %}
+  {{ super() }} - Managed variants
+{% endblock %}
+
+{% block css %}
+{{ super() }}
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.14.0-beta3/css/bootstrap-select.min.css" integrity="sha512-g2SduJKxa4Lbn3GW+Q7rNz+pKP9AWMR++Ta8fgwsZRCUsawjPvF/BxSMkGS61VsR9yinGoEgrHPGPn2mrj8+4w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+{% endblock %}
+
+{% block top_nav %}
+  {{ super() }}
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('cases.index') }}">Institutes</a>
+  </li>
+   <li class="nav-item active d-flex align-items-center">
+     <span class="navbar-text">Managed variants</span>
+   </li>
+{% endblock %}
+{% block content_main %}
+
+
+<form method="POST" id="add_form" name="add_variant" action="{{url_for('managed_variants.add_managed_variant')}}" enctype="multipart/form-data">
+  <div class="container-float">
+    <div id="accordion_add" >
+       <div class="card mt-3">
+        <div class="card-header">
+          <h5>
+            <a data-bs-toggle="collapse" data-bs-parent="#accordion_add" href="#collapseAdd">
+                Add variant
+            </a>
+          </h5>
+        </div>
+        <div id="collapseAdd" class="panel-collapse collapse">
+          <div class="card-body" id="add_variant_category">{{ add_variant_form() }}</div>
+        </div>
+       </div>
+    </div>
+  </div>
+</form>
+
+<form method="POST" id="load_form" action="{{url_for('managed_variants.upload_managed_variants')}}" enctype="multipart/form-data">
+  <div class="container-float">
+    <div id="accordion_load" >
+       <div class="card mt-3">
+        <div class="card-header">
+          <h5>
+            <a data-bs-toggle="collapse" data-bs-parent="#accordion_load" href="#collapseLoad">
+                Load variants
+            </a>
+          </h5>
+        </div>
+        <div id="collapseLoad" class="panel-collapse collapse">
+          <div class="card-body">{{ load_variant_form() }}</div>
+        </div>
+       </div>
+    </div>
+  </div>
+</form>
+
+<form method="POST" id="filters_form" action="{{url_for('managed_variants.managed_variants')}}" enctype="multipart/form-data">
+  <div class="container-float">
+    {{ pagination_hidden_div(page) }}
+    <div id="accordion" >
+       <div class="card mt-3">
+        <div class="card-header">
+          <h5>
+            <a data-bs-toggle="collapse" data-parent="#accordion" href="#collapseFilters">
+                Filters
+            </a>
+          </h5>
+        </div>
+        <div id="collapseFilters" class="panel-collapse collapse">
+          <div class="card-body">{{ filter_variants_form() }}</div>
+        </div>
+       </div>
+    </div>
+  </div>
+</form>
+
+<div class="table-responsive" style="padding-top: 25px;">
+  <table class="table table-bordered table-hover">
+    <thead class="thead table-light">
+      <tr>
+        <th style="width:10%">Chr</th>
+        <th style="width:10%">Start</th>
+        <th style="width:10%">End</th>
+        <th style="width:10%">Ref</th>
+        <th style="width:10%">Alt</th>
+        <th style="width:10%">Category</th>
+        <th style="width:10%">Kind</th>
+        <th style="width:30%">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for variant in managed_variants %}
+        <tr>
+          <td>{{ variant.chromosome }}</td>
+          <td>{{ variant.position }}</td>
+          <td>{{ variant.end }}</td>
+          <td>{{ variant.reference }}</td>
+          <td>{{ variant.alternative }}</td>
+          <td>{{ variant.category }}</td>
+          <td>{{ variant.sub_category }}</td>
+          <td>
+            {{ variant.description }}
+            <div class="float-end">
+              <form method="POST" action="{{ url_for('managed_variants.remove_managed_variant', variant_id=variant.managed_variant_id) }}">
+                  <button id="{{variant._id}}" type="button" data-bs-toggle="collapse" href="#modifydiv_{{variant._id}}" aria-expanded="false" aria-controls="modifydiv_{{variant._id}}" class="btn btn-warning btn-xs">
+                    <span class="fa fa-pen-square"></span>
+                  </button>
+                  <button id="remove_{{variant._id}}" type="submit" href="remove_{{variant._id}}" class="btn btn-danger btn-xs"><span class="fa fa-trash"></span></button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        <tr>
+        {{ modify_variant(variant) }}
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="container-fluid">
+  {{ pagination_footer(more_variants, page) }}
+</div>
+
+{% endblock %}
+
+{% macro modify_variant(variant) %}
+  <tr id="modifydiv_{{variant._id}}" class="collapse">
+    {{ modify_variant_form(variant) }}
+  </tr>
+{% endmacro %}
+
+{% macro modify_variant_form(variant) %}
+  <form id="modify_variant_{{variant.variant_id}}" method="POST" action="{{ url_for('managed_variants.modify_managed_variant', variant_id=variant.managed_variant_id) }}" enctype="multipart/form-data" class="form-horizontal">
+      {{ modify_form.csrf_token }}
+      <input type="hidden" name="variant_id" value="{{ variant._id }}">
+      <td>
+        <select name="chromosome" class="form-control">
+          {% for chr,_  in modify_form.chromosome.choices %}
+            <option value="{{chr}}" {% if variant.chromosome==chr %} selected {% endif %}>{{chr}}</option>
+          {% endfor %}
+        </select>
+      </td>
+      <td><input type="number" class="form-control" name="position" id="position" value="{{ variant.position }}" required></td>
+      <td><input type="number" class="form-control" name="end" id="end" value="{{ variant.end }}"></td>
+      <td><input type="text" class="form-control" name="reference" id="reference" value="{{ variant.reference }}" required></td>
+      <td><input type="text" class="form-control" name="alternative" id="alternative" value="{{ variant.alternative }}" required></td>
+      <td>
+        <select name="category" id="category" class="form-control" onchange="populateSubTypeSelect('modify_variant_{{variant.variant_id}}')">
+          {% for ctg,ctg_display in modify_form.category.choices %}
+            <option value="{{ctg}}" {% if ctg == variant.category %} selected {% endif %}>{{ctg_display}}</option>
+          {% endfor %}
+        </select>
+      </td>
+      <td>
+        <select name="sub_category" id="sub_category" class="form-control">
+          {% for subctg,subctg_display in modify_form.sub_category.choices %}
+            <option value="{{subctg}}" {% if subctg == variant.sub_category %} selected {% endif %}>{{subctg_display}}</option>
+          {% endfor %}
+        </select>
+      </td>
+      <td>
+         <div class="input-group">
+           <input type="text" class="form-control" name="description" id="description" value="{{ variant.description }}">
+           <button name="add_variant" id="add_variant" type="submit" class="btn btn-primary btn-sm">Save</button>
+           <button name="cancel" id="cancel" type="cancel" class="btn btn-secondary btn-sm">Cancel</button>
+         </div>
+      </td>
+  </form>
+{% endmacro %}
+
+{% macro load_variant_form() %}
+    <div class="row">
+      <div class="col-sm-3">Upload managed variants file</div>
+      <div class="col-sm-7 text-center">
+        <input type="file" name="csv_file" class="custom-file-input" required onchange="this.nextElementSibling.innerText = this.files[0].name">
+        <label class="custom-file-label" for="csv_file">Choose file</label><br>
+        <p class="help-block">How do I format my <a href="https://clinical-genomics.github.io/scout/user-guide/variants/#managed-variants-upload-file-format" rel="noopener" target="_blank">managed variants file</a>?</p>
+      </div>
+      <div class="col-sm-2 text-center">
+        <button type="submit" class="btn btn-secondary">Upload</button>
+      </div>
+    </div>
+{% endmacro %}
+
+{% macro add_variant_form() %}
+    {{ add_form.csrf_token }}
+
+<div class="table-responsive" style="padding-top: 25px;">
+  <table class="table table-bordered table-hover">
+    <thead>
+      <tr>
+        <th>Chr</th>
+        <th>Start</th>
+        <th>End</th>
+        <th>Ref</th>
+        <th>Alt</th>
+        <th>Category</th>
+        <th>Kind</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+      <td>{{ add_form.chromosome(class_="form-control") }}</td>
+      <td><input type="number" name="position" id="position" class="form-control" required min="1"></td>
+      <td><input type="number" name="end" id="end" class="form-control" min="1"></td>
+      <td><input type="text" name="reference" id="reference" class="form-control" required></td>
+      <td><input type="text" name="alternative" id="alternative" class="form-control" required></td>
+      <td>{{ add_form.category(class_="form-control", onchange="populateSubTypeSelect('add_variant')") }}</td>
+      <td>{{ add_form.sub_category(class_="form-control") }}</td>
+      <td>
+        <input type="text" name="description" id="description" class="form-control">
+      </td>
+      </tr>
+      <tr>
+        <td colspan=12>
+          <button name="add_variant" id="submit" type="submit" class="btn btn-primary btn-sm">Add</button>
+          <button name="cancel" id="cancel" type="cancel" class="btn btn-secondary btn-sm">Cancel</button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{% macro filter_variants_form() %}
+    {{ filters_form.csrf_token }}
+    <div class="row">
+      <div class="col-2">
+        {{ wtf.form_field(filters_form.category, class="selectpicker", data_style="btn-secondary")}}
+      </div>
+      <div class="col-2">
+        {{ wtf.form_field(filters_form.sub_category, class="selectpicker", data_style="btn-secondary")}}
+      </div>
+      <div class="col-4">
+        {{ wtf.form_field(filters_form.description) }}
+      </div>
+    </div>
+    <div class="row">
+      <div class="col-2">
+        {{ wtf.form_field(filters_form.build, onchange="setChromosomes()") }}
+      </div>
+      <div class="col-2">
+        {{ wtf.form_field(filters_form.chromosome, onchange="setCytobands();set_coords_fields()") }}
+      </div>
+      <div class="col-2">
+        {{ wtf.form_field(filters_form.position, type="number", disabled=True) }}
+      </div>
+      <div class="col-2">
+        {{ wtf.form_field(filters_form.end, type="number", disabled=True) }}
+      </div>
+      <div class="col-2">
+        {{ wtf.form_field(filters_form.cytoband_start, onchange="setElemCoordinate('cytoband_start', 'position')") }}
+      </div>
+      <div class="col-2">
+        {{ wtf.form_field(filters_form.cytoband_end, onchange="setElemCoordinate('cytoband_end', 'end')") }}
+      </div>
+    </div>
+    <div class="row justify-content-center mt-3">
+      <div class="col col-md-8">
+        <div class="row">
+          <div class="col">
+            {{ filters_form.filter_variants(class_="btn btn-primary form-control") }}
+          </div>
+        </div>
+      </div>
+    </div>
+{% endmacro %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.14.0-beta3/js/bootstrap-select.min.js" integrity="sha512-yrOmjPdp8qH8hgLfWpSFhC/+R9Cj9USL8uJxYIveJZGAiedxyIxwNw4RsLDlcjNlIRR4kkHaDHSmNHAkxFTmgg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+
+  $(document).ready(function(){
+    setChromosomes();
+    set_coords_fields();
+    populateSubTypeSelect('add_variant');
+    {% for variant in managed_variants %}
+      populateSubTypeSelect('modify_variant_{{variant.variant_id|safe}}');
+    {% endfor %}
+  })
+
+  var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'))
+  var popoverList = popoverTriggerList.map(function (popoverTriggerEl) {
+  return new bootstrap.Popover(popoverTriggerEl, {
+      container: 'body',
+    })
+  })
+
+  var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+  var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl)
+  })
+
+  var subcategoryOptions = {{ subcategory_choices|safe }}; // add form
+
+  var cytoStart = document.forms["filters_form"].elements["cytoband_start"]; // filter form
+  var cytoEnd = document.forms["filters_form"].elements["cytoband_end"]; // filter form
+  var chromSelect = document.forms["filters_form"].elements["chromosome"]; // filter form chromosome
+  var start_coord_field = document.forms["filters_form"].elements["position"]; // filter form start coord
+  var end_coord_field = document.forms["filters_form"].elements["end"]; // filter form end coord
+
+  // clear option elements from any given select
+  function clearSelect(selectElem){
+    Array.from(selectElem).forEach(function(option){
+      selectElem.removeChild(option)
+    })
+  }
+
+  // populates a given select element with a given list of options
+  function populateSelect(selectElem, optionsList){
+    for (opt of optionsList){
+      selectElem.add(new Option(opt[0], opt[1]));
+    }
+  }
+
+  // populate variant subtype select in add_variant form according to pre-selected variant category
+  function populateSubTypeSelect(formId){
+    selectedCategory = document.forms[formId].elements["category"].value;
+    subCategorySelect = document.forms[formId].elements["sub_category"];
+
+    clearSelect(subCategorySelect) // Reset subcategory select options
+
+    if (selectedCategory.includes("snv")){
+      populateSelect(subCategorySelect, subcategoryOptions.slice(0,2))
+    }
+    else{
+      populateSelect(subCategorySelect, subcategoryOptions.slice(2,))
+    }
+  }
+
+  // Set chromosomes according to selected genome build
+  function setChromosomes(){
+    clearSelect(chromSelect); // Remove existing chrom options from chromSelect
+    let build = document.forms["filters_form"].elements["build"].value;
+
+    chroms = {{chromosomes_37|safe}}; // populate chromosome options list
+    if (build === "38"){
+      chroms = {{chromosomes_38|safe}};
+    }
+    let chrom_options = [["", "All"]]
+    chroms.forEach(function(chrom){ // append all chroms as options
+      chrom_options.push([chrom, chrom])
+    })
+    populateSelect(chromSelect, chrom_options); // populate chromosome select with chromosome options
+    // Remember user query settings
+    selectedChrom = "{{filters_form.chromosome.data|safe}}";
+    if(selectedChrom !== ""){
+      chromSelect.value = selectedChrom;
+    }
+    setCytobands(); // Reset cytobands select elements
+  }
+
+  function set_coords_fields(){
+    //Make chromosome coordinates editable if a valid chromsome is selected
+    selectedChrom = chromSelect.value;
+    if (selectedChrom && selectedChrom !== "All" ){
+      start_coord_field.disabled = false;
+      end_coord_field.disabled = false;
+    }
+    else {
+      start_coord_field.disabled = true;
+      end_coord_field.disabled = true;
+    }
+    start_coord_field.value={{filters_form.position.data|safe}};
+    end_coord_field.value={{filters_form.end.data|safe}};
+  }
+
+  // Set cytobands select options according to selected chrom
+  function setCytobands(){
+    clearSelect(cytoStart)
+    clearSelect(cytoEnd)
+    // set cytoband selects options only if a chromosome is selected
+    selectedChrom = chromSelect.value;
+    let build = document.forms["filters_form"].elements["build"].value;
+    if (selectedChrom !== 'undefined' && selectedChrom !== "All" ){
+      cytoband_options = {{ cytobands_37|safe }};
+      if (build === "38"){
+        cytoband_options = {{ cytobands_38|safe }};
+      }
+      chrom_cytobands = cytoband_options[selectedChrom]["cytobands"]; //list of cytoband objects
+
+      // Add each cytoband as an select to the 2 cytoband selects
+      cytoStartOptions = [["",""]]
+      cytoStopOptions = [["",""]]
+      chrom_cytobands.forEach(function (opt) {
+        // create option label for cytoband start option
+        let interval = ["(start:",opt["start"], ")"].join("");
+        let optionText = [ opt["chrom"], opt["band"], interval ].join(" ");
+        cytoStartOptions.push([optionText, opt["start"]])
+
+        // create option label for cytoband end option
+        interval = ["(end:",opt["stop"], ")"].join("")
+        optionText = [ opt["chrom"], opt["band"], interval ].join(" ");
+        cytoStopOptions.push([optionText,opt["stop"]])
+      });
+      populateSelect(cytoStart, cytoStartOptions)
+      populateSelect(cytoEnd, cytoStopOptions)
+      // Remember user query settings
+      selectedCytoStart =  "{{filters_form.cytoband_start.data|safe}}";
+      if (selectedCytoStart){
+        cytoStart.value=selectedCytoStart;
+      }
+      selectedCytoEnd =  "{{filters_form.cytoband_end.data|safe}}";
+      if (selectedCytoEnd){
+          cytoEnd.value=selectedCytoEnd;
+      }
+
+    }
+    // Reset start and stop positions in filter form
+    document.forms["filters_form"].elements["position"].value=""
+    document.forms["filters_form"].elements["end"].value=""
+  }
+
+  // set start and stop coordinates when selecting cytoband start ot cytoband stop
+  function setElemCoordinate(cytobandElem, elem){
+    modifyElem = document.forms["filters_form"].elements[elem]
+    value = document.forms["filters_form"].elements[cytobandElem].value
+    modifyElem.value = value
+  }
+
+
+</script>
+{% endblock %}

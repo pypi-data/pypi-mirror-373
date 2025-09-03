@@ -1,0 +1,455 @@
+{% from "variant/gene_disease_relations.html" import inheritance_badge %}
+{% from "variants/utils.html" import compounds_table, overlapping_tooltip_table %}
+
+{% macro variant_gene_symbols_cell(variant, inherit_palette) %}
+  <div class="d-flex justify-content-between align-items-center">
+    <div>
+      {% if variant.hgnc_symbols|length >= 5 %}
+        <span class="badge bg-secondary mr-3 text-white">{{ variant.hgnc_symbols|length }}</span>
+        <a class="mr-3" data-bs-toggle="collapse" href="#_genes_{{variant._id}}" role="button" aria-expanded="false" aria-controls="_{{variant._id}}">[...]</a>
+        <div class="collapse" id="_genes_{{variant._id}}">
+          <span class="text-body">
+          {% for symbol in variant.hgnc_symbols|sort %}
+            {{symbol}}<br>
+          {% endfor %}
+          </span>
+        </div>
+      {% else %}
+        <div>
+          {% if variant.hgnc_symbols %}
+            <span class="badge bg-secondary mr-3 text-white">{{ variant.hgnc_symbols|length }}</span>
+          {% endif %}
+          {% for gene in variant.genes %}
+            <a data-bs-toggle="tooltip" data-bs-html="true" title="
+            <div>
+              <div>
+                <strong>{{ gene.hgnc_symbol }}</strong>: {{ gene.description }}
+              </div>
+              {% if gene.inheritance %}
+                <div>
+                  <strong>Models</strong>: {{ gene.inheritance|join(',') }}
+                </div>
+              {% endif %}
+              {% if gene.phenotypes %}
+                <div><strong>OMIM disease</strong>
+                {% for disease in gene.phenotypes %}
+                  <div>
+                      {{ disease.description }}
+                  </div>
+                {% endfor %}
+                </div>
+              {% endif %}
+            </div>"
+              href="{{ url_for('genes.gene', hgnc_id=gene.hgnc_id) }}">{{ gene.hgnc_symbol or gene.hgnc_id }}
+              {% for model in gene.inheritance %} {{ inheritance_badge(model,inherit_palette) }}{% endfor %}</a>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+{% endmacro %}
+
+{% macro fusion_variants_header() %}
+  <thead class="table-light">
+    <tr>
+      <th id="checkbox" style="width:1%"></th>
+      <th id="rank" style="width:3%;" title="Beta version. Currently testing" class="text-left">Rank (beta)</th>
+      <th id="genes" style="width:6%" title="Genes">Fusion Genes</th>
+      <th id="callers" style="width:4%" title="Number of callers detecting a given event">Callers</th>
+      <th id="observed" style="width:4%" title="Observed database matches">Observed</th>
+      <th id="score" style="width:4%" title="Beta version. Currently testing">Score (beta)</th>
+      <th id="junction_reads" style="width:6%" title="Number of paired-ends that support the event">Junction Reads</th>
+      <th id="split_reads" style="width:6%" title="Number of split reads that support the event">Split Reads</th>
+      <th id="ffpm" style="width:6%" title="Fusion fragments per million total RNA-seq fragments">FFPM</th>
+      <th id="frame_status" style="width:8%" title="Frame status of the fusion">Frame Status</th>
+      <th id="transcripts" style="width:8%" title="Transcript ID">Transcript ID</th>
+      <th id="exons" style="width:4%" title="Exon Number">Exon Number</th>
+      <th id="breakpoints" style="width:4%" title="Breakpoints">Breakpoints</th>
+      <th id="orientation" style="width:4%" title="Orientation">Orientation</th>
+    </tr>
+  </thead>
+{% endmacro %}
+
+{% macro default_fusion_variant_cells(institute, case, variant) %}
+  <td>
+    {{ fusion_variant_gene_symbols_cell(variant) }}
+  </td>
+  <td class="text-center"><span data-bs-toggle="tooltip" data-bs-html="true" title="{% for name, caller in variant.callers %}{{ name }}: {{ caller }}<br>{% endfor %}">
+    {{ variant.tool_hits|int if variant.tool_hits else "-" }}</span></td>
+  <td>{{variant.found_db|join(", ") if variant.found_db else "-"}}</td>
+  <td class="text-center">{{ variant.fusion_score|float|round(3) if variant.fusion_score else "-"  }}</td>
+  <td class="text-center">{{ variant.samples[0].read_depth }}</td>
+  <td class="text-center">{{ variant.samples[0].split_read }}</td>
+  <td class="text-center">{{ variant.samples[0].ffpm }}</td>
+  <td>{{ variant.frame_status }}</td>
+  <td>
+    {% if variant.genes %}
+      {% for gene in variant.genes %}
+        {% for transcript in gene.transcripts %}
+          <div>{{ transcript.transcript_id }} </div>
+        {% endfor %}
+      {% endfor %}
+    {% endif %}
+  </td>
+  <td>
+    {% if variant.genes %}
+      {% for gene in variant.genes %}
+        {% for transcript in gene.transcripts %}
+          <div>{% if "exon" in transcript %}{{ transcript.exon|int }}{% endif %} </div>
+        {% endfor %}
+      {% endfor %}
+    {% endif %}
+  </td>
+  <td> {{ variant.chromosome }}:{{ variant.position }}  <br> {{ variant.end_chrom }}:{{ variant.end }} </td>
+  <td class="text-center">{{ variant.orientation }}</td>
+{% endmacro %}
+
+{% macro fusion_variant_gene_symbols_cell(variant) %}
+<div class="align-items-center">
+  {% if variant.genes %}
+    {% for gene in variant.genes %}
+       <a data-bs-toggle="tooltip" data-bs-html="true" title="
+         <div>
+              <strong>{{ gene.hgnc_symbol or gene.hgnc_id }}</strong>:  {{ gene.description }}
+         </div>"
+        href="{{ url_for('genes.gene', hgnc_id=gene.hgnc_id) }}">{{ gene.hgnc_symbol or gene.hgnc_id }}
+        </a> <br>
+    {% endfor %}
+  {% endif %}
+  {% for symbol in variant.fusion_genes %}
+    {% if symbol not in variant.hgnc_symbols %}
+      {{ symbol }} <br>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro variant_funct_anno_cell(variant) %}
+  <div class="d-flex justify-content-between align-items-center">
+    <div data-bs-toggle="tooltip" data-bs-html="true" title="<div class='text-start'>
+      {% if variant.functional_annotations|length >= 5 %}
+        Regional annotations<br>
+        {% if variant.missing_data %}[first 30 genes]{% endif %}
+        {% for annotation in variant.region_annotations|sort %}
+          {{ annotation }}<br>
+        {% endfor %}
+      {% else %}
+        {{ variant.region_annotations|sort|join(', ') }}
+      {% endif %}
+    </div>">
+    {% if variant.category == "fusion" %}
+      {{ variant.frame_status|lower if variant.frame_status else "-" }}
+    {% else %}
+        {% if variant.functional_annotations|length >= 5 %}
+          <a class="mr-3" data-bs-toggle="collapse" href="#_functanno_{{variant._id}}" role="button" aria-expanded="false" aria-controls="_{{variant._id}}">{% if variant.missing_data %}[first 30 genes]{% else %}[...]{% endif %}</a>
+          <div class="collapse" id="_functanno_{{variant._id}}">
+            <span class="text-body">
+            {% for annotation in variant.functional_annotations|sort %}
+              {{ annotation|replace("_", " ") }}<br>
+            {% endfor %}
+            </span>
+          </div>
+        {% else %}
+          <div>
+            <span class="text-body">{{ variant.functional_annotations|sort|join(", ")|replace("_", " ") }}</span>
+          </div>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+{% endmacro %}
+
+
+{% macro gene_cell(variant, inherit_palette) %}
+  <div class="align-items-center">
+
+    {% macro gene_tooltip(gene) %}
+      <div>
+        <div>
+          <strong>{{ gene.hgnc_symbol }}</strong>: {{ gene.description }}
+        </div>
+        {% if gene.inheritance %}
+          <div>
+            <strong>Models</strong>: {{ gene.inheritance|join(',') }}
+          </div>
+        {% endif %}
+        {% if gene.phenotypes %}
+          <div><strong>OMIM disease</strong>
+          {% for disease in gene.phenotypes %}
+            <div>{{ disease.description }}</div>
+          {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% endmacro %}
+
+    {% macro gene_link(gene) %}
+      <a
+        data-bs-toggle="tooltip"
+        data-bs-html="true"
+        title="{{ gene_tooltip(gene) }}"
+        href="{{ url_for('genes.gene', hgnc_id=gene.hgnc_id) }}"
+      >
+        {{ gene.hgnc_symbol or gene.hgnc_id }}
+      </a>
+    {% endmacro %}
+
+    {% macro panel_badge(variant, gene_id=0) %}
+
+      {% set matching_panels = [] %}
+      {% for panel in variant.case_panels|rejectattr('removed')|list %}
+        {% if gene_id in panel.hgnc_ids %}
+           {% set _ = matching_panels.append(panel) %}
+        {% endif %}
+      {% endfor %}
+
+      {% set panel_count = matching_panels|length %}
+      {% if panel_count %}
+        <a
+          class="badge bg-secondary text-white"
+          data-bs-toggle="popover"
+          data-bs-html="true"
+          data-bs-trigger="hover click"
+          title="Overlapping gene panels"
+          data-bs-content="{% for panel in matching_panels %}
+            {{ panel.panel_name|safe }}<br>
+          {% endfor %}"
+        >{{ panel_count }}</a>
+      {% endif %}
+    {% endmacro %}
+
+    {% if variant.category in ["cancer", "sv_cancer"] %}
+      {% if variant.first_rep_gene %}
+        {{ gene_link(variant.first_rep_gene) }}
+      {% endif %}
+      {% if variant.secondary_gene %}
+        <span class="text-muted">
+          ({{ variant.second_rep_gene.hgnc_symbol or variant.second_rep_gene.hgnc_id }})
+        </span>
+      {% endif %}
+      {% if variant.first_rep_gene or variant.second_rep_gene %}
+        {{ panel_badge(variant, variant.first_rep_gene.hgnc_id or variant.second_rep_gene.hgnc_id) }}
+      {% endif %}
+    {% else %}
+      {% for gene in variant.genes %}
+        <div>
+          {{ gene_link(gene) }}
+          {% for model in gene.inheritance %}
+            {{ inheritance_badge(model, inherit_palette) }}
+          {% endfor %}
+          {{ panel_badge(variant, gene.hgnc_id) }}
+        </div>
+      {% endfor %}
+    {% endif %}
+
+  </div>
+{% endmacro %}
+
+{% macro observed_cell_general(variant) %}
+  <div data-bs-toggle="tooltip" data-bs-placement="right" data-bs-html="true" title="
+    <div class='text-start'>
+      <div>
+        <strong>Local (arch.)</strong>:
+        {% if variant.category in ['snv', 'sv'] %}
+          {{ variant.local_obs_old or 0 }}
+        {% elif variant.category in ['cancer', 'cancer_sv'] %}
+          germline:{{ variant.local_obs_cancer_germline_old or 0}}, somatic:{{variant.local_obs_cancer_somatic_old or 0}} somatic_panel: {{variant.local_obs_cancer_somatic_panel_old or 0}}, rare-disease: {{ variant.local_obs_old or 0}},
+        {% endif %} obs.
+      </div>
+      {% if variant.mitomap_associated_diseases %}
+        <strong>MITOMAP</strong>: {{ variant.mitomap_associated_diseases }}<br>
+      {% endif %}
+      {% if variant.cosmic_ids %}
+      <strong>COSMIC</strong>: {{variant.cosmic_ids|count}} obs
+      <br>
+      {% endif %}
+      {% if variant.clingen_cgh_pathogenic %}
+          <strong>ClinGen CGH Pathogenic</strong>: {{ variant.clingen_cgh_pathogenic }}<br>
+      {%  endif %}
+      {% if variant.clinsig_human %}
+        <strong>ClinVar</strong>:
+          <ul>
+          {% for clinsig in variant.clinsig_human %}
+            <li>
+              <strong>{{clinsig.human}}</strong>
+              {% if clinsig.revstat %}{{ clinsig.revstat }} {% endif %}
+              {% if clinsig.accession %}{{ clinsig.accession }}{% else %}no accnr{% endif %}
+            </li>
+          {% endfor %}
+          </ul>
+      {% endif %}
+
+    </div>
+  ">
+  {% if variant.clinsig_human %}
+    <span class="badge bg-secondary">ClinVar</span>
+  {% endif%}
+  {% if variant.cosmic_ids %}
+    <span class="badge bg-secondary">COSMIC</span>
+
+  {% endif %}
+  {% if variant.mitomap_associated_diseases %}
+    <span class="badge bg-secondary">MITOMAP</span>
+  {% endif %}
+  {% if variant.clingen_cgh_pathogenic %}
+    <span class="badge bg-secondary">CGH Pathogenic</span>
+  {% endif %}
+  {% if variant.local_obs_old or variant.local_obs_cancer_germline_old or variant.local_obs_cancer_somatic_old or variant.local_obs_cancer_somatic_panel_old %}
+    <span class="badge bg-secondary">Local {% if variant.category in ['snv', 'sv'] %}<span class="badge bg-dark text-white">
+          {{ variant.local_obs_old or variant.local_obs_cancer_germline_old or variant.local_obs_cancer_somatic_old or variant.local_obs_cancer_somatic_panel_old or 0 }}</span>{% endif %}</span>
+    <br>
+  {% endif %}
+  </div>
+{% endmacro %}
+
+{% macro frequency_cell_general(variant) %}
+  <div class="d-flex justify-content-between" data-bs-toggle="tooltip" data-bs-placement="left" data-bs-html="true" title="
+    <div class='text-start'>
+      {% if 'gnomad_mt_homoplasmic_frequency' in variant %}
+        <div>
+          <strong>gnomAD(MT) hom</strong>: {{ variant.gnomad_mt_homoplasmic_frequency|human_decimal if variant.gnomad_mt_homoplasmic_frequency }}
+        </div>
+      {% endif %}
+      {% if 'gnomad_mt_heteroplasmic_frequency' in variant %}
+        <div>
+          <strong>gnomAD(MT) het</strong>: {{ variant.gnomad_mt_heteroplasmic_frequency|human_decimal if variant.gnomad_mt_heteroplasmic_frequency }}
+        </div>
+      {% endif %}
+
+      {% if 'swegen_alu' in variant %}
+        <div>
+          <strong>SweGen ALU</strong>: {{ variant.swegen_alu|human_decimal if variant.swegen_alu }}
+        </div>
+      {% endif %}
+      {% if 'swegen_herv' in variant %}
+        <div>
+          <strong>SweGen HERV</strong>: {{ variant.swegen_herv|human_decimal if variant.swegen_herv }}
+        </div>
+      {% endif %}
+      {% if 'swegen_l1' in variant %}
+        <div>
+          <strong>SweGen L1</strong>: {{ variant.swegen_l1|human_decimal if variant.swegen_l1 }}
+        </div>
+      {% endif %}
+      {% if 'swegen_sva' in variant %}
+        <div>
+          <strong>SweGen SVA</strong>: {{ variant.swegen_sva|human_decimal if variant.swegen_sva }}
+        </div>
+      {% endif %}
+
+      {% if 'swegen' in variant %}
+        <div>
+          <strong>SweGen AF</strong>: {{ variant.swegen|human_decimal if variant.swegen }}
+        </div>
+      {% endif %}
+
+      {% if 'gnomad_frequency' in variant %}
+        <div>
+          <strong>gnomAD</strong>: {{ variant.gnomad_frequency|human_decimal if variant.gnomad_frequency }}
+        </div>
+        <div>
+          <strong>gnomAD (max)</strong>: {{ variant.max_gnomad_frequency|human_decimal if variant.max_gnomad_frequency }}
+        </div>
+      {% else %}
+        <div>
+          <strong>gnomAD</strong>: -
+        </div>
+      {% endif %}
+      {% if 'thousand_genomes_frequency' in variant %}
+      <div>
+        <strong>1000G</strong>: {{ variant.thousand_genomes_frequency|human_decimal if variant.thousand_genomes_frequency }}
+      </div>
+      {% endif %}
+      {% if 'max_thousand_genomes_frequency' in variant %}
+      <div>
+        <strong>1000G (max)</strong>: {{ variant.max_thousand_genomes_frequency|human_decimal if variant.max_thousand_genomes_frequency }}
+      </div>
+      {% endif %}
+      {% if 'exac_frequency' in variant %}
+      <div>
+        <strong>ExAC</strong>:
+        {{ variant.exac_frequency|human_decimal if variant.exac_frequency }}
+      </div>
+      {% endif %}
+      {% if 'max_exac_frequency' in variant %}
+      <div>
+        <strong>ExAC (max)</strong>:
+        {{ variant.max_exac_frequency|human_decimal if variant.max_exac_frequency }}
+      </div>
+      {% endif %}
+      {% if 'colorsdb_af' in variant %}
+        <strong>CoLoRSdb</strong>:
+        {{ variant.colorsdb_af|human_decimal if variant.colorsdb_af }}
+      {% endif %}
+    </div>
+  ">
+  <div>
+  {% if variant.category == "mei" %}
+    {{ variant.swegen_mei_max|human_decimal if variant.swegen_mei_max else '~' }}
+  {% elif variant.chromosome != "MT" %}
+    {{ variant.gnomad_frequency|human_decimal if variant.gnomad_frequency else '~' }}
+  {% else %}
+    {{ variant.gnomad_mt_homoplasmic_frequency|human_decimal if variant.gnomad_mt_homoplasmic_frequency else '~' }}
+  {% endif %}
+  </div>
+  </div>
+{% endmacro %}
+
+{% macro external_stylesheets() %}
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.14.0-beta3/css/bootstrap-select.min.css" integrity="sha512-g2SduJKxa4Lbn3GW+Q7rNz+pKP9AWMR++Ta8fgwsZRCUsawjPvF/BxSMkGS61VsR9yinGoEgrHPGPn2mrj8+4w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+{% endmacro %}
+
+{% macro external_scripts() %}
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.3.8/purify.min.js" integrity="sha512-M72KfQy4kPuLYC6CeTrN0eA17U1lXEMrr5qEJC/40CLdZGC3HpwPS0esQLqBHnxty2FIcuNdP9EqwSOCLEVJXQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.14.0-beta3/js/bootstrap-select.min.js" integrity="sha512-yrOmjPdp8qH8hgLfWpSFhC/+R9Cj9USL8uJxYIveJZGAiedxyIxwNw4RsLDlcjNlIRR4kkHaDHSmNHAkxFTmgg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+  <script src="https://cdn.datatables.net/1.12.0/js/jquery.dataTables.min.js" integrity="sha512-fu0WiDG5xqtX2iWk7cp17Q9so54SC+5lk/z/glzwlKFdEOwGG6piUseP2Sik9hlvlmyOJ0lKXRSuv1ltdVk9Jg==" referrerpolicy="no-referrer" crossorigin="anonymous"></script>
+  <script src="https://cdn.datatables.net/1.12.0/js/dataTables.bootstrap5.min.js" integrity="sha512-nfoMMJ2SPcUdaoGdaRVA1XZpBVyDGhKQ/DCedW2k93MTRphPVXgaDoYV1M/AJQLCiw/cl2Nbf9pbISGqIEQRmQ==" referrerpolicy="no-referrer" crossorigin="anonymous"></script>
+{% endmacro %}
+
+{% macro allele_cell(allele) %}
+  {% if 'alt_freq' in allele %}
+    {% if allele.alt_freq == -1 %}
+      <span class="text-body">.</span>
+    {% else %}
+      <span class="text-body"><b>{{ allele.alt_freq|round(4) }}</b></span>
+    {% endif %}
+    <br>
+    <small class="text-body">{% if 'alt_depth' in allele and allele.alt_depth >= 0 %}{{ allele.alt_depth }}{% else %}.{% endif %}|{% if 'ref_depth' in allele and allele.ref_depth >= 0 %}{{ allele.ref_depth }}{% else %}.{% endif %}</small>
+  {% else %}
+    <span class="text-body">N/A</span>
+  {% endif %}
+{% endmacro %}
+
+
+{% macro overlapping_cell(variant, institute, case) %}
+  {% if variant.compounds %}
+    {% set ns=namespace(show_compounds=false) %}
+    {% for compound in variant.compounds if not compound.is_dismissed %}
+      {% set ns.show_compounds = true %}
+    {% endfor %}
+    {% if ns.show_compounds %}
+      <a href="#" class="badge bg-primary text-white" data-bs-toggle="popover" data-bs-placement="left"
+        data-bs-html="true" data-bs-trigger="hover click"
+        data-bs-content="{{ compounds_table(institute, case, variant.compounds[:20], is_popover=true) }}">Compounds</a>
+    {% endif %}
+  {% endif %}
+
+  {% if variant.overlapping %}
+  <a href="#" class="badge bg-warning" data-bs-toggle="popover" data-bs-placement="left"
+    data-bs-html="true" data-bs-trigger="hover click"
+    {% if variant.category == "SNV" %}
+      data-bs-content="<div>Gene overlapping non-SNVs</div>
+      {{ overlapping_tooltip_table(institute, case, variant.overlapping[:20]) }}">Gene overlapping (DNA)</a>
+    {% else %}
+      data-bs-content="<div>Gene overlapping variants in affected individuals</div>
+      {{ overlapping_tooltip_table(institute, case, variant.overlapping[:40]) }}">Gene overlapping (DNA)</a>
+    {% endif %}
+  {% endif %}
+
+  {% if variant.overlapping_outliers %}
+    <a href="#" class="badge bg-success text-white" data-bs-toggle="popover" data-bs-placement="left"
+    data-bs-html="true" data-bs-trigger="hover click" data-bs-content="<div>Gene overlapping WTS outliers</div>
+      {{ overlapping_tooltip_table(institute, case, variant.overlapping_outliers[:40]) }}">Gene overlapping (WTS)</a>
+  {% endif %}
+{% endmacro %}

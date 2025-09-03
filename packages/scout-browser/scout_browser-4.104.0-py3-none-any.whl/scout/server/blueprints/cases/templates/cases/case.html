@@ -1,0 +1,797 @@
+{% extends "layout.html" %}
+{% from "cases/collapsible_actionbar.html" import action_bar, research_modal, reanalysis_modal %}
+{% from "utils.html" import comments_panel, activity_panel, pedigree_panel %}
+{% from "cases/utils.html" import causatives_list, suspects_list, remove_form, matching_causatives, matching_managed_variants, beacon_modal, matchmaker_modal, filter_audits %}
+{% from "cases/individuals_table.html" import cancer_individuals_table, individuals_table %}
+{% from "cases/phenotype.html" import hpo_item, cohort_panel, diagnosis_phenotypes, phenotype_groups_panel, add_phenotype_terms_panel, hpo_panel %}
+{% from "cases/gene_panel.html" import genepanels_table, hpo_genelist_panel %}
+
+{% block title %}
+  {{ super() }} - {{ institute.display_name }} - {{ case.display_name }}
+{% endblock %}
+
+{% block css %}
+{{ super() }}
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.14.0-beta3/css/bootstrap-select.min.css" integrity="sha512-g2SduJKxa4Lbn3GW+Q7rNz+pKP9AWMR++Ta8fgwsZRCUsawjPvF/BxSMkGS61VsR9yinGoEgrHPGPn2mrj8+4w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="{{ url_for('cases.static', filename='case_styles.css') }}"></link>
+{% endblock %}
+
+{% block top_nav %}
+  {{ super() }}
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('cases.index') }}">Institutes</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="{{ url_for('overview.cases', institute_id=institute._id) }}">
+      {{ institute.display_name }}
+    </a>
+  </li>
+  <li class="nav-item active d-flex align-items-center">
+    <span class="navbar-text">{{ case.display_name }}</span>
+  </li>
+{% endblock %}
+
+{% block content_main %}
+<div class="container-float">
+  <div class="row" id="body-row"> <!--sidebar and main container are on the same row-->
+    {{ action_bar(institute, case, causatives, collaborators, current_user, report_types, has_rna_tracks) }} <!-- This is the sidebar -->
+    {{ case_page() }}
+  </div> <!-- end of div id body-row -->
+</div>
+{% endblock %}
+
+{% macro case_page() %}
+<div class="col ms-3"> <!-- This is the main container -->
+  <div class="container_spaced">
+      <div class="card-body {% if case.status == 'solved' %} bg-success {% elif case.status == 'archived' %} bg-warning {% elif case.status == 'prioritized' %} bg-info {% endif %}">
+        <div class="row">
+          <div class="col-sm-4">
+              <h4 class="">
+                 Case: {{case.display_name}} <span class="badge bg-sm bg-secondary">{{case._id}}</span><br>
+              </h4>
+              <h4 class="h4 d-inline-block">
+                Status: {{case.status}}
+              </h4>
+              {% for status_tag in case.tags %}<span class="badge bg-info align-text-bottom ms-1" data-bs-toggle="tooltip" data-bs-placement="right" title="{{ case_tag_options[status_tag].description }}">{{ case_tag_options[status_tag].label }}</span>{% endfor %}
+            </div>
+            <div class="col-sm-6">
+              {{ variants_buttons() }}
+            </div>
+            <div class="col-sm-2">
+              Safe variant matching:
+              {% if institute.gene_panels_matching %}
+                <span class="badge rounded-pill bg-warning text-dark" data-bs-toggle="tooltip" data-bs-placement="left" title="To avoid incidental findings, eventual matching causatives and managed variants displayed on case page are filteres using a list of 'safe' panels. Modify institute settings to edit list of 'safe' panels. Current safe panels: {{ institute.gene_panels_matching.values()|list }}">on</span>
+              {% else %}
+                <span class="badge rounded-pill bg-info text-body" data-bs-toggle="tooltip" data-bs-placement="left" title="Matching causatives and managed variants displayed on case page are NOT filtered by gene panel. Use caution to avoid incidental findings.">off</span>
+              {% endif %}
+            </div>
+        </div> <!--end of row -->
+        <div class="row">
+          <form id="case_status_form" method="POST" action="{{ url_for('cases.status', institute_id=institute._id, case_name=case.display_name) }}">
+              <div class="btn-toolbar ms-2" role="toolbar">
+                <div class="btn-group" role="group">
+                  <span class="input-group-text">
+                    Set:
+                  </span>
+                  <!-- archived/active-->
+                  {% if case.status != 'archived' %}
+                    <button type="button" class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#archive_modal">
+                      Archived
+                    </button>
+                  {% else %}
+                    <button type="submit" class="btn btn-warning btn-sm" name="status" value="active">
+                      Unarchived
+                    </button>
+                  {% endif %}
+
+                  <!-- solved/active -->
+                  {% if case.status != 'solved' %}
+                    <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#solve_modal">
+                      Solved
+                    </button>
+                  {% else %}
+                    <button type="submit" class="btn btn-success btn-sm" name="status" value="active">
+                      Unsolved
+                    </button>
+                  {% endif %}
+
+                  <!-- prioritized/active -->
+                  <button name="status" value="{{ 'active' if case.status == 'prioritized' else 'prioritized' }}" type="submit" class="btn btn-info btn-sm">
+                    {{ 'De-prioritized' if case.status == 'prioritized' else 'Prioritized' }}
+                  </button>
+
+                    <!-- unused/inactive -->
+                  <button name="status" value="{{ 'inactive' if case.status == 'ignored' else 'ignored' }}" type="submit" class="btn btn-light btn-sm">
+                    {{ 'Inactive' if case.status == 'ignored' else 'Ignored' }}
+                  </button>
+                </div>
+                <div class="btn-group ms-2" role="group">
+                  <select name="tags" id="status_tags_case" multiple class="selectpicker" data-style="btn btn-secondary">
+                    {% for tag, data in case_tag_options.items() %}
+                      <option {% if 'tags' in case and tag~"" in case.tags %} selected {% endif %} value="{{ tag }}" title="{{ data.label }}">
+                        {{ data.label }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+            </form>
+        </div>
+      </div>
+
+      <div class="row ms-1">
+      {{ matching_variants() }}
+
+      {% if audits | count_cursor > 0 %}
+        <div class="card panel-default col-4 ms-5 me-1">
+            {{ filter_audits(audits, true) }}
+        </div>
+      {% endif %}
+      </div>
+
+      <div class="card panel-default" >
+        <div class="row">
+          <div class="col">{{ causatives_list(causatives, partial_causatives, evaluated_variants, institute, case, manual_rank_options, cancer_tier_options) }}</div>
+          <div class="col">{{ suspects_list(suspects, institute, case, manual_rank_options, cancer_tier_options) }}</div>
+          <!-- end of data sharing panels -->
+        </div>
+
+        <div class="row">
+          {% if case.track == 'cancer' %}
+            <div class="col-sm-12 col-md-12 mt-3">{{ cancer_individuals_table(case, institute, tissue_types, gens_info) }}</div>
+          {% else %}
+            <div class="mt-3 col-sm-8 col-md-{{"8" if case.madeline_info and case.individuals|length > 1 else "12"}}">{{ individuals_table(case, institute, tissue_types, display_rerunner, gens_info) }}</div>
+            {% if case.madeline_info and case.individuals|length > 1 %}
+              <div class="col-sm-4">
+                {{ pedigree_panel(case) }}
+              </div>
+            {% endif %}
+          {% endif %}
+        </div>
+
+        <div class="row mt-3">
+          <div class="col-6">{{ synopsis_panel() }}</div>
+          <div class="col-6">{{ comments_panel(institute, case, current_user, comments) }}</div>
+        </div>
+
+        <div class="row">
+          <div class="col-sm-12">
+            {{ insert_multi_image_panel() }}
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-sm-12">
+            {{ custom_image_panels() }}
+          </div>
+        </div>
+
+        <!-- CASE DIAGNOSES AND PHENOTYPES -->
+        <div class="panel-default">
+          <div class="panel-heading"><span class="fa fa-user-md"></span>&nbsp;Phenotypes & diagnoses</div>
+          <div class="row">
+            <div class="col-sm-6 ">
+              <div class="card h-100">
+                <div class="card-body">
+                  {{ hpo_panel(case, institute, config) }}
+                </div>
+              </div>
+            </div>
+            <div class="col-sm-6">
+              <div class="card h-100">
+                <div class="card-body">
+                  {{ hpo_genelist_panel(case, institute, config) }}
+                </div>
+              </div>
+            </div>
+          </div> <!--end of row>-->
+        </div> <!--end of card panel-default  -->
+
+          <!-- diagnoses-related code-->
+        {% if not case.track == 'cancer' %}
+        <div class="panel-default">
+          <div class="row">
+            <div class="col-sm-12 mb-3">
+              <div class="card">
+                <div class="card-body">
+                  <div class="panel-heading"><span class="fa fa-user-md"></span>&nbsp;Diagnoses (<a href="https://www.omim.org/" target="_blank" rel="noopener">OMIM</a>,&nbsp;<a href="https://www.orpha.net/" target="_blank" rel="noopener">ORPHA</a>)
+                  </div>
+                  <div class="row mt-1 mb-3">
+                    {{ diagnosis_phenotypes(case, institute, disease_terms) }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+        <!-- end of diagnoses-related code-->
+
+
+
+      <div class="panel-default">
+        <div class="panel-heading"><span class="fa fa-user-md"></span>&nbsp;Groups & cohorts</div>
+        <div class="row">
+          <div class="col-sm-4">{{ group_panel() }}</div>
+          <div class="col-sm-4">{{ cohort_panel(case, institute, cohort_tags) }}</div>
+          <div class="col-sm-4">{{ phenotype_groups_panel(case, institute, hpo_groups) }}</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-6">{{ genepanels_table(case, institute) }}</div>
+        <div class="col-sm-6">{{activity_panel(events)}}</div>
+      </div>
+
+      {{ modal_synopsis() }}
+      {{ solve_modal(institute, case, case_tag_options) }}
+      {{ research_modal(institute, case) }}
+      {{ reanalysis_modal(institute, case) }}
+      {{ beacon_modal(institute, case) }}
+      {{ matchmaker_modal(institute, case, suspects, mme_nodes) }}
+  </div><!-- end of containter -->
+</div><!-- end of col -->
+{% endmacro %}
+
+{% macro variants_buttons() %}
+<div>
+  <!-- Clinical variants buttons -->
+  <div class="row">
+    <div class="col-12 d-flex justify-content-center">
+      <div class="btn-group" role="group">
+        {% if case.vcf_files.vcf_snv %}
+          <a class="btn btn-dark btn-sm text-white" href="{{ url_for('variants.variants', institute_id=institute._id, case_name=case.display_name, variant_type='clinical') }}">Clinical {% if case.track=="cancer" %}germline {% endif %}SNV and INDELs</a>
+        {% endif %}
+        {% if case.vcf_files.vcf_sv %}
+          <a class="btn btn-dark btn-sm text-white" href="{{ url_for('variants.sv_variants', institute_id=institute._id, case_name=case.display_name, variant_type='clinical') }}">Clinical {% if case.track=="cancer" %}germline {% endif %}structural variants</a>
+        {% endif %}
+        {% if case.vcf_files.vcf_mei %}
+          <a class="btn btn-dark btn-sm text-white" href="{{ url_for('variants.mei_variants', institute_id=institute._id, case_name=case.display_name, variant_type='clinical') }}">Clinical Mobile Element Insertion variants</a>
+        {% endif %}
+        {% if case.vcf_files.vcf_str %}
+          <a class="btn btn-dark btn-sm text-white" href="{{ url_for('variants.str_variants', institute_id=institute._id, case_name=case.display_name, variant_type='clinical') }}">Clinical STR variants</a>
+        {% endif %}
+        {% if case.smn_tsv %}
+          <a class="btn btn-dark btn-sm text-white" href="{{ url_for('cases.sma', institute_id=institute._id, case_name=case.display_name) }}">SMN CN</a>
+        {% endif %}
+        {% if case.individuals|rejectattr('bionano_access', 'undefined')|rejectattr('bionano_access', 'none')|list|length > 0 %}
+          <a class="btn btn-dark btn-sm text-white" href="{{ url_for('cases.bionano', institute_id=institute._id, case_name=case.display_name) }}">BioNano FSHD</a>
+        {% endif %}
+        {% if case.vcf_files.vcf_cancer %}
+          <a class="btn btn-dark btn-sm text-white" href="{{ url_for('variants.cancer_variants', institute_id=institute._id, case_name=case.display_name, variant_type='clinical') }}">Clinical {% if case.track=="cancer" %}somatic {% endif %}SNV and INDELs</a>
+        {% endif %}
+        {% if case.vcf_files.vcf_cancer_sv %}
+          <a class="btn btn-dark btn-sm text-white" href="{{ url_for('variants.cancer_sv_variants', institute_id=institute._id, case_name=case.display_name, variant_type='clinical') }}">Clinical {% if case.track=="cancer" %}somatic {% endif %}structural variants</a>
+        {% endif %}
+        {% if case.vcf_files.vcf_fusion %}
+          <a class="btn btn-dark btn-sm text-white" href="{{ url_for('variants.fusion_variants', institute_id=institute._id, case_name=case.display_name, variant_type='clinical') }}">Clinical fusion variants</a>
+        {% endif %}
+        {% if case.has_outliers %}
+          <a class="btn btn-dark btn-sm text-white" href="{{ url_for('omics_variants.outliers', institute_id=institute._id, case_name=case.display_name, variant_type='clinical') }}">Clinical WTS outliers</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <!-- Research variants buttons -->
+  {% if case.is_research %}
+  <div class="row mt-3">
+    <div class="col-12 d-flex justify-content-center">
+      <div class="btn-group" role="group">
+        {% if case.vcf_files.vcf_snv_research %}
+          <a class="btn btn-dark btn-sm text-white" href="{{ url_for('variants.variants', institute_id=institute._id, case_name=case.display_name, variant_type='research') }}">Research {% if case.track=="cancer" %}germline {% endif %}SNV and INDELs</a>
+        {% endif %}
+        {% if case.vcf_files.vcf_sv_research %}
+          <a class="btn btn-dark btn-sm text-white" href="{{ url_for('variants.sv_variants', institute_id=institute._id, case_name=case.display_name, variant_type='research') }}">Research {% if case.track=="cancer" %}germline {% endif %}structural variants</a>
+        {% endif %}
+        {% if case.vcf_files.vcf_mei_research %}
+           <a class="btn btn-dark btn-sm text-white" href="{{ url_for('variants.mei_variants', institute_id=institute._id, case_name=case.display_name, variant_type='research') }}">Research Mobile Element Insertion variants</a>
+        {% endif %}
+        {% if case.vcf_files.vcf_cancer_research %}
+          <a class="btn btn-dark btn-sm text-white" href="{{ url_for('variants.cancer_variants', institute_id=institute._id, case_name=case.display_name, variant_type='research') }}">Research somatic SNV and INDELs</a>
+        {% endif %}
+        {% if case.vcf_files.vcf_cancer_sv_research %}
+          <a class="btn btn-dark btn-sm text-white" href="{{ url_for('variants.cancer_sv_variants', institute_id=institute._id, case_name=case.display_name, variant_type='research') }}">Research somatic structural variants</a>
+        {% endif %}
+        {% if case.vcf_files.vcf_fusion_research %}
+          <a class="btn btn-dark btn-sm text-white" href="{{ url_for('variants.fusion_variants', institute_id=institute._id, case_name=case.display_name, variant_type='research') }}">Research fusion variants</a>
+        {% endif %}
+        {% if case.omics_files and (case.omics_files.fraser_research or case.omics_files.outrider_research) %}
+          <a class="btn btn-dark btn-sm text-white" href="{{ url_for('omics_variants.outliers', institute_id=institute._id, case_name=case.display_name, variant_type='research') }}">Research WTS variants</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro synopsis_panel() %}
+  <div class="card">
+    <h6 data-bs-toggle='tooltip' class="panel-heading ms-3 mt-2" title="Free text field. Write a summary about the case! Markdown format"><em class="fa fa-id-card"></em>&nbsp;Synopsis</h6>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-10">
+           {{ case.synopsis|markdown if case.synopsis else 'Nothing written yet...' }}
+          </div>
+          <div class="col-2">
+            <button type="button" class="btn btn-secondary form-control" data-bs-toggle="modal" data-bs-target="#edit-synopsis">
+              Edit
+            </button>
+          </div>
+        </div>
+      </div>
+  </div>
+{% endmacro %}
+
+{% macro group_panel() %}
+  <div class="card" id="case_groups">
+    <div class="panel-heading" data-bs-toggle='tooltip' title="Group cases to share user variant assessments like comments, classification and dismissal. A case can be in multiple groups.">
+      <h6 class="mt-3 ms-3">
+        <span>
+          <em class="fa fa-users me-1"></em>Connected cases ({{case_groups|length}} groups)
+        </span>
+        <span class="float-sm-right me-3" data-bs-toggle='tooltip' data-bs-placement="right" title="Create a new group containing case {{case.display_name}}"><a href="{{ url_for('cases.add_case_group',institute_id=institute._id, case_name=case.display_name) }}"><span class="fas fa-plus me-1"></span>New group</a></span>
+      </h6>
+    </div>
+    <div class="card-body">
+      <div class="list-group" style="max-height:200px; overflow-y: scroll;">
+      {% if case_groups %}
+        {% for group_id, case_group in case_groups.items() %}
+          {% if loop.index > 1 %}
+            <span><hr style="height:10px;"></span>
+          {% endif %}
+
+          {{ modal_add_to_group(group_id, case_group, case_group_label[group_id]) }}
+
+          <form action="{{ url_for('cases.case_group_update_label', case_group=group_id)}}" method="POST">
+            <div class="row">
+              <div class="col-8">
+                <div class="input-group mb-2 me-2 ms-2">
+                  <div class="input-group-text"><em class="fa fa-users"></em></div>
+                  <input type="text" class="form-control" name="label" id="case_group_label-{{group_id}}" placeholder="{{ case_group_label[group_id] }}">
+                </div>
+              </div>
+              <div class="col-4 d-flex align-content-center">
+                <button type="submit" class="btn btn-secondary btn-sm mb-2">Save label</button>
+                <button type="button" class="btn btn-secondary btn-sm mb-2 ms-3 text-end" data-bs-toggle="modal" data-bs-target="#add-case-group-{{group_id}}">
+                  <em class="fas fa-user-plus" data-bs-toggle='tooltip' title="Add other case to this group"></em>
+                </button>
+              </div>
+            </div>
+          </form>
+          <div class="row">
+            <div class="col-12 ms-2">
+              {% for grouped_case in case_group %}
+                <div class="badge bg-light">
+                  <a href="{{ url_for('cases.case', institute_id=grouped_case.owner, case_name=grouped_case.display_name) }}">{{ grouped_case.display_name }}</a>
+
+                  <a href="{{ url_for('cases.remove_case_group', institute_id=institute._id, case_name=grouped_case.display_name, case_group=group_id) }}" class="btn btn-link btn-sm">
+                      <span class="fa fa-times text-dark"></span></a>
+
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      {% endif %}
+      </div> <!-- end of list-group -->
+    </div>
+  </div>
+{% endmacro %}
+
+{% macro modal_add_to_group(group_id, case_group, label) %}
+  <form action="{{ url_for('cases.add_case_group', institute_id=institute._id, case_name="unused") }}" method="POST">
+    <div class="modal fade" id="add-case-group-{{group_id}}" role="dialog">
+      <input type="hidden" name="group_id" value="{{ group_id }}">
+      <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="case_pick_dialog">Add other case to case group ({{ label }})</h5>
+          <button type="button" class="close" data-bs-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          Cases already in this group:
+          <ul class="list-group">
+          {% for grouped_case in case_group %}
+            <li class="list-group-item">{{ grouped_case.display_name }}</li>
+          {% endfor %}
+          </ul>
+          Add case:
+          <input type="text" name="other_case_name" class="typeahead_cases form-control" data-provide="typeahead" autocomplete="off" placeholder="Search for case name..." cols="30" rows="10" required></input>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="submit" class="btn btn-primary">Add case</button>
+        </div>
+        </div>
+      </div>
+    </div>
+  </form>
+{% endmacro %}
+
+<!-- Iterate through Individuals, if chromograph_files is presenet add a panel for images -->
+{% set chromograph = namespace(available=false) %}
+{% macro insert_multi_image_panel() %}
+<div class="panel-group no-animation" id="accordion">
+  {% for i in case.individuals %}
+    {% if i.chromograph_images and (i.chromograph_images.coverage or i.chromograph_images.autozygous or i.chromograph_images.upd_sites) %}
+      {% set chromograph.available = true %}
+      <div class="panel-heading">
+          <a class="accordion-toggle" data-bs-toggle="collapse" data-parent="#accordion" href="#collapse_{{i.individual_id}}">
+            <em class="fa"></em>
+            Chromograph images {{i.display_name}}
+          </a>
+        (<a href = "https://clinical-genomics.github.io/scout/user-guide/cases#Cytogenomics" rel="noopener" target="_blank">legend</a>)
+      </div>
+      <div id="collapse_{{i.individual_id}}" style="width:100%" class="panel-collapse collapse in">
+        <div class="panel-body">
+          <div class="card-body bg-white" style="max-height: 80vh; overflow-y: scroll;">
+            <svg id={{"svg_"+i.individual_id}} class="img-fluid" width="1200" height="1700"></svg>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endmacro %}
+
+<!-- Create one expandable panel per custom image section -->
+{% macro custom_image_panels() %}
+  {% if case.custom_images %}
+    {% for section_name in case.custom_images %}
+      <div id="{{section_name}}-accordion" class="accordion">
+        <div class="panel-heading">
+          <div class="panel-title">
+            <a class="accordion-toggle" data-bs-toggle="collapse" data-parent="#{{section_name}}-accordion" href="#collapse_{{ section_name }}">
+              <em class="fa"></em>
+              {{ section_name }} images
+            </a>
+          </div>
+        </div>
+        <div id="collapse_{{ section_name }}" class="panel-collapse collapse ps-3">
+          <div class="panel-body">
+            {% for image in case.custom_images[section_name] %}
+              <div class="pt-3" >
+                <h6 class="fw-bold">{{ image.title }}</h6>
+                <div id="{{image.path|safe}}"></div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endmacro %}
+
+<!-- Create a collapsing panel. Used for -->
+{% macro add_modal_panel(id_tag, display_name) %}
+  <div class="modal fade" id="modal_{{id_tag}}" role="dialog">
+    <div class="modal-dialog modal-xl" role="document">
+      <div class="modal-content">
+        <svg class="mt-3 mb-3 ms-3 me-3" id={{"svg_"+id_tag}} class="img-fluid" width="1200" height="1200"></svg>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-dark" data-bs-dismiss="modal">Close</button>
+      </div>
+
+    </div>
+  </div>
+{% endmacro %}
+
+{% macro modal_synopsis() %}
+  <form action="{{ url_for('cases.case_synopsis', institute_id=institute._id, case_name=case.display_name) }}" method="POST">
+    <div class="modal fade" id="edit-synopsis" role="dialog">
+      <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="exampleModalLabel">Edit synopsis</h5>
+          <button type="button" class="close" data-bs-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <textarea name="synopsis" class="form-control" cols="30" rows="10">{{ case.synopsis }}</textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+        </div>
+      </div>
+    </div>
+  </form>
+{% endmacro %}
+
+{% macro solve_modal(institute, case, case_tag_options) %}
+<div class="modal fade" id="solve_modal" tabindex="-1" role="dialog" aria-labelledby="solveCaseLabel" aria-hidden="true">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="archiveCaseLabel">Confirm solve case</h5>
+        <button type="button" class="close" data-bs-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <form method="POST"
+          action="{{ url_for('cases.status', institute_id=institute._id, case_name=case.display_name) }}">
+        <div class="modal-body">
+          Are you sure? Marking a case as Solved will queue it to delete analysis files
+          ahead of schedule, and disable the alignment view.
+          You will then have to request a FULL rerun to continue evaluating e.g. research variants.
+          <br><br>Marking Solved directly does not store the Causative variant.
+          Only use it for cases where the causation is not readily markable, such as UPD or SMN.
+          <br><br>Tag case status below.
+          Case status tags are used for statistics and follow up. Fill them as accurately as possible.
+         <div class="row mt-3">
+           <div class="col">
+             <select name="tags" id="solve_status_tags" multiple class="selectpicker" data-width="90%" data-style="btn-secondary">
+              {% for tag, data in case_tag_options.items() %}
+                <option {% if 'tags' in case and tag~"" in case.tags %} selected {% endif %} value="{{ tag }}" title="{{ data.description }}">
+                  {{ data.label }}
+                </option>
+              {% endfor %}
+             </select>
+           </div>
+         </div>
+        </div>
+        <div class="modal-footer">
+          <div class="row">
+            <div class="col">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+              <button type="submit" class="btn btn-primary" value="solved" name="status">Solve</button>
+            </div>
+          </div>
+      </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro matching_variants() %}
+<div class="card mt-3 col-7">
+  <div class="mt-0">
+    <div class="col-md-7">
+      <div data-bs-toggle='tooltip' class="panel-heading" title="Check if there are any variants in this case
+        marked as causative in another case for this institute, or are on the managed variants list.">
+        <strong>
+        {% if hide_matching == false %}
+          <a href="{{ url_for('cases.case', institute_id=institute._id, case_name=case.display_name, hide_matching='True') }}" class="text-body"><span class="me-1 fa fa-caret-down"></span>Search for matching causatives and managed variants</a>
+        {% else %}
+          <a href="{{ url_for('cases.case', institute_id=institute._id, case_name=case.display_name, hide_matching='False') }}" class="text-body"><span class="me-1 fa fa-caret-right"></span>Search for matching causatives and managed variants</a>
+        {% endif %}
+        </strong>
+      </div>
+    </div>
+    {% if hide_matching == false %}
+      {% if other_causatives|length > 0 %}
+        <div class="row mt-0 ms-3">
+          <div class="col-md-7">{{ matching_causatives(other_causatives, institute, case) }}</div>
+        </div>
+      {% endif %}
+      {% if default_other_causatives|length > 0%}
+        <div class="row mt-0 ms-3">
+          <div class="col-md-7">{{ matching_causatives(default_other_causatives, institute, case, default=True) }}</div>
+        </div>
+      {% endif %}
+      {% if managed_variants|length > 0%}
+        <div class="row mt-0 ms-3">
+          <div class="col-md-7">{{ matching_managed_variants(managed_variants, institute, case) }}</div>
+        </div>
+      {% endif %}
+      {% if default_managed_variants|length > 0%}
+        <div class="row mt-0 ms-3">
+          <div class="col-md-7">{{ matching_managed_variants(default_managed_variants, institute, case, default=True) }}</div>
+        </div>
+      {% endif %}
+      {% if other_causatives|length == 0 and default_other_causatives|length == 0 and managed_variants|length == 0 and default_managed_variants|length == 0%}
+        <div class="row mt-0 ms-3">
+          <div class="col-md-7">No matching causatives or managed variants found</div>
+        </div>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('cases.static', filename='edit_pedigree.js') }}"></script>
+<script src="{{ url_for('cases.static', filename='madeline.js') }}"></script>
+<script src="{{ url_for('cases.static', filename='case_images.js') }}"></script>
+<script src="{{ url_for('static', filename='custom_images.js') }}"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-3-typeahead/4.0.2/bootstrap3-typeahead.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-select/1.14.0-beta3/js/bootstrap-select.min.js" integrity="sha512-yrOmjPdp8qH8hgLfWpSFhC/+R9Cj9USL8uJxYIveJZGAiedxyIxwNw4RsLDlcjNlIRR4kkHaDHSmNHAkxFTmgg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdn.datatables.net/1.12.0/js/jquery.dataTables.min.js" integrity="sha512-fu0WiDG5xqtX2iWk7cp17Q9so54SC+5lk/z/glzwlKFdEOwGG6piUseP2Sik9hlvlmyOJ0lKXRSuv1ltdVk9Jg==" referrerpolicy="no-referrer" crossorigin="anonymous"></script>
+<script src="https://cdn.datatables.net/1.12.0/js/dataTables.bootstrap5.min.js" integrity="sha512-nfoMMJ2SPcUdaoGdaRVA1XZpBVyDGhKQ/DCedW2k93MTRphPVXgaDoYV1M/AJQLCiw/cl2Nbf9pbISGqIEQRmQ==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.3.8/purify.min.js" integrity="sha512-M72KfQy4kPuLYC6CeTrN0eA17U1lXEMrr5qEJC/40CLdZGC3HpwPS0esQLqBHnxty2FIcuNdP9EqwSOCLEVJXQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+<script>
+  {% if case.custom_images %}
+    {% for section_name in case.custom_images %}
+      {% for image in case.custom_images[section_name] %}
+        fetchAndDisplayImage("{{url_for('cases.host_custom_image_aux', institute_id=institute._id, case_name=case.display_name, image_path=image.path|safe) }}", "{{image.path|safe}}", "{{image.width}}", "{{image.height}}")
+      {% endfor %}
+    {% endfor %}
+  {% endif %}
+
+  {% if chromograph.available %}
+    window.onload= add_image_panels();
+    window.onresize= function(){
+        console.log("Width '%s' ", $(window).width())
+        add_image_panels();
+    }
+    function add_image_panels(){
+        add_image_to_individual_panel( {{case.individuals|tojson}},
+                                       "{{institute._id}}",
+                                       "{{case.display_name}}"
+                                     );
+    }
+  {% endif %}
+
+  {% if case.panels %}
+    $('#panel-table').DataTable({
+      scrollY: 350,
+      scrollCollapse: true,
+      paging: false,
+      searching: false,
+      ordering: true,
+      order:[[1, 'desc'],[0, 'asc']],
+      info: false
+    });
+  {% endif %}
+
+  var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+  var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl)
+  })
+
+  var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'))
+  var popoverList = popoverTriggerList.map(function (popoverTriggerEl) {
+   return new bootstrap.Popover(popoverTriggerEl, {sanitizeFn: function (content) {
+          return DOMPurify.sanitize(content)
+        },
+        container: 'body'})
+  })
+
+  document.getElementById("status_tags_case").onchange = function() {
+    document.getElementById("case_status_form").submit();
+  }
+
+  $(function(){
+      function getHpoTerms(query, process) {
+        $.get("{{ url_for('cases.hpoterms') }}", {query: query}, function(data) {
+          process(data)
+        });
+      }
+      function getNameTerms(query, process) {
+        $.get("{{ url_for('genes.api_genes') }}", {query: query}, function(data) {
+          process(data)
+        });
+      }
+      function getDiseaseTerms(query, process) {
+        $.get("{{ url_for('cases.diseaseterms') }}", {query: query}, function(data) {
+          process(data)
+        });
+      }
+      function getCases(query, process) {
+        $.get("{{ url_for('cases.caselist', institute_id=institute._id) }}", {query: query}, function(data) {
+          process(data)
+        });
+      }
+
+      $(".typeahead_cases").typeahead({
+        name: 'cases_list',
+        source: getCases,
+        minLength: 3,
+      });
+
+      $(".typeahead_hpo").typeahead({
+        name: 'hpo_term',
+        source: getHpoTerms,
+        minLength: 3,
+      });
+
+      $(".typeahead_gene").typeahead({
+        name: 'dynamic_gene_add',
+        source: getNameTerms,
+        minLength: 3,
+      });
+
+      $(".typeahead_disease").typeahead({
+        name: 'disease_term',
+        source: getDiseaseTerms,
+        minLength: 3,
+      });
+
+      $('select[multiple]').selectpicker({
+        width: '100%',
+      });
+
+  });
+
+function StopSpinner() {
+   // Avoid page spinner being stuck on file download
+  $(window).unbind('beforeunload');
+  return true;
+}
+function SidebarCollapse () {
+    $('.menu-collapsed').toggleClass('d-none');
+    $('.sidebar-submenu').toggleClass('d-none');
+    $('.submenu-icon').toggleClass('d-none');
+    $('#sidebar-container').toggleClass('sidebar-expanded sidebar-collapsed');
+
+    // Treating d-flex/d-none on separators with title
+    var SeparatorTitle = $('.sidebar-separator-title');
+    if ( SeparatorTitle.hasClass('d-flex') ) {
+        SeparatorTitle.removeClass('d-flex');
+    } else {
+        SeparatorTitle.addClass('d-flex');
+    }
+
+    // Collapse/Expand icon
+    $('#collapse-icon').toggleClass('fa-angle-double-left fa-angle-double-right');
+}
+
+function dynamicGenesCheck(source){
+  if(source.name === "dynamicGene"){
+    if(source.checked === false){
+      var checkAllGenes = document.getElementById('checkAllGenes');
+      checkAllGenes.checked = source.checked;
+    }
+    return;
+  }
+  var checkboxes = document.getElementsByName('dynamicGene');
+  for(var i=0, n=checkboxes.length;i<n;i++) {
+    checkboxes[i].checked = source.checked;
+  }
+}
+
+function toggleClickableButtons(button, select_field) {
+    const selection = document.getElementById(select_field)
+
+    if (selection.value.length > 0) {
+       document.getElementById(button).classList.remove('btn-secondary');
+       document.getElementById(button).classList.remove('no-hover');
+       document.getElementById(button).classList.add('btn-secondary');
+    }
+    else {
+       document.getElementById(button).classList.remove('btn-secondary');
+       document.getElementById(button).classList.add('no-hover');
+       document.getElementById(button).classList.add('btn-secondary');
+    }
+  }
+
+
+// Hide submenus
+var bodyRowCollapsible = document.getElementById('body-row');
+var bsCollapse = new bootstrap.Collapse(bodyRowCollapsible, {
+  toggle: false
+})
+
+bodyRowCollapsible.addEventListener('shown.bs.collapse', function () {
+  $(this).parent().find(".fa fa-plus").removeClass("fa fa-plus").addClass("fa fa-minus");
+});
+
+bodyRowCollapsible.addEventListener('hidden.bs.collapse', function () {
+  $(this).parent().find(".fa fa-minus").removeClass("fa fa-minus").addClass("fa fa-plus");
+});
+
+// Collapse/Expand icon
+$('#collapse-icon').addClass('fa-angle-double-left');
+
+// Collapse click
+$('[data-bs-toggle=sidebar-collapse]').click(function() {
+  SidebarCollapse();
+});
+
+function dynamicPhenotypeCheck(source){
+  var checkboxes = document.getElementsByName('hpo_id');
+  for(var i=0, n=checkboxes.length;i<n;i++) {
+    checkboxes[i].checked = source.checked;
+  }
+}
+</script>
+{% endblock %}

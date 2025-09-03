@@ -1,0 +1,675 @@
+{% from "variants/components.html" import variant_gene_symbols_cell, variant_funct_anno_cell, fusion_variant_gene_symbols_cell %}
+
+{% macro cases_search_form(form, form_action, reset_action, institute = none) %}
+<!-- Collect advanced search key/values -->
+{% set search = {} %}
+{% for field in form._fields %}
+  {% if field not in ["search", "csrf_token", "advanced_search"] and form._fields[field].data %}
+    {% do search.update({field: form._fields[field].data}) %}
+  {% endif %}
+{% endfor %}
+
+<form action="{{ form_action }}" method="POST" accept-charset="utf-8" onsubmit="return StopSpinner()">
+    {{ form.hidden_tag() }}
+
+    <div class="row">
+      {% if not institute %} <!-- used only on dashboard page, when search might return results from many institutes -->
+        <div class="col-md-2 mb-3">
+            {{ form.search_institute.label(class="form-label") }}
+            {{ form.search_institute(class="form-control") }}
+        </div>
+      {% endif %}
+        <div class="col-md-2 mb-3">
+            {{ form.case.label(class="form-label") }}
+            {{ form.case(class="form-control", placeholder="example:18201", pattern="[^\\\<\>\?\!\=\/]*", title="Characters \<>?!=/ are not allowed") }}
+        </div>
+        <div class="col-md-1 mb-3">
+            {{ form.search_limit.label(class="form-label") }}
+            {{ form.search_limit(class="form-control", type="number", min="1", step="1", required=True) }}
+        </div>
+        <div class="btn-sm mb-2 col-md-3 mx-auto">
+          {{ form.search(class="btn btn-primary mt-4") }}
+          {{ form.export(class="btn btn-primary mt-4") }}
+          <a href="{{ reset_action }}" class="btn btn-secondary mt-4 text-white">Reset search</a>
+        </div>
+        <div class="col-md-2 mb-3 form-check align-self-center mt-3 ms-3" data-bs-toggle="tooltip" title="Using multiple search criteria will narrow down your results as returned cases will contain all your searched conditions.">
+          {{ form.advanced_search(class="form-check-input") }}
+          {{ form.advanced_search.label(class="form-check-label") }}
+        </div>
+    </div>
+    {% if institute %} <!-- The following checkboxes will be displayed when the form is used on institute caseS page only, not on the dashboard -->
+    <div class="row">
+        <div class="col-md-2 mb-3 form-check ms-3">
+            {{ form.skip_assigned(class="form-check-input") }}
+            {{ form.skip_assigned.label(class="form-check-label") }}
+        </div>
+        <div class="col-md-2 mb-3 form-check">
+            {{ form.is_research(class="form-check-input") }}
+            {{ form.is_research.label(class="form-check-label") }}
+        </div>
+        <div class="col-md-2 mb-3 form-check">
+            {{ form.clinvar_submitted(class="form-check-input") }}
+            {{ form.clinvar_submitted.label(class="form-check-label") }}
+        </div>
+        <div class="col-md-2 mb-3 form-check">
+            {{ form.has_rna(class="form-check-input") }}
+            {{ form.has_rna.label(class="form-check-label") }}
+        </div>
+        <div class="col-md-2 mb-3 form-check">
+            {{ form.validation_ordered(class="form-check-input") }}
+            {{ form.validation_ordered.label(class="form-check-label") }}
+        </div>
+    </div>
+    {% endif %}
+    <!-- This div contains the advances search options -->
+    <div id="advancesSearchOptions">
+      <div class="row">
+          <div class="col-md-4 mb-3">
+              {{ form.exact_pheno.label(class="form-label") }}
+              {{ form.exact_pheno(class="form-control", placeholder="example:HP:0001298, HP:0001250,..", pattern="[^\\\<\>\?\!\=\/]*", title="Characters \<>?!=/ are not allowed") }}
+          </div>
+          <div class="col-md-4 mb-3">
+              {{ form.exact_dia.label(class="form-label") }}
+              {{ form.exact_dia(class="form-control", placeholder="example:OMIM:125310, ORPHA:585,..", pattern="[^\\\<\>\?\!\=\/]*", title="Characters \<>?!=/ are not allowed") }}
+          </div>
+      </div>
+      <div class="row">
+          <div class="col-md-4 mb-3">
+              {{ form.synopsis.label(class="form-label") }}
+              {{ form.synopsis(class="form-control", placeholder="example:epilepsy", pattern="[^\\\<\>\?\!\=\/]*", title="Characters \<>?!=/ are not allowed") }}
+          </div>
+          <div class="col-md-4 mb-3">
+              {{ form.panel.label(class="form-label") }}
+              {{ form.panel(class="form-control", placeholder="example:NMD", pattern="[^\\\<\>\?\!\=\/]*", title="Characters \<>?!=/ are not allowed") }}
+          </div>
+          <div class="col-md-4 mb-3">
+              {{ form.status.label(class="form-label") }}
+              {{ form.status(class="form-control", placeholder="example:active", pattern="[^\\\<\>\?\!\=\/]*", title="Characters \<>?!=/ are not allowed") }}
+          </div>
+      </div>
+      <div class="row">
+          <div class="col-md-4 mb-3">
+              {{ form.tags.label(class="form-label") }}
+              {{ form.tags(class="form-control", placeholder="example:medical", pattern="[^\\\<\>\?\!\=\/]*", title="Characters \<>?!=/ are not allowed") }}
+          </div>
+          <div class="col-md-4 mb-3">
+              {{ form.track.label(class="form-label") }}
+              {{ form.track(class="form-control", placeholder="rare or cancer", pattern="[^\\\<\>\?\!\=\/]*", title="Characters \<>?!=/ are not allowed") }}
+          </div>
+          <div class="col-md-4 mb-3">
+              {{ form.pheno_group.label(class="form-label") }}
+              {{ form.pheno_group(class="form-control", placeholder="example:HP:0001166", pattern="[^\\\<\>\?\!\=\/]*", title="Characters \<>?!=/ are not allowed") }}
+          </div>
+      </div>
+      <div class="row">
+          <div class="col-md-4 mb-3">
+              {{ form.cohort.label(class="form-label") }}
+              {{ form.cohort(class="form-control", placeholder="example:pedhep", pattern="[^\\\<\>\?\!\=\/]*", title="Characters \<>?!=/ are not allowed") }}
+          </div>
+          <div class="col-md-4 mb-3">
+              {{ form.similar_case.label(class="form-label") }}
+              {{ form.similar_case(class="form-control", placeholder="example:18201", pattern="[^\\\<\>\?\!\=\/]*", title="Characters \<>?!=/ are not allowed") }}
+          </div>
+          <div class="col-md-4 mb-3">
+              {{ form.similar_pheno.label(class="form-label") }}
+              {{ form.similar_pheno(class="form-control", placeholder="example:HP:0001298, HP:0001250,..", pattern="[^\\\<\>\?\!\=\/]*", title="Characters \<>?!=/ are not allowed") }}
+          </div>
+      </div>
+      <div class="row">
+          <div class="col-md-4 mb-3">
+              {{ form.pinned.label(class="form-label") }}
+              {{ form.pinned(class="form-control", placeholder="example:POT1", pattern="[^\\\<\>\?\!\=\/]*", title="Characters \<>?!=/ are not allowed") }}
+          </div>
+          <div class="col-md-4 mb-3">
+              {{ form.causative.label(class="form-label") }}
+              {{ form.causative(class="form-control", placeholder="example:POT1", pattern="[^\\\<\>\?\!\=\/]*", title="Characters \<>?!=/ are not allowed") }}
+          </div>
+          <div class="col-md-4 mb-3">
+              {{ form.user.label(class="form-label") }}
+              {{ form.user(class="form-control", placeholder="John Doe", pattern="[^\\\<\>\?\!\=\/]*", title="Characters \<>?!=/ are not allowed") }}
+          </div>
+      </div>
+    </div> <!--End of advancedSearchOptions div -->
+  </form>
+<div>
+  <span class="text-muted">The following search criteria were used: {{search}}</span>
+</div>
+{% endmacro %}
+
+{% macro analysis_type(analysis_types) %}
+  {% for analysis_type in analysis_types %}
+    {% if analysis_type == 'wgs' %}
+      {% set badge_class = 'primary' %}
+    {% elif analysis_type == 'wes' %}
+      {% set badge_class = 'warning' %}
+    {% elif analysis_type == 'tga' %}
+      {% set badge_class = 'info' %}
+    {% elif analysis_type in ['panel', 'panel-umi'] %}
+      {% set badge_class = 'info' %}
+    {% elif analysis_type == 'mixed' %}
+      {% set badge_class = 'dark' %}
+    {% elif analysis_type == 'external' %}
+      {% set badge_class = 'danger' %}
+    {% elif analysis_type == 'wts' %}
+      {% set badge_class = 'success' %}
+    {% else %}
+      {% set badge_class = 'default' %}
+    {% endif %}
+
+    <span class="badge bg-{{ badge_class }}">
+      {{ analysis_type|upper }}
+    </span>
+  {% endfor %}
+
+{% endmacro %}
+
+{% macro institute_settings(form, beacon_form, institute, current_user, loqus_instances) %}
+<div clas="card w-100">
+  <form action="{{ url_for('overview.institute_settings', institute_id=institute._id) }}" method="POST"
+    accept-charset="utf-8" id="institute_form">
+  {{ form.csrf_token }}
+    <div class="display:block">
+      <!-- institute settings panel -->
+      <div class="card w-100">
+        <div style="padding: 0;" class="card-body mt-3 ms-3 me-3" >
+          <h3 class="header">Institute Settings</h3>
+
+            <!-- General settings -->
+            <div class="row mt-3 d-flex align-items-center">
+                <fieldset>
+                  <legend>General settings</legend>
+                  <div class="row">
+                    <div class="col-4">
+                      {{ form.display_name.label(class="control-label",data_bs_toggle="tooltip", data_bs_placement="top", title="Name of the institute which will be displayed on Scout pages.") }}
+                      {{ form.display_name(class='form-control', value=institute.display_name) }}
+                      {% for error in form.display_name.errors %}
+                        <span style="color: red;">{{ error }}</span><br>
+                      {% endfor %}
+                    </div>
+                    <div class="col-4">
+                      {{form.sanger_emails.label(class="control-label",data_bs_toggle="tooltip", data_bs_placement="top", title="Email addresses to send variant verification email to. Only accepts current Scout user emails: exceptions to this can be made by a db admin. Please ask for support!")}}
+                      <select class="select2" id="sanger_tags" name="sanger_emails" multiple="true" style="width:100%;">
+                        {% for email in institute.sanger_recipients %}
+                          <option value="{{ email }}" selected>{{ email }}</option>
+                        {% endfor %}
+                      </select>
+                      {% for error in form.sanger_emails.errors %}
+                        <span style="color: red;">{{ error }}</span><br>
+                      {% endfor %}
+                    </div>
+                    <div class="col-2">
+                      {{ form.coverage_cutoff.label(class="control-label",data_bs_toggle="tooltip", data_bs_placement="top", title="Read depth considered reliable for displaying variants. Used in coverage reports.") }}
+                      {{ form.coverage_cutoff(class='form-control', value=institute.coverage_cutoff) }}
+                      {% for error in form.coverage_cutoff.errors %}
+                        <span style="color: red;">{{ error }}</span><br>
+                      {% endfor %}
+                    </div>
+                     <div class="col-2">
+                      {{ form.frequency_cutoff.label(class="control-label",data_bs_toggle="tooltip", data_bs_placement="top", title="Lower frequency threshold to display variants. NOTE: used as the institute's default in clinical filter.") }}
+                      {{ form.frequency_cutoff(class='form-control', value=institute.frequency_cutoff) }}
+                      {% for error in form.frequency_cutoff.errors %}
+                        <span style="color: red;">{{ error }}</span><br>
+                      {% endfor %}
+                    </div>
+                  </div>
+                </fieldset>
+            </div>
+            <!-- End of general settings -->
+
+            <!-- Show cases settings -->
+            {% if "admin" in current_user.roles %}
+            <div class="row mt-3 d-flex align-items-center">
+              <fieldset>
+                <legend>Cases display settings</legend>
+                <div class="row">
+                  <div class="col-5">
+                    {{ form.show_all_cases_status.label(class="control-label") }}
+                    <select multiple="multiple" name="show_all_cases_status" class="selectpicker" data-style="btn-secondary">
+                      {% for choice in form.show_all_cases_status.choices or [] %}
+                         <option value="{{choice[0]}}" {% if institute.show_all_cases_status and choice[0] in institute.show_all_cases_status  %} selected {% endif %} >{{choice[1]}}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </div>
+              </fieldset>
+            </div>
+            {% endif %}
+            <!-- End of show cases settings -->
+
+            <!-- Phenotype groups settings -->
+            <div class="row mt-5 d-flex align-items-center">
+              <fieldset>
+                <legend>Phenotype groups</legend>
+                <div class="row">
+                  <div class="col-2">
+                    {{ form.pheno_group.label(class="control-label",data_bs_toggle="tooltip", data_bs_placement="top", title="Add a new phenotype group item to the list of phenotype shortcuts below.") }}
+                    <input name="hpo_term" class="typeahead_hpo form-control" id="pheno_group" data-provide="typeahead" autocomplete="off" placeholder="Search HPO..">
+                  </div>
+                   <div class="col-2">
+                    {{ form.pheno_abbrev.label(class="control-label",data_bs_toggle="tooltip", data_bs_placement="top", title="A short name for this phenotype group.") }}
+                    <input name="pheno_abbrev" class="form-control" name="pheno_abbrev" id="pheno_abbrev" placeholder="e.g.: NEUR" pattern=".{2,10}">
+                  </div>
+                  <div class="col-3 mt-2">
+                    <button type="button" class="btn btn-secondary mt-3" onclick="validate_pheno()">Add custom phenotype group</button>
+                  </div>
+                  <div class="col-3">
+                    {{ form.pheno_groups.label(class="control-label",data_bs_toggle="tooltip", data_bs_placement="top", title="Phenotype groups are used to quickly assign a certain phenotype to a case, on the case page.") }}
+                    <select multiple="multiple" name="pheno_groups" class="selectpicker" data-style="btn-secondary">
+                      {% for choice in form.pheno_groups.choices or [] %}
+                        <option value="{{choice[0]}}" {% if institute.phenotype_groups and choice[0].split(' ,')[0] in institute.phenotype_groups  %} selected {% endif %}>{{choice[1]}}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </div>
+              </fieldset>
+            </div>
+            <!-- End of phenotype groups settings -->
+
+            <!-- Cohorts settings-->
+            <div class="row mt-5 d-flex align-items-center">
+              <fieldset>
+                <legend>Cohorts</legend>
+                <div class="row">
+                  <div class="col-3">
+                   {{form.cohorts.label(class="control-label",data_bs_toggle="tooltip", data_bs_placement="top", title="Categories used to subdivide patients")}}
+                  </div>
+                  <div class="col-9">
+                    <select class="form-control" id="cohort_tags" name="cohorts" multiple="true" style="width:100%;">
+                      {% for cohort in institute.cohorts %}
+                        <option value="{{ cohort }}" selected>{{ cohort }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </div>
+              </fieldset>
+            </div>
+            <!-- End of cohorts settings -->
+
+             <!-- Variants and panels searching -->
+            <div class="row mt-5 d-flex align-items-center">
+            <fieldset>
+              <legend>Variants and gene panels searching</legend>
+              <div class="row">
+                 <div class="col-3">
+                  {{ form.institutes.label(class="control-label",data_bs_toggle="tooltip", data_bs_placement="top", title="Allow case sharing only with preselected institutes.") }}
+                  <select multiple="multiple" class="selectpicker" name="institutes" data-style="btn-secondary">
+                  {% for choice in form.institutes.choices %}
+                    <option value="{{choice[0]}}" {% if choice[0] in institute.get("collaborators", []) %} selected {% endif %}>{{choice[1]}}</option>
+                  {% endfor %}
+                  </select>
+                </div>
+
+                <div class="col-3">
+                  {{ form.gene_panels.label(class="control-label",data_bs_toggle="tooltip", data_bs_placement="top", title="Select gene panels that will be available for variants filtering.") }}
+                  <select multiple="multiple" name="gene_panels" class="selectpicker ml-3" data-style="btn-secondary">
+                    {% for choice in form.gene_panels.choices or [] %}
+                      <option value="{{choice[0]}}" {% if institute.gene_panels and choice[0] in institute.gene_panels.keys() %} selected {% endif %}>{{choice[1]}}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+
+                <div class="col-4">
+                  {{ form.gene_panels_matching.label(class="control-label",data_bs_toggle="tooltip", data_bs_placement="top", title="Limit incidental findings by looking for matching managed and causatives variants only in these panels") }}
+                  <select multiple="multiple" name="gene_panels_matching" class="selectpicker ml-3" data-style="btn-secondary">
+                    {% for choice in form.gene_panels_matching.choices or [] %}
+                      <option value="{{choice[0]}}" {% if institute.gene_panels_matching and choice[0] in institute.gene_panels_matching.keys() %} selected {% endif %}>{{choice[1]}}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+
+                <div class="col-2">
+                  <input type="checkbox" name="check_show_all_vars" {% if institute.check_show_all_vars %} checked {%endif%}>
+                  {{ form.check_show_all_vars.label(class="control-label", data_bs_toggle="tooltip", data_bs_placement="top", title="Check this box if you want all variants (and not just those occurring in the affected individuals) to be shown by default on variants page") }}
+                </div>
+
+              </div>
+
+            </fieldset>
+            </div>
+            <!-- End of Variants and panels searching -->
+
+
+            {% if "admin" in current_user.roles %}
+              <!-- LoqusDB settings -->
+              <div class="row mt-5 d-flex align-items-center">
+                <fieldset>
+                  <legend>LoqusDB</legend>
+                  <div class="row">
+                    <div class="col-2">
+                      {{ form.loqusdb_id.label(class="control-label", data_bs_toggle="tooltip", data_bs_placement="top", title="LoqudDB id" ) }}
+                    </div>
+                    <div class="col-3">
+                      <select multiple="multiple" class="selectpicker" name="loqusdb_id" data-style="btn-secondary">
+                        {% for instance in loqus_instances %}
+                          <option value="{{instance}}" {% if instance in institute.loqusdb_id %} selected {% endif %}>{{instance}}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                  </div>
+              </div>
+              <!-- End of loqusdb settings -->
+
+              <!-- Custom soft filters for variants -->
+              <div class="row mt-5 d-flex align-items-center">
+                <fieldset>
+                  <legend>Variants custom soft filters</legend>
+                  <div class="row">
+                    <div class="col-sm-6 col-lg-4">
+                      {{form.soft_filters.label(class="control-label", data_bs_toggle="tooltip", data_bs_placement="top", title="Values to filter variant documents with by default. For example germline_risk or in_normal.")}}
+                      <select class="select2" id="soft_filters" name="soft_filters" multiple="true" style="width:100%;">
+                        {% if institute.soft_filters %}
+                          {% for filter in institute.soft_filters %}
+                            <option value="{{filter}}" selected>{{filter}}</option>
+                          {% endfor %}
+                        {% endif %}
+                      </select>
+                    </div>
+                  </div>
+              </div>
+              <!-- End of custom soft filters for variants -->
+
+              <!-- Alamut settings -->
+              <div class="row mt-5 d-flex align-items-center">
+                <fieldset><legend>Alamut Plus<a class="ms-2 text-decoration-none" href="https://extranet.interactive-biosoftware.com/alamut-visual-plus_API.html" target="_blank" rel="noopener">*</a></legend>
+                  <div class="row">
+                    <div class="col">
+                      {{ form.alamut_key.label(class="control-label") }}
+                      {{ form.alamut_key(class='form-control', value=institute.alamut_key if institute.alamut_key) }}
+                    </div>
+                    <div class="col">
+                      {{ form.alamut_institution.label(class="control-label") }}
+                      {{ form.alamut_institution(class='form-control', value=institute.alamut_institution if institute.alamut_institution) }}
+                    </div>
+                  </div>
+                </fieldset>
+              </div>
+              <!-- End of Alamut settings -->
+
+              <!-- ClinVar API settings -->
+              <div class="row mt-5 d-flex align-items-center">
+                <fieldset><legend>ClinVar API submissions<a class="ms-2 text-decoration-none" href="https://www.ncbi.nlm.nih.gov/clinvar/docs/api_http/" target="_blank" rel="noopener">*</a></legend>
+                  <div class="row">
+                    <div class="col-6">
+                      {{ form.clinvar_key.label(class="control-label") }}
+                      {{ form.clinvar_key(class='form-control', value=institute.clinvar_key if institute.clinvar_key) }}
+                    </div>
+                    <div class="col-6">
+                      {{form.clinvar_emails.label(class="control-label",data_bs_toggle="tooltip", data_bs_placement="top", title="Scout users who should be able to submit for you institute using this key. Only accepts current Scout user emails.")}}
+                      <select class="selectpicker" id="clinvar_tags" name="clinvar_emails" style="width:100%;" multiple="true">
+                        {% for user in form.clinvar_emails.choices %}
+                          <option value="{{ user[1] }}" {% if institute.clinvar_submitters and user[1] in institute.clinvar_submitters %} selected {% endif %}>{{ user[0] }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                  </div>
+                </fieldset>
+              </div>
+              <!-- End of ClinVar API settings -->
+            {% endif %} <!-- end of if "admin" in current_user.roles -->
+
+            <div class="row mt-5 mb-3">
+              <div class="col-4 offset-4 d-flex justify-content-center mt-3">
+                  {{ form.submit_btn(class="btn-primary btn") }}
+              </div>
+            </div>
+        </div>
+      </div>
+  </form>
+</div>
+
+<!-- Display form to add a Beacon dataset if user is an andmin and if institute lacks one or more Beaocn datasets -->
+{% if current_user.is_admin and config.BEACON_URL and config.BEACON_TOKEN %}
+<form action="{{ url_for('overview.add_beacon_dataset', institute_id=institute._id) }}" method="post">
+  <div class="card w-100">
+    <div class="card-body">
+      <div class="row">
+        <div class="col-4">
+          The following institute-level datasets are missing and could be created in Beacon:
+        </div>
+        <div class="col-5">
+          {{beacon_form.beacon_dataset(class="selectpicker btn-secondary")}}
+        </div>
+        <div class="col-1">
+          {{beacon_form.beacon_submit_btn(class="btn-secondary btn")}}
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+{% endif %}
+
+</div> <!-- end of container div -->
+
+{% endmacro %}
+
+{% macro users_table(users) %}
+  <table class="table table-striped table-sm" aria-label="Users">
+    <thead class="thead bg-light">
+      <th scope="col">#</th>
+      <th scope="col">Name</th>
+      <th scope="col">E-mail</th>
+      <th scope="col">Roles</th>
+      <th scope="col">Last connected</th>
+    </thead>
+    <tbody>
+      {% for user in users %}
+        <tr>
+          <td>{{loop.index}}</td>
+          <td>{{user.name}}</td>
+          <td>{{user.email}}</td>
+          <td>{{user.roles|join(', ')}}</td>
+          <td>{{user.accessed_at or "-"}}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endmacro %}
+
+
+{% macro variant_list_content(institute, variants, acmg_map, ccv_map, callers, inherit_palette) %}
+<div class="card mt-3">
+  <div class="card-body overflow-auto">
+    <table id="variants_table" class="table display table-sm">
+      <caption>List of selected variants</caption>
+      <thead class="thead table-light sticky-offset">
+        <tr>
+          <th>Gene</th>
+          <th>Variant</th>
+          <th>Change</th>
+          <th>HGVS[c]</th>
+          <th>HGVS[p]</th>
+          <th>Functional Annotation</th>
+          <th>Category</th>
+          <th>Callers</th>
+          <th>CADD score</th>
+          <th data-bs-toggle='tooltip' data-bs-container='body' title="score(model version)">Rank score</th>
+          <th>Revel score</th>
+          <th>Revel rank score</th>
+          <th>SpliceAI DS max</th>
+          <th data-bs-toggle='tooltip' data-bs-container='body' title="ref/alt-GQ">Zygosity</th>
+          <th>Inheritance</th>
+          <th>ACMG</th>
+          <th>ClinGen-CGC-VICC</th>
+          <th>Case</th>
+          <th>Analysis type</th>
+          <th>Validated status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for variant in variants %}
+          {% set case = variant["case_obj"] %}
+          {% set analysis_types = [] %} <!-- this will be used later in Analysis type column -->
+          <tr>
+            <td>
+              {% if variant.category == "fusion" %}
+                {{ fusion_variant_gene_symbols_cell(variant) }}
+              {% else %}
+                {{ variant_gene_symbols_cell(variant, inherit_palette) }}
+              {% endif %}
+            </td>
+            <td><!-- Variant link -->
+              {% set var_type_page = {"snv":"variant.variant", "str":"variant.variant",  "mei": "variant.variant", "cancer":"variant.cancer_variant", "sv":"variant.sv_variant", "cancer_sv": "variant.sv_variant", "fusion": "variant.variant"} %}
+              {% for key, page in var_type_page.items() %}
+                {% if variant.category == key %}
+                  <a target="_blank" rel="noopener noreferrer" href="{{ url_for(page,
+                      institute_id=institute._id,
+                      case_name=case.display_name,
+                      variant_id=variant._id) }}">{{ variant.display_name|truncate(15, True) }}
+                  </a>
+                {% endif %}
+              {% endfor %}
+            </td>
+            <td><!-- Change -->
+              <span class="text-muted">
+                {% if variant.category in 'str' %}
+                    {{ variant.alternative|truncate(10, True) | replace("<", " ") | replace(">", "")}}
+                {% else %}
+                    {{ variant.reference|truncate(10, True) }} → {{ variant.alternative|truncate(10, True) }}
+                {% endif%}
+              </span>
+            </td>
+            <td><!-- HGVS[c] -->
+              <span class="text-muted">
+              {% if variant.first_rep_gene and variant.first_rep_gene.hgvs_identifier %}
+                {{variant.first_rep_gene.hgvs_identifier|truncate(15, True)}}
+              {% else %}
+                -
+              {% endif %}
+              </span>
+            </td>
+            <td><!-- HGVS[p] -->
+              <span class="text-muted">
+              {% if variant.first_rep_gene and variant.first_rep_gene.hgvsp_identifier %}
+                  {{variant.first_rep_gene.hgvsp_identifier|truncate(15, True)}}
+              {% else %}
+                -
+              {% endif %}
+              </span>
+            </td>
+            <td><!-- Functional Annotation -->
+              {{ variant_funct_anno_cell(variant) }}
+            </td>
+            <td><!-- Category -->
+              <span class="badge bg-secondary">{{ variant.category|upper }}</span>
+            </td>
+            <td><!-- Callers -->
+              <span class="text-muted">
+              {% for key, values in callers.items() %} <!-- keys: snv, cancer, cancer_sv, sv, str -->
+                {% if variant.category == key %}
+                  {% for caller in values %}
+                    {% if caller.id in variant %}
+                      {{caller.name}}:{{variant[caller.id]}}&nbsp;
+                    {% endif %}
+                  {% endfor %}
+                {% endif %}
+              {% endfor %}
+              </span>
+            </td>
+            <td><!-- CADD score -->
+              <span class="badge bg-secondary">
+              {% if variant.cadd_score %}
+                {{ variant.cadd_score|round(2) }}
+              {% else %}
+                -
+              {% endif %}
+              </span>
+            </td>
+            <td><!-- Rank score -->
+              <span class="badge rounded-pill bg-secondary">
+              {{ variant.rank_score }}
+              {% if variant.category == 'sv' %}
+                (v. {{case.sv_rank_model_version or 'na'}})
+              {% else %}
+                (v. {{case.rank_model_version or 'na'}})
+              {% endif %}
+              </span>
+            </td>
+            <!-- Revel scores -->
+            {% for score in [variant.revel, variant.revel_score] %}
+            <td>
+              <span class="badge rounded-pill bg-secondary">
+              {% if score %}
+                {{score|round(2)}}
+              {% else %}
+                -
+              {% endif %}
+              </span>
+            </td>
+            {% endfor %}
+            <td><!-- SpliceAI -->
+              <span class="text-muted">
+              {{ variant.spliceai_scores|list_remove_none|join(', ') if variant.spliceai_scores else "-" }}
+              </span>
+            </td>
+            <td><!-- Zygosity -->
+              {%- for sample in variant.samples -%}
+                {%- for ind in case.individuals -%}
+                  {%- if sample.sample_id == ind.individual_id -%}
+                    {% if sample.genotype_call not in ['0/0', './.', '0/.', './0'] %}
+                      {% do analysis_types.append(ind.analysis_type) %} <!-- used later in Analysis type column -->
+                    {% endif %}
+                    {% set allele_depths = ['ref depth', sample.allele_depths[0]]|join(":") + ' - ' + ['alt depth', sample.allele_depths[1]]|join(":") %}
+                    <span data-bs-toggle='tooltip' data-bs-container='body' title="{{allele_depths}}" class="badge bg-{{'danger' if ind.phenotype == 2 else 'success' }}">{{sample.genotype_call}} GQ:{{sample.genotype_quality}} AD:{{sample.allele_depths[0]}}|{{sample.allele_depths[1]}}</span>
+                  {%- endif -%}
+                {%- endfor -%}
+              {%- endfor -%}
+            </td>
+            <td><!-- Inheritance -->
+              {% for model in variant.genetic_models %}
+              <span class="badge bg-info">{{model}}</span>
+              {% endfor %}
+            </td>
+            <td><!-- ACMG -->
+              <a href="#" data-bs-toggle="tooltip" title="ACMG classification assigned by Scout users (not Clinvar)"
+                style="text-decoration: none; color: #000;">
+                {% if 'acmg_classification' in variant %}
+                <span class="badge bg-{{acmg_map[variant.acmg_classification].color}}">{{acmg_map[variant.acmg_classification].short}}</span>
+                {% else %}
+                -
+                {% endif %}
+              </a>
+            </td>
+            <td><!-- Clingen-CGC-VIGG -->
+              <a href="#" data-bs-toggle="tooltip" title="Clingen-CGC-VIGG classification assigned by Scout users"
+                style="text-decoration: none; color: #000;">
+                {% if 'ccv_classification' in variant %}
+                <span class="badge bg-{{ccv_map[variant.ccv_classification].color}}">{{ccv_map[variant.ccv_classification].short}}</span>
+                {% else %}
+                -
+                {% endif %}
+              </a>
+            </td>
+            <td><!-- Case -->
+              <a href="{{ url_for('cases.case',
+                                        institute_id=institute._id,
+                                        case_name=case.display_name) }}">
+                {{ case.display_name }}
+              </a>
+              <span class="badge bg-{{ 'success' if case.status == 'solved' else 'default' }}">
+                {{ case.status }}
+              </span>
+              {% if (case.partial_causatives and variant._id in case.partial_causatives) %}
+                <span class="badge bg-warning" data-bs-toggle="tooltip" title="Partial causative variants explain part of the case phenotype">partial</span>
+              {% endif %}
+            </td>
+            <td>
+              {{ analysis_type(analysis_types|unique) }}
+            </td>
+            <td><!-- Validated status -->
+              {% if variant.validation %}
+                <span class="badge bg-{{ 'success' if variant.validation == 'True positive' else 'danger' }} me-1">
+                  {{ variant.validation }}
+                </span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro case_link_href(case) %}
+  {{ url_for('cases.case', institute_id=case.owner, case_name=case.display_name) }}
+{% endmacro %}

@@ -1,0 +1,127 @@
+{% from "alignviewers/utils.html" import igv_script %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <link rel="shortcut icon" href="//igv.org/web/img/favicon.ico">
+    <title>Scout: Splice junctions viewer</title>
+
+    {{ igv_script() }}
+
+    <!-- Flash eventual messages due to errors when creating the tracks -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert alert-danger alert-dismissible" role="alert">
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+</head>
+
+<body>
+
+<h3>{{case}}: Splice junctions</h3>
+
+<div id="igvDiv" style="padding-top: 10px;padding-bottom: 10px; border:1px solid lightgray"></div>
+
+<script type="text/javascript">
+
+    function getGeneTrack(allTracks){
+        for(var i=0;i<allTracks.length;i++){
+          if (allTracks[i]["name"] === "Genes"){
+            return allTracks[i];
+          }
+        }
+    }
+    var geneTrack = getGeneTrack({{custom_tracks|safe}});
+
+    document.addEventListener("DOMContentLoaded", function () {
+      {% set counter = namespace(loop=0) %}
+        var options =
+            {
+                // Example of fully specifying a reference GRCh38. Scout is supporting only this for now
+                reference:
+                    {
+                        id: "{{ reference_track.id }}",
+                        fastaURL: "{{ reference_track.fastaURL }}",
+                        indexURL: "{{ reference_track.indexURL }}",
+                        cytobandURL: "{{ reference_track.cytobandURL }}",
+                        aliasURL: "{{ reference_track.aliasURL }}"
+                    },
+                locus: '{{ locus }}',
+                tracks:
+                    [
+                        {% for track in tracks %} // sample tracks
+                        {% set counter.loop = counter.loop + 1 %}
+                            {% if track.url %}
+                              {
+                                name: "{{ track.name }}",
+                                order: {{counter.loop}},
+                                type: "alignment",
+                                url: "{{ url_for('alignviewers.remote_static', file=track.url) }}",
+                                indexURL: "{{ url_for('alignviewers.remote_static', file=track.indexURL) }}",
+                                sourceType: "file",
+                                format: "{{ track.format }}",
+                                height: {{ track.aln_height }}
+                              },
+                            {% else %}
+                              {
+                                type: 'merged',
+                                name: '{{ track.name }}',
+                                order: {{counter.loop}},
+                                height: 500,
+                                tracks:
+                                [
+                                  {
+                                    type: 'wig',
+                                    format: "bigwig",
+                                    url: "{{ url_for('alignviewers.remote_static', file=track.coverage_wig) }}",
+                                    height: 500,
+                                  },
+                                  {
+                                    type: 'spliceJunctions',
+                                    format: 'bed',
+                                    colorBy: 'strand',
+                                    thicknessBasedOn: 'numUniqueRead',
+                                    labelUniqueReadCount: true,
+                                    url: "{{ url_for('alignviewers.remote_static', file=track.splicej_bed) }}",
+                                    indexURL: "{{ url_for('alignviewers.remote_static', file=track.splicej_bed_index) }}",
+                                    minUniquelyMappedReads: 1,
+                                    height: 500,
+                                  },
+                                ]
+                              },
+                            {% endif %}
+                            {% if custom_tracks|selectattr("name","equalto", "Genes")|list|length > 0 %}
+                                { // genes track
+                                  name: geneTrack.name,
+                                  type: geneTrack.type,
+                                  format: geneTrack.format,
+                                  sourceType: geneTrack.sourceType,
+                                  url: geneTrack.url,
+                                  indexURL: geneTrack.indexURL,
+                                  displayMode: geneTrack.displayMode,
+                                  visibilityWindow: 300000000,
+                                  height: 100,
+                                  searchable: true,
+                                  order: {{counter.loop}},
+                                  infoURL: "https://www.ncbi.nlm.nih.gov/gene/?term=$$"
+                                }, // end of genes track
+                             {% endif %}
+                       {% endfor %}
+                    ] // end of tracks
+            };
+        var igvDiv = document.getElementById("igvDiv");
+
+        igv.createBrowser(igvDiv, options)
+            .then(function (browser) {
+                console.log("Created IGV browser");
+            })
+    })
+</script>
+</body>
+</html>
