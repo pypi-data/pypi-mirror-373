@@ -1,0 +1,408 @@
+#!/bin/bash
+# --- Slurm setup (controller + workers) ---
+set -euo pipefail
+
+echo "[slurm] Starting Slurm provisioning"
+
+# Detect leader
+NODE_RANK="${FLOW_NODE_RANK:-0}"
+MAIN_IP="${FLOW_MAIN_IP:-}"
+# Configless toggle (default enabled for robust auto-registration)
+SLURM_CONFIGLESS="${_FLOW_SLURM_CONFIGLESS:-1}"
+
+# Provider API for discovery
+API_URL="${_FLOW_MITHRIL_API_URL:-}"; API_KEY="${_FLOW_MITHRIL_API_KEY:-}"
+PROJECT_ID="${_FLOW_MITHRIL_PROJECT:-}"; RESERVATION_ID="${_FLOW_RESERVATION_ID:-}"
+
+if ! command -v apt-get >/dev/null 2>&1; then
+  echo "[slurm] Non-Debian systems not yet supported in M1" >&2
+  exit 0
+fi
+
+export DEBIAN_FRONTEND=noninteractive
+
+install_common() {
+  apt-get update -y
+  apt-get install -y --no-install-recommends \
+    ca-certificates curl gnupg lsb-release python3 jq nfs-common iproute2 \
+    munge libmunge2 libmunge-dev chrony
+}
+
+install_gpu_stack() {
+  # Validate NVIDIA driver, NVML, and GPU availability
+  echo "[slurm] Validating NVIDIA GPU stack"
+  if ! command -v nvidia-smi >/dev/null 2>&1; then
+    echo "[slurm] WARNING: nvidia-smi not found; GPU drivers may be missing. Skipping GPU validation" >&2
+    return 0
+  fi
+
+  if ! nvidia-smi -L >/dev/null 2>&1; then
+    echo "[slurm] WARNING: Unable to query GPUs via nvidia-smi; check driver installation" >&2
+    return 0
+  fi
+
+  GPU_COUNT=$(nvidia-smi -L | wc -l | tr -d ' ')
+  GPU_MODELS=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+  echo "[slurm] Detected ${GPU_COUNT} GPU(s): ${GPU_MODELS}"
+  if [ -z "${GPU_COUNT}" ] || [ "${GPU_COUNT}" -le 0 ]; then
+    echo "[slurm] WARNING: No GPUs detected; GRES will be disabled" >&2
+  fi
+
+  # Check NVML presence for AutoDetect=nvml
+  if ! ldconfig -p 2>/dev/null | grep -qiE 'libnvidia-ml\.so'; then
+    # Fallback for systems without ldconfig cache
+    if ! find /usr /lib -name 'libnvidia-ml.so*' 2>/dev/null | grep -q .; then
+      echo "[slurm] WARNING: NVML library not found; gres AutoDetect=nvml may not work" >&2
+    fi
+  fi
+}
+
+install_slurm() {
+  # Use distro slurm for M1; provider images can pin to 25.05.1
+  apt-get install -y --no-install-recommends slurmctld slurmd slurm-client slurmrestd
+}
+
+setup_munge() {
+  set +e
+  if [ "$NODE_RANK" = "0" ]; then
+    # Prefer injected base64 munge key when available
+    if [ -n "${_FLOW_MUNGE_KEY_B64:-}" ]; then
+      echo "${_FLOW_MUNGE_KEY_B64}" | base64 -d >/etc/munge/munge.key 2>/dev/null || true
+    fi
+    if [ ! -s /etc/munge/munge.key ]; then
+      /usr/sbin/create-munge-key
+    fi
+    chown munge:munge /etc/munge/munge.key
+    chmod 400 /etc/munge/munge.key
+    systemctl enable --now munge
+    systemctl is-active --quiet munge || { echo "[slurm] munge failed to start on controller" >&2; exit 1; }
+    mkdir -p /var/run/flow
+    date +%s >/var/run/flow/munge_ready
+  else
+    # Leader must be reachable to fetch munge key; use scp over private network if possible
+    if [ -n "$MAIN_IP" ]; then
+      echo "[slurm] Waiting for controller readiness on $MAIN_IP"
+      if [ -f /root/.ssh/authorized_keys ]; then
+        for i in $(seq 1 60); do
+          if ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/root/.ssh/known_hosts "${MAIN_IP}" 'test -s /var/run/flow/munge_ready' 2>/dev/null; then
+            break
+          fi
+          sleep 2
+        done
+      else
+        for i in $(seq 1 60); do
+          if timeout 2 bash -c "</dev/tcp/$MAIN_IP/6817" 2>/dev/null; then break; fi
+          sleep 2
+        done
+      fi
+      # If injected key not provided, fallback: copy over SSH if keys present; otherwise expect provider to pre-seed munge
+      if [ -z "${_FLOW_MUNGE_KEY_B64:-}" ] && [ -f /root/.ssh/authorized_keys ]; then
+        echo "[slurm] Attempting to fetch munge key from controller via SSH"
+        for attempt in $(seq 1 10); do
+          if ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/root/.ssh/known_hosts "${MAIN_IP}" 'sudo cat /etc/munge/munge.key' >/etc/munge/munge.key 2>/dev/null; then
+            chown munge:munge /etc/munge/munge.key
+            chmod 400 /etc/munge/munge.key
+            break
+          fi
+          sleep $((attempt * 2))
+        done
+      fi
+      # If provider injected base64 key, ensure it is applied
+      if [ -n "${_FLOW_MUNGE_KEY_B64:-}" ] && [ ! -s /etc/munge/munge.key ]; then
+        echo "${_FLOW_MUNGE_KEY_B64}" | base64 -d >/etc/munge/munge.key 2>/dev/null || true
+        chown munge:munge /etc/munge/munge.key
+        chmod 400 /etc/munge/munge.key
+      fi
+      if [ ! -s /etc/munge/munge.key ]; then
+        echo "[slurm] Failed to retrieve munge key from controller" >&2
+        exit 1
+      fi
+      systemctl enable --now munge
+      systemctl is-active --quiet munge || { echo "[slurm] munge failed to start on worker" >&2; exit 1; }
+    fi
+  fi
+  set -e
+}
+
+render_slurm_conf_controller() {
+  cat >/etc/slurm/slurm.conf <<EOF
+ClusterName=flow-${RESERVATION_ID:-cluster}
+ControlMachine=$(hostname -s)
+ControlAddr=${MAIN_IP:-$(hostname -I | awk '{print $1}')}
+AuthType=auth/munge
+CryptoType=crypto/openssl
+SelectType=select/cons_tres
+ProctrackType=proctrack/cgroup
+TaskPlugin=task/cgroup
+SlurmctldParameters=enable_configless
+SlurmctldLogFile=/var/log/slurmctld.log
+SlurmdLogFile=/var/log/slurmd.log
+StateSaveLocation=/var/spool/slurmctld
+SlurmdSpoolDir=/var/spool/slurmd
+GresTypes=gpu
+Include /etc/slurm/conf.d/*.conf
+Include /etc/slurm/user.d/*.conf
+EOF
+
+  mkdir -p /var/spool/slurmctld /var/spool/slurmd
+  chown -R slurm:slurm /var/spool/slurmctld /var/spool/slurmd
+  mkdir -p /etc/slurm/conf.d /etc/slurm/user.d
+}
+
+render_slurm_conf_worker() {
+  cat >/etc/slurm/slurm.conf <<EOF
+ClusterName=flow-${RESERVATION_ID:-cluster}
+ControlMachine=${MAIN_IP}
+ControlAddr=${MAIN_IP}
+AuthType=auth/munge
+CryptoType=crypto/openssl
+SelectType=select/cons_tres
+ProctrackType=proctrack/cgroup
+TaskPlugin=task/cgroup
+SlurmdParameters=configless
+SlurmdLogFile=/var/log/slurmd.log
+SlurmdSpoolDir=/var/spool/slurmd
+GresTypes=gpu
+Include /etc/slurm/conf.d/*.conf
+Include /etc/slurm/user.d/*.conf
+EOF
+  mkdir -p /var/spool/slurmd
+  chown -R slurm:slurm /var/spool/slurmd
+  mkdir -p /etc/slurm/conf.d /etc/slurm/user.d
+}
+
+render_cgroup_conf() {
+  cat >/etc/slurm/cgroup.conf <<EOF
+CgroupAutomount=yes
+CgroupMountpoint=/sys/fs/cgroup
+ConstrainCores=yes
+ConstrainRAMSpace=yes
+ConstrainDevices=yes
+EOF
+}
+
+render_gres_conf() {
+  mkdir -p /etc/slurm
+  if [ -n "${_FLOW_SLURM_GRES_CONF:-}" ]; then
+    echo "${_FLOW_SLURM_GRES_CONF}" >/etc/slurm/gres.conf
+  else
+    echo "AutoDetect=nvml" >/etc/slurm/gres.conf
+  fi
+}
+
+# Ensure that the configured GRES matches detected GPUs where possible
+validate_gres_config() {
+  if [ ! -f /etc/slurm/gres.conf ]; then
+    echo "[slurm] WARNING: /etc/slurm/gres.conf not found" >&2
+    return 0
+  fi
+
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    ACTUAL_GPU_COUNT=$(nvidia-smi -L | wc -l | tr -d ' ')
+  else
+    ACTUAL_GPU_COUNT=""
+  fi
+
+  if grep -qi '^AutoDetect=nvml' /etc/slurm/gres.conf; then
+    if [ -n "${ACTUAL_GPU_COUNT}" ] && [ "${ACTUAL_GPU_COUNT}" -eq 0 ]; then
+      echo "[slurm] WARNING: gres.conf uses AutoDetect=nvml but no GPUs were detected" >&2
+    fi
+    return 0
+  fi
+
+  # Count explicit GPU entries if present (best-effort)
+  CONF_GPU_COUNT=$(grep -i '^Name=gpu' /etc/slurm/gres.conf | wc -l | tr -d ' ')
+  if [ -n "${ACTUAL_GPU_COUNT}" ] && [ -n "${CONF_GPU_COUNT}" ] && [ "${CONF_GPU_COUNT}" -gt 0 ] && [ "${ACTUAL_GPU_COUNT}" -gt 0 ] && [ "${ACTUAL_GPU_COUNT}" -ne "${CONF_GPU_COUNT}" ]; then
+    echo "[slurm] WARNING: gres.conf defines ${CONF_GPU_COUNT} GPU(s) but ${ACTUAL_GPU_COUNT} detected by nvidia-smi" >&2
+  fi
+}
+
+discover_nodes_and_write() {
+  # Write NodeName/Login names and a default Partition
+  # Expect private IPs from provider API
+  python3 - <<'PY'
+import json, os, socket, sys, time, ipaddress
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
+
+api_url = os.environ.get('_FLOW_MITHRIL_API_URL') or ''
+api_key = os.environ.get('_FLOW_MITHRIL_API_KEY') or ''
+reservation_id = os.environ.get('_FLOW_RESERVATION_ID') or ''
+timeout = float(os.environ.get('_FLOW_SLURM_DISCOVERY_TIMEOUT', '10'))
+retries = int(os.environ.get('_FLOW_SLURM_DISCOVERY_RETRIES', '6'))
+backoff = float(os.environ.get('_FLOW_SLURM_DISCOVERY_BACKOFF', '1.5'))
+
+def log(msg: str) -> None:
+    print(f"[slurm][discover] {msg}", file=sys.stderr)
+
+def fetch_instances():
+    if not (api_url and api_key and reservation_id):
+        return []
+    url = f"{api_url.rstrip('/')}/v2/reservations/{reservation_id}/instances"
+    headers = {
+        'Authorization': f'Bearer {api_key}',
+        'Accept': 'application/json',
+        'User-Agent': 'flow-slurm-setup'
+    }
+    for attempt in range(1, retries + 1):
+        try:
+            req = Request(url, headers=headers)
+            with urlopen(req, timeout=timeout) as resp:
+                body = resp.read().decode('utf-8', 'ignore')
+            data = json.loads(body)
+            if isinstance(data, list):
+                items = data
+            elif isinstance(data, dict):
+                items = data.get('data') or data.get('instances') or []
+            else:
+                items = []
+            if not isinstance(items, list):
+                raise ValueError("Invalid schema: 'data' must be list")
+            return items
+        except (HTTPError, URLError, TimeoutError) as e:
+            log(f"Attempt {attempt}/{retries}: HTTP error fetching instances: {e}")
+        except json.JSONDecodeError as e:
+            log(f"Attempt {attempt}/{retries}: Failed to parse JSON: {e}")
+        except Exception as e:
+            log(f"Attempt {attempt}/{retries}: Unexpected error: {e}")
+        time.sleep(backoff ** attempt)
+    return []
+
+def get_ip(item):
+    if isinstance(item, dict):
+        for key in ('private_ip', 'ip', 'privateIp', 'privateIP'):
+            val = item.get(key)
+            if isinstance(val, str) and val:
+                return val
+    return ''
+
+def get_hostname(item, ip):
+    # Prefer explicit hostname fields from API when available
+    if isinstance(item, dict):
+        for key in ('hostname', 'host', 'name', 'node_name'):
+            val = item.get(key)
+            if isinstance(val, str) and val:
+                return val.split('.')[0]
+    # Best-effort reverse DNS
+    try:
+        if ip:
+            hn = socket.gethostbyaddr(ip)[0]
+            return (hn or '').split('.')[0]
+    except Exception:
+        pass
+    return ''
+
+def is_valid_ip(value: str) -> bool:
+    try:
+        ipaddress.ip_address(value)
+        return True
+    except Exception:
+        return False
+
+items = fetch_instances()
+ips: list[str] = []
+hosts: list[str] = []
+for it in items:
+    ip = get_ip(it)
+    if ip and is_valid_ip(ip):
+        ips.append(ip)
+        hosts.append(get_hostname(it, ip))
+
+# Deduplicate while preserving order
+seen = set()
+ips = [x for x in ips if not (x in seen or seen.add(x))]
+
+if not ips:
+    try:
+        own_ip = socket.gethostbyname(socket.gethostname())
+        if is_valid_ip(own_ip):
+            ips = [own_ip]
+    except Exception:
+        pass
+
+if not ips:
+    log("No IP addresses discovered; writing controller-only config")
+    ips = ['127.0.0.1']
+
+with open('/etc/slurm/slurm.conf','a') as f:
+    for i, ip in enumerate(ips):
+        name = f"node{i+1}"
+        hn = (hosts[i] if i < len(hosts) else '').strip()
+        if hn:
+            f.write(f"NodeName={name} NodeHostname={hn} NodeAddr={ip} State=UNKNOWN\n")
+        else:
+            f.write(f"NodeName={name} NodeAddr={ip} State=UNKNOWN\n")
+    f.write("PartitionName=flow Nodes=ALL Default=YES MaxTime=INFINITE State=UP\n")
+log(f"Wrote {len(ips)} NodeName entries to slurm.conf")
+PY
+}
+
+start_controller() {
+  # Validate slurmctld configuration before starting
+  if ! slurmctld -t >/dev/null 2>&1; then
+    echo "[slurm] slurmctld configuration validation failed" >&2;
+    exit 1
+  fi
+  systemctl enable --now slurmctld
+  systemctl is-active --quiet slurmctld || { echo "[slurm] slurmctld failed to start" >&2; journalctl -u slurmctld --no-pager | tail -n 50; exit 1; }
+  # Start slurmrestd bound to localhost; provider may front it with TLS proxy
+  systemctl enable --now slurmrestd
+  systemctl is-active --quiet slurmrestd || { echo "[slurm] slurmrestd failed to start" >&2; journalctl -u slurmrestd --no-pager | tail -n 50; exit 1; }
+  # Reconfigure to pick up nodes/partition
+  if command -v scontrol >/dev/null 2>&1; then
+    scontrol reconfigure || true
+  fi
+}
+
+start_worker() {
+  systemctl enable --now slurmd
+  systemctl is-active --quiet slurmd || { echo "[slurm] slurmd failed to start" >&2; journalctl -u slurmd --no-pager | tail -n 50; exit 1; }
+  # Notify controller to reload config (best-effort)
+  if command -v scontrol >/dev/null 2>&1; then
+    scontrol reconfigure || true
+  fi
+}
+
+# Main
+install_common
+install_gpu_stack
+install_slurm
+setup_munge
+render_cgroup_conf
+render_gres_conf
+validate_gres_config
+
+if [ "$NODE_RANK" = "0" ]; then
+  if [ -z "$MAIN_IP" ]; then
+    MAIN_IP=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')
+    if [ -z "$MAIN_IP" ]; then
+      MAIN_IP=$(hostname -I | awk '{print $1}')
+    fi
+  fi
+  render_slurm_conf_controller
+  # Optional: append extra slurm.conf lines from env
+  if [ -n "${_FLOW_SLURM_CONF_APPEND:-}" ]; then
+    printf "\n# User appends\n%s\n" "${_FLOW_SLURM_CONF_APPEND}" >>/etc/slurm/slurm.conf
+  fi
+  # In configless mode, nodes will self-register; skip static NodeName writing
+  if [ "${SLURM_CONFIGLESS}" != "1" ]; then
+    discover_nodes_and_write
+  else
+    echo "[slurm] Configless mode enabled; skipping static node discovery"
+  fi
+  start_controller
+else
+  # Require MAIN_IP for worker config
+  if [ -z "$MAIN_IP" ]; then
+    echo "[slurm] Missing FLOW_MAIN_IP for worker; skipping Slurm worker setup" >&2
+    exit 0
+  fi
+  render_slurm_conf_worker
+  if [ -n "${_FLOW_SLURM_CONF_APPEND:-}" ]; then
+    printf "\n# User appends\n%s\n" "${_FLOW_SLURM_CONF_APPEND}" >>/etc/slurm/slurm.conf
+  fi
+  start_worker
+fi
+
+echo "[slurm] Provisioning complete"
+

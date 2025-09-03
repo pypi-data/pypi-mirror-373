@@ -1,0 +1,55 @@
+#!/bin/bash
+[[ flow_origin_header ]]
+set -euxo pipefail
+
+# Mithril Startup Script with SLURM-like logging
+echo "Starting Mithril instance initialization at $(date)"
+
+# Ensure we're running as root
+if [ "$EUID" -ne 0 ]; then
+    echo "Error: Script must run as root" >&2
+    exit 1
+fi
+
+# Ensure core tools and define install_pkgs helper (cross-distro)
+[[ ensure_basic_tools ]]
+
+# Get task ID from various sources
+TASK_NAME="{{ task_name }}"
+TASK_ID="${TASK_NAME:-${HOSTNAME:-$(command -v uuidgen >/dev/null 2>&1 && uuidgen || echo "task-$(date +%s)-$$")}}"
+
+# Create log directories
+LOG_DIR="[[ flow_log_dir ]]"
+mkdir -p "$LOG_DIR"
+
+# Create SLURM-like log files
+STDOUT_LOG="$LOG_DIR/$TASK_ID.out"
+STDERR_LOG="$LOG_DIR/$TASK_ID.err"
+COMBINED_LOG="$LOG_DIR/$TASK_ID.log"
+# Redirect outputs to separate files (like SLURM)
+exec 1> >(tee -a "$STDOUT_LOG" "$COMBINED_LOG")
+exec 2> >(tee -a "$STDERR_LOG" "$COMBINED_LOG" >&2)
+
+# Log startup information
+echo "[$(date)] Task $TASK_ID starting on $(hostname)"
+echo "Logs: stdout=$STDOUT_LOG stderr=$STDERR_LOG combined=$COMBINED_LOG"
+
+# Create Mithril-compatible log locations
+echo "Creating Mithril log symlinks..."
+mkdir -p [[ mithril_log_dir ]]
+ln -sf "$COMBINED_LOG" [[ mithril_startup_log ]]
+
+# Lightweight global log helper for downstream sections
+log() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$COMBINED_LOG"
+}
+
+# If GPU, verify NVIDIA driver and Docker GPU support early (non-fatal)
+if command -v nvidia-smi >/dev/null 2>&1; then
+  echo "Verifying GPU access..." | tee -a "$COMBINED_LOG"
+  nvidia-smi || echo "WARNING: nvidia-smi failed" | tee -a "$COMBINED_LOG"
+  if command -v docker >/dev/null 2>&1; then
+    ( docker run --rm --gpus all "nvidia/cuda:12.1.0-runtime-ubuntu22.04" nvidia-smi || echo "WARNING: Docker GPU test failed" ) | tee -a "$COMBINED_LOG" || true
+  fi
+fi
+
