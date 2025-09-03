@@ -1,0 +1,268 @@
+# -*- coding: utf-8 -*-
+_ = __import__(__package__.split(".", 1)[0])._
+
+################################################################################
+## Form generated from reading UI file 'main_window.ui'
+##
+## Created by: Qt User Interface Compiler version 6.9.2
+##
+## WARNING! All changes made in this file will be lost when recompiling UI file!
+################################################################################
+
+from PySide6.QtCore import (QCoreApplication, QDate, QDateTime, QLocale,
+    QMetaObject, QObject, QPoint, QRect,
+    QSize, QTime, QUrl, Qt)
+from PySide6.QtGui import (QAction, QBrush, QColor, QConicalGradient,
+    QCursor, QFont, QFontDatabase, QGradient,
+    QIcon, QImage, QKeySequence, QLinearGradient,
+    QPainter, QPalette, QPixmap, QRadialGradient,
+    QTransform)
+from PySide6.QtWidgets import (QApplication, QComboBox, QGridLayout, QGroupBox,
+    QLabel, QMainWindow, QMenu, QMenuBar,
+    QPushButton, QRadioButton, QSizePolicy, QToolBar,
+    QWidget)
+
+from plover.gui_qt.dictionaries_widget import DictionariesWidget
+from . import resources_rc
+
+class Ui_MainWindow(object):
+    def setupUi(self, MainWindow):
+        if not MainWindow.objectName():
+            MainWindow.setObjectName(u"MainWindow")
+        MainWindow.setEnabled(True)
+        MainWindow.resize(329, 427)
+        MainWindow.setMinimumSize(QSize(250, 0))
+        MainWindow.setWindowTitle(u"Plover")
+        icon = QIcon()
+        icon.addFile(u":/resources/plover.png", QSize(), QIcon.Mode.Normal, QIcon.State.Off)
+        MainWindow.setWindowIcon(icon)
+        self.action_Quit = QAction(MainWindow)
+        self.action_Quit.setObjectName(u"action_Quit")
+        self.action_Configure = QAction(MainWindow)
+        self.action_Configure.setObjectName(u"action_Configure")
+        icon1 = QIcon()
+        icon1.addFile(u":/resources/settings.svg", QSize(), QIcon.Mode.Normal, QIcon.State.Off)
+        self.action_Configure.setIcon(icon1)
+        self.action_OpenConfigFolder = QAction(MainWindow)
+        self.action_OpenConfigFolder.setObjectName(u"action_OpenConfigFolder")
+        icon2 = QIcon()
+        icon2.addFile(u":/resources/folder.svg", QSize(), QIcon.Mode.Normal, QIcon.State.Off)
+        self.action_OpenConfigFolder.setIcon(icon2)
+        self.action_About = QAction(MainWindow)
+        self.action_About.setObjectName(u"action_About")
+        self.action_Reconnect = QAction(MainWindow)
+        self.action_Reconnect.setObjectName(u"action_Reconnect")
+        icon3 = QIcon()
+        icon3.addFile(u":/resources/reconnect.svg", QSize(), QIcon.Mode.Normal, QIcon.State.Off)
+        self.action_Reconnect.setIcon(icon3)
+        self.action_Show = QAction(MainWindow)
+        self.action_Show.setObjectName(u"action_Show")
+        self.action_ToggleOutput = QAction(MainWindow)
+        self.action_ToggleOutput.setObjectName(u"action_ToggleOutput")
+        self.action_ToggleOutput.setCheckable(True)
+        self.centralwidget = QWidget(MainWindow)
+        self.centralwidget.setObjectName(u"centralwidget")
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.MinimumExpanding)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.centralwidget.sizePolicy().hasHeightForWidth())
+        self.centralwidget.setSizePolicy(sizePolicy)
+        self.centralwidget.setMinimumSize(QSize(0, 0))
+        self.gridLayout = QGridLayout(self.centralwidget)
+        self.gridLayout.setObjectName(u"gridLayout")
+        self.groupBox = QGroupBox(self.centralwidget)
+        self.groupBox.setObjectName(u"groupBox")
+        sizePolicy1 = QSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Preferred)
+        sizePolicy1.setHorizontalStretch(0)
+        sizePolicy1.setVerticalStretch(0)
+        sizePolicy1.setHeightForWidth(self.groupBox.sizePolicy().hasHeightForWidth())
+        self.groupBox.setSizePolicy(sizePolicy1)
+        self.gridLayout_2 = QGridLayout(self.groupBox)
+        self.gridLayout_2.setObjectName(u"gridLayout_2")
+        self.machine_state = QLabel(self.groupBox)
+        self.machine_state.setObjectName(u"machine_state")
+
+        self.gridLayout_2.addWidget(self.machine_state, 2, 0, 1, 1)
+
+        self.reconnect_button = QPushButton(self.groupBox)
+        self.reconnect_button.setObjectName(u"reconnect_button")
+        sizePolicy2 = QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        sizePolicy2.setHorizontalStretch(0)
+        sizePolicy2.setVerticalStretch(0)
+        sizePolicy2.setHeightForWidth(self.reconnect_button.sizePolicy().hasHeightForWidth())
+        self.reconnect_button.setSizePolicy(sizePolicy2)
+        self.reconnect_button.setIcon(icon3)
+
+        self.gridLayout_2.addWidget(self.reconnect_button, 2, 1, 1, 1)
+
+        self.machine_type = QComboBox(self.groupBox)
+        self.machine_type.setObjectName(u"machine_type")
+        sizePolicy3 = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        sizePolicy3.setHorizontalStretch(0)
+        sizePolicy3.setVerticalStretch(0)
+        sizePolicy3.setHeightForWidth(self.machine_type.sizePolicy().hasHeightForWidth())
+        self.machine_type.setSizePolicy(sizePolicy3)
+
+        self.gridLayout_2.addWidget(self.machine_type, 0, 0, 1, 2)
+
+
+        self.gridLayout.addWidget(self.groupBox, 0, 0, 1, 1)
+
+        self.dictionaries = DictionariesWidget(self.centralwidget)
+        self.dictionaries.setObjectName(u"dictionaries")
+
+        self.gridLayout.addWidget(self.dictionaries, 2, 0, 1, 3)
+
+        self.groupBox1 = QGroupBox(self.centralwidget)
+        self.groupBox1.setObjectName(u"groupBox1")
+        sizePolicy4 = QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Preferred)
+        sizePolicy4.setHorizontalStretch(0)
+        sizePolicy4.setVerticalStretch(0)
+        sizePolicy4.setHeightForWidth(self.groupBox1.sizePolicy().hasHeightForWidth())
+        self.groupBox1.setSizePolicy(sizePolicy4)
+        self.gridLayout_3 = QGridLayout(self.groupBox1)
+        self.gridLayout_3.setObjectName(u"gridLayout_3")
+        self.output_enable = QRadioButton(self.groupBox1)
+        self.output_enable.setObjectName(u"output_enable")
+
+        self.gridLayout_3.addWidget(self.output_enable, 0, 0, 1, 1)
+
+        self.output_disable = QRadioButton(self.groupBox1)
+        self.output_disable.setObjectName(u"output_disable")
+        self.output_disable.setChecked(True)
+
+        self.gridLayout_3.addWidget(self.output_disable, 1, 0, 1, 1)
+
+
+        self.gridLayout.addWidget(self.groupBox1, 0, 1, 1, 1)
+
+        MainWindow.setCentralWidget(self.centralwidget)
+        self.menubar = QMenuBar(MainWindow)
+        self.menubar.setObjectName(u"menubar")
+        self.menubar.setGeometry(QRect(0, 0, 329, 25))
+        self.menu_File = QMenu(self.menubar)
+        self.menu_File.setObjectName(u"menu_File")
+        self.menu_Tools = QMenu(self.menubar)
+        self.menu_Tools.setObjectName(u"menu_Tools")
+        self.menu_Help = QMenu(self.menubar)
+        self.menu_Help.setObjectName(u"menu_Help")
+        self.menu_Edit = QMenu(self.menubar)
+        self.menu_Edit.setObjectName(u"menu_Edit")
+        MainWindow.setMenuBar(self.menubar)
+        self.toolbar = QToolBar(MainWindow)
+        self.toolbar.setObjectName(u"toolbar")
+        self.toolbar.setMovable(False)
+        self.toolbar.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+        self.toolbar.setFloatable(False)
+        MainWindow.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.toolbar)
+        QWidget.setTabOrder(self.dictionaries, self.machine_type)
+        QWidget.setTabOrder(self.machine_type, self.output_enable)
+        QWidget.setTabOrder(self.output_enable, self.output_disable)
+
+        self.menubar.addAction(self.menu_File.menuAction())
+        self.menubar.addAction(self.menu_Edit.menuAction())
+        self.menubar.addAction(self.menu_Tools.menuAction())
+        self.menubar.addAction(self.menu_Help.menuAction())
+        self.menu_File.addAction(self.action_ToggleOutput)
+        self.menu_File.addAction(self.action_Reconnect)
+        self.menu_File.addSeparator()
+        self.menu_File.addAction(self.action_Configure)
+        self.menu_File.addAction(self.action_OpenConfigFolder)
+        self.menu_File.addSeparator()
+        self.menu_File.addAction(self.action_Show)
+        self.menu_File.addAction(self.action_Quit)
+        self.menu_Help.addAction(self.action_About)
+        self.toolbar.addAction(self.action_Configure)
+        self.toolbar.addSeparator()
+
+        self.retranslateUi(MainWindow)
+        self.action_Reconnect.triggered.connect(MainWindow.reconnect)
+        self.action_Configure.triggered.connect(MainWindow.configure)
+        self.action_OpenConfigFolder.triggered.connect(MainWindow.open_config_folder)
+        self.action_Show.triggered.connect(MainWindow.show_window)
+        self.action_ToggleOutput.triggered["bool"].connect(MainWindow.toggle_output)
+        self.action_About.triggered.connect(MainWindow.open_about_dialog)
+        self.machine_type.activated.connect(MainWindow.update_machine_type)
+        self.output_disable.clicked.connect(MainWindow.disable_output)
+        self.output_enable.clicked.connect(MainWindow.enable_output)
+        self.reconnect_button.clicked.connect(MainWindow.reconnect)
+
+        QMetaObject.connectSlotsByName(MainWindow)
+    # setupUi
+
+    def retranslateUi(self, MainWindow):
+        self.action_Quit.setText(QCoreApplication.translate("MainWindow", u"&Quit Plover", None))
+#if QT_CONFIG(tooltip)
+        self.action_Quit.setToolTip(QCoreApplication.translate("MainWindow", u"Quit the application.", None))
+#endif // QT_CONFIG(tooltip)
+#if QT_CONFIG(shortcut)
+        self.action_Quit.setShortcut(QCoreApplication.translate("MainWindow", u"Ctrl+Q", None))
+#endif // QT_CONFIG(shortcut)
+        self.action_Configure.setText(QCoreApplication.translate("MainWindow", u"&Configure", None))
+#if QT_CONFIG(tooltip)
+        self.action_Configure.setToolTip(QCoreApplication.translate("MainWindow", u"Open the configuration dialog.", None))
+#endif // QT_CONFIG(tooltip)
+#if QT_CONFIG(shortcut)
+        self.action_Configure.setShortcut(QCoreApplication.translate("MainWindow", u"Ctrl+,", None))
+#endif // QT_CONFIG(shortcut)
+        self.action_OpenConfigFolder.setText(QCoreApplication.translate("MainWindow", u"Open config &folder", None))
+#if QT_CONFIG(tooltip)
+        self.action_OpenConfigFolder.setToolTip(QCoreApplication.translate("MainWindow", u"Open the configuration folder.", None))
+#endif // QT_CONFIG(tooltip)
+        self.action_About.setText(QCoreApplication.translate("MainWindow", u"&About", None))
+#if QT_CONFIG(tooltip)
+        self.action_About.setToolTip(QCoreApplication.translate("MainWindow", u"Open the about dialog.", None))
+#endif // QT_CONFIG(tooltip)
+        self.action_Reconnect.setText(QCoreApplication.translate("MainWindow", u"&Reconnect machine", None))
+#if QT_CONFIG(tooltip)
+        self.action_Reconnect.setToolTip(QCoreApplication.translate("MainWindow", u"Disconnect and reconnect the machine.", None))
+#endif // QT_CONFIG(tooltip)
+#if QT_CONFIG(shortcut)
+        self.action_Reconnect.setShortcut(QCoreApplication.translate("MainWindow", u"Ctrl+R", None))
+#endif // QT_CONFIG(shortcut)
+        self.action_Show.setText(QCoreApplication.translate("MainWindow", u"&Show", None))
+#if QT_CONFIG(tooltip)
+        self.action_Show.setToolTip(QCoreApplication.translate("MainWindow", u"Show the main window.", None))
+#endif // QT_CONFIG(tooltip)
+        self.action_ToggleOutput.setText(QCoreApplication.translate("MainWindow", u"Toggle &output", None))
+#if QT_CONFIG(tooltip)
+        self.action_ToggleOutput.setToolTip(QCoreApplication.translate("MainWindow", u"Toggle the output.", None))
+#endif // QT_CONFIG(tooltip)
+#if QT_CONFIG(shortcut)
+        self.action_ToggleOutput.setShortcut(QCoreApplication.translate("MainWindow", u"Ctrl+.", None))
+#endif // QT_CONFIG(shortcut)
+        self.groupBox.setTitle(QCoreApplication.translate("MainWindow", u"Machine", None))
+#if QT_CONFIG(accessibility)
+        self.machine_state.setAccessibleName(QCoreApplication.translate("MainWindow", u"State", None))
+#endif // QT_CONFIG(accessibility)
+#if QT_CONFIG(accessibility)
+        self.machine_state.setAccessibleDescription(QCoreApplication.translate("MainWindow", u"Connection state for the current machine.", None))
+#endif // QT_CONFIG(accessibility)
+        self.machine_state.setText("")
+#if QT_CONFIG(tooltip)
+        self.reconnect_button.setToolTip(QCoreApplication.translate("MainWindow", u"Disconnect and reconnect the machine.", None))
+#endif // QT_CONFIG(tooltip)
+#if QT_CONFIG(accessibility)
+        self.reconnect_button.setAccessibleName(QCoreApplication.translate("MainWindow", u"Reconnect", None))
+#endif // QT_CONFIG(accessibility)
+#if QT_CONFIG(accessibility)
+        self.reconnect_button.setAccessibleDescription(QCoreApplication.translate("MainWindow", u"Disconnect and reconnect the machine.", None))
+#endif // QT_CONFIG(accessibility)
+        self.reconnect_button.setText("")
+#if QT_CONFIG(accessibility)
+        self.machine_type.setAccessibleName(QCoreApplication.translate("MainWindow", u"Type", None))
+#endif // QT_CONFIG(accessibility)
+#if QT_CONFIG(accessibility)
+        self.machine_type.setAccessibleDescription(QCoreApplication.translate("MainWindow", u"Change the current machine type.", None))
+#endif // QT_CONFIG(accessibility)
+        self.groupBox1.setTitle(QCoreApplication.translate("MainWindow", u"Output", None))
+        self.output_enable.setText(QCoreApplication.translate("MainWindow", u"Enabled", None))
+        self.output_disable.setText(QCoreApplication.translate("MainWindow", u"Disabled", None))
+        self.menu_File.setTitle(QCoreApplication.translate("MainWindow", u"&File", None))
+        self.menu_Tools.setTitle(QCoreApplication.translate("MainWindow", u"&Tools", None))
+        self.menu_Help.setTitle(QCoreApplication.translate("MainWindow", u"&Help", None))
+        self.menu_Edit.setTitle(QCoreApplication.translate("MainWindow", u"&Edit", None))
+        self.toolbar.setWindowTitle(QCoreApplication.translate("MainWindow", u"Plover: Toolbar", None))
+        pass
+    # retranslateUi
+
