@@ -1,0 +1,12 @@
+import re
+from .base_traceback_formatter import TracebackFormatter
+
+
+class AssertExcTracebackFormatter(TracebackFormatter):
+    def format(self, traceback: str) -> str:
+        re_search_end = r'raise AssertException'
+        start_res = re.search(self.re_search_start, traceback)
+        end_res = re.search(re_search_end, traceback)
+        traceback = traceback[start_res.end():end_res.end()]
+        traceback = traceback[:traceback.rfind('File "') - 3]
+        return f'{self.header}{traceback}'
