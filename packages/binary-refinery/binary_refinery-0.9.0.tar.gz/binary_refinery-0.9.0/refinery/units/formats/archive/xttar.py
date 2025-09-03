@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+
+import tarfile
+import datetime
+
+from refinery.lib.structures import MemoryFile
+from refinery.units.formats.archive import ArchiveUnit
+
+
+class xttar(ArchiveUnit, docs='{0}{s}{PathExtractorUnit}'):
+    """
+    Extract files from a Tar archive.
+    """
+    def unpack(self, data: bytearray):
+        with MemoryFile(data) as stream:
+            try:
+                archive = tarfile.open(fileobj=stream)
+            except Exception:
+                ustar = data.find(B'ustar')
+                if ustar < 257:
+                    raise
+                stream.seek(ustar - 257)
+                archive = tarfile.open(fileobj=stream)
+        for info in archive.getmembers():
+            if not info.isfile():
+                continue
+            extractor = archive.extractfile(info)
+            if extractor is None:
+                continue
+            date = datetime.datetime.fromtimestamp(info.mtime)
+            yield self._pack(info.name, date, lambda e=extractor: e.read())
+
+    @classmethod
+    def handles(cls, data: bytearray) -> bool:
+        if data[257:262] != B'ustar':
+            return False
+        return data[5:8] in (B'\x00\x30\x30', B'\x20\x20\x00')
