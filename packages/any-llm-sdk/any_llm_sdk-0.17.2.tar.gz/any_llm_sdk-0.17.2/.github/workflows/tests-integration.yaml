@@ -1,0 +1,75 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '.github/workflows/**'
+      - 'pyproject.toml'
+  workflow_dispatch:
+
+jobs:
+  run-integration-tests:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: 3.13
+          activate-environment: true
+
+      - name: Install dependencies
+        run: |
+          uv sync --group tests --extra all
+
+      - env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python scripts/wake_up_hf_endpoint.py
+
+      # cache the ~/.ollama/models directory
+      - uses: actions/cache@v4
+        with:
+          path: ~/.ollama
+          key: ${{ runner.os }}-ollama-models-${{ hashFiles('tests/conftest.py') }}
+          restore-keys: |
+            ${{ runner.os }}-ollama-models-
+      - name: Setup Ollama
+        uses: ai-action/setup-ollama@v1
+
+      - name: Run ollama
+        run: |
+          ollama serve &
+          ollama pull llama3.2:1b
+          ollama pull qwen3:0.6b
+
+      - env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python scripts/wake_up_hf_endpoint.py --retry=5
+
+      - name: Run Integration tests (parallel with xdist)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+          CO_API_KEY: ${{ secrets.CO_API_KEY }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          LLAMA_API_KEY: ${{ secrets.LLAMA_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          WATSONX_API_KEY: ${{ secrets.WATSONX_API_KEY }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+        run: pytest tests/integration -v -n auto --cov --cov-report=xml
+
+      - name: Upload coverage reports to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
