@@ -1,0 +1,33 @@
+# docker build -f Dockerfile.tests .
+FROM python:3.12-slim-bullseye
+
+WORKDIR /bx_django_utils
+RUN set -x \
+    && apt-get update \
+    && apt-get install -y git-core make curl \
+    && rm -rf /var/lib/apt/*
+
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Install requirements + Playwright
+COPY Makefile pyproject.toml Pipfile Pipfile.lock ./
+RUN set -x \
+    && make install || true \
+    && make playwright-install \
+    && .venv/bin/playwright install-deps
+
+COPY . .
+
+# List installed packages
+RUN set -x \
+    && .venv/bin/pip freeze
+
+# Run unittests
+RUN make test
+
+# Run unittests via tox
+RUN make tox
+
+# Run linters
+RUN make lint
+
