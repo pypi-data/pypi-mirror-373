@@ -1,0 +1,120 @@
+#This is A GNU makefile - using GNU MAKE extensions
+#and expecting the system variable HOSTTYPE to be defined
+
+#Include the appropriate make.inc file.
+ifeq (scc, $(findstring scc,$(HOSTNAME)))
+	make_inc = make.inc.buscc
+else ifeq ($(TACC_SYSTEM),stampede)
+   make_inc = make.inc.stampede
+else ifeq ($(TACC_SYSTEM),stampede2)
+#	makeinc = make.inc.knl
+	make_inc = make.inc.skx
+else ifeq ($(TACC_SYSTEM),frontera)
+    make_inc = make.inc.frontera
+else ifeq ($(HOSTNAME),julius.bu.edu)
+	make_inc = make.inc.julius
+else ifeq ($(HOSTNAME),docker)
+	make_inc = make.inc.docker
+else ifneq (,$(findstring runner,$(HOSTNAME)))
+	make_inc = make.inc.docker
+else ifneq (,$(findstring x86_64-apple-darwin13,$(HOST)))
+	make_inc = make.inc.x86_64-apple-darwin13
+else  # default is make.inc
+	make_inc = make.inc
+endif
+include $(make_inc)
+
+
+$(info HOSTNAME: $(HOSTNAME))
+
+#the list of source files
+CXXSOURCES = $(wildcard *.cc)
+CXXOBJS = $(CXXSOURCES:.cc=.o)
+CSOURCES = $(wildcard *.c)
+COBJS = $(CSOURCES:.c=.o)
+FSOURCES = $(wildcard *.f)
+FOBJS = $(FSOURCES:.f=.o)
+INCS = $(wildcard *.h) $(wildcard classes/*.h)
+CLASSDIR = classes
+
+# this INCDIRS section is not on master branch for some reason (maybe? merge was confusing)
+INCDIRS = -I../include -I$(CLASSDIR) -I. -I$(FFTWINCDIR) -I$(HDF5INCDIR)
+ifeq ($(HAVE_PETSC),1)
+   INCDIRS += -I$(TACC_PETSC_DIR)/$(PETSC_ARCH)/include -I$(TACC_PETSC_DIR)/include
+endif
+ifeq ($(USE_P3DFFT),1)
+   INCDIRS += -I$(P3DFFT_INC)
+endif
+INCDIRS += $(INCLUDE_EXTRA)
+
+LINUX_DIR = /usr/lib/gcc/x86_64-redhat-linux/4.4.7
+# MPI_COMPILE_FLAGS = $(shell mpic++ --showme:compile)
+MPI_COMPILE_FLAGS = $(shell $(CXX) --showme:compile)
+#MPI_LINK_FLAGS = -L$(MPI_DIR) -L$(LINUX_DIR) -lmpi_f90 -lmpi_f77 -lgfortran -lm -lm -Wl,-rpath,$(MPI_DIR)/lib -lm -lm -lmpi_cxx -lstdc++ -lmpi_cxx -lstdc++ -ldl -lmpi -lopen-rte -lopen-pal -lnsl -lutil -lgcc_s -lpthread -ldl
+MPI_LINK_FLAGS = -L$(MPI_DIR) -L$(LINUX_DIR) -lmpi_f77 -lgfortran -lm -lm -Wl,-rpath,$(MPI_DIR)/lib -lm -lm -lmpi_cxx -lstdc++ -lmpi_cxx -lstdc++ -ldl -lmpi -lopen-rte -lopen-pal -lnsl -lutil -lgcc_s -lpthread -ldl
+make_files = makefile make.inc.* make.options
+
+# # uncomment these lines if developing or testing python/log_make_settings.py:
+# default:   # << name doesn't matter, only matters that it's the first rule which appears.
+# 	@echo 'FAKE eppic.x; developing log_make_settings.py' > $(BIN)      # make fake eppic.x file
+# 	@python ../python/log_make_settings.py $(make_inc)   # logs settings upon successful make.
+
+$(BIN) : $(CXXOBJS) $(COBJS) $(FOBJS) $(CLASSLIB) $(make_files)
+	-/bin/rm -f $(BINNAME)
+	$(CXX) $(CXXFLAGS) $(CXXOBJS) $(COBJS) $(FOBJS) $(LINKFLAGS) -o $(BINNAME)
+	cp $(BINNAME) $(BINDIR)/$(BIN)
+	@python ../python/log_make_settings.py $(make_inc)   # logs settings upon successful make.
+
+tacc: $(BIN)
+	cp $(BIN) $(SCRATCH)/eppic
+
+
+#$(CLASSLIB): classes/makefile classes/*.cc classes/*.h
+#	cd $(CLASSDIR); $(MAKE)
+
+$(FFTLIB):
+	cd ../fftw-2.1/; csh ../bin/install-fftw.com
+
+$(CXXOBJS) : $(INCS) $(make_files)
+
+$(COBJS) : $(INCS) $(make_files)
+
+$(FOBJS) : $(make_files)
+
+clean:
+	/bin/rm -rf *.o $(BIN) *.tmp restart/* core* lib* *.out
+#	cd $(CLASSDIR); $(MAKE) clean
+
+echo:
+	@echo make_inc: $(make_inc)
+	@echo CPPFLAGS: $(CPPFLAGS)
+	@echo CXXFLAGS: $(CXXFLAGS)
+	@echo RTMFLAGS: $(RTMFLAGS)
+	@echo FFTWLIBS: $(FFTWLIBS)
+	@echo LIBS: $(LIBS)
+	@echo INCDIRS: $(INCDIRS)
+	@echo LINKFLAGS: $(LINKFLAGS)
+
+
+# --- "OLD" STUFF BELOW HERE (before 2023, June 13) ---
+
+#all: $(BIN)
+
+#$(OUTDIR)/eppic.log: $(BIN) $(OUTDIR)/eppic.i $(OUTDIR)/eppic.tgz
+#	cd $(RUNDIR)
+#	$(TIMER) $(RUNPROGRAM) $(RUNFLAGS) $(BIN) $(OUTDIR)/eppic.i > $(OUTDIR)/eppic.log
+#	tail -40 $(OUTDIR)/eppic.log
+
+#Next two lines commented out by Glenn 11/14/2018 to fix compilation error
+#$(OUTDIR)/eppic.log: $(BIN) $(OUTDIR)/eppic.i $(OUTDIR)/eppic.tgz
+#	cd $(RUNDIR)
+
+#	$(TIMER) $(RUNPROGRAM) $(RUNFLAGS) $(BIN) $(OUTDIR)/eppic_test.i > $(OUTDIR)/eppic.log
+#	tail -40 $(OUTDIR)/eppic.log
+
+
+#$(OUTDIR)/eppic.tgz: $(CXXOBJS) $(COBJS) $(FOBJS) $(CLASSLIB) $(make_files)
+#	-/bin/rm -rf ../*/core* ../core*
+#	-mkdir $(OUTDIR)
+#	cd .. ;\
+#	tar chf - src/*.h* src/*.c* src/makefile src/make.inc src/classes */*.com src/$(OUTDIR)/eppic.i bin |gzip - > src/$(OUTDIR)/eppic.tgz

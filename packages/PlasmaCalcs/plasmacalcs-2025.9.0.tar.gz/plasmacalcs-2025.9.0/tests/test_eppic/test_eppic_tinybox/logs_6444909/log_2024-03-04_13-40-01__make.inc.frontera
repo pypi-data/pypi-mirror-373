@@ -1,0 +1,136 @@
+include make.options
+
+#-----------------------------------------------------------------------------
+# Contains definitions customized for this system
+#-----------------------------------------------------------------------------
+
+# library locations, compiler/program definitions
+CPPFLAGS = -DF_PRECISION=$(F_PRECISION) \
+	-DP_PRECISION=$(P_PRECISION) \
+	-DNDIM=$(NDIM) \
+	-DFFTW2_TYPE_PREFIX
+CC = mpicc
+CXX = mpicxx
+CXXCPP = 
+CXXFLAGS_OPT = -O2 -xCORE-AVX2 -axCORE-AVX512,MIC-AVX512
+CXXFLAGS_DEBUG = -O0 -Wall
+FFLAGS = -O4
+FFLAGS_DEBUG = -O0
+
+MPICXX = mpicxx
+TIMER = time
+EPPIC_FFTW_USE_D_PREFIX=1
+
+BIN = $(BINDIR)/$(BINNAME)
+
+ifeq ($(USE_DOMAINS),1)
+	CPPFLAGS += -DUSE_DOMAINS=1
+endif
+
+ifeq ($(TARG_BUILD_SCENARIO),dbg) 
+	CXXFLAGS += -g $(CXXFLAGS_DEBUG)
+	CPPFLAGS += -DDEBUG=1  -DCHECK=1
+else
+	CXXFLAGS += $(CXXFLAGS_OPT)
+endif
+
+ifeq ($(DEBUG),1) 
+	CXXFLAGS += -g $(CXXFLAGS_DEBUG)
+	CPPFLAGS += -DDEBUG=1 
+else
+	CXXFLAGS += $(CXXFLAGS_OPT)
+endif
+
+ifeq ($(PROFILING),1)
+	CXXFLAGS += -pg
+endif
+
+ifeq ($(EPPIC_FFTW_USE_D_PREFIX),1)
+	CPPFLAGS += -DEPPIC_FFTW_USE_D_PREFIX=1
+endif
+
+ifeq ($(USE_MPI),1)
+	CXX = $(MPICXX)
+	CPPFLAGS += -DUSE_MPI=1
+endif
+
+ifeq ($(VERBOSE),1)
+	CPPFLAGS += -DVERBOSE=1
+endif
+
+ifeq ($(USE_QN),1)
+	CPPFLAGS += -DUSE_QN=1
+endif
+
+CXXFLAGS += -I../include -Iclasses -I.
+LINKFLAGS += -L../lib
+
+ifneq ($(TACC_T3PIO_INC),)
+   CXXFLAGS += -DHAVE_T3PIO=1 -I$(TACC_T3PIO_INC)
+   LINKFLAGS += -L$(TACC_T3PIO_LIB) -lt3pio
+endif
+
+ifeq ($(HAVE_PETSC),1)
+	CPPFLAGS += -DHAVE_PETSC=1
+	CXXFLAGS += -I$(TACC_PETSC_DIR)/$(PETSC_ARCH)/include -I$(TACC_PETSC_DIR)/include
+	LINKFLAGS += -L$(TACC_PETSC_LIB) -lpetsc -lX11 -lsuperlu_dist -lHYPRE -lparmetis -lmetis -lpthread -lscalapack
+endif
+
+CXXFLAGS += -I$(TACC_HDF5_INC)
+LINKFLAGS += -L$(TACC_HDF5_LIB) -lhdf5_hl -lhdf5
+
+ifdef TACC_FFTW2_INC
+	CXXFLAGS += -I$(TACC_FFTW2_INC)
+endif
+ifdef TACC_FFTW3_INC
+	CXXFLAGS += -I$(TACC_FFTW3_INC)
+endif
+ifeq ($(F_PRECISION),1)
+	ifdef TACC_FFTW2_LIB
+		LINKFLAGS += -L$(TACC_FFTW2_LIB) -lsrfftw_mpi -lsfftw_mpi -lsrfftw -lsfftw
+	endif
+	ifdef TACC_FFTW3_LIB
+		LINKFLAGS += -L$(TACC_FFTW3_LIB) -lfftw3f_mpi -lfftw3f
+	endif
+else
+	ifdef TACC_FFTW2_LIB
+		LINKFLAGS += -L$(TACC_FFTW2_LIB) -ldrfftw_mpi -ldfftw_mpi -ldrfftw -ldfftw
+	endif
+	ifdef TACC_FFTW3_LIB
+		LINKFLAGS += -L$(TACC_FFTW3_LIB) -lfftw3_mpi -lfftw3
+	endif
+endif
+
+ifeq ($(HAVE_PETSC),1)
+	CPPFLAGS += -DHAVE_PETSC=1
+
+	# PETSCLIBDIR = $(TACC_PETSC_LIB)
+	# PETSCINCDIR = $(TACC_PETSC_DIR)/include
+	# PETSCLIBS = -lpetsc -lX11
+	# PETSCLIBS += -lsuperlu_dist_4.0 -lHYPRE -lparmetis -lmetis -lpthread -lscalapack
+	# LIBS += -L$(PETSCLIBDIR) $(PETSCLIBS)
+
+	PETSC_INC = $(TACC_PETSC_DIR)/include
+#	LIBS += -L$(TACC_PETSC_LIB) -lpetsc -lX11 -lsuperlu_dist_4.0 -lHYPRE -lparmetis -lmetis -lpthread -lscalapack
+	LIBS += -L$(TACC_PETSC_LIB) -lpetsc -lX11 -lsuperlu_dist -lHYPRE -lparmetis -lmetis -lpthread -lscalapack
+endif
+
+LIBS += -L$(FFTWLIBDIR) $(FFTWLIBS)
+
+ifeq ($(USE_P3DFFT),1)
+	## These are for using p3dfft compiled locally (not using module load), via:
+        ##     git clone https://github.com/sdsc/p3dfft   # note - not .3; this is 2.7. eppic doesn't work with .3, yet.
+        ##     cd p3dfft
+        ##     ./configure --enable-intel --enable-patient --enable-fftw --with-fftw=$TACC_FFTW3_DIR FC=mpif90 CC=mpicc --prefix=$HOME/local
+	##     #  note: --enable-patient tells p3dfft_setup() to search for the fastest algorithm instead of just "a fast algorithm".
+        ##     make
+        ##     make install
+        P3DFFT_HOME = $(HOME)/local
+        P3DFFT_INC = $(P3DFFT_HOME)/include
+	CPPFLAGS += -DUSE_P3DFFT=1 -DINTEL -DMEASURE -DSTRIDE1 -DFFTW
+	CXXFLAGS += -I$(P3DFFT_INC) -I$(TACC_FFTW3_INC)
+	LIBS += -L$(P3DFFT_HOME)/lib -lp3dfft -L$(TACC_FFTW3_LIB) -lfftw3 -limf -lifcore
+	LINKFLAGS += -L$(P3DFFT_HOME)/lib -lp3dfft -limf -lifcore
+endif
+
+LIBS += -L$(HDF5LIBDIR) $(HDF5LIBS) -lm
