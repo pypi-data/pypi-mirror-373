@@ -1,0 +1,463 @@
+Metadata-Version: 2.4
+Name: aidlc-mcp-tools
+Version: 1.0.1
+Summary: AIDLC Dashboard MCP Tools for Amazon Q integration
+Author-email: AIDLC Team <team@aidlc.dev>
+Requires-Python: >=3.11
+Requires-Dist: flask-cors>=4.0.0
+Requires-Dist: flask>=2.3.3
+Requires-Dist: requests>=2.31.0
+Provides-Extra: dev
+Requires-Dist: black>=23.0.0; extra == 'dev'
+Requires-Dist: isort>=5.12.0; extra == 'dev'
+Requires-Dist: pytest>=7.0.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
+# AIDLC MCP Tools
+
+A Model Context Protocol (MCP) server implementation that provides AI agents with tools to interact with the AIDLC Dashboard service. This enables seamless integration between AI tools and project management workflows.
+
+## 🚀 Features
+
+- **Project Management**: Create and manage projects through MCP
+- **Artifact Upload**: Upload AI-generated artifacts (epics, user stories, domain models, etc.)
+- **Progress Tracking**: Update project status and track completion
+- **Health Monitoring**: Check service availability and performance
+- **Batch Operations**: Handle multiple artifacts efficiently
+- **Amazon Q Integration**: Optimized for Amazon Q Developer workflows
+
+## 📋 Requirements
+
+- Python 3.11+
+- requests library
+- AIDLC Dashboard service running (for integration)
+
+## 🛠️ Installation
+
+### Option 1: Using uv (Recommended)
+```bash
+# Install with uv
+uv pip install -e .
+
+# Or install from PyPI (when published)
+uv pip install mcp-tools
+```
+
+### Option 2: Using pip
+```bash
+# Install in development mode
+pip install -e .
+
+# Or install dependencies manually
+pip install -r requirements.txt
+```
+
+### Option 3: Quick Setup Script
+```bash
+./setup.sh
+```
+
+## 🌐 Usage
+
+### As MCP Server (Amazon Q Integration)
+
+1. **Configure Amazon Q MCP settings:**
+```json
+{
+  "mcpServers": {
+    "aidlc-dashboard": {
+      "command": "aidlc-mcp-server",
+      "env": {
+        "AIDLC_DASHBOARD_URL": "http://localhost:8000/api"
+      }
+    }
+  }
+}
+```
+
+2. **Start the MCP server:**
+```bash
+aidlc-mcp-server
+```
+
+3. **Use in Amazon Q:**
+```
+Create a new project called "E-commerce Platform" and upload the epics artifact with user authentication features.
+```
+
+### As Python Library
+
+```python
+from aidlc_mcp_tools import AIDLCDashboardMCPTools
+
+# Initialize tools
+tools = AIDLCDashboardMCPTools("http://localhost:8000/api")
+
+# Create a project
+result = tools.create_project("My New Project")
+if result.success:
+    project_id = result.data['project']['id']
+    print(f"Created project: {project_id}")
+
+# Upload an artifact
+artifact_content = {
+    "title": "User Authentication",
+    "description": "Implement user login and registration",
+    "priority": "high"
+}
+
+result = tools.upload_artifact(project_id, "epics", artifact_content)
+if result.success:
+    print("Artifact uploaded successfully")
+```
+
+### Standalone Script
+
+```bash
+# Create a project
+python -m aidlc_mcp_tools.cli create-project "My Project"
+
+# Upload artifact
+python -m aidlc_mcp_tools.cli upload-artifact PROJECT_ID epics '{"title": "Epic Title"}'
+
+# Check health
+python -m aidlc_mcp_tools.cli health-check
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AIDLC_DASHBOARD_URL` | Dashboard API base URL | `http://localhost:8000/api` |
+| `AIDLC_TIMEOUT` | Request timeout (seconds) | `30` |
+| `AIDLC_RETRY_ATTEMPTS` | Number of retry attempts | `3` |
+| `AIDLC_LOG_LEVEL` | Logging level | `INFO` |
+
+### Configuration File
+
+Create `config.json`:
+```json
+{
+  "dashboard_url": "http://localhost:8000/api",
+  "timeout": 30,
+  "retry_attempts": 3,
+  "log_level": "INFO"
+}
+```
+
+## 📖 Available MCP Tools
+
+### 1. aidlc_create_project
+Create a new project in the AIDLC Dashboard.
+
+**Parameters:**
+- `name` (string): Project name
+
+**Example:**
+```json
+{
+  "name": "create_project",
+  "arguments": {
+    "name": "E-commerce Platform"
+  }
+}
+```
+
+### 2. aidlc_upload_artifact
+Upload an artifact to a project.
+
+**Parameters:**
+- `project_id` (string): Project identifier
+- `artifact_type` (string): Type of artifact (epics, user_stories, domain_model, model_code_plan, ui_code_plan)
+- `content` (object): Artifact content
+
+**Example:**
+```json
+{
+  "name": "upload_artifact",
+  "arguments": {
+    "project_id": "project-123",
+    "artifact_type": "epics",
+    "content": {
+      "title": "User Management",
+      "description": "Complete user management system",
+      "priority": "high"
+    }
+  }
+}
+```
+
+### 3. aidlc_update_status
+Update the status of an artifact.
+
+**Parameters:**
+- `project_id` (string): Project identifier
+- `artifact_type` (string): Type of artifact
+- `status` (string): New status (not-started, in-progress, completed)
+
+### 4. aidlc_get_project
+Get project details and current status.
+
+**Parameters:**
+- `project_id` (string): Project identifier
+
+### 5. aidlc_list_projects
+List all projects in the dashboard.
+
+**Parameters:** None
+
+### 6. aidlc_health_check
+Check if the dashboard service is healthy and accessible.
+
+**Parameters:** None
+
+## 🎯 Artifact Types and Schemas
+
+### Epics
+```json
+{
+  "title": "Epic Title",
+  "description": "Epic description",
+  "user_stories": ["US-001", "US-002"],
+  "priority": "high|medium|low",
+  "acceptance_criteria": ["Criteria 1", "Criteria 2"]
+}
+```
+
+### User Stories
+```json
+{
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Story Title",
+      "description": "As a user, I want...",
+      "acceptance_criteria": ["Criteria 1"],
+      "priority": "high",
+      "story_points": 5
+    }
+  ],
+  "total_count": 1,
+  "epics": ["Epic-001"]
+}
+```
+
+### Domain Model
+```json
+{
+  "entities": [
+    {
+      "name": "User",
+      "attributes": ["id", "username", "email"],
+      "description": "System user entity"
+    }
+  ],
+  "relationships": [
+    {
+      "from": "User",
+      "to": "Order",
+      "type": "one-to-many"
+    }
+  ]
+}
+```
+
+### Model Code Plan
+```json
+{
+  "components": [
+    {
+      "name": "UserService",
+      "type": "service",
+      "dependencies": ["UserRepository"]
+    }
+  ],
+  "implementation_steps": [
+    "Create entities",
+    "Implement repositories"
+  ]
+}
+```
+
+### UI Code Plan
+```json
+{
+  "pages": [
+    {
+      "name": "LoginPage",
+      "route": "/login",
+      "components": ["LoginForm", "Header"]
+    }
+  ],
+  "navigation": {
+    "type": "SPA",
+    "router": "React Router"
+  }
+}
+```
+
+## 🧪 Testing
+
+### Unit Tests
+```bash
+# Run all tests
+python -m pytest
+
+# Run with coverage
+python -m pytest --cov=aidlc_mcp_tools
+```
+
+### Integration Tests
+```bash
+# Start dashboard service first
+cd ../dashboard-service
+python run.py --generate-demo &
+
+# Run integration tests
+python -m pytest tests/integration/
+```
+
+### Manual Testing
+```bash
+# Test MCP server
+python test_mcp_server.py
+
+# Test individual tools
+python examples/test_tools.py
+```
+
+## 📁 Project Structure
+
+```
+aidlc-mcp-tools/
+├── README.md                    # This file
+├── pyproject.toml              # Project configuration
+├── requirements.txt            # Python dependencies
+├── setup.sh                   # Quick setup script
+├── aidlc_mcp_tools/           # Main package
+│   ├── __init__.py            # Package initialization
+│   ├── server.py              # MCP server implementation
+│   ├── tools.py               # MCP tools implementation
+│   ├── cli.py                 # Command-line interface
+│   └── config.py              # Configuration management
+├── tests/                     # Test suite
+│   ├── unit/                  # Unit tests
+│   ├── integration/           # Integration tests
+│   └── fixtures/              # Test fixtures
+├── examples/                  # Usage examples
+│   ├── basic_usage.py         # Basic usage examples
+│   ├── amazon_q_workflow.py   # Amazon Q integration examples
+│   └── batch_operations.py    # Batch processing examples
+├── docs/                      # Documentation
+│   ├── API.md                 # API documentation
+│   ├── INTEGRATION.md         # Integration guide
+│   └── TROUBLESHOOTING.md     # Troubleshooting guide
+└── scripts/                   # Utility scripts
+    ├── test_connection.py     # Test dashboard connection
+    └── generate_config.py     # Generate configuration files
+```
+
+## 🔗 Integration Examples
+
+### Amazon Q Workflow
+```python
+# In Amazon Q, you can use natural language:
+# "Create a project for an e-commerce platform and add user authentication epics"
+
+# This translates to MCP tool calls:
+tools.create_project("E-commerce Platform")
+tools.upload_artifact(project_id, "epics", {
+    "title": "User Authentication",
+    "description": "Implement secure user login and registration",
+    "priority": "high"
+})
+```
+
+### Batch Processing
+```python
+# Upload multiple artifacts at once
+artifacts = [
+    ("epics", {"title": "User Management", "priority": "high"}),
+    ("user_stories", {"stories": [...], "total_count": 5}),
+    ("domain_model", {"entities": [...], "relationships": [...]})
+]
+
+for artifact_type, content in artifacts:
+    tools.upload_artifact(project_id, artifact_type, content)
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**Connection refused:**
+```bash
+# Check if dashboard service is running
+curl http://localhost:8000/api/health
+
+# Start dashboard service
+cd ../dashboard-service
+python run.py
+```
+
+**Import errors:**
+```bash
+# Install in development mode
+pip install -e .
+
+# Or install dependencies
+pip install -r requirements.txt
+```
+
+**MCP server not responding:**
+```bash
+# Check MCP server logs
+aidlc-mcp-server --debug
+
+# Test MCP server directly
+python -m aidlc_mcp_tools.server --test
+```
+
+### Debug Mode
+```bash
+# Enable debug logging
+export AIDLC_LOG_LEVEL=DEBUG
+aidlc-mcp-server
+
+# Or use debug flag
+aidlc-mcp-server --debug
+```
+
+## 📚 Documentation
+
+- [API Documentation](docs/API.md) - Detailed API reference
+- [Integration Guide](docs/INTEGRATION.md) - Integration with various tools
+- [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Run the test suite
+6. Submit a pull request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🙏 Acknowledgments
+
+- Built for Amazon Q Developer integration
+- Follows MCP (Model Context Protocol) standards
+- Designed for AIDLC methodology workflows
+- Optimized for AI-assisted development
+
+---
+
+**Happy coding with AI!** 🤖✨
+
+For questions or support, please check the documentation or create an issue in the repository.
