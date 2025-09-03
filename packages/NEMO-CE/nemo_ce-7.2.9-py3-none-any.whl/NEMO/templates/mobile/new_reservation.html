@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load custom_tags_and_filters %}
+{% block title %}New reservation{% endblock %}
+{% block extrahead %}
+    <script type="text/javascript" src="{% static "pickadate/picker.js" %}"></script>
+    <script type="text/javascript" src="{% static "pickadate/picker.date.js" %}"></script>
+    <script type="text/javascript" src="{% static "pickadate/picker.time.js" %}"></script>
+    <link rel="stylesheet" type="text/css" href="{% static "pickadate/default.css" %}" />
+    <link rel="stylesheet" type="text/css" href="{% static "pickadate/default.date.css" %}" />
+    <link rel="stylesheet" type="text/css" href="{% static "pickadate/default.time.css" %}" />
+{% endblock %}
+{% block content %}
+    <h3>Create a new reservation</h3>
+    <form method="post" action="{% url 'make_reservation' %}">
+        {% csrf_token %}
+        <input type="hidden" name="item_id" value="{{ item.id }}">
+        <input type="hidden" name="item_type" value="{{ item_type }}">
+        {% if not user|is_staff_on_tool:item %}
+            {% if user.active_project_count == 1 %}
+                <input type="hidden" name="project_id" value="{{ user.active_projects.0.id }}">
+            {% elif user.active_project_count > 1 %}
+                <h4>Which project is this for?</h4>
+                {% for project in user.active_projects %}
+                    <div class="radio">
+                        <label>
+                            <input type="radio" name="project_id" value="{{ project.id }}" required>
+                            {% project_selection_display project %}
+                        </label>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endif %}
+        <h4>When would you like to reserve the {{ item }}?</h4>
+        <div class="form-group">
+            <input type="text"
+                   id="date"
+                   name="date"
+                   class="form-control"
+                   aria-label="Reservation day"
+                   placeholder="Choose a date"
+                   required>
+        </div>
+        <div class="form-group">
+            <input type="text"
+                   id="start"
+                   name="start"
+                   class="form-control"
+                   aria-label="Reservation start time"
+                   placeholder="Choose a start time"
+                   required>
+        </div>
+        <div class="form-group">
+            <input type="text"
+                   id="end"
+                   name="end"
+                   class="form-control"
+                   aria-label="Reservation end time"
+                   placeholder="Choose an end time"
+                   required>
+        </div>
+        <div class="form-group text-center" style="margin-top:40px">
+            {% button type="save" value="Create the reservation" %}
+        </div>
+    </form>
+    <div style="height:350px"></div>
+    <script>
+        window.addEventListener('load', function () {
+            $('input[type=radio][name=project_id]').prop('checked', false);
+        });
+		let unavailable_times = [];
+		{% for times in item_reservation_times %}
+		unavailable_times.push([{{ times.start|date:"U" }},{{ times.end|date:"U" }}]);
+		{% endfor %}
+		let date_picker = $('#date').pickadate({format: "{{ pickadate_date_format }}", formatSubmit: "yyyy-mm-dd", firstDay: 1, hiddenName: true, onSet: refresh_times});
+		let start_time_picker = $('#start').pickatime({interval: 15,  format: "{{ pickadate_time_format }}", formatSubmit: "H:i", hiddenName: true, formatLabel: format_label});
+		let end_time_picker = $('#end').pickatime({interval: 15, format: "{{ pickadate_time_format }}", formatSubmit: "H:i", hiddenName: true, formatLabel: format_label});
+		// set initial date
+		if ('{{ date|default_if_none:'' }}')
+		{
+            date_picker.pickadate('picker').set('select', '{{ date }}', {format: '{{ pickadate_date_format }}'})
+        }
+		function refresh_times()
+        {
+            start_time_picker.pickatime('picker').render();
+            end_time_picker.pickatime('picker').render();
+        }
+        function format_label(time)
+        {
+		    if (date_picker.pickadate('picker').get('select') && unavailable_times.length > 0) {
+				let date_selected = date_picker.pickadate('picker').get('select').pick; // selected date in milliseconds
+				let time_selected = time.pick * 60 * 1000; // time in milliseconds
+				let date_time_selected = (date_selected + time_selected)/1000; // back to seconds to compare with python timestamp
+				for (let i=0 ; i < unavailable_times.length; i++) {
+                    let times = unavailable_times[i];
+                    let start = times[0];
+                    let end = times[1];
+                    if (date_time_selected >= start && date_time_selected < end) {
+                        return '<sp !an>{{ pickadate_time_format }}</sp !an> <sm !all> !alre!ad!y re!serve!d</sm !all>';
+                    }
+                }
+			}
+		    return "{{ pickadate_time_format }}";
+        }
+	
+    </script>
+{% endblock %}

@@ -1,0 +1,132 @@
+{% extends 'training_new/training_base.html' %}
+{% load custom_tags_and_filters %}
+{% load training_tags %}
+{% block tab_content %}
+    <div class="row form-inline" style="margin-top: 15px; padding: 0 8px">
+        <div class="col-sm-9">
+            <label style="margin-right: 15px" class="control-label" for="tool_filter">Tool:</label>
+            <select style="margin-right: 15px" id="tool_filter" class="form-control" onchange="filter_requests()">
+                <option value="all-tools" {% if selected_tool == "all-tools" %}selected{% endif %}>All tools</option>
+                {% for tool in tools %}
+                    <option value="{{ tool.id }}" {% if tool.id == selected_tool|to_int %}selected{% endif %}>{{ tool.name }}</option>
+                {% endfor %}
+            </select>
+            <label style="margin-right: 15px" for="trainer_filter">Trainer:</label>
+            <select style="margin-right: 15px" id="trainer_filter" class="form-control" onchange="filter_requests()">
+                <option value="all-trainers" {% if selected_trainer == "all-trainers" %}selected{% endif %}>All trainers</option>
+                {% for trainer in trainers %}
+                    <option value="{{ trainer.id }}" {% if trainer.id == selected_trainer|to_int %}selected{% endif %}>
+                        {{ trainer.get_name }}
+                    </option>
+                {% endfor %}
+            </select>
+            <label style="margin-right: 15px" for="date_filter">Date:</label>
+            <select id="date_filter" class="form-control" onchange="filter_requests()">
+                <option value="all-dates" {% if selected_date == "all-dates" %}selected{% endif %}>All dates</option>
+                {% for date in dates %}
+                    <option value="{{ date|input_date_format }}"
+                            {% if date|input_date_format == selected_date %}selected{% endif %}>
+                        {{ date|date:"SHORT_DATE_FORMAT" }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        {% if user|is_trainer %}
+            <div class="col-sm-3">
+                <div class="text-right" {% if training_requests %}style="margin-bottom: 15px;"{% endif %}>
+                    {% url "create_training_event" as create_training_event_url %}
+                    {% button type="add" value="New training session" onclick="new_get_request('"|concat:create_training_event_url|concat:"')" %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+    {% if training_events or past_training_events %}
+        <div class="table-responsive" style="border: none; width: 100%">
+            <table class="table table-borderless table-align-middle" style="margin-bottom: 0">
+                <thead>
+                    <tr>
+                        <th colspan="6" style="font-size: 20px">{{ training_title }}</th>
+                    </tr>
+                    <tr>
+                        <th>Tool</th>
+                        <th>Technique</th>
+                        <th>Trainer</th>
+                        <th>Start</th>
+                        <th>Duration</th>
+                        <th class="text-center">Attendees</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for training_event in training_events %}
+                        <tr {% if training_event.cancelled %}class="cancelled-training"{% endif %}>
+                            <td>{{ training_event.tool }}</td>
+                            <td>
+                                {% with default_technique_label=customizations|get_item:"training_technique_empty_label" %}
+                                    {{ training_event.technique|default_if_none:default_technique_label }}
+                                {% endwith %}
+                            </td>
+                            <td>{{ training_event.trainer.get_name }}</td>
+                            <td>
+                                {{ training_event.start }}
+                                {% if training_event.auto_cancel %}
+                                    <br>
+                                    <a href="#"
+                                       data-toggle="tooltip"
+                                       title="This event will be automatically cancelled if no user registrations are received by {{ training_event.auto_cancel }}."><span class="glyphicon glyphicon-info-sign"></span> Registration deadline</a>
+                                {% endif %}
+                            </td>
+                            <td>{{ training_event.duration }} minutes</td>
+                            <td class="text-center">{{ training_event.current_capacity }}/{{ training_event.capacity }}</td>
+                            <td class="text-right">
+                                {% if training_event.cancelled %}
+                                    <button class="btn btn-outline-danger btn-sm" disabled>
+                                        <i class="glyphicon glyphicon-trash"></i> CANCELLED
+                                    </button>
+                                    <br>
+                                    {{ training_event.cancellation_reason }}
+                                {% else %}
+                                    {% url 'training_event_details' training_event.id as view_training_details %}
+                                    {% button type="view" value="View" onclick="new_get_request('"|concat:view_training_details|concat:"?popup_view=true')" %}
+                                    {% if user not in training_event.users.all and user != training_event.trainer and training_event.current_capacity < training_event.capacity %}
+                                        {% if training_event|training_event_invitations:request.user %}
+                                            {% for invite in training_event|training_event_invitations:request.user %}
+                                                {% url "decline_training_invitation" invite.id as decline_invitation_url %}
+                                                {% button type="delete" value="Decline" icon="glyphicon-ban-circle" onclick="confirm_action('"|concat:decline_invitation_url|concat:"', false, training_callback_success, 'declining', 'invitation', 'Decline')" data_toggle="modal" data_target="#confirm-actions" %}
+                                                {% url 'accept_training_invitation' invite.id as accept_training_invitation_url %}
+                                                {% button type="save" value="Accept training invitation" icon="glyphicon-ok-sign" dismiss="modal" onclick="register_accept_training_invitation('"|concat:accept_training_invitation_url|concat:"');" %}
+                                            {% endfor %}
+                                        {% elif user not in training_event.users.all and user != training_event.trainer and training_event.current_capacity < training_event.capacity %}
+                                            {% with training_event|is_qualified:user as is_qualified %}
+                                                {% if not training_event.invitation_only and is_qualified %}
+                                                    {% url 'register_for_training' training_event.id as register_for_training_url %}
+                                                    {% button type="save" submit="false" value="Register for this training" icon="glyphicon-ok-sign" dismiss="modal" onclick="register_accept_training_invitation('"|concat:register_for_training_url|concat:"');" %}
+                                                {% endif %}
+                                            {% endwith %}
+                                        {% endif %}
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="pull-left form-control-static">
+            <i>There are currently no scheduled training sessions.</i>
+        </div>
+    {% endif %}
+    <script>
+		function register_accept_training_invitation(url)
+		{
+			let failure_dialog = ajax_failure_callback("Unable to register for this training");
+			ajax_post(url, undefined, training_callback_success, failure_dialog);
+		}
+		
+        function filter_requests()
+		{
+			window.location.href = "?tool=" + $("#tool_filter").val() + "&trainer=" + $("#trainer_filter").val() + "&date=" + $("#date_filter").val();
+		}
+    </script>
+{% endblock %}

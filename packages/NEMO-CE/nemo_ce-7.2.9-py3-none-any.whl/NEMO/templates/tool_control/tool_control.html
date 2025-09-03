@@ -1,0 +1,415 @@
+{% extends 'base.html' %}
+{% load custom_tags_and_filters %}
+{% block title %}{{ tool_control_page_title }}{% endblock %}
+{% block extrahead %}
+    {% load static %}
+    <script type="text/javascript" src="{% static "datetimepicker/bootstrap-datetimepicker.js" %}"></script>
+    <link rel="stylesheet" type="text/css" href="{% static "datetimepicker/bootstrap-datetimepicker.css" %}" />
+{% endblock %}
+{% block body %}
+    <div id="main-content">
+        <style>
+		h3
+		{
+			margin-top: 0;
+		}
+	
+        </style>
+        {% if device == 'mobile' %}
+            <div id="content" class="container"></div>
+        {% else %}
+            <div id="sidebar" class="application-sidebar">
+                <div id="expand-collapse" class="btn-group sidebar-item">
+                    {% if user.is_staff or customizations|get_item:"calendar_qualified_tools" == "enabled" %}
+                        <button type="button"
+                                class="btn btn-default"
+                                style="width:50%"
+                                onclick="toggle_categories()"
+                                title="Expand/collapse all categories">
+                            <span id="expand_collapse_icon" class="glyphicon glyphicon"></span>
+                        </button>
+                        <button type="button"
+                                class="btn btn-default"
+                                id="my_tools_btn"
+                                style="width:50%"
+                                onclick="toggle_my_tools(retrieve_my_tools())"
+                                title="Only show {% if user.is_staff %}my{% else %}qualified{% endif %} tools">
+                            <span class="glyphicon glyphicon-check"></span>
+                        </button>
+                    {% else %}
+                        <button type="button"
+                                class="btn btn-default"
+                                style="width:100%"
+                                onclick="toggle_categories()"
+                                title="Expand/collapse all categories">
+                            <span id="expand_collapse_icon" class="glyphicon glyphicon"></span>
+                        </button>
+                    {% endif %}
+                </div>
+                <input aria-label="Search for a tool"
+                       type="search"
+                       id="item_search"
+                       placeholder="Search for a tool"
+                       class="form-control sidebar-item">
+                {{ rendered_item_tree_html }}
+                <div style="height:50px"></div>
+            </div>
+            <div id="content" class="application-content" style="padding-right: 20px; overflow-y:scroll"></div>
+            <div id="loading-div" class="application-content spinner-container" style="display: none">
+                <div class="glyphicon glyphicon-repeat normal-right-spinner"></div>
+            </div>
+        {% endif %}
+        <div id="interlock_error_contents" style="display: none">{% include 'tool_control/interlock_error.html' %}</div>
+        <script>
+        let previous_tasks_and_comments_url;
+		function refresh_tool_status()
+		{
+			let selected_item = {% if device == 'mobile' %}{{ selected_tool }}{% else %}get_selected_item(){% endif %};
+			if(selected_item && selected_item !== 'personal_schedule')
+			{
+			    let item = JSON.parse(selected_item)
+			 	{% if device == 'desktop' %}
+					$('#loading-div').show()
+				{% endif %}
+				let url = "{% url 'tool_status' 999 %}".replace('999', {% if device == 'mobile' %} selected_item {% else %} item.id {% endif %})
+				$("#content").load(url, undefined, refresh_tool_completion_callback);
+			}
+			{% if device == 'desktop' %}
+				refresh_sidebar_tool_icons();
+			{% endif %}
+		}
+
+		function reload_page()
+		{
+			location.reload();
+		}
+
+		function refresh_tool_completion_callback(response, status, xml_http_request)
+		{
+		    {% if device == 'desktop' %}
+				$('#loading-div').hide()
+			{% endif %}
+			if(status === "error")
+			{
+				let content = "<div class='alert alert-danger'><span class='glyphicon glyphicon-remove'></span> Unable to retrieve tool status.";
+				if(xml_http_request.responseText)
+					content += " " + xml_http_request.responseText;
+				content += "</div>";
+				$("#content").html(content);
+			}
+		}
+
+		function use_tool_for_self(training)
+		{
+            $("#training").val(training || "");
+			$("#project_choice").html("Fetching project list...").show().load("{% url 'get_projects_for_self' %}", undefined, load_projects_completion_callback);
+		}
+
+		function select_project(element, project_id)
+		{
+			$(".project-choice").removeClass('active');
+			$(element).addClass('active');
+			$("#project_id").val(project_id);
+            $("#pre_usage_questions").show();
+            $("#start").show();
+		}
+
+		function load_projects(jquery_event, search_selection, dataset_name)
+		{
+			$("#user_search").typeahead('val', '').hide();
+			$("#customer").text(search_selection.name).show();
+			let data = "user_id=" + search_selection.id;
+			$("#customer_project").html("Fetching project list...").show().load("{% url 'get_projects_for_tool_control' %}", data, load_projects_completion_callback);
+		}
+
+		function load_projects_completion_callback(response, status, xml_http_request)
+		{
+			if(status === "error")
+				$("#customer_project").html("Unable to retrieve a list of projects for this user.")
+		}
+
+		function try_post_catch_interlock_error(url, data, success_callback, always_callback)
+        {
+            ajax_post(url, data, success_callback, function(response, status, xml_http_request) { return interlock_failure_callback(response, status, xml_http_request, url, data, success_callback) }, always_callback);
+        }
+
+		function interlock_failure_callback(response, status, xml_http_request, url, data, success_callback, always_callback)
+        {
+            if(data === undefined)
+            {
+                data = "";
+            }
+            {# Specific case here where we have an error but it could be bypassed #}
+            if (status === 'error' && response.status === 501)
+            {
+                let modal_dialog = $('#dialog');
+                $("#dialog .modal-content").html($('#interlock_error_contents').html());
+		        modal_dialog.modal('show');
+		        let bypass_button = $($("#dialog .inter_bypass")[0]);
+                let response_data = response.responseJSON;
+                $("#dialog .interlock_message").html(response_data['message'])
+                bypass_button.hide();
+                {# we can bypass, show the button #}
+                if (response_data["bypass_allowed"] === true)
+                {
+                    bypass_button.off("click")
+                    $('#dialog .bypass_text').html(response_data['action'] + " anyway");
+                    bypass_button.show();
+                    bypass_button.one('click', function ()
+                    {
+                        modal_dialog.on('hidden.bs.modal', function ()
+                        {
+                            data += "&bypass=True";
+                            try_post_catch_interlock_error(url, data, success_callback, always_callback);
+                            modal_dialog.off();
+                        });
+                        modal_dialog.modal('hide');
+                    });
+                }
+                {# hook up try again button #}
+                let inter_try_again_button = $($("#dialog .inter_try_again")[0]);
+                inter_try_again_button.off("click");
+                inter_try_again_button.one('click', function ()
+                {
+		            modal_dialog.on('hidden.bs.modal', function ()
+                    {
+                        try_post_catch_interlock_error(url, data, success_callback, always_callback);
+                        modal_dialog.off();
+                    });
+                    modal_dialog.modal('hide');
+                });
+            }
+            else
+            {
+                ajax_failure_callback("Couldn't change tool status")(response, status, xml_http_request);
+            }
+        }
+
+        function enter_wait_list(tool_id)
+        {
+			let failure_dialog = ajax_failure_callback("Failed to enter the wait list", "There was a problem entering the wait list.");
+			ajax_post("{% url 'enter_wait_list' %}", { tool_id }, reload_page, failure_dialog);
+		}
+
+		function exit_wait_list(tool_id)
+        {
+			let failure_dialog = ajax_failure_callback("Failed to exit the wait list", "There was a problem exiting the wait list.");
+			ajax_post("{% url 'exit_wait_list' %}", { tool_id }, reload_page, failure_dialog);
+		}
+
+		function enable_tool(tool_id)
+		{
+			$("#start button").prop("disabled", true);
+			let user_id = parseInt($("#user_id").val());
+			let project_id = parseInt($("#project_id").val());
+			let staff_charge = false;
+			if($("input[name='staff_charge']").length > 0 && $("input[name='staff_charge']:checked").val() === 'true')
+			{
+			    staff_charge = true;
+            }
+			let url = "{% url 'enable_tool' tool_id=111 user_id=22222222 project_id=33333333 staff_charge='false' %}".replace('111', tool_id).replace('22222222', user_id.toString()).replace('33333333', project_id.toString()).replace('false', staff_charge.toString())
+			let success_callbacks;
+			if(staff_charge === true)
+				success_callbacks = [reload_page]; {# If there's a new staff charge then we need to reload the whole page so it's displayed in the menu bar. #}
+			else
+				success_callbacks = [refresh_tool_status, ajax_success_callback];
+			let enable_start_button = function() { $("#start button").prop("disabled", false); };
+            let data = $("#tool_control").serialize();
+			try_post_catch_interlock_error(url, data, success_callbacks, enable_start_button);
+		}
+
+		function disable_tool(url, shorten, force)
+		{
+			$("#stop_wrapper button").prop("disabled", true);
+            let data = ""
+            if (force === undefined || !force)
+            {
+            	data += $("#tool_control").serialize();
+            }
+            if (shorten !== undefined && shorten) data += '&shorten=True';
+			let enable_stop_button = function() { $("#stop_wrapper button").prop("disabled", false); };
+			try_post_catch_interlock_error(url, data, [refresh_tool_status, ajax_success_callback], enable_stop_button);
+		}
+
+		{% if user.is_staff or user.is_tool_staff %}
+
+			{# Only staff can perform the functions in this if-block. #}
+
+			function use_tool_for_other(remote_work, training)
+			{
+                $("#remote_work").val(remote_work || "");
+                $("#training").val(training || "");
+				$("#start").hide();
+                $("#pre_usage_questions").hide();
+				$("#project_choice").html("Fetching user list...").show().load("{% url 'use_tool_for_other' %}", undefined, load_projects_completion_callback);
+			}
+
+			function clear_customer()
+			{
+				$("#customer").text("").hide();
+				$("#customer_project").html("").hide();
+				$("#start").hide();
+                $("#pre_usage_questions").hide();
+				$("#user_search").show().focus();
+			}
+
+			let selected_user_id = null;
+			function add_qualified_user(jquery_event, search_selection, dataset_name) {
+				selected_user_id = search_selection.id;
+			}
+
+			function qualify_user() {
+                let form_jq = $("#add_qualified_user_form");
+                let form = form_jq[0];
+                if (form.reportValidity())
+                {
+					let failure_dialog = ajax_failure_callback("Failed to qualify user", "There was a problem qualifying this user.");
+					let data = form_jq.serialize();
+					data += '&chosen_user[]=' + selected_user_id;
+					ajax_post("{% url 'modify_qualifications' %}", data, reload_qualified_users, failure_dialog)
+				}
+			}
+
+
+			function remove_qualified_user(user_id, tool_id)
+			{
+				let failure_dialog = ajax_failure_callback("Failed to remove qualified user", "There was a problem revoking this user's tool qualification.");
+				let data = {
+					'action': 'disqualify',
+					'chosen_tool[]': tool_id,
+					'chosen_user[]': user_id
+				};
+				ajax_post("{% url 'modify_qualifications' %}", data, reload_qualified_users, failure_dialog);
+			}
+
+			function reload_qualified_users()
+			{
+			    let selected_item = {% if device == 'mobile' %}{{ selected_tool }}{% else %}get_selected_item(){% endif %}
+				if (selected_item && selected_item !== 'personal_schedule')
+				{
+					let item = JSON.parse(selected_item)
+				    let url = "{% url 'get_qualified_users' %}?tool_id=" + {% if device == 'mobile' %} selected_item {% else %} item.id {% endif %};
+					$("#qualified_users_container").load(url);
+				}
+			}
+
+			function end_staff_charge()
+			{
+				let failure_dialog = ajax_failure_callback("Unable to end staff charge", "There was a problem ending your staff charge.");
+				ajax_post("{% url 'end_staff_charge' %}", undefined, reload_page, failure_dialog);
+			}
+		{% endif %}
+
+		function load_tasks_and_comments(ten_most_recent)
+		{
+			let data = serialize("#history_form");
+			if (data.start)	data.start = moment.utc(data.start, "{{ date_input_js_format }}").unix();
+			if (data.end) data.end = moment.utc(data.end, "{{ date_input_js_format }}").unix();
+            let tasks_and_comments_url = "{% url 'past_comments_and_tasks' %}?" + $.param(data);
+			if (ten_most_recent)
+            {
+                tasks_and_comments_url = "{% url 'ten_most_recent_past_comments_and_tasks' 999 %}?".replace('999', data.tool_id);
+            }
+            {# Load results, set previous url only if successfull #}
+            let failure_dialog = ajax_complete_callback("Unable to find past tasks & comments", "There was a problem looking up past tasks & comments.");
+            let callback = function(response, status, xml_header_request)
+            {
+                if (status !== "error") {
+                    previous_tasks_and_comments_url = tasks_and_comments_url;
+                }
+                return failure_dialog(response, status, xml_header_request);
+            }
+            $("#past_tasks_and_comments").load(tasks_and_comments_url, callback);
+		}
+
+		function export_tasks_and_comments()
+        {
+            {# Reload and export results of last url used #}
+            let export_url = previous_tasks_and_comments_url + "&export=true";
+            let export_failure_dialog = ajax_complete_callback("Unable to export past tasks & comments", "There was a problem exporting past tasks & comments.");
+            let export_callback = function(response, status, xml_header_request)
+            {
+                if (status !== "error") {
+                    location.href = export_url;
+                }
+                return export_failure_dialog(response, status, xml_header_request);
+            }
+            $("#past_tasks_and_comments").load(previous_tasks_and_comments_url, export_callback);
+        }
+
+		function load_tasks_and_comments_for_last_three_months()
+		{
+			let start = moment().subtract(3, 'months').format("{{ date_input_js_format }}");
+			let end = moment().format("{{ date_input_js_format }}");
+			$("#task_and_comment_start").val(start);
+			$("#task_and_comment_end").val(end);
+			load_tasks_and_comments();
+		}
+
+		function load_ten_most_recent_tasks_and_comments()
+		{
+			load_tasks_and_comments(true);
+		}
+
+		function load_usage_data(tool_id, csv_export)
+		{
+			let failure_dialog = ajax_complete_callback("Unable to find usage data", "There was a problem looking up usage data.");
+			let data = serialize("#usage_data_form");
+			data.csrfmiddlewaretoken= "{{ csrf_token }}";
+			if (data.data_history_start_date) data.start = moment.utc(data.data_history_start_date, "{{ date_input_js_format }}").unix();
+			if (data.data_history_end_date) data.end = moment.utc(data.data_history_end_date, "{{ date_input_js_format }}").unix();
+			$("#usage_data").load("{% url 'usage_data_history' 999 %}".replace('999', tool_id), data, failure_dialog);
+			if (csv_export)
+			{
+				$('#hidden_data_csv').val(csv_export);
+				$('#hidden_data_start').val(data.start);
+				$('#hidden_data_end').val(data.end);
+				$('#usage_data_form').submit();
+			}
+		}
+
+        function load_config_history(tool_id) {
+            let failure_dialog = ajax_complete_callback("Unable to find the configuration history", "There was a problem looking up the configuration history.");
+            $("#config").load("{% url 'tool_config_history' 999 %}".replace('999', tool_id), undefined, failure_dialog);
+        }
+
+		function refresh_sidebar_tool_icons()
+		{
+		    $.getScript('{% url 'refresh_sidebar_icons' item_type='tool' %}')
+		}
+
+        function retrieve_my_tools()
+        {
+            return {{ user.my_tools|json_search_base }}.map(
+                tool => { return tool.id; }
+            );
+        }
+
+		function on_load()
+		{
+			{% if device == 'desktop' %}
+				set_item_link_callback(refresh_tool_status);
+				enable_item_tree_toggling();
+				$('#item_search').autocomplete('tools', on_item_search_selection, {% json_search_base_with_extra_fields tools %}, true);
+				$("#item_search").focus();
+				load_sidebar_state();
+                {% if user.is_staff or customizations|get_item:"calendar_qualified_tools" == "enabled" %}
+                    {# Filter "my tools" depending on the status of the button. #}
+                    load_my_tools(retrieve_my_tools());
+                {% endif %}
+				$(".item_tree").show();
+				{# Tool tree is initially hidden so that previous expand/collapse state of categories is configured before it's visible. #}
+				{% if selected_tool %}
+					expand_to_item({{ selected_tool }}, 'tool');
+				{% endif %}
+				set_interval_when_visible(document, refresh_sidebar_tool_icons, 30000);
+			{% endif %}
+			refresh_tool_status();
+		}
+
+		$(on_load);
+
+	
+        </script>
+    </div>
+{% endblock %}

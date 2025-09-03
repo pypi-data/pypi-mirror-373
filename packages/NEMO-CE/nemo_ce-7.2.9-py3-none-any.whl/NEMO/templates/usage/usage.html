@@ -1,0 +1,268 @@
+{% extends 'usage/usage_base.html' %}
+{% load custom_tags_and_filters %}
+{% block usage_content %}
+    <div id="content" class="tab-content">
+        <div class="tab-pane active" id="usage">
+            <br />
+            <p>
+                Adjustment activities <b>are not included</b> in the usage information.
+                {% if customizations|get_item:"adjustment_requests_enabled" == "enabled" and adjustment_time_limit %}
+                    <br>
+                    Adjustment requests can be made for charges ending after {{ adjustment_time_limit.date }}.
+                {% endif %}
+                <div>
+                    <br>
+                    <label class="control-label">
+                        <input type="checkbox"
+                               value=""
+                               onclick="const params = new URLSearchParams(window.location.search); params.set('run_data_collapse', $(this).is(':checked')); window.location.search = params.toString(); "
+                               {% if run_data_collapse %}checked{% endif %}>
+                        Collapse pre/post run data by default
+                    </label>
+                </div>
+            </p>
+            {% if no_charges %}<h3>There was no usage between {{ start_date|date }} and {{ end_date|date }}.</h3>{% endif %}
+            {% if missed_reservations %}
+                <h3>Missed reservations</h3>
+                {% for m in missed_reservations %}
+                    <div class="usage-charge alert alert-danger">
+                        <span style="font-weight:bold">{{ m.reservation_item }}</span>
+                        <br>
+                        {% if explicitly_display_customer %}
+                            Missed by {{ m.user }}
+                            <br>
+                        {% endif %}
+                        {{ m.start }}
+                        <br>
+                        Charged to project {{ m.project }}
+                        {% if m|can_be_adjusted:user %}
+                            {% include "usage/adjustment_request_button.html" with charge=m %}
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            {% endif %}
+            {% if consumables %}
+                <h3>Supplies and consumables</h3>
+                {% for c in consumables %}
+                    <div class="usage-charge alert alert-info">
+                        <span style="font-weight:bold">{{ c.consumable }}</span>
+                        <br>
+                        {% if explicitly_display_customer %}
+                            <span style="font-weight:bold">For {{ c.customer }}</span>
+                            <br>
+                        {% endif %}
+                        Quantity {{ c.quantity }}
+                        <br>
+                        Purchased from {{ c.merchant }} on {{ c.date }}
+                        <br>
+                        Charged to project {{ c.project }}
+                        {% if c|can_be_adjusted:user %}
+                            {% include "usage/adjustment_request_button.html" with charge=c %}
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            {% endif %}
+            {% if staff_charges %}
+                <h3>Staff charges</h3>
+                {% for s in staff_charges %}
+                    <div class="usage-charge alert alert-info">
+                        <span style="font-weight:bold">Work performed by {{ s.staff_member }}
+                            {% if explicitly_display_customer %}
+                                on behalf of {{ s.customer }}
+                            {% else %}
+                                on your behalf
+                            {% endif %}
+                        </span>
+                        <br>
+                        {% if s.note %}
+                            Charge note: {{ s.note|linebreaksbr }}
+                            <br>
+                        {% endif %}
+                        {{ s.start }}
+                        <br>
+                        {{ s.end }}
+                        <br>
+                        Charged to project {{ s.project }}
+                        {% if s|can_be_adjusted:user %}
+                            {% include "usage/adjustment_request_button.html" with charge=s %}
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            {% endif %}
+            {% if training_sessions %}
+                <h3>Training sessions</h3>
+                {% for t in training_sessions %}
+                    <div class="usage-charge alert alert-info">
+                        <span style="font-weight:bold">{{ t.tool }}</span> {{ t.get_type_display }} training
+                        {% if explicitly_display_customer %}for {{ t.trainee }}{% endif %}
+                        <br>
+                        Trained by <span style="font-weight:bold">{{ t.trainer }}</span>
+                        <br>
+                        {{ t.date }} ({{ t.duration }} minutes)
+                        <br>
+                        Charged to project {{ t.project }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+            {% if area_access %}
+                <h3>Area access</h3>
+                {% for a in area_access %}
+                    <div class="usage-charge alert {% if not a.staff_charge %}alert-info{% else %}alert-warning{% endif %}">
+                        <span style="font-weight:bold">{{ a.area }}</span>
+                        <br>
+                        {% if a.staff_charge %}
+                            <span style="font-weight:bold">Area accessed by {{ a.staff_charge.staff_member }}
+                                {% if explicitly_display_customer %}
+                                    on behalf of {{ a.customer }}
+                                {% else %}
+                                    on your behalf
+                                {% endif %}
+                            </span>
+                            <br>
+                        {% else %}
+                            {% if explicitly_display_customer %}
+                                <span style="font-weight:bold">Area accessed by {{ a.customer }}</span>
+                                <br>
+                            {% endif %}
+                        {% endif %}
+                        {{ a.start }}
+                        <br>
+                        {{ a.end|default_if_none:"In progress" }}
+                        <br>
+                        Charged to project {{ a.project }}
+                        {% if a|can_be_adjusted:user %}
+                            {% include "usage/adjustment_request_button.html" with charge=a %}
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            {% endif %}
+            {% if usage_events %}
+                <h3>Tool usage</h3>
+                {% for u in usage_events %}
+                    <div class="usage-charge alert {% if u.user == u.operator %}alert-info{% else %}alert-warning{% endif %}">
+                        <span style="font-weight:bold">{{ u.tool }}</span>
+                        <br>
+                        {% if u.user != u.operator %}
+                            <span style="font-weight:bold">Operated by {{ u.operator }}
+                                {% if explicitly_display_customer %}
+                                    on behalf of {{ u.user }}
+                                {% else %}
+                                    on your behalf
+                                {% endif %}
+                            </span>
+                            <br>
+                        {% else %}
+                            {% if explicitly_display_customer %}
+                                <span style="font-weight:bold">Operated by {{ u.user }}</span>
+                                <br>
+                            {% endif %}
+                        {% endif %}
+                        {{ u.start }}
+                        <br>
+                        {{ u.end }}
+                        <br>
+                        Charged to project {{ u.project }}
+                        {% if u|can_be_adjusted:user %}
+                            {% include "usage/adjustment_request_button.html" with charge=u %}
+                        {% endif %}
+                        {% if u.pre_run_data_json.items %}
+                            <div onclick="toggle_details(this)"
+                                 data-toggle="collapse"
+                                 data-target="#{{ u.id }}_pre_run_data"
+                                 class="pointer">
+                                <span class="glyphicon {% if run_data_collapse %}glyphicon-chevron-right{% else %}glyphicon-chevron-down{% endif %} chevron"
+                                      style="color:inherit;
+                                             margin-top: 15px"></span>Pre run data
+                            </div>
+                            <div id="{{ u.id }}_pre_run_data" class="collapse {% if not run_data_collapse %}in{% endif %}">
+                                <table class="table table-striped" style="background-color: #fff; margin-top: 10px; margin-bottom: 0">
+                                    {% for question_name, data in u.pre_run_data_json.items %}
+                                        {% if not data.readonly %}
+                                            {% if data.type == 'group' %}
+                                                <tr>
+                                                    <td {% if forloop.first %}style="border-top:none;"{% endif %}>
+                                                        {{ data.title }}
+                                                        {% if data.title|slice:"-1:" != ":" %}:{% endif %}
+                                                    </td>
+                                                    <td style="padding: 0;{% if forloop.first %}border-top:none;{% endif %}">
+                                                        <table class="table table-striped" style="margin-bottom: 0;">
+                                                            {% res_question_tbody data %}
+                                                        </table>
+                                                    </td>
+                                                </tr>
+                                            {% else %}
+                                                <tr>
+                                                    <td {% if forloop.first %}style="border-top:none;"{% endif %}>
+                                                        {{ data.title }}
+                                                        {% if data.title|slice:"-1:" != ":" %}:{% endif %}
+                                                    </td>
+                                                    <td {% if forloop.first %}style="border-top:none;"{% endif %}>
+                                                        {{ data.user_input|linebreaksbr }}
+                                                        {% if data.user_input and data.suffix %}{{ data.suffix }}{% endif %}
+                                                    </td>
+                                                </tr>
+                                            {% endif %}
+                                        {% endif %}
+                                    {% endfor %}
+                                </table>
+                            </div>
+                        {% endif %}
+                        {% if u.post_run_data_json.items %}
+                            <div onclick="toggle_details(this)"
+                                 data-toggle="collapse"
+                                 data-target="#{{ u.id }}_post_run_data"
+                                 class="pointer">
+                                <span class="glyphicon {% if run_data_collapse %}glyphicon-chevron-right{% else %}glyphicon-chevron-down{% endif %} chevron"
+                                      style="color: inherit;
+                                             margin-top: 15px"></span>Post run data
+                            </div>
+                            <div id="{{ u.id }}_post_run_data" class="collapse {% if not run_data_collapse %}in{% endif %}">
+                                <table class="table table-striped" style="background-color: #fff; margin-top:10px; margin-bottom: 0">
+                                    {% for question_name, data in u.post_run_data_json.items %}
+                                        {% if not data.readonly %}
+                                            {% if data.type == 'group' %}
+                                                <tr>
+                                                    <td {% if forloop.first %}style="border-top:none;"{% endif %}>
+                                                        {{ data.title }}
+                                                        {% if data.title|slice:"-1:" != ":" %}:{% endif %}
+                                                    </td>
+                                                    <td style="padding: 0;{% if forloop.first %}border-top:none;{% endif %}">
+                                                        <table class="table table-striped" style="margin-bottom: 0;">
+                                                            {% res_question_tbody data %}
+                                                        </table>
+                                                    </td>
+                                                </tr>
+                                            {% else %}
+                                                <tr>
+                                                    <td {% if forloop.first %}style="border-top:none;"{% endif %}>
+                                                        {{ data.title }}
+                                                        {% if data.title|slice:"-1:" != ":" %}:{% endif %}
+                                                    </td>
+                                                    <td {% if forloop.first %}style="border-top:none;"{% endif %}>
+                                                        {{ data.user_input|linebreaksbr }}
+                                                        {% if data.user_input and data.suffix %}{{ data.suffix }}{% endif %}
+                                                    </td>
+                                                </tr>
+                                            {% endif %}
+                                        {% endif %}
+                                    {% endfor %}
+                                </table>
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+    <script>
+        // on tab click, submit the form with the appropriate URL
+        $(document).ready(function() {
+            $(".usage_tab_link").on("click", function(event) {
+                event.preventDefault(); // Prevent default anchor behavior
+                let form = $("#usage_form");
+                form.attr("action", $(this).attr("href"));
+                form.submit();
+            });
+        });
+    </script>
+{% endblock %}

@@ -1,0 +1,176 @@
+{% extends 'base.html' %}
+{% block title %}{{ status_dashboard_page_title }}{% endblock %}
+{% load static %}
+{% block extrahead %}
+    {# We need this for staff absence form popup #}
+    <script type="text/javascript" src="{% static "datetimepicker/bootstrap-datetimepicker.js" %}"></script>
+    <link rel="stylesheet" type="text/css" href="{% static "datetimepicker/bootstrap-datetimepicker.css" %}" />
+{% endblock %}
+{% block content %}
+    <h1 class="pull-left" style="margin-right:20px; margin-top:0; margin-bottom:0">{{ status_dashboard_page_title }}</h1>
+    <ul class="nav nav-pills" id="tabs" {% if no_header %}style="display:none"{% endif %}>
+        {% if areas_exist %}
+            <li {% if tab == 'occupancy' %}class="active"{% endif %}>
+                <a href="#occupancy">Area occupancy</a>
+            </li>
+        {% endif %}
+        {% if tools_exist %}
+            <li {% if tab == 'tools' %}class="active"{% endif %}>
+                <a href="#tools">Tool status & usage</a>
+            </li>
+        {% endif %}
+        {% if show_staff_status %}
+            <li {% if tab == 'staff' %}class="active"{% endif %}>
+                <a id="staff_link" href="#staff">Staff status</a>
+            </li>
+        {% endif %}
+    </ul>
+    <div id="content" class="tab-content" style="padding-top:10px">
+        <div class="tab-pane{% if areas_exist and tab == 'occupancy' %} active{% endif %}" id="occupancy">
+            {% include 'status_dashboard/occupancy.html' %}
+        </div>
+        <div class="tab-pane{% if tools_exist and tab == 'tools' %} active{% endif %} info-tooltip-container"
+             id="tools">
+            <div class="btn-group sidebar-item">
+                <button id="filter"
+                        type="button"
+                        class="btn btn-default dropdown-toggle"
+                        data-toggle="dropdown"
+                        {% if no_header %}style="display:none;"{% endif %}>
+                    Showing tools in use
+                    <span class="caret"></span>
+                </button>
+                <ul class="dropdown-menu">
+                    <li class="dropdown-header">Filter by...</li>
+                    <li>
+                        <a href="javascript:void(0)" onclick="filter('all tools')">All tools</a>
+                    </li>
+                    <li>
+                        <a href="javascript:void(0)" onclick="filter('tools in use')">Tools in use</a>
+                    </li>
+                    <li>
+                        <a href="javascript:void(0)" onclick="filter('problematic tools')">Problematic tools</a>
+                    </li>
+                    <li>
+                        <a href="javascript:void(0)" onclick="filter('idle tools')">Idle tools</a>
+                    </li>
+                </ul>
+            </div>
+            <p>
+                <div id="tool_status_table">{% include 'status_dashboard/tools.html' %}</div>
+            </div>
+            {% if show_staff_status %}
+                <div class="tab-pane{% if tab == 'staff' %} active{% endif %}" id="staff">
+                    {% include 'status_dashboard/staff.html' %}
+                </div>
+            {% endif %}
+        </div>
+        <script>
+    let staff_status_parameters = "timestamp={{ page_timestamp }}&view={{ page_view }}";
+	function on_load()
+	{
+        {# load everything asynchronously. especially tools tab since it takes a bit longer to load #}
+        $("#tool_status_table").load("{% url 'status_dashboard' %}?interest=tools", hide_spinner);
+        refresh_staff_status_dashboard();
+        refresh_status_dashboard();
+		filter('tools in use');
+        let tab_jq = $("#tabs a");
+        tab_jq.click(function () {show_spinner()});
+		tab_jq.click(switch_tab);
+		tab_jq.click(refresh_status_dashboard);
+		tab_jq.click(update_url);
+        $("#staff_link").click(refresh_staff_status_dashboard);
+		set_interval_when_visible(document, refresh_status_dashboard, 10000);
+        {# Set a global click handler to dismiss manual tooltips #}
+        $('html').on('click', function(e)
+        {
+            {# Only dismiss tooltips when clicking outside of them #}
+            let target_id = $(e.target).parents('.tooltip').attr('id');
+            if (typeof $(e.target).data('original-title') == 'undefined')
+            {
+                $(".tooltip").not('#'+target_id).remove();
+            }
+        });
+	}
+	$(on_load);
+
+    function update_url()
+    {
+        {# Set permanent url so we can refresh specific tab #}
+        let title = "Area occupancy";
+        let new_url = "{% url 'status_dashboard_tab' 'occupancy' %}";
+        if ($("#tools").hasClass("active"))
+        {
+            title = "Tool status";
+            new_url = "{% url 'status_dashboard_tab' 'tools' %}";
+        }
+        else if ($("#staff").hasClass("active"))
+        {
+            title = "Staff status";
+            new_url = "{% url 'status_dashboard_tab' 'staff' %}?" + staff_status_parameters;
+        }
+        history.pushState('', title, new_url);
+    }
+
+	function refresh_status_dashboard()
+	{
+		let occupancy_tab = $("#occupancy");
+		if(occupancy_tab.hasClass("active")) occupancy_tab.load("{% url 'status_dashboard' %}?interest=occupancy", hide_spinner);
+		if($("#tools").hasClass("active")) $("#tool_status_table").load("{% url 'status_dashboard' %}?interest=tools", hide_spinner);
+	}
+
+    function refresh_staff_status_dashboard(parameters)
+    {
+        if (parameters && typeof parameters === 'string' ) staff_status_parameters = parameters;
+        $("#staff").load("{% url 'status_dashboard' %}?interest=staff&" + staff_status_parameters, hide_spinner);
+        update_url();
+    }
+
+	function force_user_out_of_the_area(url)
+	{
+        if (confirm("Are you sure you want to log this user out of the area?"))
+        {
+		    let failure_dialog = ajax_failure_callback("Unable to force the user to log out of the area");
+		    ajax_post(url, undefined, undefined, failure_dialog, refresh_status_dashboard);
+        }
+	}
+
+	function force_user_off_of_tool(url)
+	{
+        if (confirm("Are you sure you want to log this user off of the tool?"))
+        {
+            let failure_dialog = ajax_failure_callback("Unable to force user off the tool");
+            let contents = {"state": "disable"};
+            ajax_post(url, contents, undefined, failure_dialog, refresh_status_dashboard);
+        }
+	}
+
+	{# This function modifies the contents of a style sheet after the page has been loaded. #}
+	function set_style(css_text)
+	{
+		let sheet = document.createElement('style');
+		sheet.type = 'text/css';
+		(document.head || document.getElementsByTagName('head')[0]).appendChild(sheet);
+		return (set_style = function(css_text, node)
+		{
+			if(!node || node.parentNode !== sheet)
+				return sheet.appendChild(document.createTextNode(css_text));
+			node.nodeValue = css_text;
+			return node;
+		})(css_text);
+	}
+
+	function filter(show)
+	{
+		$("#filter").html("Showing " + show + " <span class='caret'></span>");
+		if(show === "all tools")
+			set_style('.in_use { display: table-row; } .idle { display: table-row; }');
+		else if(show === "tools in use")
+			set_style('.in_use { display: table-row; } .idle { display: none; }');
+		else if(show === "problematic tools")
+			set_style('.problematic { display: table-row } .healthy { display: none; }');
+		else if(show === "idle tools")
+			set_style('.idle { display: table-row; } .in_use { display: none; }');
+	}
+        </script>
+    {% endblock %}

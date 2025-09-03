@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% load custom_tags_and_filters %}
+{% block title %}Projects{% endblock %}
+{% block content %}
+    <h1 style="margin-bottom: 30px">Managed projects</h1>
+    {% regroup managed_projects by active as grouped_projects %}
+    {% for group in grouped_projects %}
+        {% if group.grouper %}
+            {% for project in group.list %}
+                {% if not selected_project or project == selected_project %}
+                    {% include 'accounts_and_projects/project.html' %}
+                {% endif %}
+            {% endfor %}
+        {% else %}
+            {% if not selected_project %}
+                <div class="h3">
+                    <a onclick="toggle_details(this)"
+                       data-toggle="collapse"
+                       data-target="#inactives_details"
+                       class="pointer"
+                       style="text-decoration:none">
+                        <span id="inactives_chevron"
+                              class="glyphicon {% if selected_project %}glyphicon-chevron-down{% else %}glyphicon-chevron-right{% endif %} pull-left chevron"></span>
+                        <span class="label label-danger" style="vertical-align: 15%">Inactive projects</span>
+                    </a>
+                </div>
+                <div style="margin-left:34px">
+                    <div id="inactives_details" class="collapse {% if selected_project %}in{% endif %}">
+                    {% endif %}
+                    {% for project in group.list %}
+                        {% if not selected_project or project == selected_project %}
+                            {% include 'accounts_and_projects/project.html' %}
+                        {% endif %}
+                    {% endfor %}
+                    {% if not selected_project %}
+                    </div>
+                </div>
+            {% endif %}
+        {% endif %}
+    {% empty %}
+        <h4>This account does not have any projects</h4>
+    {% endfor %}
+    <script>
+		function add_user_to_project(jquery_event, search_selection, dataset_name)
+		{
+			let project_id = $(this).data('project-id');
+			$(this).typeahead('val', '').focus();
+			let complete_callback = ajax_complete_callback('Unable to add user to project');
+			$("#project_" + project_id + "_users").load("{% url 'add_user_to_project' %}", {'user_id': search_selection.id, 'project_id': project_id, 'csrfmiddlewaretoken': '{{ csrf_token }}'}, complete_callback);
+		}
+		function remove_user_from_project(user_id, project_id)
+		{
+			let complete_callback = ajax_complete_callback('Unable to remove user from project');
+			$("#project_" + project_id + "_users").load("{% url 'remove_user_from_project' %}", {'user_id': user_id, 'project_id': project_id, 'csrfmiddlewaretoken': '{{ csrf_token }}'}, complete_callback);
+		}
+		function reset_autocomplete()
+		{
+			$('.user_search').autocomplete('users', add_user_to_project, {{ users|json_search_base }});
+		}
+		window.addEventListener('load', reset_autocomplete, true);
+	
+    </script>
+{% endblock %}

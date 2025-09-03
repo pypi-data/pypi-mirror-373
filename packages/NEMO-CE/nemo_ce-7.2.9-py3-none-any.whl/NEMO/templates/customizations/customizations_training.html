@@ -1,0 +1,320 @@
+{% load custom_tags_and_filters %}
+<div class="panel-body">
+    <h3 class="customization-section-title">Training module</h3>
+    <form method="POST" action="{% url 'customize' 'training' %}" class="form-horizontal">
+        {% csrf_token %}
+        <div class="form-group">
+            <label class="control-label col-sm-4 col-md-3">Tool control (trainers only)</label>
+            <div class="col-sm-8 col-md-9">
+                <div class="checkbox">
+                    <label>
+                        <input onchange="show_hide_training_options()"
+                               type="checkbox"
+                               id="show_training_option"
+                               {% if training_show_self_option_in_tool_control or training_show_behalf_option_in_tool_control %}checked{% endif %}>
+                        Check to show option to use a tool for training
+                    </label>
+                    <div id="training_options" class="col-md-offset-1" style="display: none;margin-top: 5px">
+                        <label>
+                            <input type="checkbox"
+                                   id="training_show_self_option_in_tool_control"
+                                   name="training_show_self_option_in_tool_control"
+                                   {% if training_show_self_option_in_tool_control %}checked{% endif %}
+                                   value="enabled">
+                            When using the tool for self
+                        </label>
+                        <br>
+                        <label>
+                            <input type="checkbox"
+                                   id="training_show_behalf_option_in_tool_control"
+                                   name="training_show_behalf_option_in_tool_control"
+                                   {% if training_show_behalf_option_in_tool_control %}checked{% endif %}
+                                   value="enabled">
+                            When using the tool on behalf of someone else (staff only)
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="control-label col-lg-3 col-md-4 col-sm-5">Training types allowed</label>
+            <div class="col-lg-9 col-md-8 col-sm-7">
+                <div class="checkbox">
+                    {% for val, name in training_types %}
+                        <label>
+                            <input type="checkbox"
+                                   name="training_type_list"
+                                   {% if not training_only_type or training_only_type == val|stringformat:'i' %}checked{% endif %}
+                                   value="{{ val }}">
+                            {{ name }}
+                        </label>
+                        <br />
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="control-label col-lg-3 col-md-4 col-sm-5">Training date</label>
+            <div class="col-lg-9 col-md-8 col-sm-7">
+                <div class="checkbox">
+                    <label>
+                        <input type="checkbox"
+                               id="training_allow_date"
+                               name="training_allow_date"
+                               {% if training_allow_date %}checked{% endif %}
+                               value="enabled">
+                        Allow trainer to pick the training date for each entry
+                    </label>
+                </div>
+                <div class="help-block light-grey" style="margin-bottom: 0">Qualifications will still happen in real time</div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="control-label col-lg-3 col-md-4 col-sm-5">Training module</label>
+            <div class="col-lg-9 col-md-8 col-sm-7">
+                <div class="checkbox">
+                    <input type="hidden" name="training_module_enabled" value="off" />
+                    <label>
+                        <input type="checkbox"
+                               name="training_module_enabled"
+                               {% if training_module_enabled == "enabled" %}checked{% endif %}
+                               value="enabled">
+                        Enable training requests/sessions scheduling
+                    </label>
+                    <br />
+                    <label>
+                        <input type="checkbox"
+                               name="training_show_in_user_requests"
+                               {% if training_show_in_user_requests %}checked{% endif %}
+                               value="enabled">
+                        Show training requests in user requests page
+                    </label>
+                    <br />
+                </div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="control-label col-lg-3 col-md-4 col-sm-5" for="training_technique_empty_label">
+                Technique empty label
+            </label>
+            <div class="col-lg-3 col-md-4 col-sm-5">
+                <input class="form-control"
+                       name="training_technique_empty_label"
+                       id="training_technique_empty_label"
+                       type="text"
+                       value="{{ training_technique_empty_label|default_if_none:'' }}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="control-label col-lg-3 col-md-4 col-sm-5" for="training_upcoming_schedule_days">Scheduling help</label>
+            <div class="col-lg-3 col-md-4 col-sm-5">
+                <div class="input-group">
+                    <input class="form-control"
+                           name="training_upcoming_schedule_days"
+                           id="training_upcoming_schedule_days"
+                           type="text"
+                           value="{{ training_upcoming_schedule_days }}">
+                    <span class="input-group-addon">days</span>
+                </div>
+            </div>
+            <div class="col-lg-offset-3 col-md-offset-4 col-sm-offset-5 col-lg-9 col-md-8 col-sm-7">
+                <div class="help-block light-grey" style="margin-bottom: 0">
+                    When creating a training, show the tool and my schedule for this number of upcoming days. Set to 0 to disable
+                </div>
+            </div>
+        </div>
+        <div class="form-group {% if errors.training_excluded_tools %}has-error{% endif %}">
+            <label class="control-label col-md-3" for="exclude_tool">Excluded tools</label>
+            <div class="col-md-7">
+                <input id="exclude_tool"
+                       type="text"
+                       autocomplete="off"
+                       class="form-control"
+                       placeholder="Search for a tool to exclude">
+            </div>
+            {% if errors.training_excluded_tools %}
+                <div class="col-md-offset-3 col-md-9 help-block light-grey">{{ errors.training_excluded_tools.error }}</div>
+            {% endif %}
+        </div>
+        <div class="form-group">
+            <div id="exclude-list" class="col-md-offset-3 col-md-4">No tools are excluded.</div>
+        </div>
+        <div class="form-group {% if errors.training_included_hidden_tools %}has-error{% endif %}">
+            <label class="control-label col-md-3" for="include_hidden_tool">Included hidden tools</label>
+            <div class="col-md-7">
+                <input id="include_hidden_tool"
+                       type="text"
+                       autocomplete="off"
+                       class="form-control"
+                       placeholder="Search for a non-visible tool to include">
+            </div>
+            {% if errors.training_included_hidden_tools %}
+                <div class="col-md-offset-3 col-md-9 help-block light-grey">{{ errors.training_included_hidden_tools.error }}</div>
+            {% endif %}
+        </div>
+        <div class="form-group">
+            <div id="include-hidden-list" class="col-md-offset-3 col-md-4">No hidden tools are included.</div>
+        </div>
+        <div class="form-group {% if errors.training_extra_email_addresses %}has-error{% endif %}">
+            <label class="control-label col-md-3" for="training_extra_email_addresses">Training extra email(s)</label>
+            <div class="col-md-7">
+                <input type="text"
+                       id="training_extra_email_addresses"
+                       name="training_extra_email_addresses"
+                       class="form-control"
+                       value="{% if errors.training_extra_email_addresses %}{{ errors.training_extra_email_addresses.value }}{% else %}{{ training_extra_email_addresses }}{% endif %}"
+                       placeholder="trainings@example.org">
+            </div>
+            <div class="col-md-offset-3 col-md-9 help-block light-grey">
+                {% if errors.training_extra_email_addresses %}
+                    {{ errors.training_extra_email_addresses.error }}
+                {% else %}
+                    Anonymized training invitations are sent to the following email address(es) when creating, modifying or deleting a training event. A comma-separated list can be used.
+                {% endif %}
+            </div>
+        </div>
+        <div class="customization-separation" style="margin-bottom: 15px"></div>
+        <h3 class="customization-section-title">Defaults</h3>
+        <div class="form-group{% if errors.training_event_default_duration %}has-error{% endif %}">
+            <label class="control-label col-lg-3 col-md-4 col-sm-5" for="training_event_default_duration">
+                Session default duration
+            </label>
+            <div class="col-lg-3 col-md-4 col-sm-5">
+                <div class="input-group">
+                    <input class="form-control"
+                           name="training_event_default_duration"
+                           id="training_event_default_duration"
+                           type="number"
+                           value="{{ training_event_default_duration|default_if_none:'' }}">
+                    <span class="input-group-addon">minutes</span>
+                </div>
+            </div>
+            {% if errors.training_event_default_duration %}
+                <div class="col-lg-offset-3 col-md-offset-4 col-sm-offset-5 col-lg-9 col-md-8 col-sm-7 help-block light-grey">
+                    {{ errors.training_event_default_duration.error }}
+                </div>
+            {% endif %}
+        </div>
+        <div class="form-group{% if errors.training_event_default_capacity %}has-error{% endif %}">
+            <label class="control-label col-lg-3 col-md-4 col-sm-5" for="training_event_default_capacity">
+                Session default capacity
+            </label>
+            <div class="col-lg-3 col-md-4 col-sm-5">
+                <div class="input-group">
+                    <input class="form-control"
+                           name="training_event_default_capacity"
+                           id="training_event_default_capacity"
+                           type="number"
+                           value="{{ training_event_default_capacity|default_if_none:'' }}">
+                    <span class="input-group-addon">attendees</span>
+                </div>
+            </div>
+            {% if errors.training_event_default_capacity %}
+                <div class="col-lg-offset-3 col-md-offset-4 col-sm-offset-5 col-lg-9 col-md-8 col-sm-7 help-block light-grey">
+                    {{ errors.training_event_default_capacity.error }}
+                </div>
+            {% endif %}
+        </div>
+        <div class="form-group{% if errors.training_event_default_auto_cancel %}has-error{% endif %}">
+            <label class="control-label col-lg-3 col-md-4 col-sm-5" for="training_event_default_auto_cancel">
+                Session default auto cancel
+            </label>
+            <div class="col-lg-3 col-md-4 col-sm-5">
+                <div class="input-group">
+                    <input class="form-control"
+                           name="training_event_default_auto_cancel"
+                           id="training_event_default_auto_cancel"
+                           type="number"
+                           value="{{ training_event_default_auto_cancel|default_if_none:'' }}">
+                    <span class="input-group-addon">hours</span>
+                </div>
+                <div class="help-block light-grey" style="margin-bottom: 0">
+                    Time before session start to cancel trainings with no users
+                </div>
+            </div>
+            {% if errors.training_event_default_auto_cancel %}
+                <div class="col-lg-offset-3 col-md-offset-4 col-sm-offset-5 col-lg-9 col-md-8 col-sm-7 help-block light-grey">
+                    {{ errors.training_event_default_auto_cancel.error }}
+                </div>
+            {% endif %}
+        </div>
+        <div class="form-group">
+            <label class="control-label col-lg-3 col-md-4 col-sm-5">Request default availability</label>
+            <div class="col-lg-9 col-md-8 col-sm-7">
+                <div class="checkbox">
+                    <label>
+                        <input type="checkbox"
+                               name="training_request_default_availability_allowed"
+                               {% if training_request_default_availability_allowed %}checked{% endif %}
+                               value="enabled">
+                        Allow users to submit their availability when creating requests
+                    </label>
+                    <br />
+                </div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="control-label col-lg-3 col-md-4 col-sm-5">User message</label>
+            <div class="col-lg-9 col-md-8 col-sm-7">
+                <div class="checkbox">
+                    <label>
+                        <input type="checkbox"
+                               name="training_request_default_message_required"
+                               {% if training_request_default_message_required %}checked{% endif %}
+                               value="enabled">
+                        Require users to submit a message when creating requests
+                    </label>
+                </div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="control-label col-lg-3 col-md-4 col-sm-5" for="training_request_default_message_placeholder">
+                Message placeholder
+            </label>
+            <div class="col-md-7">
+                <textarea oninput="auto_size_textarea(this);"
+                          id="training_request_default_message_placeholder"
+                          name="training_request_default_message_placeholder"
+                          class="form-control">{{ training_request_default_message_placeholder }}</textarea>
+            </div>
+        </div>
+        <div class="customization-separation" style="margin-bottom: 15px"></div>
+        <div class="text-center">{% button type="save" value="Save settings" %}</div>
+    </form>
+</div>
+<script>
+    function add_tool(jquery_event, search_selection, dataset_name)
+	{
+        $(this).typeahead('val', '').focus();
+        switch(dataset_name) {
+            case "exclude_tools":
+                add_to_list("#exclude-list", "remove_excluded_tool", search_selection.id, search_selection.name, "Remove " + search_selection.name, "training_excluded_tools_list");
+                break;
+            case "include_hidden_tools":
+                add_to_list("#include-hidden-list", "remove_included_hidden_tool", search_selection.id, search_selection.name, "Remove " + search_selection.name, "training_included_hidden_tools_list");
+                break;
+        }
+	}
+    function remove_excluded_tool(tool_id)
+	{
+		remove_from_list("#exclude-list", "#training_excluded_tools_list_" + tool_id, "No tools are excluded.");
+	}
+	function remove_included_hidden_tool(tool_id)
+	{
+		remove_from_list("#include-hidden-list", "#training_included_hidden_tools_list_" + tool_id, "No hidden tools are included.");
+	}
+    function show_hide_training_options()
+    {
+        $('#training_options').toggle($('#show_training_option').prop('checked'));
+    }
+	$('#exclude_tool').autocomplete('exclude_tools', add_tool, {{ tools|json_search_base }});
+    {% for tool in excluded_tools %}
+		add_tool(undefined, {name:'{{ tool.name }}', id:{{ tool.id }}}, "exclude_tools");
+	{% endfor %}
+	$('#include_hidden_tool').autocomplete('include_hidden_tools', add_tool, {{ tools|json_search_base }});
+	{% for tool in included_hidden_tools %}
+		add_tool(undefined, {name:'{{ tool.name }}', id:{{ tool.id }}}, "include_hidden_tools");
+	{% endfor %}
+	auto_size_textarea(document.getElementById("training_request_default_message_placeholder"));
+    show_hide_training_options();
+</script>

@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+{% load custom_tags_and_filters %}
+{% load training_tags %}
+{% block title %}{{ item }} calendar{% endblock %}
+{% block content %}
+    <div class="row" style="font-size:1.7em; margin-bottom:20px">
+        <div class="col-xs-2">
+            <a href="{% url 'view_calendar' item_type item.id %}{{ previous_day|date:"Y-m-d" }}/"><span class="glyphicon glyphicon-chevron-left"></span></a>
+        </div>
+        <div class="col-xs-8" style="text-align:center">
+            {{ item }}
+            {% include 'snippets/item_status_icons.html' with icon_size='large' %}
+            <br>
+            {{ current_day|date:"l" }}
+            <br>
+            {{ current_day|date:"F jS" }}
+        </div>
+        <div class="col-xs-2">
+            <a href="{% url 'view_calendar' item_type item.id %}{{ next_day|date:"Y-m-d" }}/"><span class="glyphicon glyphicon-chevron-right"></span></a>
+        </div>
+    </div>
+    {% for event in events %}
+        {% if event|class_name == "Reservation" %}
+            {% include 'mobile/individual_reservation.html' with reservation=event %}
+        {% elif event|class_name == "ScheduledOutage" %}
+            {% include 'mobile/individual_outage.html' with outage=event %}
+        {% elif event|class_name == "TrainingEvent" %}
+            {% include 'mobile/individual_training_event.html' with training=event %}
+        {% endif %}
+    {% empty %}
+        <div style="text-align:center">There are no reservations</div>
+    {% endfor %}
+    {% if user|is_trainer %}
+        <a id="add_training"
+           href="{% url 'create_training_event_for_tool' item.id %}"
+           style="position:fixed;
+                  right:15px;
+                  bottom:135px;
+                  font-size: 2rem;
+                  gap: 15px;
+                  align-items: center;
+                  justify-content: center;
+                  filter: drop-shadow(4px 4px 8px #a8a8a8);
+                  display: none">
+            <span>Training</span>
+            <svg height="50" width="50">
+                <circle cx="25" cy="25" r="25" fill="purple"></circle>
+                <rect x="24" y="15" width="3" height="20" fill="white"></rect>
+                <rect x="15" y="24" width="21" height="3" fill="white"></rect>
+            </svg>
+        </a>
+        <a id="add_reservation"
+           href="{% url 'new_reservation' item_type item.id current_day_string %}"
+           style="position:fixed;
+                  right:15px;
+                  bottom:75px;
+                  font-size: 2rem;
+                  gap: 15px;
+                  align-items: center;
+                  justify-content: center;
+                  filter: drop-shadow(4px 4px 8px #a8a8a8);
+                  display: none">
+            <span>Reservation</span>
+            <svg height="50" width="50">
+                <circle cx="25" cy="25" r="25" fill="blue"></circle>
+                <rect x="24" y="15" width="3" height="20" fill="white"></rect>
+                <rect x="15" y="24" width="21" height="3" fill="white"></rect>
+            </svg>
+        </a>
+    {% endif %}
+    <a id="add"
+       {% if not user|is_trainer %}href="{% url 'new_reservation' item_type item.id current_day_string %}"{% endif %}>
+        <svg height="50" width="50" style="position:fixed; right:15px; bottom:15px">
+            <circle cx="25" cy="25" r="25" fill="green"></circle>
+            <rect x="24" y="15" width="3" height="20" fill="white"></rect>
+            <rect x="15" y="24" width="21" height="3" fill="white"></rect>
+        </svg>
+    </a>
+    {% if item_type == 'tool' %}
+        <a href="{% url 'tool_control' item_type item.id %}">
+            <svg height="50" width="100" style="position:fixed; left:15px; bottom:15px">
+                <circle cx="25" cy="25" r="25" fill="blue"></circle>
+                <text x="25" y="26" fill="white" font-size="12" font-family="Arial" text-anchor="middle" alignment-baseline="middle">
+                Control
+                </text>
+            </svg>
+        </a>
+    {% endif %}
+    {% if user|is_trainer %}
+        <script type="text/javascript">
+			$(document).ready(function() {
+				let add_button_toggled = false;
+				$("#add").click(function() {
+					if (add_button_toggled) {
+						$("#add_training").fadeToggle(100);
+						$("#add_reservation").fadeToggle(100);
+						add_button_toggled = false;
+					} else {
+						$("#add_training").fadeToggle(100).css('display', 'flex');
+						$("#add_reservation").fadeToggle(100).css('display', 'flex');
+						add_button_toggled = true;
+					}
+				});
+				document.addEventListener("click", function(event) {
+					if (!event.target.closest("#add") && add_button_toggled) {
+						$("#add_training").fadeToggle(100);
+						$("#add_reservation").fadeToggle(100);
+						add_button_toggled = false;
+					}
+				});
+			});
+        </script>
+    {% endif %}
+{% endblock %}
