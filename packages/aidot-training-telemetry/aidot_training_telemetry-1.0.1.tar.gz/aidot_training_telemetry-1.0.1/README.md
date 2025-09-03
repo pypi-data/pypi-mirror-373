@@ -1,0 +1,130 @@
+# Training Telemetry
+
+A Python library that records events, metrics, and errors during model training in standardized formats:
+
+* structured key=value logs
+* JSON for text files
+* Open Telemetry (OTEL) traces and logs
+* NVTX code markers for Nvidia Nsight Systems
+
+## Overview
+
+The objective of this library is to provide a standard format for logging events, metrics and errors that can be adopted by existing frameworks and applications for training large AI models. The end result is that the runtime performance and errors of these training models can be monitored in a consistent manner, without impacting the training performance. Time spans provide detailed information on how each training process spends its time during startup, training and checkpoint saving. Errors can be analyzed and correlated with infrastructure events once the application fails, in order to provide users with more actionable information.
+
+This library is lightweight and intentionally has very few dependencies, so as to facilitate integration with training frameworks that normally have a long list of dependencies. The API is provided on two levels:
+
+* A context-based API, where monitoring can be done via context managers or function decorators
+* A low-level recorder API with start/stop/event/error functions for callback implementations and other low-level requirements
+
+The following events are currently supported:
+
+- Application runtime and application-specific metrics
+- Training loop progress and timing
+- Individual iteration metrics, including loss, accuracy, TFLOPS, consumed samples, forward and backward times
+- Checkpoint saves, including global and local checkpoints, async and sync checkpoint strategies
+- Errors and exceptions  
+- Model validation and testing
+- Custom metrics and events
+
+Events are logged by one or more of the following backends:
+
+* A Python logger backend, logging events as messages using a logger at INFO level with structured log format
+* A file logger backend, where each event is logged as a one-line JSON object
+* An OpenTelemetry backend, where each event is converted to a span and sent to the OTEL collector
+
+Events have metrics attached to them. A special class of events, error events, captures error messages and stack traces.
+
+## Key Features
+
+- Context managers for timing code blocks
+- Event recording with customizable metrics
+- Exception handling and error reporting
+- Flexible backend system for storing/analyzing telemetry data as log messages, JSON objects or OTEL traces
+- Low overhead monitoring
+
+## Installation
+
+The library package is available on the following pypi public repositories:
+
+* https://pypi.org/project/aidot-training-telemetry/
+* https://pypi.nvidia.com/aidot-training-telemetry/
+
+Install with:
+
+```
+pip install aidot-training-telemetry
+```
+
+If using Poetry, run the following command:
+
+```bash
+poetry add nvidia aidot-training-telemetry
+```
+
+
+## Usage
+
+Using the context API, initialize the main function with:
+
+```
+def get_application_metrics():
+    return ApplicationMetrics.create(
+        rank=get_rank(),
+        world_size=get_world_size(),
+        node_name="localhost",
+        timezone=str(get_localzone()),
+        total_iterations=num_epochs * len(dataloader),
+        checkpoint_enabled=True,
+        checkpoint_strategy="sync",
+    )
+
+
+@application_running(metrics=get_application_metrics())
+def main():
+    [...]
+```
+
+This will capture any exceptions not handled by the application, and log them as an error event before re-raising them.
+
+For the training loop and iterations:
+
+```
+with training_iteration() as training_iteration_span:
+    [...]
+    training_iteration_span.add_metrics(
+        IterationMetrics.create(
+            current_iteration=current_iteration,
+            num_iterations=len(dataloader),
+            loss=loss.item(),
+            accuracy=accuracy.item(),
+        )
+    )
+```
+
+For checkpoint monitoring:
+
+```
+with checkpoint_save() as checkpoint_save_span:
+    [...]
+    checkpoint_save_span.add_metrics(
+        CheckpointSaveMetrics.create(
+            checkpoint_type=CheckPointType.LOCAL,
+            current_iteration=current_iteration,
+            checkpoint_directory=temp_dir,
+            checkpoint_filename=os.path.basename(checkpoint_file_name),
+        )
+    )
+
+```
+
+For a concrete example refer to the [torch example](training_telemetry/torch/example.py) or usage examples.
+
+It's also possible to manually create spans and events, refer to the [recorder](training_telemetry/recorder.py) API for how to do this.
+
+
+
+
+
+
+
+
