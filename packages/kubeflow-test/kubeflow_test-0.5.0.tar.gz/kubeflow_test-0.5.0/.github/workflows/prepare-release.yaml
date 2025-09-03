@@ -1,0 +1,67 @@
+name: Prepare Release
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'kubeflow/__init__.py'
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Create release branch and tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Compute version and branch
+        id: vars
+        shell: bash
+        run: |
+          VERSION=v$(sed -n 's/^__version__ = "\(.*\)"/\1/p' kubeflow/__init__.py)
+          MAJOR_MINOR=$(echo "$VERSION" | sed 's/^v//' | cut -d. -f1,2)
+          BRANCH=release-$MAJOR_MINOR
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Skip if tag already exists
+        shell: bash
+        run: |
+          if git ls-remote --tags origin "${{ steps.vars.outputs.version }}" | grep -q "refs/tags/${{ steps.vars.outputs.version }}"; then
+            echo "Tag ${{ steps.vars.outputs.version }} already exists. Skipping prepare."; exit 0; fi
+
+      - name: Ensure release branch exists and contains version bump
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.vars.outputs.version }}"
+          BRANCH="${{ steps.vars.outputs.branch }}"
+
+          MAIN_SHA="${{ github.sha }}"
+
+          if git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
+            echo "Using existing branch: $BRANCH"
+            git fetch origin "$BRANCH":"$BRANCH"
+            git checkout "$BRANCH"
+            # Cherry-pick the version bump commit from main
+            if ! git cherry-pick -x "$MAIN_SHA"; then
+              echo "Cherry-pick failed. Please resolve manually on $BRANCH." >&2
+              exit 1
+            fi
+          else
+            echo "Creating new branch: $BRANCH from main@${MAIN_SHA}"
+            git checkout -B "$BRANCH" "$MAIN_SHA"
+          fi
+
+          git push origin "$BRANCH"
