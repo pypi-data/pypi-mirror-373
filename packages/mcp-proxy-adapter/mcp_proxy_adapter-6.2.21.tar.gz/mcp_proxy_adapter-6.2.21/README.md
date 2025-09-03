@@ -1,0 +1,621 @@
+# MCP Proxy Adapter
+
+[![PyPI version](https://badge.fury.io/py/mcp-proxy-adapter.svg)](https://pypi.org/project/mcp-proxy-adapter/)
+[![Python versions](https://img.shields.io/pypi/pyversions/mcp-proxy-adapter.svg)](https://pypi.org/project/mcp-proxy-adapter/)
+[![License](https://img.shields.io/pypi/l/mcp-proxy-adapter.svg)](https://github.com/maverikod/mcp-proxy-adapter/blob/main/LICENSE)
+
+A powerful framework for creating JSON-RPC-enabled microservices with built-in security, authentication, and proxy registration capabilities.
+
+## 🚀 Quick Install
+
+```bash
+pip install mcp-proxy-adapter
+```
+
+## ✨ Key Features
+
+- **🔒 Security First**: Built-in mTLS, JWT, API Key authentication
+- **🌐 JSON-RPC 2.0**: Complete protocol implementation
+- **🔄 Proxy Registration**: Automatic service discovery and registration
+- **⚡ High Performance**: Built on FastAPI with async support
+- **🛡️ Role-Based Access**: Fine-grained permission control
+- **📡 Universal Client**: Supports all authentication methods
+
+## 🏃‍♂️ Quick Example
+
+Create a secure JSON-RPC microservice in minutes:
+
+```python
+from mcp_proxy_adapter import create_app, Command, SuccessResult
+
+# Create a custom command
+class HelloCommand(Command):
+    name = "hello"
+    description = "Say hello"
+
+    async def execute(self, **kwargs) -> SuccessResult:
+        name = kwargs.get("name", "World")
+        return SuccessResult(f"Hello, {name}!")
+
+# Create and run the application
+app = create_app()
+```
+
+**📖 [Full Documentation](https://github.com/maverikod/mcp-proxy-adapter#readme)** - Complete usage guide, examples, and API reference.
+
+## 📋 Usage Examples
+
+### Basic Server Setup
+
+```python
+from mcp_proxy_adapter import create_app
+import uvicorn
+
+app = create_app()
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+```
+
+### With Security Configuration
+
+```python
+from mcp_proxy_adapter import create_app
+from mcp_proxy_adapter.config import Config
+
+# Load configuration
+config = Config.from_file("config.json")
+app = create_app(config)
+```
+
+### Client Usage
+
+```python
+from mcp_proxy_adapter.core.client import UniversalClient
+
+async def main():
+    async with UniversalClient({"server_url": "http://localhost:8000"}) as client:
+        result = await client.execute_command("help")
+        print(result)
+
+import asyncio
+asyncio.run(main())
+```
+
+## 🔧 Requirements
+
+- **Python**: 3.9+
+- **Dependencies**:
+  - `fastapi` - Web framework
+  - `pydantic` - Data validation
+  - `hypercorn` - ASGI server
+  - `mcp_security_framework` - Security components
+  - `jsonrpc` - JSON-RPC protocol
+
+## Features
+
+- **JSON-RPC Framework**: Complete JSON-RPC 2.0 implementation
+- **Security Integration**: Built-in support for mcp_security_framework
+- **Authentication**: Multiple auth methods (API Key, JWT, Certificate, Basic Auth)
+- **Proxy Registration**: Automatic registration and discovery of services
+- **Command System**: Extensible command framework with role-based access control
+- **SSL/TLS Support**: Full SSL/TLS support including mTLS
+- **Async Support**: Built on FastAPI with full async support
+- **Extensible**: Plugin system for custom commands and middleware
+
+## Quick Start
+
+### Installation
+
+```bash
+pip install mcp-proxy-adapter
+```
+
+## Detailed Usage Guide
+
+### Step 1: Initialize Working Environment
+
+Первый шаг - создание изолированного рабочего окружения с помощью скрипта копирования:
+
+```bash
+# Создание рабочего окружения
+python scripts/init_working_environment.py my_test_env
+
+# Переход в созданную директорию
+cd my_test_env
+```
+
+**Что делает скрипт `init_working_environment.py`:**
+
+1. **Создает изолированную директорию** с именем, которое вы указали
+2. **Копирует все примеры** из проекта:
+   - `basic_framework/` - базовый пример приложения
+   - `full_application/` - полный пример с proxy endpoints
+   - `universal_client.py` - универсальный клиент
+3. **Копирует утилитарные скрипты**:
+   - `config_generator.py` - генератор конфигураций
+   - `create_certificates_simple.py` - генератор сертификатов
+4. **Копирует тестовые скрипты**:
+   - `generate_certificates_and_tokens.py` - генерация сертификатов и токенов
+   - `setup_test_environment.py` - настройка тестового окружения
+   - `test_config.py` - тестирование конфигураций
+   - `generate_test_configs.py` - генерация тестовых конфигураций
+   - `test_proxy_registration.py` - тестирование proxy registration
+5. **Автоматически генерирует конфигурации** для всех режимов работы
+6. **Создает сертификаты** для SSL и mTLS тестирования
+7. **Создает локальную документацию** в виде README.md
+
+### Step 2: Генерация конфигураций
+
+После создания рабочего окружения, сгенерируйте тестовые конфигурации:
+
+```bash
+# Генерация всех типов конфигураций
+python scripts/generate_test_configs.py --output-dir configs
+
+# Просмотр созданных конфигураций
+ls -la configs/
+```
+
+**Создаются следующие конфигурации:**
+
+- `http_simple.json` - HTTP без аутентификации
+- `http_token.json` - HTTP с токен аутентификацией
+- `https_simple.json` - HTTPS без аутентификации
+- `https_token.json` - HTTPS с токен аутентификацией
+- `mtls_no_roles.json` - mTLS без ролей
+- `mtls_with_roles.json` - mTLS с ролями
+- `roles.json` - конфигурация ролей и разрешений
+
+### Step 3: Запуск базового примера
+
+Начните с самого простого примера - HTTP без аутентификации:
+
+```bash
+# Запуск сервера с HTTP конфигурацией
+python examples/basic_framework/main.py --config configs/http_simple.json
+```
+
+В другом терминале протестируйте подключение:
+
+```bash
+# Тестирование базовой функциональности
+python scripts/test_config.py --config configs/http_simple.json
+```
+
+### Step 4: Тестирование различных режимов безопасности
+
+#### HTTP с токен аутентификацией
+
+```bash
+# Запуск сервера
+python examples/basic_framework/main.py --config configs/http_token.json
+
+# Тестирование в другом терминале
+python scripts/test_config.py --config configs/http_token.json
+```
+
+#### HTTPS с сертификатами
+
+```bash
+# Запуск сервера
+python examples/basic_framework/main.py --config configs/https_simple.json
+
+# Тестирование в другом терминале
+python scripts/test_config.py --config configs/https_simple.json
+```
+
+#### mTLS (Mutual TLS) аутентификация
+
+```bash
+# Запуск сервера с mTLS
+python examples/basic_framework/main.py --config configs/mtls_no_roles.json
+
+# Тестирование в другом терминале
+python scripts/test_config.py --config configs/mtls_no_roles.json
+```
+
+### Step 5: Тестирование Proxy Registration
+
+Запустите полный тест всех режимов proxy registration:
+
+```bash
+# Полный тест proxy registration для всех режимов
+python scripts/test_proxy_registration.py
+```
+
+Этот тест проверит:
+- ✅ HTTP без ролей
+- ✅ HTTP с ролями
+- ✅ HTTPS без ролей
+- ✅ HTTPS с ролями
+- ✅ mTLS без ролей
+- ✅ mTLS с ролями
+
+### Step 6: Использование универсального клиента
+
+Универсальный клиент поддерживает все режимы аутентификации:
+
+#### Создание конфигурации клиента
+
+```bash
+# Пример конфигурации для mTLS
+cat > client_config.json << 'EOF'
+{
+  "server_url": "https://127.0.0.1:8443",
+  "timeout": 30,
+  "retry_attempts": 3,
+  "retry_delay": 1,
+  "security": {
+    "auth_method": "certificate",
+    "ssl": {
+      "enabled": true,
+      "check_hostname": false,
+      "verify": false,
+      "ca_cert_file": "./certs/ca_cert.pem"
+    },
+    "certificate": {
+      "enabled": true,
+      "cert_file": "./certs/admin_cert.pem",
+      "key_file": "./certs/admin_key.pem"
+    }
+  }
+}
+EOF
+```
+
+#### Тестирование с помощью клиента
+
+```bash
+# Тестирование подключения
+python examples/universal_client.py --config client_config.json --test-connection
+
+# Выполнение команды help
+python examples/universal_client.py --config client_config.json --method help
+
+# Регистрация в proxy
+python examples/universal_client.py --config client_config.json --method proxy_register --params '{"server_id": "test-server", "server_url": "http://127.0.0.1:8001", "server_name": "Test Server"}'
+```
+
+### Step 7: Работа с полным примером приложения
+
+Запустите полный пример с proxy endpoints:
+
+```bash
+# Запуск полного примера
+python examples/full_application/main.py --config configs/mtls_with_roles.json
+```
+
+Этот пример включает:
+- Proxy discovery endpoint (`/proxy/discover`)
+- Server registration endpoint (`/proxy/register`)
+- Heartbeat endpoint (`/proxy/heartbeat`)
+- Server unregistration endpoint (`/proxy/unregister`)
+
+#### Тестирование proxy endpoints
+
+```bash
+# Discovery - получение информации о proxy
+curl -X GET "https://127.0.0.1:8443/proxy/discover" \
+  --cert ./certs/admin_cert.pem \
+  --key ./certs/admin_key.pem \
+  --cacert ./certs/ca_cert.pem
+
+# Registration - регистрация сервера
+curl -X POST "https://127.0.0.1:8443/proxy/register" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "server_id": "test-server-1",
+    "server_url": "http://127.0.0.1:8001",
+    "server_name": "Test Server",
+    "description": "Test server for proxy registration",
+    "version": "1.0.0",
+    "capabilities": ["jsonrpc", "rest"],
+    "endpoints": {
+      "jsonrpc": "/api/jsonrpc",
+      "rest": "/cmd",
+      "health": "/health"
+    },
+    "auth_method": "certificate",
+    "security_enabled": true
+  }' \
+  --cert ./certs/admin_cert.pem \
+  --key ./certs/admin_key.pem \
+  --cacert ./certs/ca_cert.pem
+
+# Heartbeat - отправка heartbeat
+curl -X POST "https://127.0.0.1:8443/proxy/heartbeat" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "server_id": "test-server-1",
+    "server_key": "returned_server_key",
+    "timestamp": 1234567890,
+    "status": "healthy"
+  }' \
+  --cert ./certs/admin_cert.pem \
+  --key ./certs/admin_key.pem \
+  --cacert ./certs/ca_cert.pem
+```
+
+### Step 8: Создание собственных команд
+
+Создайте собственную команду, наследуясь от базового класса:
+
+```python
+from mcp_proxy_adapter.commands.base import Command
+from mcp_proxy_adapter.core.result import SuccessResult, ErrorResult
+
+class MyCustomCommand(Command):
+    name = "my_command"
+    description = "Моя собственная команда"
+    
+    async def execute(self, **kwargs) -> SuccessResult:
+        param1 = kwargs.get("param1", "default_value")
+
+        # Ваша логика здесь
+        result = f"Выполнена команда с параметром: {param1}"
+
+        return SuccessResult(result)
+```
+
+### Структура созданного рабочего окружения
+
+После выполнения `init_working_environment.py` у вас будет следующая структура:
+
+```
+my_test_env/
+├── examples/                    # Примеры приложений
+│   ├── basic_framework/
+│   ├── full_application/
+│   └── universal_client.py
+├── scripts/                     # Скрипты для тестирования
+│   ├── generate_test_configs.py
+│   ├── test_proxy_registration.py
+│   ├── test_config.py
+│   └── ...
+├── configs/                     # Сгенерированные конфигурации
+│   ├── http_simple.json
+│   ├── https_simple.json
+│   ├── mtls_no_roles.json
+│   ├── mtls_with_roles.json
+│   └── roles.json
+├── certs/                       # Сертификаты для SSL/mTLS
+│   ├── ca_cert.pem
+│   ├── server_cert.pem
+│   ├── admin_cert.pem
+│   ├── user_cert.pem
+│   └── ...
+├── keys/                        # Приватные ключи
+│   ├── server_key.pem
+│   ├── admin_key.pem
+│   └── ...
+└── README.md                    # Локальная документация
+```
+
+### Troubleshooting
+
+#### Распространенные проблемы и решения
+
+**1. Проблемы с сертификатами mTLS:**
+
+```bash
+# Проверьте, что сертификаты созданы
+ls -la certs/
+ls -la keys/
+
+# Проверьте содержимое сертификатов
+openssl x509 -in certs/admin_cert.pem -text -noout
+openssl x509 -in certs/ca_cert.pem -text -noout
+```
+
+**2. Ошибки подключения:**
+
+```bash
+# Проверьте, что порт свободен
+netstat -tlnp | grep :8443
+
+# Или используйте lsof
+lsof -i :8443
+```
+
+**3. Ошибки импортов:**
+
+```bash
+# Убедитесь, что виртуальное окружение активировано
+source .venv/bin/activate
+
+# Проверьте установку зависимостей
+pip list | grep mcp
+pip list | grep hypercorn
+```
+
+**4. Проблемы с правами доступа:**
+
+```bash
+# Убедитесь, что файлы сертификатов доступны для чтения
+chmod 644 certs/*.pem
+chmod 600 keys/*.pem
+```
+
+### Конфигурационные файлы
+
+#### Структура конфигурации сервера
+
+```json
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8000
+  },
+  "ssl": {
+    "enabled": true,
+    "cert_file": "./certs/server_cert.pem",
+    "key_file": "./certs/server_key.pem",
+    "ca_cert": "./certs/ca_cert.pem",
+    "verify_client": true
+  },
+  "security": {
+    "enabled": true,
+    "auth": {
+      "enabled": true,
+      "methods": ["certificate"]
+    },
+    "permissions": {
+      "enabled": true,
+      "roles_file": "./configs/roles.json"
+    }
+  },
+  "commands": {
+    "auto_discovery": true,
+    "builtin_commands": ["echo", "health", "config"]
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  }
+}
+```
+
+#### Структура конфигурации клиента
+
+```json
+{
+  "server_url": "https://127.0.0.1:8443",
+  "timeout": 30,
+  "retry_attempts": 3,
+  "retry_delay": 1,
+  "security": {
+    "auth_method": "certificate",
+    "ssl": {
+      "enabled": true,
+      "check_hostname": false,
+      "verify": false,
+      "ca_cert_file": "./certs/ca_cert.pem"
+    },
+    "certificate": {
+      "enabled": true,
+      "cert_file": "./certs/admin_cert.pem",
+      "key_file": "./certs/admin_key.pem"
+    }
+  }
+}
+```
+
+### API Reference
+
+#### Основные endpoints
+
+- `GET /health` - Проверка здоровья сервиса
+- `POST /api/jsonrpc` - JSON-RPC endpoint
+- `GET /proxy/discover` - Proxy discovery (только в full_application)
+- `POST /proxy/register` - Регистрация сервера в proxy
+- `POST /proxy/heartbeat` - Отправка heartbeat
+- `POST /proxy/unregister` - Отмена регистрации сервера
+
+#### JSON-RPC методы
+
+- `echo` - Возврат переданных параметров
+- `help` - Список доступных команд
+- `config` - Информация о конфигурации
+- `proxy_discover` - Обнаружение proxy
+- `proxy_register` - Регистрация в proxy
+- `proxy_heartbeat` - Отправка heartbeat
+
+### Development
+
+#### Настройка среды разработки
+
+```bash
+# Клонирование репозитория
+git clone https://github.com/maverikod/mcp-proxy-adapter.git
+cd mcp-proxy-adapter
+
+# Создание виртуального окружения
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# Установка зависимостей
+pip install -e ".[dev]"
+```
+
+#### Запуск тестов
+
+```bash
+# Запуск всех тестов
+pytest tests/
+
+# Запуск с покрытием кода
+pytest --cov=mcp_proxy_adapter tests/
+
+# Запуск конкретного теста
+pytest tests/test_proxy_registration.py -v
+```
+
+#### Запуск примеров в режиме разработки
+
+```bash
+# Запуск сервера в режиме разработки
+python -m mcp_proxy_adapter.main --config examples/server_configs/config_simple.json --reload
+
+# Запуск с отладкой
+PYTHONPATH=. python examples/basic_framework/main.py --config configs/http_simple.json --debug
+```
+
+### Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+### License
+
+MIT License - see LICENSE file for details.
+
+## Author
+
+**Vasiliy Zdanovskiy** - vasilyvz@gmail.com
+
+## 🤝 Support & Contributing
+
+- **📧 Email**: vasilyvz@gmail.com
+- **🐛 Issues**: [GitHub Issues](https://github.com/maverikod/mcp-proxy-adapter/issues)
+- **📚 Documentation**: [GitHub Wiki](https://github.com/maverikod/mcp-proxy-adapter/wiki)
+- **💬 Discussions**: [GitHub Discussions](https://github.com/maverikod/mcp-proxy-adapter/discussions)
+
+## 📄 License
+
+MIT License - see [LICENSE](https://github.com/maverikod/mcp-proxy-adapter/blob/main/LICENSE) file for details.
+
+## 📊 Version
+
+**6.2.9** - Production-ready release with comprehensive security, proxy registration, and PyPI optimization.
+
+---
+
+*Built with ❤️ for secure microservices development*
+
+---
+
+## Быстрый старт (быстрая справка)
+
+```bash
+# 1. Создание рабочего окружения
+python scripts/init_working_environment.py test_env
+cd test_env
+
+# 2. Генерация конфигураций
+python scripts/generate_test_configs.py --output-dir configs
+
+# 3. Запуск сервера
+python examples/basic_framework/main.py --config configs/http_simple.json
+
+# 4. Тестирование (в другом терминале)
+python scripts/test_config.py --config configs/http_simple.json
+
+# 5. Полный тест proxy registration
+python scripts/test_proxy_registration.py
+```
+
+🎉 **Готово! Теперь вы можете использовать MCP Proxy Adapter для создания безопасных JSON-RPC микросервисов с полной поддержкой аутентификации, авторизации и proxy registration.** 
