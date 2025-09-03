@@ -1,0 +1,677 @@
+Description,Type,DocumentationLink,Category,TableName,LastPingAt,CustomSyntax,ProvAttributes,NamespaceLevel
+Provides the ability to send notifications to Slack,DirectProvider,,Utilities,Dev.Slack.Send,2023-02-25 17:03:46.610702Z,"Sends a message to Slack
+Of the form:
+
+@result = use Dev.Slack.Send [with @@x, @y, ...]
+  <OPTIONS>
+  [----]
+  [<JSON MESSAGE>]
+enduse;
+
+<JSON MESSAGE>: 
+  The message to send (including where to send it).
+  This is allowed ONLY if --rawJason is used.
+  This can take advantage of '@@scalar-variables' as well as making tables from '@table-variables' (but keep them short)
+  For basic messages see: https://api.slack.com/docs/messages/builder
+  For very complex ones see: https://app.slack.com/block-kit-builder
+  
+@@channel = select '#your_channel';
+@@txt = select 'This is the basic message text';
+-- some small amount of data here...
+@data = select distinct ^ from sys.field order by 1 limit 5;
+
+@resp = 
+use Dev.Slack.Send with @@channel, @@txt, @data
+--rawJson
+----
+
+{
+    ""channel"": ""{@@channel}"",
+    ""text"": ""{@@txt}"",
+    ""attachments"": [
+    {
+        ""text"": ""
+Some data as an ascii art table...
+{@data}""
+    }
+    ]
+}
+enduse;
+
+select * from @resp
+
+<OPTIONS>:
+_______________________________________________________________________________________________________________________
+ topN                │ The maximum number of rows to show in any table (when not attaching them as files) [Int32,
+                     │   Default: 5]
+ attachAs            │ Attach files with this type as opposed to putting the data in a text message [Csv, Excel,
+                     │   SqLite, Json, Xml, Parquet, Word, Pdf]
+ attachAsInThread    │ When attaching files should they be in a response to the thread or simply shared after the
+                     │   message [Boolean]
+ attachAsOneFileName │ When attaching files (and there are many) combine them into one file (the method for this varies
+                     │   by --attachAs) using the name/title provided [String]
+ maxWidth            │ The maximum column width for any column [Int32]
+ json                │ Setting this flag means you must specify the full Json template for Slack.  Allows for much more
+                     │   flexibility & complexity. [Boolean]
+ allowFailure        │ Without this flag being set the query will error if the message cannot be sent in Slack.
+                     │   [Boolean]
+ ignoreOnZeroRows    │ Flag to say, if one or more tables are provided and they all have zero rows, then do not send a
+                     │   message at all. [Boolean]
+ channel             │ Name of the Channel to send to (generally ignored with --json, although you may use {channel} to
+                     │   reference it).
+                     │   This can be #some_channel_name, a user-uid, a user-display-name a user-full-name or a
+                     │   user-email-address [String]
+ text                │ The body text of the message (in Markdown) (ignored with --json). [String]
+",None,2
+"Used to read CSV, Text, Pipe-Delimited, etc. files held within Lusid Drive",DirectProvider,https://support.lusid.com/knowledgebase/article/KA-01680/,"Lusid, Utilities",Drive.Csv,2023-02-25 17:03:46.42982Z,"Of the form:
+
+use Drive.Csv [with @@var1, ...]
+  <OPTIONS *>
+enduse;
+
+`@@variables` are simple scalar values usable within the the options via simple substitution, e.g.: `--someOption=abc{@@var1}123`
+
+<OPTIONS>:
+
+_______________________________________________________________________________________________________________________
+ file (-f)         │ *Mandatory* The file to read. Should be text (any extension) or compressed (.zip).
+                   │   It may also be a folder, in which case --folderFilter is also required to specify which files in
+                   │   the folder to process. [String]
+ folderFilter      │ Denotes this is searching an entire folder structure and provides a Regular Expression of
+                   │   path/file names within it that should be processed.
+                   │   All matches should be of the same format. [String]
+ zipFilter (-z)    │ Denotes this is a Zip file and provides a Regular Expression of path/file names within it that
+                   │   should be processed.
+                   │   All matches should be of the same format. [String]
+ addFileName       │ Adds a column (the first column) to the result set which contains the file the row came from.
+                   │   [Boolean]
+ names             │ Column Names either overrides the header row or steps in when there is no header row (comma
+                   │   delimited list) [String]
+ select            │ Column (by Name) that should be returned (comma delimited list) [String]
+ types             │ Column types (comma delimited list of : Boolean, Date, DateTime, Decimal, Double, Int, BigInt,
+                   │   Text, Table) [String]
+ inferTypeRowCount │ If non-zero and 'types' is not specified this will look through N rows to attempt to work out the
+                   │   column types [Int32]
+ noHeader          │ Set this if there is no header row [Boolean]
+ delimiter         │ The delimiter between values (\t for tab) [String, Default: ,]
+ escape            │ Character used to escape the 'Quote' character when within a value [String, Default: ""]
+ quote             │ Character used around any field containing the 'delimiter' or a line break. [String, Default: ""]
+ valuesToMakeNull  │ Regex of values to map to 'null' in the returned data. [String, Default:
+                   │   (^[nN][uU][lL]{1,2}$)|((\r\n|\n|\r)$)|(^(\r\n|\n|\r))|(^\s*$)]
+ skipPreHeader     │ Number of rows to ignore before the header row [Int32]
+ skipPostHeader    │ Number of rows to ignore after the header row [Int32]
+ skipInvalidRows   │ Skip invalid data rows (totally invalid ones), 
+                   │   This also allows for potentially wrong data if it can be handled somewhat e.g. embedded quotes
+                   │   misused (and still returns such rows).
+                   │   In either case a warning will show in the progress feedback. [Boolean]
+",None,1
+Used to read Excel files held within Lusid Drive,DirectProvider,https://support.lusid.com/knowledgebase/article/KA-01682/,"Lusid, Utilities",Drive.Excel,2023-02-25 17:03:46.42982Z,"Of the form:
+
+use Drive.Excel [with @@var1, ...]
+  <OPTIONS *>
+enduse;
+
+`@@variables` are simple scalar values usable within the the options via simple substitution, e.g.: `--someOption=abc{@@var1}123`
+
+<OPTIONS>:
+
+_______________________________________________________________________________________________________________________
+ file (-f)         │ *Mandatory* The file to read. Should be an Excel file (.xlsx or .xlsm)
+                   │   It may also be a folder, in which case --folderFilter is also required to specify which files in
+                   │   the folder to process. [String]
+ folderFilter      │ Denotes this is searching an entire folder structure and provides a Regular Expression of
+                   │   path/file names within it that should be processed.
+                   │   All matches should be of the same format. [String]
+ zipFilter (-z)    │ Denotes this is a Zip file and provides a Regular Expression of path/file names within it that
+                   │   should be processed.
+                   │   All matches should be of the same format. [String]
+ addFileName       │ Adds a column (the first column) to the result set which contains the file the row came from.
+                   │   [Boolean]
+ names             │ Column Names either overrides the header row or steps in when there is no header row (comma
+                   │   delimited list) [String]
+ types             │ Column types (comma delimited list of : Boolean, Date, DateTime, Decimal, Double, Int, BigInt,
+                   │   Text, Table) [String]
+ inferTypeRowCount │ If non-zero and 'types' is not specified this will look through N rows to attempt to work out the
+                   │   column types [Int32]
+ noHeader          │ Set this if there is no header row [Boolean]
+ calculate         │ Whether to attempt a calculation of the imported cell range prior to import [Boolean]
+ password          │ If specified will be used as the password used for password protected workbooks [String]
+ worksheet (-w)    │ The worksheet containing the cell range to import (name or index, will default to first) [String]
+ range (-r)        │ The cell range to import as either a specified range or a table name.
+                   │   Range formats can be any of: 
+                   │   - 'A1:B3' (standard Excel range format)
+                   │   - '1,3,7,9' (rows 1-7, columns 3-9)
+                   │   - ',3,,9' (all populated rows, but only columns 3-9)
+                   │   - ',3,,' (all populated rows, but only columns 3 to the last populated one)
+                   │   Defaults to the used dimensions of the worksheet (equivalent to ',,,') [String]
+ ignoreInvalid     │ If specified cells which can not be successfully converted to the target type will be ignored
+                   │   [Boolean]
+ ignoreBlankRows   │ If the entire rows has only blank cells it will be ignored will be ignored [Boolean]
+",None,1
+Used to read text files in a raw-content from held within Lusid Drive,DirectProvider,https://support.lusid.com/knowledgebase/article/KA-01754/,"Lusid, Utilities",Drive.RawText,2023-02-25 17:03:46.42982Z,"Of the form:
+
+use Drive.RawText [with @@var1, ...]
+  <OPTIONS *>
+enduse;
+
+`@@variables` are simple scalar values usable within the the options via simple substitution, e.g.: `--someOption=abc{@@var1}123`
+
+<OPTIONS>:
+
+_______________________________________________________________________________________________________________________
+ file (-f)      │ *Mandatory* The file to read.
+                │   It may also be a folder, in which case --folderFilter is also required to specify which files in the
+                │   folder to process. [String]
+ folderFilter   │ Denotes this is searching an entire folder structure and provides a Regular Expression of path/file
+                │   names within it that should be processed.
+                │   All matches should be of the same format. [String]
+ zipFilter (-z) │ Denotes this is a Zip file and provides a Regular Expression of path/file names within it that should
+                │   be processed.
+                │   All matches should be of the same format. [String]
+ addFileName    │ Adds a column (the first column) to the result set which contains the file the row came from.
+                │   [Boolean]
+",None,1
+Used to write query results to Lusid Drive in a variety of formats,DirectProvider,https://support.lusid.com/knowledgebase/article/KA-01693/,"Lusid, Files, Utilities",Drive.SaveAs,2023-02-25 17:03:46.42982Z,"Of the form:
+
+use Drive.SaveAs [with @@var1, ...]
+  <OPTIONS *>
+enduse;
+
+`@@variables` are simple scalar values usable within the the options via simple substitution, e.g.: `--someOption=abc{@@var1}123`
+
+<OPTIONS>:
+
+_______________________________________________________________________________________________________________________
+ type                          │ The file types to create - also controls file extensions if not specified [Csv, Excel,
+                               │   SqLite, Json, Xml, Parquet, Word, Pdf, Default: Csv]
+ combineToOne                  │ Combine all files to one for this export - and give them this name [String]
+ dateFormat                    │ The format string to apply when saving dates (dates with no time component).  Used
+                               │   only with some export types. [String, Default: yyyy-MM-dd]
+ dateTimeFormat                │ The format string to apply when saving date-times (e.g. `yyyy-MM-dd'T'HH:mm:ss.fff`). 
+                               │   Used only with some export types. [String, Default: yyyy-MM-dd HH:mm:ss]
+ ignoreOnZeroRows              │ Flag to say, if a file would have zero rows, do not write it at all. [Boolean]
+ splitGroupBy                  │ Splits the given data tables on these fields (a comma delimited list).
+                               │   Each unique 'key set' then will be saved as its own file.  
+                               │   The field names here must appear in all tables being saved and should be used in the
+                               │   file name template e.g.:
+                               │   --splitGroupBy=Abc,Xyz
+                               │   --fileNames
+                               │   f_{Abc}_{Xyz} [String]
+ splitGroupByExcludeKeyColumns │ When using --splitGroupBy the key columns should be omitted in the output [Boolean]
+ fileNames                     │ *Mandatory* File names (without a path).  One per table of data is required.
+                               │   These can be something other than file names as such, depending on other options,
+                               │   e.g.:
+                               │   - Worksheet names when saving to an xlsx with `--combineToOne`
+                               │   - WorksheetName:TableName when saving to an xlsx from a template [String]
+ path                          │ *Mandatory* The location to save this within the target file store. [String]
+ templatePath                  │ The path and file name within the target file store, from which to fetch a `template
+                               │   file`.
+                               │   Only supported by `Excel`, `Word` and `Pdf`. [String]
+ editable                      │ Make the resulting file editable. Only supported by `Pdf`. The default is false.
+                               │   [Boolean]
+ allowCorruptedPdfTemplate     │ Use a corrupted Pdf template despite form fields being unwritable. Useful if you
+                               │   require a table to be appended to the end of a corrupted pdf. Only supported by `Pdf`.
+                               │   The default is false. [Boolean, Default: False]
+",None,1
+Used to read tables from Sqlite files held within Lusid Drive,DirectProvider,,"Lusid, Utilities",Drive.Sqlite,2023-02-25 17:03:46.42982Z,"Of the form:
+
+use Drive.Sqlite [with @@var1, ...]
+  <OPTIONS *>
+enduse;
+
+`@@variables` are simple scalar values usable within the the options via simple substitution, e.g.: `--someOption=abc{@@var1}123`
+
+<OPTIONS>:
+
+_______________________________________________________________________________________________________________________
+ file (-f)      │ *Mandatory* The file to read. Should be a sqlite file.
+                │   It may also be a folder, in which case --folderFilter is also required to specify which files in the
+                │   folder to process. [String]
+ folderFilter   │ Denotes this is searching an entire folder structure and provides a Regular Expression of path/file
+                │   names within it that should be processed.
+                │   All matches should be of the same format. [String]
+ zipFilter (-z) │ Denotes this is a Zip file and provides a Regular Expression of path/file names within it that should
+                │   be processed.
+                │   All matches should be of the same format. [String]
+ addFileName    │ Adds a column (the first column) to the result set which contains the file the row came from.
+                │   [Boolean]
+ table          │ Table name to read.  If missing then an error will be raised if there is any number of tables other
+                │   than one. [String]
+",None,1
+Used to read XML files held within Lusid Drive,DirectProvider,https://support.lusid.com/knowledgebase/article/KA-01753/,"Lusid, Utilities",Drive.Xml,2023-02-25 17:03:46.42982Z,"Of the form:
+
+use Drive.Xml [with @@var1, ...]
+  <OPTIONS *>
+enduse;
+
+`@@variables` are simple scalar values usable within the the options via simple substitution, e.g.: `--someOption=abc{@@var1}123`
+
+<OPTIONS>:
+
+_______________________________________________________________________________________________________________________
+ file (-f)         │ *Mandatory* The file to read. Should be text (any extension) or compressed (.zip).
+                   │   It may also be a folder, in which case --folderFilter is also required to specify which files in
+                   │   the folder to process. [String]
+ folderFilter      │ Denotes this is searching an entire folder structure and provides a Regular Expression of
+                   │   path/file names within it that should be processed.
+                   │   All matches should be of the same format. [String]
+ zipFilter (-z)    │ Denotes this is a Zip file and provides a Regular Expression of path/file names within it that
+                   │   should be processed.
+                   │   All matches should be of the same format. [String]
+ addFileName       │ Adds a column (the first column) to the result set which contains the file the row came from.
+                   │   [Boolean]
+ types             │ Column types (comma delimited list of : Boolean, Date, DateTime, Decimal, Double, Int, BigInt,
+                   │   Text, Table) [String]
+ inferTypeRowCount │ If non-zero and 'types' is not specified this will look through N rows to attempt to work out the
+                   │   column types [Int32]
+ valuesToMakeNull  │ Regex of values to map to 'null' in the returned data. [String, Default:
+                   │   (^[nN][uU][lL]{1,2}$)|((\r\n|\n|\r)$)|(^(\r\n|\n|\r))|(^\s*$)]
+ nodePath          │ XPath query that selects the nodes to map to rows [String, Default: //*]
+ namespaces        │ Selected prefix(es) and
+                   │   namespace(s):prefix1=namespace1-uri1,prefix2=namespace2-uri2,...prefixN=namespaceN-uriN [String]
+ columns           │ Column names [String]
+",None,1
+Provides the ability to send emails vs SMTP,DirectProvider,,Utilities,Email.Send,2023-02-25 17:03:46.42982Z,"Sends an email message
+Of the form:
+
+@result = use Email.Send [with @@x, @y, ...]
+  <OPTIONS>
+  ----
+  <MARKDOWN MESSAGE>
+enduse;
+
+<MARKDOWN MESSAGE>: 
+  The message to send in Markdown form (this will be converted into HTML for emailing purposes)
+
+<OPTIONS>:
+_______________________________________________________________________________________________________________________
+ addressTo           │ The TO address in the form: abc@xyz.com or [Abc](abc@xyz.com) [String]
+ addressCc           │ The CC address in the form: abc@xyz.com or [Abc](abc@xyz.com) [String]
+ addressBcc          │ The BCC address in the form: abc@xyz.com or [Abc](abc@xyz.com) [String]
+ topN                │ The maximum number of rows to show in any table (when not attaching them as files) [Int32,
+                     │   Default: 5]
+ attachAs            │ Attach files with this type as opposed to putting the data in a text message [Csv, Excel,
+                     │   SqLite, Json, Xml, Parquet, Word, Pdf]
+ attachAsOneFileName │ When attaching files (and there are many) combine them into one file (the method for this varies
+                     │   by --attachAs) using the name/title provided [String]
+ allowFailure        │ Without this flag being set the query will error if the message cannot be sent. [Boolean]
+ ignoreOnZeroRows    │ Flag to say, if one or more tables are provided and they all have zero rows, then do not send a
+                     │   message at all. [Boolean]
+ subject             │ *Mandatory* Subject for the email [String]
+",None,1
+"Used to read CSV, Text, Pipe-Delimited, etc. files from an SFTP server",DirectProvider,,Utilities,Sftp.Csv,2023-02-25 17:03:46.42982Z,"Of the form:
+
+use Sftp.Csv [with @@var1, ...]
+  <OPTIONS *>
+enduse;
+
+`@@variables` are simple scalar values usable within the the options via simple substitution, e.g.: `--someOption=abc{@@var1}123`
+
+<OPTIONS>:
+
+_______________________________________________________________________________________________________________________
+ file (-f)                      │ *Mandatory* The file to read. Should be text (any extension) or compressed (.zip).
+                                │   It may also be a folder, in which case --folderFilter is also required to specify
+                                │   which files in the folder to process. [String]
+ folderFilter                   │ Denotes this is searching an entire folder structure and provides a Regular
+                                │   Expression of path/file names within it that should be processed.
+                                │   All matches should be of the same format. [String]
+ zipFilter (-z)                 │ Denotes this is a Zip file and provides a Regular Expression of path/file names
+                                │   within it that should be processed.
+                                │   All matches should be of the same format. [String]
+ addFileName                    │ Adds a column (the first column) to the result set which contains the file the row
+                                │   came from. [Boolean]
+ names                          │ Column Names either overrides the header row or steps in when there is no header row
+                                │   (comma delimited list) [String]
+ select                         │ Column (by Name) that should be returned (comma delimited list) [String]
+ types                          │ Column types (comma delimited list of : Boolean, Date, DateTime, Decimal, Double,
+                                │   Int, BigInt, Text, Table) [String]
+ inferTypeRowCount              │ If non-zero and 'types' is not specified this will look through N rows to attempt to
+                                │   work out the column types [Int32]
+ noHeader                       │ Set this if there is no header row [Boolean]
+ delimiter                      │ The delimiter between values (\t for tab) [String, Default: ,]
+ escape                         │ Character used to escape the 'Quote' character when within a value [String, Default:
+                                │   ""]
+ quote                          │ Character used around any field containing the 'delimiter' or a line break. [String,
+                                │   Default: ""]
+ valuesToMakeNull               │ Regex of values to map to 'null' in the returned data. [String, Default:
+                                │   (^[nN][uU][lL]{1,2}$)|((\r\n|\n|\r)$)|(^(\r\n|\n|\r))|(^\s*$)]
+ skipPreHeader                  │ Number of rows to ignore before the header row [Int32]
+ skipPostHeader                 │ Number of rows to ignore after the header row [Int32]
+ skipInvalidRows                │ Skip invalid data rows (totally invalid ones), 
+                                │   This also allows for potentially wrong data if it can be handled somewhat e.g.
+                                │   embedded quotes misused (and still returns such rows).
+                                │   In either case a warning will show in the progress feedback. [Boolean]
+ ignoreDirectoryFlagOnRequestedFile │ Ignore directory flag on requested file from the SFTP server [Boolean]
+",None,1
+Used to read Excel files from an SFTP server,DirectProvider,,Utilities,Sftp.Excel,2023-02-25 17:03:46.42982Z,"Of the form:
+
+use Sftp.Excel [with @@var1, ...]
+  <OPTIONS *>
+enduse;
+
+`@@variables` are simple scalar values usable within the the options via simple substitution, e.g.: `--someOption=abc{@@var1}123`
+
+<OPTIONS>:
+
+_______________________________________________________________________________________________________________________
+ file (-f)                      │ *Mandatory* The file to read. Should be an Excel file (.xlsx or .xlsm)
+                                │   It may also be a folder, in which case --folderFilter is also required to specify
+                                │   which files in the folder to process. [String]
+ folderFilter                   │ Denotes this is searching an entire folder structure and provides a Regular
+                                │   Expression of path/file names within it that should be processed.
+                                │   All matches should be of the same format. [String]
+ zipFilter (-z)                 │ Denotes this is a Zip file and provides a Regular Expression of path/file names
+                                │   within it that should be processed.
+                                │   All matches should be of the same format. [String]
+ addFileName                    │ Adds a column (the first column) to the result set which contains the file the row
+                                │   came from. [Boolean]
+ names                          │ Column Names either overrides the header row or steps in when there is no header row
+                                │   (comma delimited list) [String]
+ types                          │ Column types (comma delimited list of : Boolean, Date, DateTime, Decimal, Double,
+                                │   Int, BigInt, Text, Table) [String]
+ inferTypeRowCount              │ If non-zero and 'types' is not specified this will look through N rows to attempt to
+                                │   work out the column types [Int32]
+ noHeader                       │ Set this if there is no header row [Boolean]
+ calculate                      │ Whether to attempt a calculation of the imported cell range prior to import [Boolean]
+ password                       │ If specified will be used as the password used for password protected workbooks
+                                │   [String]
+ worksheet (-w)                 │ The worksheet containing the cell range to import (name or index, will default to
+                                │   first) [String]
+ range (-r)                     │ The cell range to import as either a specified range or a table name.
+                                │   Range formats can be any of: 
+                                │   - 'A1:B3' (standard Excel range format)
+                                │   - '1,3,7,9' (rows 1-7, columns 3-9)
+                                │   - ',3,,9' (all populated rows, but only columns 3-9)
+                                │   - ',3,,' (all populated rows, but only columns 3 to the last populated one)
+                                │   Defaults to the used dimensions of the worksheet (equivalent to ',,,') [String]
+ ignoreInvalid                  │ If specified cells which can not be successfully converted to the target type will be
+                                │   ignored [Boolean]
+ ignoreBlankRows                │ If the entire rows has only blank cells it will be ignored will be ignored [Boolean]
+ ignoreDirectoryFlagOnRequestedFile │ Ignore directory flag on requested file from the SFTP server [Boolean]
+",None,1
+Used to read text files in a raw-content from an SFTP server,DirectProvider,,Utilities,Sftp.RawText,2023-02-25 17:03:46.42982Z,"Of the form:
+
+use Sftp.RawText [with @@var1, ...]
+  <OPTIONS *>
+enduse;
+
+`@@variables` are simple scalar values usable within the the options via simple substitution, e.g.: `--someOption=abc{@@var1}123`
+
+<OPTIONS>:
+
+_______________________________________________________________________________________________________________________
+ file (-f)                      │ *Mandatory* The file to read.
+                                │   It may also be a folder, in which case --folderFilter is also required to specify
+                                │   which files in the folder to process. [String]
+ folderFilter                   │ Denotes this is searching an entire folder structure and provides a Regular
+                                │   Expression of path/file names within it that should be processed.
+                                │   All matches should be of the same format. [String]
+ zipFilter (-z)                 │ Denotes this is a Zip file and provides a Regular Expression of path/file names
+                                │   within it that should be processed.
+                                │   All matches should be of the same format. [String]
+ addFileName                    │ Adds a column (the first column) to the result set which contains the file the row
+                                │   came from. [Boolean]
+ ignoreDirectoryFlagOnRequestedFile │ Ignore directory flag on requested file from the SFTP server [Boolean]
+",None,1
+Used to write query results to an SFTP server in a variety of formats,DirectProvider,,"Files, Utilities",Sftp.SaveAs,2023-02-25 17:03:46.42982Z,"Of the form:
+
+use Sftp.SaveAs [with @@var1, ...]
+  <OPTIONS *>
+enduse;
+
+`@@variables` are simple scalar values usable within the the options via simple substitution, e.g.: `--someOption=abc{@@var1}123`
+
+<OPTIONS>:
+
+_______________________________________________________________________________________________________________________
+ type                          │ The file types to create - also controls file extensions if not specified [Csv, Excel,
+                               │   SqLite, Json, Xml, Parquet, Word, Pdf, Default: Csv]
+ combineToOne                  │ Combine all files to one for this export - and give them this name [String]
+ dateFormat                    │ The format string to apply when saving dates (dates with no time component).  Used
+                               │   only with some export types. [String, Default: yyyy-MM-dd]
+ dateTimeFormat                │ The format string to apply when saving date-times (e.g. `yyyy-MM-dd'T'HH:mm:ss.fff`). 
+                               │   Used only with some export types. [String, Default: yyyy-MM-dd HH:mm:ss]
+ ignoreOnZeroRows              │ Flag to say, if a file would have zero rows, do not write it at all. [Boolean]
+ splitGroupBy                  │ Splits the given data tables on these fields (a comma delimited list).
+                               │   Each unique 'key set' then will be saved as its own file.  
+                               │   The field names here must appear in all tables being saved and should be used in the
+                               │   file name template e.g.:
+                               │   --splitGroupBy=Abc,Xyz
+                               │   --fileNames
+                               │   f_{Abc}_{Xyz} [String]
+ splitGroupByExcludeKeyColumns │ When using --splitGroupBy the key columns should be omitted in the output [Boolean]
+ fileNames                     │ *Mandatory* File names (without a path).  One per table of data is required.
+                               │   These can be something other than file names as such, depending on other options,
+                               │   e.g.:
+                               │   - Worksheet names when saving to an xlsx with `--combineToOne`
+                               │   - WorksheetName:TableName when saving to an xlsx from a template [String]
+ path                          │ *Mandatory* The location to save this within the target file store. [String]
+ templatePath                  │ The path and file name within the target file store, from which to fetch a `template
+                               │   file`.
+                               │   Only supported by `Excel`, `Word` and `Pdf`. [String]
+ editable                      │ Make the resulting file editable. Only supported by `Pdf`. The default is false.
+                               │   [Boolean]
+ allowCorruptedPdfTemplate     │ Use a corrupted Pdf template despite form fields being unwritable. Useful if you
+                               │   require a table to be appended to the end of a corrupted pdf. Only supported by `Pdf`.
+                               │   The default is false. [Boolean, Default: False]
+",None,1
+Used to read tables from Sqlite files from an SFTP server,DirectProvider,,Utilities,Sftp.Sqlite,2023-02-25 17:03:46.42982Z,"Of the form:
+
+use Sftp.Sqlite [with @@var1, ...]
+  <OPTIONS *>
+enduse;
+
+`@@variables` are simple scalar values usable within the the options via simple substitution, e.g.: `--someOption=abc{@@var1}123`
+
+<OPTIONS>:
+
+_______________________________________________________________________________________________________________________
+ file (-f)                      │ *Mandatory* The file to read. Should be a sqlite file.
+                                │   It may also be a folder, in which case --folderFilter is also required to specify
+                                │   which files in the folder to process. [String]
+ folderFilter                   │ Denotes this is searching an entire folder structure and provides a Regular
+                                │   Expression of path/file names within it that should be processed.
+                                │   All matches should be of the same format. [String]
+ zipFilter (-z)                 │ Denotes this is a Zip file and provides a Regular Expression of path/file names
+                                │   within it that should be processed.
+                                │   All matches should be of the same format. [String]
+ addFileName                    │ Adds a column (the first column) to the result set which contains the file the row
+                                │   came from. [Boolean]
+ table                          │ Table name to read.  If missing then an error will be raised if there is any number
+                                │   of tables other than one. [String]
+ ignoreDirectoryFlagOnRequestedFile │ Ignore directory flag on requested file from the SFTP server [Boolean]
+",None,1
+Used to read XML files from an SFTP server,DirectProvider,,Utilities,Sftp.Xml,2023-02-25 17:03:46.42982Z,"Of the form:
+
+use Sftp.Xml [with @@var1, ...]
+  <OPTIONS *>
+enduse;
+
+`@@variables` are simple scalar values usable within the the options via simple substitution, e.g.: `--someOption=abc{@@var1}123`
+
+<OPTIONS>:
+
+_______________________________________________________________________________________________________________________
+ file (-f)                      │ *Mandatory* The file to read. Should be text (any extension) or compressed (.zip).
+                                │   It may also be a folder, in which case --folderFilter is also required to specify
+                                │   which files in the folder to process. [String]
+ folderFilter                   │ Denotes this is searching an entire folder structure and provides a Regular
+                                │   Expression of path/file names within it that should be processed.
+                                │   All matches should be of the same format. [String]
+ zipFilter (-z)                 │ Denotes this is a Zip file and provides a Regular Expression of path/file names
+                                │   within it that should be processed.
+                                │   All matches should be of the same format. [String]
+ addFileName                    │ Adds a column (the first column) to the result set which contains the file the row
+                                │   came from. [Boolean]
+ types                          │ Column types (comma delimited list of : Boolean, Date, DateTime, Decimal, Double,
+                                │   Int, BigInt, Text, Table) [String]
+ inferTypeRowCount              │ If non-zero and 'types' is not specified this will look through N rows to attempt to
+                                │   work out the column types [Int32]
+ valuesToMakeNull               │ Regex of values to map to 'null' in the returned data. [String, Default:
+                                │   (^[nN][uU][lL]{1,2}$)|((\r\n|\n|\r)$)|(^(\r\n|\n|\r))|(^\s*$)]
+ nodePath                       │ XPath query that selects the nodes to map to rows [String, Default: //*]
+ namespaces                     │ Selected prefix(es) and
+                                │   namespace(s):prefix1=namespace1-uri1,prefix2=namespace2-uri2,...prefixN=namespaceN-ur
+                                │   N [String]
+ columns                        │ Column names [String]
+ ignoreDirectoryFlagOnRequestedFile │ Ignore directory flag on requested file from the SFTP server [Boolean]
+",None,1
+"Used to write query results to the HcFs in a variety of formats.
+Such files are for configuration purposes not general data result storage (for that use Drive.SaveAs).",DirectProvider,,"System, Administration",Sys.Admin.File.SaveAs,2023-02-25 17:03:47.078931Z,"Of the form:
+
+use Sys.Admin.File.SaveAs [with @@var1, ...]
+  <OPTIONS *>
+enduse;
+
+`@@variables` are simple scalar values usable within the the options via simple substitution, e.g.: `--someOption=abc{@@var1}123`
+
+<OPTIONS>:
+
+_______________________________________________________________________________________________________________________
+ type                          │ The file types to create - also controls file extensions if not specified [Csv, Excel,
+                               │   SqLite, Json, Xml, Parquet, Word, Pdf, Default: Csv]
+ combineToOne                  │ Combine all files to one for this export - and give them this name [String]
+ dateFormat                    │ The format string to apply when saving dates (dates with no time component).  Used
+                               │   only with some export types. [String, Default: yyyy-MM-dd]
+ dateTimeFormat                │ The format string to apply when saving date-times (e.g. `yyyy-MM-dd'T'HH:mm:ss.fff`). 
+                               │   Used only with some export types. [String, Default: yyyy-MM-dd HH:mm:ss]
+ ignoreOnZeroRows              │ Flag to say, if a file would have zero rows, do not write it at all. [Boolean]
+ splitGroupBy                  │ Splits the given data tables on these fields (a comma delimited list).
+                               │   Each unique 'key set' then will be saved as its own file.  
+                               │   The field names here must appear in all tables being saved and should be used in the
+                               │   file name template e.g.:
+                               │   --splitGroupBy=Abc,Xyz
+                               │   --fileNames
+                               │   f_{Abc}_{Xyz} [String]
+ splitGroupByExcludeKeyColumns │ When using --splitGroupBy the key columns should be omitted in the output [Boolean]
+ fileNames                     │ *Mandatory* File names (without a path).  One per table of data is required.
+                               │   These can be something other than file names as such, depending on other options,
+                               │   e.g.:
+                               │   - Worksheet names when saving to an xlsx with `--combineToOne`
+                               │   - WorksheetName:TableName when saving to an xlsx from a template [String]
+ path                          │ *Mandatory* The location to save this within the target file store. [String]
+ templatePath                  │ The path and file name within the target file store, from which to fetch a `template
+                               │   file`.
+                               │   Only supported by `Excel`, `Word` and `Pdf`. [String]
+ editable                      │ Make the resulting file editable. Only supported by `Pdf`. The default is false.
+                               │   [Boolean]
+ allowCorruptedPdfTemplate     │ Use a corrupted Pdf template despite form fields being unwritable. Useful if you
+                               │   require a table to be appended to the end of a corrupted pdf. Only supported by `Pdf`.
+                               │   The default is false. [Boolean, Default: False]
+ removeFiles                   │ Flag to say, do not write these files, but rather remove them if present [Boolean]
+",None,2
+Get the log lines for a Grafana Loki LogQL query with a given time window and resolution.,DirectProvider,,"System, Logs",Sys.GrafanaLoki.LogData,2023-02-25 17:03:46.53814Z,"Get the log lines for a Grafana Loki LogQL query with a given time window and resolution.
+Of the form:
+
+@result = use Sys.GrafanaLoki.LogData [limit N]
+  <OPTIONS>
+  [----]
+  [LogQL]
+enduse;
+
+_______________________________________________________________________________________________________________________
+ logQL                    │ The Grafana Loki LogQL query string which must end with a semicolon. 
+                          │   To escape a character use double \\, e.g. \\\\""
+                          │   This is somewhat deprecated. You may omit this and instead have a `----` after all other
+                          │   options at which point all remaining text is LogQL.
+                          │   That requires no escaping and supports SPACES, BACKSLASHES and LINE BREAK. [String]
+ startAt                  │ Start datetime of the query. Expected format: yyyy-MM-ddThh:mm:ss. Defaults to 24 hours
+                          │   before endAt. [DateTime]
+ endAt                    │ End datetime of the query. Expected format: yyyy-MM-ddThh:mm:ss. Defaults to current date
+                          │   and time. [DateTime]
+ step                     │ Query resolution in seconds. [Int32, Default: 60]
+ defaultLimit             │ Max number of log messages to pull back from Loki by default (the LIMIT from the context
+                          │   will override this, if there is one.) [Int32, Default: 1000]
+ direction                │ Sets the sorting order of the logs: can be 'forward' or 'backward'. [String, Default:
+                          │   backward]
+ explicitLabelColumns     │ Always return these label-columns (a comma delimited list), regardless of what exists in
+                          │   Loki for the selected data (without this the returned shape of data can vary by date range
+                          │   and loose all labels if there is no matching data). [String]
+ onlyExplicitLabelColumns │ Only the explicitly mentioned labels will be returned, regardless of what exists in Loki
+                          │   for the selected data (otherwise it will be explicit + dynamic). [Boolean]
+",None,2
+Get the time series values for a promQL query with a given time window and granularity.,DirectProvider,,"System, Logs",Sys.Prometheus.Series.Data,2023-02-25 17:03:46.53814Z,"Get the time series values for a promQL query with a given time window and granularity.
+
+Of the form:
+
+use Sys.Prometheus.Series.Data [with @@var1, ...]
+  <OPTIONS *>
+enduse;
+
+`@@variables` are simple scalar values usable within the the options via simple substitution, e.g.: `--someOption=abc{@@var1}123`
+
+<OPTIONS>:
+
+
+_______________________________________________________________________________________________________________________
+ promQL                    │ The PromQL query string to run. [String]
+ granularity               │ The granularity in seconds for the queried time series (defaults to 60). [Int32]
+ startAt                   │ Start datetime for prometheus series data query. Expected format: yyyy-MM-ddThh:mm:ss.
+                           │   Defaults to 1 day before endAt time. [DateTime]
+ endAt                     │ End datetime for prometheus series data query. Expected format: yyyy-MM-ddThh:mm:ss.
+                           │   Defaults to the current date and time. [DateTime]
+ explicitMetricColumns     │ Always return these metric-columns (a comma delimited list), regardless of what exists in
+                           │   Prometheus for the selected data (without this the returned shape of data can vary by date
+                           │   range and loose all metric if there is no matching data). [String]
+ onlyExplicitMetricColumns │ Only the explicitly mentioned metric will be returned, regardless of what exists in
+                           │   Prometheus for the selected data (otherwise it will be explicit + dynamic). [Boolean]
+",None,2
+Gets Prometheus time series metadata (labels and values that label a time series) for a given metric in a time window.,DirectProvider,,"System, Logs",Sys.Prometheus.Series.Metadata,2023-02-25 17:03:46.53814Z,"Gets Prometheus time series metadata (labels and values that label a time series) for a given metric in a time window.
+
+Of the form:
+
+use Sys.Prometheus.Series.Metadata [with @@var1, ...]
+  <OPTIONS *>
+enduse;
+
+`@@variables` are simple scalar values usable within the the options via simple substitution, e.g.: `--someOption=abc{@@var1}123`
+
+<OPTIONS>:
+
+
+_______________________________________________________________________________________________________________________
+ metricName │ Prometheus Metric Name to get series metadata data for. [String]
+ startAt    │ Start datetime for prometheus series metadata query. Expected format: yy-mm-ddThh:mm:ss. Defaults to 1
+            │   day before endAt time. [DateTime]
+ endAt      │ End datetime for prometheus series metadata query. Expected format: yy-mm-ddThh:mm:ss. Defaults to the
+            │   current date and time. [DateTime]
+",None,2
+Provides testing data & behavior required for General Integration Tests needing a Direct Provider,DirectProvider,,Testing,TestingDirect,2023-02-25 17:03:46.610702Z,"Of the form:
+
+use TestingDirect [with @@var1, ...]
+  <OPTIONS *>
+enduse;
+
+`@@variables` are simple scalar values usable within the the options via simple substitution, e.g.: `--someOption=abc{@@var1}123`
+
+<OPTIONS>:
+",None,0
+Provides the ability to use Mustache templates to format multiple data sets into text output,DirectProvider,https://gitlab.com/finbourne/lusid/dve/blob/master/implementation/UtilityProviders/README.md#mustache,Utilities,Tools.Mustache,2023-02-25 17:03:46.42982Z,"Of the form:
+
+use Tools.Mustache with @stuff
+{{#@stuff}}
+ {{Int}}
+{{/@stuff}}
+enduse;
+
+A Direct provider allowing you to apply Mustache templating (http://mustache.github.io/) to multiple dataset, variables, etc.
+See http://mustache.github.io/mustache.5.html for the full template syntax.
+The whole `use body` is the template.
+
+With [...]:
+- `@@variables` are simple scalar values usable within the templates
+- `@variables` are full tables of data so you generally use `{{#@x}}` ... `{{/@x}}` to iterate over rows and `SomeFiledName` inside that to show values.
+- special `@variables` are:
+  - `@partials` that should be a table with two string columns: `Name` and `Template` which allows you to define partial templates for reuse.
+  - `@foreach` this is a table for which one row will be returned for each row this table has.  
+    All columns in this table will be returned and a new one added called `FormattedText` which is the result of the template evaluation for that row.
+    Within the template all fields in the row are available and all passed in parameters are still available.
+    Without this variable being set the provider will return exactly one row with a column called `FormattedText`.
+
+@foreach and AsTable
+
+When using an `@foreach` you may take any string column and append `AsTable` to the column name.  
+That will then be split on `,` and within those items `;` in order to effectively be allowed nested tables.
+Fields at that level are nameless and simply referred to as `{{1}}`, `{{2}}`, etc.
+",None,1

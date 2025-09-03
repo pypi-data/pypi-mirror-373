@@ -1,0 +1,589 @@
+Metadata-Version: 2.4
+Name: dve-lumipy-testing
+Version: 1.0.483
+Summary: Python library for Luminesce
+Author: FINBOURNE Technology
+Author-email: engineering@finbourne.com
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
+Requires-Dist: pandas>=2.0.0
+Requires-Dist: numpy
+Requires-Dist: termcolor
+Requires-Dist: requests
+Requires-Dist: luminesce-sdk==2.2.7
+Requires-Dist: ipywidgets
+Requires-Dist: ipytree
+Requires-Dist: uvicorn
+Requires-Dist: fastapi
+Requires-Dist: semver
+Requires-Dist: click<8.2.0
+Requires-Dist: tqdm
+Requires-Dist: toml
+Requires-Dist: pydantic>2
+Requires-Dist: h11>=0.16.0
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# Lumipy
+[*loom-ee-pie*]
+
+## Introduction
+Lumipy is a python library that integrates Luminesce and the Python Data Science Stack. 
+It is designed to be used in Jupyter, but you can use it scripts and modules as well.
+
+It has two components
+ * **Getting data:** a fluent syntax for scripting up queries using python code. This makes it easy to build complex queries and get your data back as pandas DataFrames.
+ * **Integration:** infrastructure to build providers in python. This allows you to build data sources and transforms such as ML models and connect them to Luminesce. They can then be used by other users from the Web UI, Power BI, etc.
+
+Lumipy is designed to be as easy to use and as unobtrusive as possible. 
+You should have to do minimal imports and everything should be explorable from Jupyter through tab completion and `shift + tab`.  
+
+
+## Install
+Lumipy is available from PyPI:
+
+**LumiPy** Is our latest package which utilises the V2 Finbourne SDKs.
+
+It is important to uninstall `dve-lumipy-preview` before installing `lumipy`. You can do this by running:
+
+```
+pip uninstall dve-lumipy-preview
+```
+
+We recommend using the --force-reinstall option to make this transition smoother. Please note that this will force 
+update all dependencies for lumipy and could affect your other Python projects. 
+
+```
+pip install --force-reinstall lumipy
+```
+
+If you prefer not to update all dependencies, you can omit the `--force-reinstall` and use the regular pip install 
+command instead:
+
+```
+pip install lumipy
+```
+
+**Dve-Lumipy-Preview** uses the V1 Finbourne SDKs and is no longer maintained.
+```
+pip install dve-lumipy-preview
+```
+
+## Configure
+Add a personal access token to your config. This first one will be the active one.
+```python
+import lumipy as lm
+
+lm.config.add('fbn-prd', '<your PAT>')
+```
+If you add another domain and PAT you will need to switch to it.
+```python
+import lumipy as lm
+
+lm.config.add('fbn-ci', '<your PAT>')
+lm.config.domain = 'fbn-ci'
+```
+
+## Connect
+
+Python providers are build by inheriting from a base class, `BaseProvider`, and implementing the `__init__` and `get_data` methods.
+The former defines the 'shape' of the output data and the parameters it takes. The latter is where the provider actually does something. 
+This can be whatever you want as long as it returns a dataframe with the declared columns. 
+
+### Running Providers
+
+This will run the required setup on the first startup. 
+Once that's finished it'll spin up a provider that returns Fisher's Irises dataset. 
+Try it out from the web GUI, or from an atlas in another notebook. Remember to get the atlas again once it's finished starting up. 
+
+This uses the built-in `PandasProvider` class to make a provider object, adds it to a `ProviderManager` and then starts it.
+
+```python
+import lumipy.provider as lp
+
+p = lp.PandasProvider(
+    'https://raw.githubusercontent.com/mwaskom/seaborn-data/master/iris.csv',
+    'iris'
+)
+lp.ProviderManager(p).run()
+```
+
+This will also default to the active domain if none is specified as an argument to the provider manager. 
+
+You can run globally in the domain so other users can query your provider by setting `user='global'` and `whitelist_me=True` in
+the `ProviderManager` constructor. 
+
+The setup consists of getting the dlls for the dotnet app (provider factory) and getting the pem files to run in the domain. 
+To run the setup on its own run the `lp.setup()` function. This takes the same arguments as `get_client` and `get_atlas`.
+
+### Building Providers
+
+The following example will simulate a set of coin flips. It has two columns `Label` and `Result`, and one 
+parameter `Probability` with a default value of 0.5. 
+
+Its name and column/param content are specified in `__init__`. The simulation of the coin flips
+happens inside `get_data` where we draw numbers from a binomial distribution with the given probability and n = 1.
+
+We also have a check for the probability value. If it's out of range an error will be thrown in python and reported back
+in the progress log and query status. 
+
+Finally, the provider object is instantiated and given to a provider manager. The provider manager is then started up with
+the `run()` method. 
+
+```python
+import lumipy.provider as lp
+from pandas import DataFrame
+from typing import Union, Iterator
+import numpy as np
+
+
+class CoinFlips(lp.BaseProvider):
+
+    def __init__(self):
+        
+        columns = [
+            lp.ColumnMeta('Label', lp.DType.Text),
+            lp.ColumnMeta('Result', lp.DType.Int),
+        ]
+        
+        params = [lp.ParamMeta('Probability', lp.DType.Double, default_value=0.5)]
+        
+        super().__init__('test.coin.flips', columns, params)
+
+    def get_data(self, context) -> Union[DataFrame, Iterator[DataFrame]]:
+     
+        # If no limit is given, default to 100 rows.
+        limit = context.limit()
+        if limit is None:
+            limit = 100
+        
+        # Get param value from params dict. If it's out of bounds throw an error. 
+        p = context.get('Probability')
+        if not 0 <= p <= 1:
+            raise ValueError(f'Probability must be between 0 and 1. Was {p}.')
+        
+        # Generate the coin flips and return. 
+        return DataFrame({'Label':f'Flip {i}', 'Result': np.random.binomial(1, p)} for i in range(limit))
+
+
+coin_flips = CoinFlips()
+
+lp.ProviderManager(coin_flips).run()
+```
+
+# CLI
+Lumipy also contains a command line interface (CLI) app with five different functions. 
+You can view help for the CLI and each of the actions using `--help`. Try this to start with
+```shell
+  $ lumipy --help
+```
+
+## Config
+This lets you configure your domains and PATs. You can show, add, set, delete and deactivate domains.
+To see all options and args run the following
+```shell
+  $ lumipy config --help
+```
+### Config Examples
+`set` Set a domain as the active one.
+```shell
+  $ lumipy config set --domain=my-domain
+```
+
+`add` Add a domain and PAT to your config.
+```shell
+  $ lumipy config add --domain=my-domain --token=<my token>
+  (--overwrite)
+```
+
+`show` Show a censored view of the config contents.
+```shell
+  $ lumipy config show
+```
+
+`delete` Delete a domain from the config.
+```shell
+  $ lumipy config delete --domain=my-domain
+```
+
+`deactivate` Deactivate the config so no domain is used by default.
+```shell
+  $ lumipy config deactivate
+```
+
+## Run
+This lets you run python providers. You can run prebuilt named sets, CSV files, python files containing provider objects, 
+or even a directory containing CSVs and py files. 
+
+### Run Examples
+
+`.py` File
+```shell
+  $ lumipy run path/to/my_providers.py
+```
+`.csv` File
+```shell
+  $ lumipy run path/to/my_data.csv 
+```
+Built-in Set
+```shell
+  $ lumipy run demo
+```
+Directory
+```shell
+  $ lumipy run path/to/dir
+```
+
+
+## Query Using SQL
+This command runs a SQL query, gets the result back, shows it on screen and then saves it as a CSV.
+
+### Query Examples
+Run a query (saves as CSV to a temp directory).
+```shell
+  $ lumipy query --sql="select ^ from lusid.instrument limit 5"
+```
+Run a query to a defined location.
+```shell
+  $ lumipy query --sql="select ^ from lusid.instrument limit 5" --save-to=/path/to/output.csv
+```
+
+## Setup
+This lets you run the provider infrastructure setup on your machine. 
+You must have the .NET 8 SDK installed to run providers. 
+
+### Setup Examples
+Run the py providers setup. This will redownload the certs and get the latest dlls, overwriting any that are already there.
+```shell
+  $ lumipy setup --domain=my-domain
+```
+
+## Test
+This lets you run the Lumipy test suites.
+
+### Test Examples
+You can run `unit` tests, `integration` tests, `provider` tests, or `everything`.
+```shell
+  $ lumipy test unit
+```
+
+## Windows Setup
+
+To use LumiPy and run local providers it is recommended that you use an admin `powershell` terminal.
+
+Install (or update) LumiPy using your `powerhsell` terminal.
+
+
+### LumiPy (V2 Finbourne SDK)
+```shell
+  $ pip install lumipy --upgrade
+```
+
+Verify that your install was succesful.
+
+```shell
+  $ lumipy --help
+```
+
+Setup your config with a personal access token (PAT).
+
+```shell
+  $ lumipy config add --domain=my-domain --token=my-pat-token
+```
+
+Ensure you can run local providers. To run these providers globally add `--user==global` and `--whitelist-me` to the command below.
+
+```shell
+  $ lumipy run demo
+```
+
+### Testing Local Changes on Windows
+
+To test your local `dve-lumipy` changes on Windows add `dve-lumipy` to your python path (inside your environment variables).
+
+## Authenticating with the SDK (Lumipy)
+Example using the `lumipy.client.get_client()` method:
+```python
+from lumipy.client import get_client
+client = get_client()
+```
+
+### Recommended Method
+
+Authenticate by setting up the PAT token via the CLI or directly in Python (see the Configure section above).
+
+### Secrets File
+Initialize `get_client` using a secrets file:
+
+```python
+client = get_client(api_secrets_file="secrets_file_path/secrets.json")
+```
+
+File structure should be:
+```json
+{
+  "api": {
+    "luminesceUrl": "https://fbn-ci.lusid.com/honeycomb/",
+    "clientId": "clientId",
+    "clientSecret": "clientSecret",
+    "appName": "appName",
+    "certificateFilename": "test_certificate.pem",
+    "accessToken": "personal access token"
+  },
+  "proxy": {
+    "address": "http://myproxy.com:8080",
+    "username": "proxyuser",
+    "password": "proxypass"
+  }
+}
+```
+
+### Keyword Arguments
+Initialize `get_client` with keyword arguments:
+```python
+client = get_client(username="myusername", ...)
+```
+Relevant keyword arguments include:
+- token_url
+- api_url
+- username
+- password
+- client_id
+- client_secret
+- app_name
+- certificate_filename
+- proxy_address
+- proxy_username
+- proxy_password
+- access_token
+
+### Environment Variables
+The following environment variables can also be set:
+- FBN_TOKEN_URL
+- FBN_LUMINESCE_API_URL
+- FBN_USERNAME
+- FBN_PASSWORD
+- FBN_CLIENT_ID
+- FBN_CLIENT_SECRET
+- FBN_APP_NAME
+- FBN_CLIENT_CERTIFICATE
+- FBN_PROXY_ADDRESS
+- FBN_PROXY_USERNAME
+- FBN_PROXY_PASSWORD
+- FBN_ACCESS_TOKEN
+
+# Lumipy Atlas and LumiFlex
+
+This guide demonstrates how to use the Lumipy Atlas interface to query data providers, transform data, join datasets, create views, and interact with external services like AWS S3, Drive, and Slack.
+
+
+### Query 
+
+All built around the `atlas` object. This is the starting point for exploring your data sources and then using them.
+
+Build your atlas with `lm.get_atlas`. If you don't supply credentials it will default to your active domain in the config.  
+If there is no active domain in your config it will fall back to env vars. 
+
+```python
+import lumipy as lm
+
+atlas = lm.get_atlas()
+
+ins = atlas.lusid_instrument()
+ins.select('^').limit(10).go()
+```
+
+You can also specify the domain here by a positional argument, e.g. `lm.get_atlas('fbn-ci')` will use `fbn-ci` and will override the active domain. 
+
+Client objects are created in the same way. You can submit raw SQL strings as queries using `run()`
+
+```python
+import lumipy as lm
+
+client = lm.get_client()
+client.run('select ^ from lusid.instrument limit 10')
+```
+
+You can create a `client` or `atlas` for a domain other than the active one by specifying it in `get_client` or `get_atlas`. 
+
+```python
+import lumipy as lm
+
+client = lm.get_client('fbn-prd')
+atlas = lm.get_atlas('fbn-prd')
+```
+
+
+
+### Querying a Provider
+
+```python
+pf = atlas.lusid_portfolio(as_at=dt.datetime(2022, 9, 1))
+df = pf.select('*').limit(10).go()
+```
+
+
+
+### Select New Columns
+
+```python
+df = pf.select(
+    '^',  # all original main columns
+    LoudNoises=pf.portfolio_code.str.upper(),
+    IntVal=7,
+    BoolVal=False
+).limit(10).go()
+```
+
+
+
+### Where Filtering
+
+```python
+df = pf.select('*').where(pf.portfolio_scope == 'Finbourne-Examples').go()
+```
+
+
+
+### Order By
+
+```python
+df = pf.select('*').where(
+    pf.portfolio_scope == 'Finbourne-Examples'
+).order_by(
+    pf.portfolio_code.ascending()
+).go()
+```
+
+
+
+### Case Statements and Group By
+
+```python
+region = lm.when(pf.portfolio_code.str.contains('GLOBAL')).then('GLOBAL') \
+           .when(pf.portfolio_code.str.contains('US')).then('US') \
+           .otherwise('OTHER')
+
+df = pf.select(Region=region).where(
+    pf.portfolio_scope == 'Finbourne-Examples'
+).group_by(
+    Region=region
+).aggregate(
+    PortfolioCount=pf.portfolio_code.count()
+).go()
+```
+
+
+
+### Having
+
+```python
+df = pf.select(Region=region).where(
+    pf.portfolio_scope == 'Finbourne-Examples'
+).group_by(
+    Region=region
+).aggregate(
+    PortfolioCount=pf.portfolio_code.count()
+).having(
+    pf.portfolio_code.count() > 3
+).go()
+```
+
+
+
+### Joins
+
+```python
+tv = pf.select('^').where(pf.portfolio_scope == 'Finbourne-Examples').to_table_var()
+hld = atlas.lusid_portfolio_holding(as_at=dt.datetime(2022, 9, 1))
+
+df = tv.left_join(hld, on=tv.portfolio_code == hld.portfolio_code).select('*').go()
+```
+
+
+
+### Union / Concat
+
+```python
+df = lm.concat([query1, query2, query3]).go()
+```
+
+
+
+### Sampling
+
+```python
+# Sample by fraction
+df = pf.select('*').limit(200).sample(prob=0.5).go()
+
+# Sample by count
+df = pf.select('*').limit(200).sample(100).go()
+```
+
+
+
+### Create View
+
+```python
+df = pf.select('*').setup_view('Lumipy.View.MyView').go()
+```
+
+
+
+### S3, Drive, and SaveAs Integration
+
+```python
+# Load CSV from S3
+csv = atlas.awss3_csv(file='bucket/path/file.csv')
+df = csv.select('*').go()
+
+# Save table variable to Drive
+save = atlas.drive_saveas(tv, type='CSV', path='/my-path/', file_names='exported_file')
+df = save.select('*').go()
+```
+
+
+
+### Slack Integration
+
+```python
+# Send table var as CSV
+slack = atlas.dev_slack_send(
+    tv,
+    attach_as='CSV',
+    channel='#channel-name',
+    text='Here is your result!'
+)
+df = slack.select('*').go()
+```
+
+
+
+### Built-in Analytics
+
+```python
+df = ar.select(
+    ar.timestamp,
+    ar.duration,
+    Drawdown=lm.window().finance.drawdown(ar.duration)
+).go()
+```
+
+
+
+### Cumulative and Fractional Functions
+
+```python
+df = ar.select(
+    CumeSum=ar.duration.cume.sum(),
+    FracDiff=ar.duration.frac_diff()
+).go()
+```
