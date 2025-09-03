@@ -1,0 +1,129 @@
+import pathlib
+import urllib.parse
+from typing import Optional
+from typing import Union
+
+import h5py
+import rdflib
+from rdflib.namespace import XSD
+
+
+def _parse_obj_name(obj_name: str):
+    return urllib.parse.quote(obj_name, safe='')
+
+
+def get_attr_dtype_as_XSD(data):
+    if isinstance(data, str):
+        return XSD.string
+    if isinstance(data, int):
+        return XSD.integer
+    if isinstance(data, float):
+        return XSD.float
+    return None
+
+
+def optimize_context(graph, context=None):
+    bound_namespaces = {k: str(v) for k, v in graph.namespaces()}
+    bound_namespaces["m4i"] = "http://w3id.org/nfdi4ing/metadata4ing#"
+
+    # Collect actually used namespaces
+    selected_namespaces = dict()
+
+    for s, p, o in graph:  # Iterate through triples
+        for term in (s, p, o):
+            if isinstance(term, rdflib.URIRef):
+                for k, v in selected_namespaces.items():
+                    if v in term:
+                        break
+                for k, v in bound_namespaces.items():
+                    if v in term:
+                        selected_namespaces[k] = v
+                        break
+
+    context = context or {}
+    selected_namespaces.update(context)
+    return selected_namespaces
+
+
+def _get_obj_id(file_id: float, obj: Union[h5py.Dataset, h5py.Group], name: Optional[str] = None):
+    if name:
+        name = f"/{name}"
+    _file_id = _get_file_id(obj.file)
+    if name is None:
+        if obj.name == "/":
+            return f"{_file_id}{obj.name}"
+        return f"{_file_id}{_parse_obj_name(obj.name)}"
+    return f"{_file_id}{_parse_obj_name(obj.name)}{name}"
+    # return hashlib.md5(f"{obj.file.id.id}/{obj.name}{name}".encode()).hexdigest()
+
+
+# def _get_attr_id(obj: Union[h5py.Dataset, h5py.Group], name: str):
+#     if not isinstance(name, str):
+#         raise ValueError("Attribute name must be a string")
+#     return f"{obj.file.id.id}{obj.name}@{name}"
+
+
+def _get_file_id(file: h5py.File):
+    """deterministic ID for the file based on its name and modification time."""
+    if isinstance(file, (str, pathlib.Path)):
+        filename = str(file)
+    elif isinstance(file, h5py.File):
+        filename = file.filename
+    else:
+        raise ValueError("Expected h5py.File object or file path as string or pathlib.Path")
+    return f"{pathlib.Path(file.filename).name}"
+    # if filename in _CACHE["FILE_MTIME_ID"]:
+    #     return _CACHE["FILE_MTIME_ID"][filename]
+    # _id = os.path.getmtime(file.filename)
+    # _CACHE["FILE_MTIME_ID"][filename] = _id
+    # return _id
+
+
+def get_file_bnode(
+        file: h5py.File,
+        file_uri: Optional[str]
+):
+    if not isinstance(file, h5py.File):
+        raise ValueError("Expected h5py.File object")
+    _id = _get_file_id(file)
+    if file_uri:
+        return rdflib.URIRef(f'{file_uri}{_id}')
+    return rdflib.BNode(_id)
+
+
+def get_obj_bnode(obj: Union[h5py.Dataset, h5py.Group], blank_node_iri_base):
+    file_id = _get_file_id(obj.file)
+    _id = _get_obj_id(file_id, obj)
+    if blank_node_iri_base:
+        return rdflib.URIRef(f'{blank_node_iri_base}{_id}')
+    return rdflib.BNode(_id)
+
+
+def get_property_node(
+        obj: Union[h5py.Dataset, h5py.Group],
+        name: str,
+        blank_node_iri_base: Optional[str] = None
+) -> Union[rdflib.URIRef, rdflib.BNode]:
+    """Get a property node for an HDF5 object."""
+    _file_id = _get_file_id(obj.file)
+    if obj.name == "/":
+        _id = f"{_file_id}@{name}"
+    else:
+        _id = f"{_file_id}{_parse_obj_name(obj.name)}__{name}"
+    if blank_node_iri_base:
+        return rdflib.URIRef(f'{blank_node_iri_base}{_id}')
+    return rdflib.BNode(_id)
+
+
+def get_attr_node(
+        obj: Union[h5py.Dataset, h5py.Group],
+        name: str,
+        blank_node_iri_base: str) -> Union[rdflib.URIRef, rdflib.BNode]:
+    _file_id = _get_file_id(obj.file)
+    if obj.name == "/":
+        _id = f"{_file_id}@{name}"
+    else:
+        _id = f"{_file_id}{_parse_obj_name(obj.name)}@{name}"
+    if blank_node_iri_base:
+        return rdflib.URIRef(f'{blank_node_iri_base}{_id}')
+    return rdflib.BNode(f"{_id}")
