@@ -1,0 +1,94 @@
+import click
+import mlflow
+{% if use_gpu %}
+import mlflow.pytorch
+{% else %}
+import mlflow.sklearn
+{% endif %}
+from pyspark.sql import SparkSession
+{% if model_type == 'classification' or model_type == 'regression' %}
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import f1_score, accuracy_score
+{% elif model_type == 'segmentation' %}
+import torch
+import torch.nn as nn
+{% endif %}
+import pandas as pd
+
+spark = SparkSession.builder.getOrCreate()
+
+@click.command()
+@click.option("--features", required=True, help="UC table with processed features")
+@click.option("--registered-model", required=True, help="UC model path")
+@click.option("--experiment", required=True, help="UC experiment path")
+@click.option("--epochs", default=100, type=int)
+@click.option("--batch-size", default=4, type=int)
+@click.option("--learning-rate", default=0.001, type=float)
+def main(features: str, registered_model: str, experiment: str, epochs: int, batch_size: int, learning_rate: float):
+    """Train {{ model_type }} model"""
+    mlflow.set_tracking_uri("databricks")
+    mlflow.set_registry_uri("databricks-uc")
+    mlflow.set_experiment(experiment)
+
+    with mlflow.start_run(run_name="train_{{ model_type }}", tags={"model_type": "{{ model_type }}"}):
+        # Load preprocessed data
+        df = spark.table(features)
+        
+        # Log hyperparameters
+        mlflow.log_params({
+            "epochs": epochs,
+            "batch_size": batch_size,
+            "learning_rate": learning_rate,
+            "model_type": "{{ model_type }}"
+        })
+        
+        {% if model_type == 'classification' %}
+        # Classification training logic
+        pdf = df.toPandas()
+        X = pdf.drop(columns=["label"]).astype("float32")
+        y = pdf["label"].astype("int32")
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+        clf = RandomForestClassifier(n_estimators=100, max_depth=8, random_state=42)
+        clf.fit(X_train, y_train)
+        preds = clf.predict(X_test)
+        
+        accuracy = accuracy_score(y_test, preds)
+        f1 = f1_score(y_test, preds, average='weighted')
+        
+        mlflow.log_metric("accuracy", accuracy)
+        mlflow.log_metric("f1_score", f1)
+        mlflow.sklearn.log_model(clf, "model", registered_model_name=registered_model)
+        
+        {% elif model_type == 'segmentation' %}
+        # Segmentation training logic (placeholder)
+        # Replace with actual segmentation model training
+        
+        # Example metrics for segmentation
+        metrics = {
+            "dice_score": 0.85,
+            "iou": 0.78,
+            "pixel_accuracy": 0.92,
+            "loss": 0.15
+        }
+        
+        for metric_name, value in metrics.items():
+            mlflow.log_metric(metric_name, value)
+        
+        # mlflow.pytorch.log_model(model, "model", registered_model_name=registered_model)
+        
+        {% else %}
+        # Custom model training logic
+        # Add your specific training implementation here
+        
+        # Example metrics
+        mlflow.log_metric("custom_metric", 0.85)
+        {% endif %}
+        
+        mlflow.set_tags({"env": "${bundle.target}", "project": "{{ project_name_underscore }}"})
+        print(f"Training completed. Model registered as {registered_model}")
+
+if __name__ == "__main__":
+    main()
