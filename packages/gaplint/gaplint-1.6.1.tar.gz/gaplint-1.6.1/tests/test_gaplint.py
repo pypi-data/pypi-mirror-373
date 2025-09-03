@@ -1,0 +1,506 @@
+# pylint: skip-file
+
+import pytest
+import os
+import pickle
+import gzip
+import glob
+
+from os.path import exists, isdir
+
+import gaplint
+from gaplint import Diagnostic
+from gaplint import run_gaplint
+
+# See tests/pickle_expected_output.py
+_INPUT_FILES = glob.glob("./tests/input/*")
+with gzip.open("./tests/expected.pkl.gz", "r") as in_file:
+    _EXPECTED_DIAGNOSTICS = pickle.load(in_file)
+
+
+@pytest.mark.quick
+def test_dot_g_file1():
+    expected = {
+        "W000": 3,
+        "W001": 1,
+        "W002": 1,
+        "W003": 1,
+        "W004": 3,
+        "W005": 12,
+        "W006": 0,
+        "W007": 2,
+        "W008": 5,
+        "W009": 17,
+        "W010": 1,
+        "W011": 0,
+        "W012": 1,
+        "W013": 0,
+        "W014": 2,
+        "W015": 0,
+        "W016": 2,
+        "W017": 0,
+        "W018": 1,
+        "W019": 4,
+        "W020": 2,
+        "W021": 0,
+        "W022": 1,
+        "W023": 0,
+        "W024": 0,
+        "W025": 0,
+        "W026": 0,
+        "W027": 0,
+        "W028": 0,
+        "W029": 0,
+        "W030": 1,
+        "W031": 1,
+        "W032": 1,
+        "W033": 0,
+        "W034": 1,
+        "W035": 0,
+        "W036": 0,
+        "W037": 0,
+        "W038": 0,
+        "W039": 0,
+        "W040": 3,
+        "W041": 0,
+        "W042": 0,
+        "W043": 0,
+        "W044": 0,
+        "W045": 0,
+        "W046": 6,
+        "W047": 3,
+        "W048": 0,
+        "W049": 1,
+    }
+
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["tests/input/test1.g"])
+    assert e.value.code == 67
+    for code in gaplint.Rule.all_suppressible_codes():
+        with pytest.raises(SystemExit) as e:
+            run_gaplint(files=["tests/input/test1.g"], enable=code)
+        assert (expected[code], code) == (e.value.code, code)
+
+
+@pytest.mark.quick
+def test_dot_g_file2():
+    expected = {
+        "W000": 0,
+        "W001": 0,
+        "W002": 0,
+        "W003": 0,
+        "W004": 8,
+        "W005": 0,
+        "W006": 0,
+        "W007": 0,
+        "W008": 0,
+        "W009": 0,
+        "W010": 0,
+        "W011": 0,
+        "W012": 30,
+        "W013": 30,
+        "W014": 0,
+        "W015": 0,
+        "W016": 48,
+        "W017": 0,
+        "W018": 0,
+        "W019": 0,
+        "W020": 6,
+        "W021": 0,
+        "W022": 5,
+        "W023": 0,
+        "W024": 0,
+        "W025": 0,
+        "W026": 0,
+        "W027": 0,
+        "W028": 0,
+        "W029": 0,
+        "W030": 0,
+        "W031": 0,
+        "W032": 0,
+        "W033": 0,
+        "W034": 0,
+        "W035": 0,
+        "W036": 0,
+        "W037": 0,
+        "W038": 0,
+        "W039": 0,
+        "W040": 0,
+        "W041": 0,
+        "W042": 0,
+        "W043": 0,
+        "W044": 0,
+        "W045": 0,
+        "W046": 0,
+        "W047": 0,
+        "W048": 0,
+        "W049": 0,
+    }
+
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["tests/input/test2.g"])
+    assert e.value.code == 127
+    for code in gaplint.Rule.all_suppressible_codes():
+        with pytest.raises(SystemExit) as e:
+            run_gaplint(files=["tests/input/test2.g"], enable=code)
+        assert (expected[code], code) == (e.value.code, code)
+
+
+@pytest.mark.quick
+def test_long_lines():
+    expected = {
+        "W000": 0,
+        "W001": 0,
+        "W002": 10,
+        "W003": 0,
+        "W004": 0,
+        "W005": 0,
+        "W006": 0,
+        "W007": 0,
+        "W008": 0,
+        "W009": 0,
+        "W010": 0,
+        "W011": 0,
+        "W012": 0,
+        "W013": 0,
+        "W014": 0,
+        "W015": 0,
+        "W016": 0,
+        "W017": 0,
+        "W018": 0,
+        "W019": 0,
+        "W020": 0,
+        "W021": 0,
+        "W022": 0,
+        "W023": 0,
+        "W024": 0,
+        "W025": 0,
+        "W026": 0,
+        "W027": 0,
+        "W028": 0,
+        "W029": 0,
+        "W030": 0,
+        "W031": 0,
+        "W032": 0,
+        "W033": 0,
+        "W034": 0,
+        "W035": 0,
+        "W036": 0,
+        "W037": 0,
+        "W038": 0,
+        "W039": 0,
+        "W040": 0,
+        "W041": 0,
+        "W042": 0,
+        "W043": 0,
+        "W044": 0,
+        "W045": 0,
+        "W046": 0,
+        "W047": 0,
+        "W048": 0,
+        "W049": 0,
+    }
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["tests/input/test_long_lines.g"])
+    assert e.value.code == 10
+    for code in gaplint.Rule.all_suppressible_codes():
+        with pytest.raises(SystemExit) as e:
+            run_gaplint(files=["tests/input/test_long_lines.g"], enable=code)
+        assert (expected[code], code) == (e.value.code, code)
+
+
+@pytest.mark.quick
+def test_dot_g_file3():
+    # syntax error
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["tests/input/test3.g"])
+    assert e.value.code == 1
+
+
+@pytest.mark.quick
+def test_dot_g_file4():
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["tests/input/test1.g"], disable="all")
+    assert e.value.code == 0
+
+
+@pytest.mark.quick
+def test_dot_tst_file():
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["tests/input/test.tst"])
+    assert e.value.code == 2
+
+
+@pytest.mark.quick
+def test_disable_global_rule():
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(
+            files=["tests/input/methsel2.g"],
+            silent=True,
+            # Disable all rules except analyse-lvars
+            enable="W000",
+        )
+    assert e.value.code == 0
+
+
+@pytest.mark.quick
+def test_hpc_gap():
+    with pytest.raises(SystemExit) as excinfo:
+        run_gaplint(files=["tests/input/filter.gi"])
+
+    assert excinfo.value.code == 1
+
+    with pytest.raises(SystemExit) as excinfo:
+        run_gaplint(files=["tests/input/filter.gi"], max_warnings=2)
+
+    assert excinfo.value.code == 1
+
+
+@pytest.mark.quick
+def test_wrong_ext():
+    with pytest.raises(SystemExit) as excinfo:
+        run_gaplint(files=["tests/input/file.wrongext"])
+    assert excinfo.value.code == 1
+
+
+@pytest.mark.quick
+def test_autodoc_whitespace():
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["tests/input/test5.g"])
+    assert e.value.code == 0
+
+
+@pytest.mark.quick
+def test_ReplaceOutputTstOrXMLFile():
+    rule = gaplint.ReplaceOutputTstOrXMLFile("W998", "another-test-rule")
+    rule("fname", "line does not start with gap> or >", 0)
+    rule._consuming = True
+    rule("fname", "line has neither prefix", 0)
+
+
+@pytest.mark.quick
+def test_AnalyseLVars():
+    rule = gaplint.AnalyseLVars("W999", "test-rule")
+
+    # duplicate params
+    with pytest.raises(SystemExit):
+        rule("fname", "function(x, x)", 0)
+    rule.reset()
+
+    # keyword param
+    with pytest.raises(SystemExit):
+        rule("fname", "function(while)", 0)
+    rule.reset()
+
+    # duplicate locals
+    with pytest.raises(SystemExit):
+        rule("fname", "f := function(x)\nlocal y, y; end;", 0)
+    rule.reset()
+
+    # param is local
+    with pytest.raises(SystemExit):
+        rule("fname", "f := function(x)\nlocal x; end;", 0)
+    rule.reset()
+
+    # local is keyword
+    with pytest.raises(SystemExit):
+        rule("fname", "f := function(x)\nlocal while; end;", 0)
+    rule.reset()
+
+    # function without end
+    with pytest.raises(SystemExit):
+        rule("fname", "f := function(x,\ny)", 0)
+
+    # end without function
+    with pytest.raises(SystemExit):
+        rule("fname", "end;", 0)
+
+
+@pytest.mark.quick
+def test_run_gaplint():
+    with pytest.raises(SystemExit):
+        run_gaplint()
+    with pytest.raises(SystemExit):
+        run_gaplint(files=["tests/input/test1.g"], max_warnings=0)
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["non-existant-file"])
+    assert e.value.code == 1
+    with pytest.raises(SystemExit):
+        run_gaplint(files=["tests/input/test1.g"], verbose=True)
+
+
+CONFIG_YAML_FILE = """disable:
+- none
+- trailing-whitespace
+- M002
+- remove-comments
+indentation: 4
+max_warnings: 1000
+bananas: x"""
+
+BAD_CONFIG_YAML_FILE_1 = """disable: 0
+indentation: 4
+max_warnings: 1000
+bananas: x"""
+
+BAD_CONFIG_YAML_FILE_2 = """disable:
+- 0
+indentation: 4
+max_warnings: 1000
+bananas: x"""
+
+BAD_CONFIG_YAML_FILE_3 = """disable:
+*0
+indettnatoatkajtkj = babnasnan
+"""
+
+EMPTY_YAML_FILE = ""
+
+
+def write_config_yaml_file(contents=CONFIG_YAML_FILE):
+    f = open(".gaplint.yml", "w")
+    f.write(contents)
+    f.close()
+
+
+def rm_config_yaml_file():
+    os.remove(".gaplint.yml")
+
+
+@pytest.mark.quick
+def test_with_config_file_root_dir():
+    write_config_yaml_file()
+    with pytest.raises(SystemExit):
+        run_gaplint(files=["tests/input/test1.g"])
+    rm_config_yaml_file()
+
+
+@pytest.mark.quick
+def test_with_bad_config_file_1():
+    write_config_yaml_file(BAD_CONFIG_YAML_FILE_1)
+    with pytest.raises(SystemExit):
+        run_gaplint(files=["tests/input/test1.g"])
+    rm_config_yaml_file()
+
+
+@pytest.mark.quick
+def test_with_bad_config_file_2():
+    write_config_yaml_file(BAD_CONFIG_YAML_FILE_2)
+    with pytest.raises(SystemExit):
+        run_gaplint(files=["tests/input/test1.g"])
+    rm_config_yaml_file()
+
+
+@pytest.mark.quick
+def test_with_bad_config_file_3():
+    write_config_yaml_file(BAD_CONFIG_YAML_FILE_3)
+    with pytest.raises(SystemExit):
+        run_gaplint(files=["tests/input/test1.g"])
+    rm_config_yaml_file()
+
+
+@pytest.mark.quick
+def test_with_config_file_parent_top_dir():
+    write_config_yaml_file()
+    os.chdir("tests/input")
+    with pytest.raises(SystemExit):
+        run_gaplint(files=["test1.g"])
+    os.chdir("../..")
+    rm_config_yaml_file()
+
+
+@pytest.mark.quick
+def test_with_config_file_parent_root():
+    if exists(".git") and isdir(".git"):
+        os.rename(".git", ".tmp_git")
+    try:
+        with pytest.raises(SystemExit):
+            run_gaplint(files=["test1.g"], silent=True)
+    except Exception:
+        pass
+    if exists(".tmp_git") and isdir(".tmp_git"):
+        os.rename(".tmp_git", ".git")
+
+
+@pytest.mark.quick
+def test_disable_all_file_suppressions():
+    with pytest.raises(SystemExit):
+        run_gaplint(files=["tests/input/test4.g"])
+
+
+@pytest.mark.quick
+def test_empty_yaml():
+    write_config_yaml_file(EMPTY_YAML_FILE)
+    with pytest.raises(SystemExit):
+        run_gaplint(files=["tests/input/test4.g"])
+    rm_config_yaml_file()
+
+
+@pytest.mark.quick
+def test_enable_and_disable():
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["test1.g"], enable="", disable="")
+    assert e.value.code == 1
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["test1.g"], enable=None, disable=None)
+    assert e.value.code == 1
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["test1.g"], enable="W047")
+    assert e.value.code == 1
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["test1.g"], max_warnings=1)
+    assert e.value.code == 1
+
+
+@pytest.mark.extreme
+@pytest.mark.parametrize(
+    "fname,code,expected",
+    [
+        (
+            filename,
+            code,
+            {
+                Diagnostic(
+                    name=diagnostic.name,
+                    message=diagnostic.message,
+                    code=diagnostic.code,
+                    filename=diagnostic.filename,
+                    line=diagnostic.line,
+                )
+                for diagnostic in _EXPECTED_DIAGNOSTICS
+                if diagnostic.filename == filename and diagnostic.code == code
+            },
+        )
+        for filename in _INPUT_FILES
+        for code in gaplint.all_rules().keys()
+    ],
+)
+def test_code_diagnostics(fname, code, expected):
+    with pytest.raises(SystemExit) as _:
+        run_gaplint(files=[fname], enable=code, indentation=2)
+    assert len(gaplint._DIAGNOSTICS) == len(set(gaplint._DIAGNOSTICS))
+    assert {
+        diagnostic
+        for diagnostic in gaplint._DIAGNOSTICS
+        if diagnostic.code == code
+    } == expected
+
+
+@pytest.mark.quick
+def test_unused_func_args():
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["tests/input/wordrep.gi"])
+    assert e.value.code == 1411
+
+
+@pytest.mark.quick
+def test_config_file():
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(files=["tests/input/test1.g"], config_file=".gaplint.yml")
+    assert e.value.code == 67
+    with pytest.raises(SystemExit) as e:
+        run_gaplint(
+            files=["tests/input/test1.g"],
+            config_file="tests/test_config_file_in_another_dir/.gaplint.yml",
+        )
+    assert e.value.code == 0
