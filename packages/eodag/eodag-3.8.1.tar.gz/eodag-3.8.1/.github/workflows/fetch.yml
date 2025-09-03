@@ -1,0 +1,69 @@
+name: Fetch product types
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop]
+  schedule:
+    - cron: "0 6 * * *"
+
+jobs:
+  fetch-product-types:
+    name: Fetch providers for new product types
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout the repo
+      uses: actions/checkout@v4
+      with:
+        # Get history and tags for SCM versioning to work
+        fetch-depth: 0
+    - name: Install the latest version of uv with cache enabled
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+        enable-cache: true
+        cache-dependency-glob: ""
+    - name: Install eodag in venv
+      run: |
+        uv venv
+        source .venv/bin/activate
+        uv pip install ".[all-providers]"
+    - name: Fetch and update external product types reference
+      env:
+        EODAG__WEKEO_MAIN__AUTH__CREDENTIALS__USERNAME: ${{ secrets.EODAG__WEKEO_MAIN__AUTH__CREDENTIALS__USERNAME }}
+        EODAG__WEKEO_MAIN__AUTH__CREDENTIALS__PASSWORD: ${{ secrets.EODAG__WEKEO_MAIN__AUTH__CREDENTIALS__PASSWORD }}
+      run: |
+        source .venv/bin/activate
+        export JSON_OUTPUT_FILE="eodag/resources/ext_product_types.json"
+        export JSON_REF_FILE=$(python -c "import eodag; print(eodag.config.EXT_PRODUCT_TYPES_CONF_URI)")
+        eodag -vvv discover --storage ${JSON_OUTPUT_FILE}
+        # add empty line at end of file
+        sed -i -e '$a\' ${JSON_OUTPUT_FILE}
+        git config user.name "github-actions[bot]"
+        git config user.email "'github-actions[bot]@users.noreply.github.com"
+        git add "${JSON_OUTPUT_FILE}"
+        git commit -m "chore: update external product types reference" || exit 0
+        echo "Update external product types reference from daily fetch. See [Python API User Guide / Product types discovery](https://eodag.readthedocs.io/en/latest/notebooks/api_user_guide/2_providers_products_available.html#Product-types-discovery)" >> $GITHUB_STEP_SUMMARY
+        echo '### Changed files' >> $GITHUB_STEP_SUMMARY
+        echo 'May be truncated.' >> $GITHUB_STEP_SUMMARY
+        COMMIT_SHA=$(git rev-parse HEAD)
+        COMMIT_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${COMMIT_SHA}"
+        echo "commit [${COMMIT_SHA}](${COMMIT_URL})" >> $GITHUB_STEP_SUMMARY
+        echo '```diff' >> $GITHUB_STEP_SUMMARY
+        git show --name-only --format=tformat: >> $GITHUB_STEP_SUMMARY
+        (diff <(curl ${JSON_REF_FILE} | jq) <(cat ${JSON_OUTPUT_FILE} | jq) || true) >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        # truncated PR body (too long causes error)
+        full_update_summary=$(cat $GITHUB_STEP_SUMMARY)
+        echo 'UPDATE_SUMMARY<<EOF' >> $GITHUB_ENV
+        echo "${full_update_summary:0:65536}" >> $GITHUB_ENV
+        echo 'EOF' >> $GITHUB_ENV
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v6
+      with:
+        branch: external-product-types-ref-update
+        delete-branch: true
+        title: 'chore: update external product types reference'
+        body: ${{ env.UPDATE_SUMMARY }}
+        labels: |
+          automated pr

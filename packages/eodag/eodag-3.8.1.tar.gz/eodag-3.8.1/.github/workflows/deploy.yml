@@ -1,0 +1,78 @@
+name: Deploy if ready
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [develop]
+  workflow_dispatch:
+
+jobs:
+  # job will be executed when 'new-release' branch is merged in 'develop', or manually
+  merge-and-tag:
+    if: ${{ (github.event.pull_request.merged == true && github.head_ref == 'new-release') || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: Dump GitHub context
+      env:
+        GITHUB_CONTEXT: ${{ toJson(github) }}
+      run: echo "$GITHUB_CONTEXT"
+    - name: Checkout the repo
+      uses: actions/checkout@v4
+      with:
+        # Get history and tags for SCM versioning to work
+        fetch-depth: 0
+    - name: Install the latest version of uv with cache enabled
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+        enable-cache: true
+        cache-dependency-glob: ""
+    - name: Install python-semantic-release in venv
+      run: |
+        uv venv
+        source .venv/bin/activate
+        uv pip install python-semantic-release packaging
+    - name: Set Git config
+      env:
+        TOKEN: ${{ secrets.USER_TOKEN }}
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "'github-actions[bot]@users.noreply.github.com"
+        git remote set-url origin https://$TOKEN@github.com/${{ github.repository }}.git
+    - name: Git merge develop in master
+      run: |
+        git checkout master
+        git merge --no-ff origin/develop
+        git push origin master
+    - name: Git tag
+      run: |
+        source .venv/bin/activate
+        NEW_TAG=$(semantic-release --noop version --print-tag)
+        git tag "$NEW_TAG"
+        git push origin tag "$NEW_TAG"
+
+  publish:
+    needs: merge-and-tag
+    uses: CS-SI/eodag/.github/workflows/publish.yml@develop
+
+  post-deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout the repo
+      uses: actions/checkout@v4
+      with:
+        # Get history and tags for SCM versioning to work
+        fetch-depth: 0
+    - name: Set Git config
+      env:
+        TOKEN: ${{ secrets.USER_TOKEN }}
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "'github-actions[bot]@users.noreply.github.com"
+        git remote set-url origin https://$TOKEN@github.com/${{ github.repository }}.git
+    - name: Git merge master in develop
+      run: |
+        git checkout develop
+        git merge --no-ff origin/master
+        git push origin develop
