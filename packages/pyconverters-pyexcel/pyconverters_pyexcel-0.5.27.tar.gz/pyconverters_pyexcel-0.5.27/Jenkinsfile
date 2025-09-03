@@ -1,0 +1,414 @@
+#!groovy
+// to test groovy snippets online:
+//    https://www.jdoodle.com/execute-groovy-online
+
+pipeline {
+
+  agent none
+
+  triggers {
+    upstream(upstreamProjects: 'pymultirole_plugins/' + BRANCH_NAME.replaceAll('/', '%2F'),\
+                                threshold: hudson.model.Result.SUCCESS)
+  }
+
+  // variables declared in environment block can not be changed in any steps/stages
+  environment {
+    PATH_HOME = '/home/jenkins'
+    TEST_REPORT_DIR = '/root/test-reports'
+    PYTHONPYCACHEPREFIX = '/tmp/.pytest_cache'
+    PYTHONDONTWRITEBYTECODE = '1'
+    JENKINS_UIDGID = '1004:1004'
+
+    MAJOR_VERSION = '0'
+    MINOR_VERSION = '5'
+  }
+
+  stages {
+    stage('Catch build termination') {
+      agent {
+        node {
+          label 'built-in'
+          customWorkspace "${PATH_HOME}/${JOB_NAME}"
+        }
+      }
+      stages {
+        stage('Analyse build cause') {
+          steps {
+            script {
+              analyseBuildCause()
+            }
+          }
+        }
+      }
+    }
+
+    stage('Generate new version') {
+      when {
+        environment name: 'SKIP_JOB', value: '0'
+      }
+
+      agent {
+        node {
+          label 'built-in'
+          customWorkspace "${PATH_HOME}/${JOB_NAME}"
+        }
+      }
+
+      stages {
+        stage('Add credentials') {
+          steps {
+            script {
+              // Add password file for flit publishing
+              sh "cp ${PATH_HOME}/.passwd-pypi .env"
+            }
+          }
+        }
+
+        stage('Commit new version') {
+          steps {
+            script {
+              println("attempt to publish ${JOB_NAME} with version: ${MAJOR_VERSION}.${MINOR_VERSION}.${BUILD_ID}")
+
+              // push updates of file __init__.py
+              withCredentials([gitUsernamePassword(credentialsId: 'bitbucket-user', gitToolName: 'git-tool')]) {
+                sh 'git pull'
+                sh "echo '\"\"\"Convert XLSX to 1-segment per row document\"\"\"' > src/pyconverters_pyexcel/__init__.py"
+                sh "echo '__version__ = \"${MAJOR_VERSION}.${MINOR_VERSION}.${BUILD_ID}\"' >> src/pyconverters_pyexcel/__init__.py"
+                sh 'git commit src/pyconverters_pyexcel/__init__.py -m "[Jenkins CI] Commit on version files" || echo "No changes to commit"'
+                sh 'git push'
+              }
+            }
+          }
+        }
+      }
+    }
+
+    stage('Build, test and publish') {
+      when {
+        beforeAgent true
+        environment name: 'SKIP_JOB', value: '0'
+      }
+
+      agent {
+        // dockerfile agent
+        // Mounted volume for Junit reports
+        //   - docker: /root/test-reports
+        //   - host  : /tmp/_${JOB_NAME}/test-reports
+        dockerfile {
+          label 'built-in'
+          customWorkspace "${PATH_HOME}/${JOB_NAME}"
+          filename 'Dockerfile'
+          args "-u root --privileged -v /tmp/_${JOB_NAME}/test-reports:${TEST_REPORT_DIR}"
+        }
+      }
+
+      stages {
+        stage('Install flit & flake8') {
+          steps {
+            // remove any previous tox env
+            sh 'rm -rf .tox'
+            sh 'python -m pip install pip==22.0.3'
+            sh 'pip install --no-cache-dir flit==3.2.0 flake8==3.9.2 flakehell tox'
+            sh 'flit install'
+          }
+        }
+
+        stage('Test & lint python code') {
+          steps {
+            // remove any previous results.xml file
+            sh "rm -f ${TEST_REPORT_DIR}/results.xml"
+            sh 'tox'
+          }
+        }
+
+        stage('Publish on PyPI') {
+          environment {
+            FLIT_USERNAME = getUserName '.env'
+            FLIT_PASSWORD = getUserPass '.env'
+          }
+          steps {
+            // remove any previous folder dist
+            sh 'rm -rf dist'
+            // create (as root) folder dist
+            sh 'mkdir dist'
+            // pull recent updates of file __init__.py
+            withCredentials([gitUsernamePassword(credentialsId: 'bitbucket-user', gitToolName: 'git-tool')]) {
+              sh 'git config --global pull.rebase false'
+              sh "git config --global --add safe.directory ${WORKSPACE}"
+              sh 'git pull'
+            }
+            // put back owner of .git folder
+            sh "chown -R ${JENKINS_UIDGID} ${WORKSPACE}/.git"
+            // put back owner of pulled file
+            sh "chown ${JENKINS_UIDGID} src/pyconverters_pyexcel/__init__.py"
+            // get git status
+            sh 'git status'
+            // publish on PyPI
+            sh '''
+               export COMMIT_VERSION=$( cat src/pyconverters_pyexcel/__init__.py|grep version|cut -d '"' -f2|tr -s '[:blank:]' )
+               export BUILD_VERSION="${MAJOR_VERSION}"."${MINOR_VERSION}"."${BUILD_ID}"
+               if [ "${COMMIT_VERSION}" = "${BUILD_VERSION}" ] ; then flit publish ; fi
+               '''
+            // remove current folder dist
+            sh 'rm -rf dist'
+            // remove current folder .hypothesis
+            sh 'rm -rf .hypothesis'
+            // remove current folder .tox
+            sh 'rm -rf .tox'
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    // only triggered when blue or green sign
+    success {
+      // node is specified here to get an agent
+      node('built-in') {
+        // keep using customWorkspace to store Junit report
+        ws("${PATH_HOME}/${JOB_NAME}") {
+          script {
+            try {
+              sh 'rm -f results.xml'
+              sh "cp /tmp/_${JOB_NAME}/test-reports/results.xml results.xml"
+            } catch (Exception e) {
+              println 'Exception occurred: ' + e.toString()
+            }
+            try {
+              junit 'results.xml'
+            } catch (Exception e) {
+              println 'Exception occurred: ' + e.toString()
+            }
+            if (sendEmailNotif("${PATH_HOME}/${JOB_NAME}", "${BUILD_NUMBER}")) {
+              println 'sending Success Build notification'
+              def CUSTOM_SUBJECT = '[CI - Jenkinzz SUCCESS] ' + CUSTOM_SUBJECT
+              emailext(
+                  mimeType: 'text/html',
+                  subject: CUSTOM_SUBJECT,
+                  body: '${DEFAULT_CONTENT}',
+                  replyTo: '${DEFAULT_REPLYTO}',
+                  to: '${ADMIN_RECIPIENTS}' + ';' + CUSTOM_RECIPIENTS
+              )
+              switchEmailNotif(false, BUILD_NUMBER)
+            } else {
+              println 'preventing Success Build notification'
+            }
+          }
+        }
+      }
+    }
+    // triggered when red sign
+    failure {
+      // node is specified here to get an agent
+      node('built-in') {
+        // keep using customWorkspace to store Junit report
+        ws("${PATH_HOME}/${JOB_NAME}") {
+          script {
+            try {
+              sh 'rm -f results.xml'
+              sh "cp /tmp/_${JOB_NAME}/test-reports/results.xml results.xml"
+            } catch (Exception e) {
+              println 'Exception occurred: ' + e.toString()
+            }
+            try {
+              junit 'results.xml'
+            } catch (Exception e) {
+              println 'Exception occurred: ' + e.toString()
+            }
+            println 'sending Failure Build notification'
+            def CUSTOM_SUBJECT = '[CI - Jenkinzz FAILURE] ' + CUSTOM_SUBJECT
+            emailext(
+                mimeType: 'text/html',
+                subject: CUSTOM_SUBJECT,
+                body: '${DEFAULT_CONTENT}',
+                replyTo: '${DEFAULT_REPLYTO}',
+                to: '${ADMIN_RECIPIENTS}' + ';' + CUSTOM_RECIPIENTS
+            )
+          }
+        }
+      }
+    }
+    // triggered when black sign
+    aborted {
+      println 'post-declarative message: abort job'
+    }
+    // trigger every-works
+    //always {
+    //}
+  }
+}
+
+// return FLIT_USERNAME from given file
+def getUserName(path) {
+  def USERNAME = sh(
+                 script: "grep FLIT_USERNAME ${path}|cut -d '=' -f2",
+                 returnStdout: true
+               ).trim()
+  return USERNAME
+}
+
+// return FLIT_PASSWORD from given file
+def getUserPass(path) {
+  def USERPASS = sh(
+                 script: "grep FLIT_PASSWORD ${path}|cut -d '=' -f2",
+                 returnStdout: true
+               ).trim()
+  return USERPASS
+}
+
+// create/remove emailNotif file to trigger email notification
+def switchEmailNotif(toggle, build) {
+  if (toggle) {
+    sh 'echo ' + build + ' > .emailNotif'
+  } else {
+    if (build == BUILD_NUMBER) {
+      sh 'rm -f .emailNotif'
+    }
+  }
+}
+
+// return true if emailNotif file present
+boolean sendEmailNotif(path, build) {
+  def emailNotif = sh(
+                 script: "find ${path} -name '.emailNotif'|wc -l",
+                 returnStdout: true
+               ).trim()
+  def emailContent = ''
+  if (emailNotif == '1') {
+    emailContent = sh(
+                     script: "cat ${path}/.emailNotif",
+                     returnStdout: true
+                   ).trim()
+  }
+  return (emailContent == build)
+}
+
+def analyseBuildCause() {
+  String[] upstreamProjects = ['pymultirole_plugins']
+  boolean upstreamRunning = false
+  String jobName
+  // iterate over upstreamProjects
+  for (upstream_project in upstreamProjects) {
+    Jenkins.instance.getItemByFullName(upstream_project).items.each { repository ->
+      boolean isRunning = false
+      //repository.parent.name: project
+      //repository.name: branch
+      if ( repository.name == BRANCH_NAME ) {
+        // iterate over all jobs of current repository
+        repository.allJobs.each { job ->
+          // iterate over all builds of current job
+          job.builds.each { build ->
+            // determine if a build is running or not
+            if ( build.result == (null) ) {
+              jobName = build.parent.parent.name
+              isRunning = true
+            }
+          }
+          if ( isRunning ) {
+            upstreamRunning = true
+          }
+        }
+      }
+    }
+  }
+
+  // Catch if build has been triggered by CI Commit
+  // returnStatus = true  when string not found -> Team commit
+  // returnStatus = false when string is found  -> CI commit
+  boolean lastCommitIsTeam = sh(
+    script: 'git log -1 | grep "\\[Jenkins CI\\]"',
+    returnStatus: true
+  )
+
+  // Skip build when upstream detected
+  if (upstreamRunning) {
+    println 'Skipping build because upstream job detected (' + jobName + ')'
+    env.SKIP_JOB = '1'
+    switchEmailNotif(false, 0)
+    currentBuild.result = 'NOT_BUILT'
+  }
+
+  // Catch if build has been triggered by User
+  boolean isStartedByUser = currentBuild.rawBuild.getCause(hudson.model.Cause$UserIdCause) != null
+  if (isStartedByUser && !upstreamRunning) {
+    env.SKIP_JOB = '0'
+    env.CUSTOM_SUBJECT = JOB_NAME + ' - Manual Build #' + BUILD_NUMBER
+    env.CUSTOM_RECIPIENTS = emailextrecipients([[$class: 'RequesterRecipientProvider']])
+    switchEmailNotif(true, BUILD_NUMBER)
+    println 'Job started by User, proceeding'
+  }
+
+  // Catch if build has been triggered by Upstream
+  boolean isStartedByUpstream = currentBuild.rawBuild.getCause(hudson.model.Cause$UpstreamCause) != null
+  if (isStartedByUpstream && !upstreamRunning) {
+    int changeSetCount = 0
+    int ciSkipCount = 0
+    String upstreamFullJobName = ''
+    for (Run upstreamBuild : currentBuild.upstreamBuilds) {
+      upstreamFullJobName   = upstreamBuild.rawBuild.fullDisplayName
+      if (upstreamBuild.changeSets != null) {
+        def changeLogSets = upstreamBuild.changeSets
+        for (int i = 0; i < changeLogSets.size(); i++) {
+          changeSetCount++
+          def entries = changeLogSets[i].items
+          for (int j = 0; j < entries.length; j++) {
+            def entry = entries[j]
+            if (entry.msg.contains('[Jenkins CI]')) {
+              ciSkipCount++
+            }
+          }
+        }
+      }
+    }
+    if (changeSetCount > 0 && changeSetCount == ciSkipCount) {
+      env.SKIP_JOB = '1'
+      switchEmailNotif(false, 0)
+      println 'Job started by Upstream [' + upstreamFullJobName + '], with CI commit, skipping'
+      currentBuild.result = 'NOT_BUILT'
+    } else {
+      env.SKIP_JOB = '0'
+      env.CUSTOM_SUBJECT = JOB_NAME + ' - Upstream Build #' + BUILD_NUMBER
+      env.CUSTOM_RECIPIENTS = emailextrecipients([[$class:'UpstreamComitterRecipientProvider']])
+      switchEmailNotif(true, BUILD_NUMBER)
+      println 'Job started by Upstream [' + upstreamFullJobName + '], proceeding'
+    }
+  }
+
+  // Catch if build has been triggered by User Commit
+  boolean isStartedByCommit = currentBuild.rawBuild.getCause(jenkins.branch.BranchEventCause) != null
+  if (isStartedByCommit && lastCommitIsTeam && !upstreamRunning) {
+    env.SKIP_JOB = '0'
+    env.CUSTOM_SUBJECT = JOB_NAME + ' - SCM Build #' + BUILD_NUMBER
+    env.CUSTOM_RECIPIENTS = emailextrecipients([[$class: 'DevelopersRecipientProvider'], [$class:'CulpritsRecipientProvider']])
+    switchEmailNotif(true, BUILD_NUMBER)
+    println 'Job started by User Commit, proceeding'
+  }
+
+  // Catch if build has been triggered by cron
+  boolean isStartedByCron = currentBuild.rawBuild.getCause(hudson.triggers.TimerTrigger$TimerTriggerCause) != null
+  if (isStartedByCron && lastCommitIsTeam && !upstreamRunning) {
+    env.SKIP_JOB = '0'
+    env.CUSTOM_SUBJECT = JOB_NAME + ' - CRON Build #' + BUILD_NUMBER
+    env.CUSTOM_RECIPIENTS = emailextrecipients([[$class: 'DevelopersRecipientProvider'], [$class:'CulpritsRecipientProvider']])
+    switchEmailNotif(true, BUILD_NUMBER)
+    println 'Job started by Cron, proceeding'
+  }
+
+  // Catch if build has been triggered by branch discovery
+  boolean isStartedByBranchDiscovery = currentBuild.rawBuild.getCause(jenkins.branch.BranchIndexingCause) != null
+  if (isStartedByBranchDiscovery && lastCommitIsTeam && !upstreamRunning) {
+    env.SKIP_JOB = '0'
+    env.CUSTOM_SUBJECT = JOB_NAME + ' - BranchDiscovery Build #' + BUILD_NUMBER
+    env.CUSTOM_RECIPIENTS = emailextrecipients([[$class: 'DevelopersRecipientProvider'], [$class:'CulpritsRecipientProvider']])
+    switchEmailNotif(true, BUILD_NUMBER)
+    println 'Job started by Branch Discovery, proceeding'
+  }
+
+  if (!lastCommitIsTeam && !upstreamRunning && !isStartedByUser && !isStartedByUpstream) {
+    println 'Skipping build because last commit has been done by CI'
+    env.SKIP_JOB = '1'
+    switchEmailNotif(false, 0)
+    //currentBuild.result = 'NOT_BUILT'
+  }
+}
