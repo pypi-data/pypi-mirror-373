@@ -1,0 +1,228 @@
+Metadata-Version: 2.3
+Name: flywheel-bids
+Version: 1.2.32
+Summary: Flywheel BIDS Client
+License: MIT
+Keywords: Flywheel,flywheel,BIDS,SDK
+Author: Flywheel
+Author-email: support@flywheel.io
+Requires-Python: >=3.8,<4.0
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Scientific/Engineering
+Provides-Extra: all
+Requires-Dist: beautifulsoup4 (>=4.12.2,<5.0.0)
+Requires-Dist: flywheel-gear-toolkit (>=0.6,<0.7)
+Requires-Dist: flywheel-sdk (>=20,<21)
+Requires-Dist: importlib-resources (>=6.4.0,<7.0.0)
+Requires-Dist: jsonschema (>=4.23.0,<5.0.0)
+Requires-Dist: psutil (>=6.0.0,<7.0.0) ; extra == "all"
+Requires-Dist: rtstatlib (>=1.0.0,<2.0.0)
+Requires-Dist: six (>=1.17.0,<2.0.0)
+Requires-Dist: urllib3 (>=2.2.2,<3.0.0)
+Project-URL: Repository, https://gitlab.com/flywheel-io/public/bids-client
+Description-Content-Type: text/markdown
+
+<!-- markdownlint-configure-file { "MD024": { "siblings_only": true } } -->
+
+# bids-client
+
+## Overview
+
+The BIDS Client has three components:
+
+- Upload (Import)
+- Curate
+- Export
+
+Below is more information about each of the components.
+
+[This information is old and may not be correct.]
+
+### Build the image
+
+The following command will build the docker image containing all BIDS Client
+components.
+
+```bash
+git clone https://gitlab.com/flywheel-io/public/bids-client
+cd bids-client
+docker build -t flywheel/bids-client .
+```
+
+## Upload
+
+The upload script (upload_bids.py) takes a BIDS dataset and uploads it to
+Flywheel.
+
+### Flywheel CLI
+
+NOTE: This requires the Flywheel CLI.
+
+The upload script has been integrated into the flywheel cli as
+
+```bash
+fw import bids [folder] [group] [project] [flags]
+```
+
+### Docker Script
+
+A docker script has been provided to simplify the below process. To run:
+
+```bash
+./docker/upload.sh \
+    /path/to/BIDS/dir/in/container \
+    --api-key '<PLACE YOUR API KEY HERE>' \
+    --type 'Flywheel' \
+    -g '<PLACE GROUP ID HERE>'
+```
+
+An optional project flag can also be given if the given BIDS directory is not at
+the project level.
+
+```bash
+    -p '<PLACE PROJECT LABEL HERE>'
+```
+
+### Run Docker image locally
+
+Startup container
+
+```bash
+docker run -it --rm \
+    -v /path/to/BIDS/dir/locally:/path/to/BIDS/dir/in/container \
+     flywheel/bids-client /bin/bash
+```
+
+Run the upload script
+
+```bash
+python /code/upload_bids.py \
+    --bids-dir /path/to/BIDS/dir/in/container \
+    --api-key '<PLACE YOUR API KEY HERE>' \
+    --type 'Flywheel' \
+    -g '<PLACE GROUP ID HERE>'
+```
+
+## Curate
+
+### Gear
+
+The BIDS Curation step (curate_bids.py) has been transformed into a gear for
+better usability. The git repo for the gear is here:
+<https://gitlab.com/flywheel-io/flywheel-apps/curate-bids>
+
+### Docker Script
+
+Run it using the docker script
+
+```bash
+./docker/curate.sh \
+    --api-key '<PLACE YOUR API KEY HERE>' \
+    -p '<PLACE PROJECT LABEL HERE>' \
+    [optional flags]
+```
+
+Flags:
+
+```bash
+  --reset               Reset BIDS data before running
+  --template-file       Template file to use
+```
+
+To standardize how a project is curated, follow this [Jupyter notebook](https://gitlab.com/flywheel-io/scientific-solutions/tutorials/notebooks/bids-sidecar-standardization/-/blob/main/BIDS_sidecar_hierarchy_curator.ipynb)
+
+## Export
+
+The export script (export_bids.py) takes a curated dataset within Flywheel and
+downloads it to local disk.
+
+### Flywheel CLI
+
+NOTE: This requires the Flywheel CLI.
+
+Usage:
+
+```bash
+fw export bids [dest folder] [flags]
+```
+
+Flags:
+
+```bash
+  -h, --help             help for bids
+  -p, --project string   The label of the project to export
+      --source-data      Include sourcedata in BIDS export
+```
+
+### Docker Script
+
+To run
+
+```bash
+./docker/export.sh \
+    /path/to/BIDS/dir/in/container \
+    --api-key '<PLACE YOUR API KEY HERE>' \
+    -p '<PLACE PROJECT LABEL HERE>'
+```
+
+### Run Docker image locally
+
+Startup container
+
+```bash
+docker run -it --rm \
+    -v /path/to/BIDS/dir/locally:/path/to/BIDS/dir/in/container \
+     flywheel/bids-client /bin/bash
+```
+
+Run the export script
+
+```bash
+python /code/export_bids.py \
+    --bids-dir /path/to/BIDS/dir/in/container \
+    --api-key '<PLACE YOUR API KEY HERE>' \
+    -p '<PROJECT LABEL TO DOWNLOAD>'
+```
+
+## Testing and contributing
+
+- Build the test container and run the tests
+
+```bash
+./tests/bin/docker-test.sh
+```
+
+- If you want to drop into the container:
+
+```bash
+./tests/bin/docker-test.sh -B -s   # "-B" prevents building, "-s" run the shell
+docker container ls
+```
+
+1. Find the container name
+2. `docker run -ti exec <container name>`
+3. Inside the container, run the tests: `/src/tests/bin/tests.sh`
+
+- If you are using PyCharm as your IDE, you can build the docker image as above.
+  Add the interpreter, making note of the python path (by dropping in the
+  container and `which python`). Edit the configurations (top toolbar by
+  debugging) to have the API key made available to the docker image. To do so,
+  add to the container settings. Your home directory/.config/flywheel/user.json
+  should point to /root/.config/flywheel/user.json in the container. N.B.
+  Relative or path expansions don't work. From there, you should be able to
+  debug whichever tests you desire.
+
+- Setting conditional breakpoints in PyCharm: Click on the link to set a
+  breakpoint. Right click to add a condition. As an example, one of the handiest
+  spots to debug is `bidsify_flywheel` line 139. Add a condition like: ("file"
+  in context) and (rule.id == "reproin_func_file") and ("task-bart" in
+  context["acquisition"].data["label"]) and debug. All the tests will continue
+  to run until that condition is satisfied. Then, you can step through.
+
