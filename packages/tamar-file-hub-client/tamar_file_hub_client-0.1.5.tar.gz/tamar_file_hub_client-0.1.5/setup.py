@@ -1,0 +1,51 @@
+from setuptools import setup, find_packages
+
+setup(
+    name="tamar-file-hub-client",
+    version="0.1.5",
+    description="A Python SDK for gRPC-based file management system",
+    long_description=open("README.md", encoding="utf-8").read(),
+    long_description_content_type="text/markdown",
+    author="Oscar Ou",
+    author_email="oscar.ou@tamaredge.ai",
+    url="https://github.com/Tamar-Edge-AI/file-hub-client",
+    license="MIT",
+    packages=find_packages(exclude=["tests*", "examples*", "docs*"]),
+    include_package_data=True,
+    package_data={
+        "file_hub_client": [
+            "rpc/protos/*.proto",
+            "py.typed",  # PEP 561 类型标记文件
+        ],
+    },
+    python_requires=">=3.8",
+    install_requires=[
+        "grpcio>=1.67.1",
+        "grpcio-tools>=1.67.1",
+        "protobuf>=4.21.0",
+        "pydantic>=2.0.0",
+        "typing-extensions>=4.0.0;python_version<'3.10'",
+        "requests>=2.28.0",
+        "aiohttp>=3.8.0",
+        "aiofiles>=23.0.0",
+        "python-magic; platform_system != 'Windows'",
+        "python-magic-bin~=0.4.14; platform_system == 'Windows'",
+    ],
+    classifiers=[
+        "Development Status :: 4 - Beta",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Topic :: Software Development :: Libraries :: Python Modules",
+        "Topic :: Internet :: WWW/HTTP",
+        "Topic :: Communications :: File Sharing",
+        "Framework :: AsyncIO",
+        "Typing :: Typed",
+    ],
+)
