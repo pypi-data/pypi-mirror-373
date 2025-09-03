@@ -1,0 +1,476 @@
+syntax = "proto3";
+
+package sail.plan;
+
+// All DataFusion data structures are represented as opaque bytes.
+// The encoding and decoding of these data structures are handled
+// in the code.
+// We do not explicitly use the DataFusion message types since there may be
+// breaking changes across DataFusion versions, and it is difficult to
+// keep the proto definitions in sync with the DataFusion proto crate.
+
+message ExtendedPhysicalPlanNode {
+  oneof NodeKind {
+    RangeExecNode range = 1;
+    ShowStringExecNode show_string = 2;
+    ShuffleReadExecNode shuffle_read = 3;
+    ShuffleWriteExecNode shuffle_write = 4;
+    SchemaPivotExecNode schema_pivot = 5;
+    MapPartitionsExecNode map_partitions = 6;
+    // TODO: This can be removed once it is supported by DataFusion.
+    MemoryExecNode memory = 7;
+    ValuesExecNode values = 8;
+    NdJsonExecNode nd_json = 9;
+    ArrowExecNode arrow = 10;
+    WorkTableExecNode work_table = 11;
+    RecursiveQueryExecNode recursive_query = 12;
+    SortMergeJoinExecNode sort_merge_join = 13;
+    PartialSortExecNode partial_sort = 14;
+    TextExecNode text = 15;
+    DeltaWriterExecNode delta_writer = 16;
+    DeltaCommitExecNode delta_commit = 17;
+    AvroExecNode avro = 18;
+    ConsoleSinkExecNode console_sink = 19;
+    SocketSourceExecNode socket_source = 20;
+    RateSourceExecNode rate_source = 21;
+    TextSinkExecNode text_sink = 22;
+  }
+}
+
+message ExtendedScalarUdf {
+  oneof UdfKind {
+    StandardUdf standard = 1;
+    PySparkUdf py_spark = 2;
+    PySparkCoGroupMapUdf py_spark_co_group_map = 3;
+    MapToArrayUdf map_to_array = 4;
+    DropStructFieldUdf drop_struct_field = 5;
+    ExplodeUdf explode = 6;
+    SparkUnixTimestampUdf spark_unix_timestamp = 7;
+    StructFunctionUdf struct_function = 8;
+    UpdateStructFieldUdf update_struct_field = 9;
+    TimestampNowUdf timestamp_now = 10;
+    SparkTimestampUdf spark_timestamp = 11;
+  }
+}
+
+message ExtendedStreamUdf {
+  oneof StreamUdfKind {
+    PySparkMapIterUdf py_spark_map_iter = 1;
+    PySparkUdtf py_spark_udtf = 2;
+  }
+}
+
+message ExtendedAggregateUdf {
+  oneof UdafKind {
+    StandardUdaf standard = 1;
+    PySparkGroupAggUdaf py_spark_group_agg = 2;
+    PySparkGroupMapUdaf py_spark_group_map = 3;
+    PySparkBatchCollectorUdaf py_spark_batch_collector = 4;
+  }
+}
+
+message StandardUdf {}
+
+message PySparkUdf {
+  PySparkUdfKind kind = 1;
+  string name = 2;
+  bytes payload = 3;
+  bool deterministic = 4;
+  repeated bytes input_types = 5;
+  bytes output_type = 6;
+  PySparkUdfConfig config = 7;
+}
+
+message PySparkCoGroupMapUdf {
+  string name = 1;
+  bytes payload = 2;
+  bool deterministic = 3;
+  repeated bytes left_types = 4;
+  repeated string left_names = 5;
+  repeated bytes right_types = 6;
+  repeated string right_names = 7;
+  bytes output_type = 8;
+  PySparkUdfConfig config = 9;
+}
+
+message MapToArrayUdf {
+  bool nullable = 1;
+}
+
+message DropStructFieldUdf {
+  repeated string field_names = 1;
+}
+
+message ExplodeUdf {
+  string name = 1;
+}
+
+message SparkUnixTimestampUdf {
+  string timezone = 1;
+}
+
+message StructFunctionUdf {
+  repeated string field_names = 1;
+}
+
+message UpdateStructFieldUdf {
+  repeated string field_names = 1;
+}
+
+message TimestampNowUdf {
+  string timezone = 1;
+  string time_unit = 2;
+}
+
+message SparkTimestampUdf {
+  optional string timezone = 1;
+}
+
+message StandardUdaf {}
+
+message PySparkGroupAggUdaf {
+  string name = 1;
+  bytes payload = 2;
+  bool deterministic = 3;
+  repeated string input_names = 4;
+  repeated bytes input_types = 5;
+  bytes output_type = 6;
+  PySparkUdfConfig config = 7;
+}
+
+message PySparkGroupMapUdaf {
+  string name = 1;
+  bytes payload = 2;
+  bool deterministic = 3;
+  repeated string input_names = 4;
+  repeated bytes input_types = 5;
+  bytes output_type = 6;
+  PySparkUdfConfig config = 7;
+}
+
+message PySparkBatchCollectorUdaf {
+  repeated bytes input_types = 1;
+  repeated string input_names = 2;
+}
+
+message PySparkMapIterUdf {
+  PySparkMapIterKind kind = 1;
+  string name = 2;
+  bytes payload = 3;
+  repeated string input_names = 4;
+  bytes output_schema = 5;
+  PySparkUdfConfig config = 6;
+}
+
+message PySparkUdtf {
+  PySparkUdtfKind kind = 1;
+  string name = 2;
+  bytes payload = 3;
+  repeated string input_names = 4;
+  repeated bytes input_types = 5;
+  uint64 passthrough_columns = 6;
+  bytes function_return_type = 7;
+  repeated string function_output_names = 8;
+  bool deterministic = 9;
+  PySparkUdfConfig config = 10;
+}
+
+enum PySparkUdfKind {
+  PY_SPARK_UDF_KIND_BATCH = 0;
+  PY_SPARK_UDF_KIND_ARROW_BATCH = 1;
+  PY_SPARK_UDF_KIND_SCALAR_PANDAS = 2;
+  PY_SPARK_UDF_KIND_SCALAR_PANDAS_ITER = 3;
+}
+
+enum PySparkMapIterKind {
+  PY_SPARK_MAP_ITER_KIND_PANDAS = 0;
+  PY_SPARK_MAP_ITER_KIND_ARROW = 1;
+}
+
+enum PySparkUdtfKind {
+  PY_SPARK_UDTF_KIND_TABLE = 0;
+  PY_SPARK_UDTF_KIND_ARROW_TABLE = 1;
+}
+
+message PySparkUdfConfig {
+  string session_timezone = 1;
+  optional string pandas_window_bound_types = 2;
+  bool pandas_grouped_map_assign_columns_by_name = 3;
+  bool pandas_convert_to_arrow_array_safely = 4;
+  uint64 arrow_max_records_per_batch = 5;
+}
+
+message RangeExecNode {
+  int64 start = 1;
+  int64 end = 2;
+  int64 step = 3;
+  uint64 num_partitions = 4;
+  bytes schema = 5;
+}
+
+message ShowStringExecNode {
+  bytes input = 1;
+  repeated string names = 2;
+  uint64 limit = 3;
+  ShowStringStyle style = 4;
+  uint64 truncate = 5;
+  bytes schema = 6;
+}
+
+enum ShowStringStyle {
+  SHOW_STRING_STYLE_DEFAULT = 0;
+  SHOW_STRING_STYLE_VERTICAL = 1;
+  SHOW_STRING_STYLE_HTML = 2;
+}
+
+message SchemaPivotExecNode {
+  bytes input = 1;
+  repeated string names = 2;
+  bytes schema = 3;
+}
+
+message MapPartitionsExecNode {
+  bytes input = 1;
+  ExtendedStreamUdf udf = 2;
+  bytes schema = 3;
+}
+
+message LexOrdering {
+  repeated bytes values = 1;
+}
+
+message PhysicalSortExprNodeCollection {
+  repeated bytes physical_sort_expr_nodes = 1;
+}
+
+message MemoryExecNode {
+  repeated bytes partitions = 1;
+  bytes schema = 2;
+  optional PhysicalProjection projection = 3;
+  bool show_sizes = 4;
+  repeated LexOrdering sort_information = 5;
+  optional uint64 limit = 6;
+}
+
+message ValuesExecNode {
+  bytes data = 1;
+  bytes schema = 2;
+}
+
+message NdJsonExecNode {
+  bytes base_config = 1;
+  CompressionTypeVariant file_compression_type = 2;
+}
+
+message ArrowExecNode {
+  bytes base_config = 1;
+}
+
+message TextExecNode {
+  bytes base_config = 1;
+  CompressionTypeVariant file_compression_type = 2;
+  bool whole_text = 3;
+  optional bytes line_sep = 4;
+}
+
+message AvroExecNode {
+  bytes base_config = 1;
+}
+
+message WorkTableExecNode {
+  string name = 1;
+  bytes schema = 2;
+}
+
+message RecursiveQueryExecNode {
+  string name = 1;
+  bytes static_term = 2;
+  bytes recursive_term = 3;
+  bool is_distinct = 4;
+}
+
+message SortMergeJoinExecNode {
+  bytes left = 1;
+  bytes right = 2;
+  repeated JoinOn on = 3;
+  optional JoinFilter filter = 4;
+  string join_type = 5;
+  repeated SortOptions sort_options = 6;
+  bool null_equals_null = 7;
+}
+
+message PartialSortExecNode {
+  LexOrdering expr = 1;
+  bytes input = 2;
+  uint64 common_prefix_length = 3;
+}
+
+
+
+message AppendMode {}
+message OverwriteMode {}
+message OverwriteIfMode {
+  bytes condition = 1;
+}
+message ErrorIfExistsMode {}
+message IgnoreIfExistsMode {}
+message OverwritePartitionsMode {}
+
+message PhysicalSinkMode {
+  oneof mode {
+    AppendMode append = 1;
+    OverwriteMode overwrite = 2;
+    OverwriteIfMode overwrite_if = 3;
+    ErrorIfExistsMode error_if_exists = 4;
+    IgnoreIfExistsMode ignore_if_exists = 5;
+    OverwritePartitionsMode overwrite_partitions = 6;
+  }
+}
+
+message DeltaWriterExecNode {
+  bytes input = 1;
+  string table_url = 2;
+  string options = 3;
+  bytes sink_schema = 4;
+  repeated string partition_columns = 5;
+  bool table_exists = 6;
+  PhysicalSinkMode sink_mode = 7;
+}
+
+message DeltaCommitExecNode {
+  bytes input = 1;
+  string table_url = 2;
+  repeated string partition_columns = 3;
+  bool table_exists = 4;
+  bytes sink_schema = 5;
+}
+
+message ConsoleSinkExecNode {
+  bytes input = 1;
+}
+
+message SocketSourceExecNode {
+  string host = 1;
+  uint32 port = 2;
+  uint64 max_batch_size = 3;
+  uint64 timeout_sec = 4;
+  bytes schema = 5;
+  repeated uint64 projection = 6;
+}
+
+message RateSourceExecNode {
+  uint64 rows_per_second = 1;
+  uint64 num_partitions = 2;
+  bytes schema = 3;
+  repeated uint64 projection = 4;
+}
+
+message TextSinkExecNode {
+  bytes input = 1;
+  bytes base_config = 2;
+  bytes schema = 3;
+  bytes line_sep = 4;
+  CompressionTypeVariant compression_type_variant = 5;
+  optional PhysicalSortExprNodeCollection sort_order = 6;
+}
+
+message JoinOn {
+  bytes left = 1;
+  bytes right = 2;
+}
+
+message JoinFilter{
+  bytes expression = 1;
+  repeated ColumnIndex column_indices = 2;
+  bytes schema = 3;
+}
+
+message ColumnIndex{
+  uint32 index = 1;
+  string side = 2;
+}
+
+message SortOptions {
+    bool descending = 1;
+    bool nulls_first = 2;
+}
+
+message PhysicalProjection {
+  repeated uint64 columns = 1;
+}
+
+message ShuffleReadExecNode {
+  uint64 stage = 1;
+  bytes schema = 2;
+  bytes partitioning = 3;
+  repeated TaskReadLocationList locations = 4;
+}
+
+message TaskReadLocationList {
+  repeated TaskReadLocation locations = 1;
+}
+
+message TaskReadLocation {
+  oneof Location {
+    TaskReadLocationWorker worker = 1;
+    TaskReadLocationRemote remote = 2;
+  }
+}
+
+message TaskReadLocationWorker {
+  uint64 worker_id = 1;
+  string host = 2;
+  uint32 port = 3;
+  string channel = 4;
+}
+
+message TaskReadLocationRemote {
+  string uri = 1;
+}
+
+message ShuffleWriteExecNode {
+  uint64 stage = 1;
+  bytes plan = 2;
+  bytes partitioning = 3;
+  ShuffleConsumption consumption = 4;
+  repeated TaskWriteLocationList locations = 5;
+}
+
+message TaskWriteLocationList {
+  repeated TaskWriteLocation locations = 1;
+}
+
+message TaskWriteLocation {
+  oneof Location {
+    TaskWriteLocationLocal local = 1;
+    TaskWriteLocationRemote remote = 2;
+  }
+}
+
+message TaskWriteLocationLocal {
+  string channel = 1;
+  LocalStreamStorage storage = 2;
+}
+
+message TaskWriteLocationRemote {
+  string uri = 1;
+}
+
+enum ShuffleConsumption {
+  SHUFFLE_CONSUMPTION_SINGLE = 0;
+  SHUFFLE_CONSUMPTION_MULTIPLE = 1;
+}
+
+enum LocalStreamStorage {
+  LOCAL_STREAM_STORAGE_EPHEMERAL = 0;
+  LOCAL_STREAM_STORAGE_MEMORY = 1;
+  LOCAL_STREAM_STORAGE_DISK = 2;
+}
+
+enum CompressionTypeVariant {
+  COMPRESSION_TYPE_VARIANT_GZIP = 0;
+  COMPRESSION_TYPE_VARIANT_BZIP2 = 1;
+  COMPRESSION_TYPE_VARIANT_XZ = 2;
+  COMPRESSION_TYPE_VARIANT_ZSTD = 3;
+  COMPRESSION_TYPE_VARIANT_UNCOMPRESSED = 4;
+}
