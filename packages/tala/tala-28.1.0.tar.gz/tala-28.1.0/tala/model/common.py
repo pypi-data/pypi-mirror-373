@@ -1,0 +1,9 @@
+class Modality:
+    TEXT = "text"
+    SPEECH = "speech"
+    HAPTIC = "haptic"
+    OTHER = "other"
+    REQUIRES_UTTERANCE = [SPEECH, TEXT]
+    ALLOWS_UTTERANCE = [SPEECH, TEXT, OTHER, HAPTIC]
+    SUPPORTED_MODALITIES = [SPEECH, TEXT, HAPTIC, OTHER]
+    MODALITIES = [None] + SUPPORTED_MODALITIES
