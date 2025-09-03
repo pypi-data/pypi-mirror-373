@@ -1,0 +1,138 @@
+============================
+Django MongoDB Backend 5.2.x
+============================
+
+5.2.0
+=====
+
+*September 2, 2025*
+
+General availability release. No changes since beta 3.
+
+5.2.0 beta 3
+============
+
+*August 29, 2025*
+
+Backwards incompatible changes
+------------------------------
+
+- Pattern matching lookups (``iexact``, ``startswith``, ``istartswith``,
+  ``endswith``, ``iendswith``, ``contains``, ``icontains``, ``regex``,
+  and ``iregex``) no longer support non-string fields. These lookups previously
+  cast their input using ``$toString`` but this caused some queries to perform
+  poorly because MongoDB couldn't use indexes when running the query.
+
+5.2.0 beta 2
+============
+
+*August 13, 2025*
+
+New features
+------------
+
+- Added support for :doc:`Atlas Search queries </ref/models/search>`.
+- Added subquery support for :class:`~.fields.EmbeddedModelArrayField`.
+- Added the ``options`` parameter to
+  :func:`~django_mongodb_backend.utils.parse_uri`.
+- Added support for :ref:`database transactions <transactions>`.
+- Added :class:`~.fields.PolymorphicEmbeddedModelField` and
+  :class:`~.fields.PolymorphicEmbeddedModelArrayField` for storing a model
+  instance or list of model instances that may be of more than one model class.
+- Added :doc:`GeoDjango support </ref/contrib/gis>`.
+
+Backwards incompatible changes
+------------------------------
+
+- :class:`django.db.models.SmallIntegerField` and
+  :class:`django.db.models.PositiveSmallIntegerField` are now limited to 32 bit
+  values in forms and model validation.
+- Removed support for database caching as the MongoDB security team considers the cache
+  backend's ``pickle`` encoding of cached values a vulnerability. If an attacker
+  compromises the database, they could run arbitrary commands on the application
+  server.
+
+Bug fixes
+---------
+
+- Fixed ``RecursionError`` when using ``Trunc`` database functions on non-MongoDB
+  databases.
+- :meth:`QuerySet.explain() <django.db.models.query.QuerySet.explain>` now
+  :ref:`returns a string that can be parsed as JSON <queryset-explain>`.
+- Fixed unique constraint generation for :class:`~django.db.models.IntegerField`
+  and :class:`~django.db.models.PositiveBigIntegerField`, which incorrectly
+  allowed duplicate values larger than 32 bits. Existing unique constraints
+  must be recreated to use ``$type: long`` instead of ``int``.
+- :class:`~django.db.models.IntegerField`,
+  :class:`~django.db.models.BigIntegerField` (as well as the
+  ``Positive`` versions of these fields), and
+  :class:`~django.db.models.DurationField` values are now sent to MongoDB as
+  :class:`bson.int64.Int64`, which fixes unique constraints on values less than
+  32 bits for ``BigIntegerField``, ``PositiveIntegerField``, and
+  ``DurationField``. Existing data must be converted to ``Int64``.
+
+Performance improvements
+------------------------
+
+- Improved ``QuerySet`` performance by removing low limit on server-side chunking.
+- Improved ``QuerySet`` join (``$lookup``) performance by pushing some simple
+  conditions from the ``WHERE`` (``$match``) clause to the ``$lookup`` stage.
+
+5.2.0 beta 1
+============
+
+*June 4, 2025*
+
+New features
+------------
+
+- Added :class:`~.fields.EmbeddedModelArrayField` for storing a list of model
+  instances.
+
+Bug fixes
+---------
+
+- Fixed crash when loading models with a null value for ``ArrayField``\s where
+  the ``base_field`` uses a database converter.
+
+5.2.0 beta 0
+============
+
+*May 14, 2025*
+
+Initial release from the state of :ref:`django-mongodb-backend 5.1.0 beta 2
+<django-mongodb-backend-5.1.0-beta-2>`.
+
+Regarding new features in Django 5.2,
+:class:`~django.db.models.CompositePrimaryKey` isn't supported.
+
+New features
+------------
+
+*These features won't appear in Django MongoDB Backend 5.1.x.*
+
+- Added :class:`.SearchIndex` and :class:`.VectorSearchIndex` for use on
+  a model's :attr:`Meta.indexes <django.db.models.Options.indexes>`.
+- PyMongo's connection pooling is now used by default. See
+  :ref:`connection-management`.
+
+Backwards incompatible changes
+------------------------------
+
+- The minimum supported version of ``pymongo`` is increased from 4.6 to 4.7.
+- The ``conn_max_age`` parameter of
+  :func:`~django_mongodb_backend.utils.parse_uri` is removed because persistent
+  connections are now used by default.
+
+Bug fixes
+---------
+
+- Added support for a field's custom lookups and transforms in
+  ``EmbeddedModelField``, e.g. ``ArrayField``’s ``contains``,
+  ``contained__by``, ``len``, etc.
+- Fixed the results of queries that use the ``tzinfo`` parameter of the
+  ``Trunc`` database functions.
+- Added support for ``QuerySet.dates()`` and ``datetimes()``.
+- Fixed loading of ``QuerySet`` results for embedded models that have fields
+  that use database converters. For example, a crash for ``DecimalField``:
+  ``ValidationError: ['“1” value must be a decimal number.']``).
