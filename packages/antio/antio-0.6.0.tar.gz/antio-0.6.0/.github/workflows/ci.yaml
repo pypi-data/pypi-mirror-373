@@ -1,0 +1,212 @@
+name: ci
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.number }}-${{ github.event.ref }}
+  cancel-in-progress: true
+on:  # yamllint disable-line rule:truthy
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 8 * * 1'
+  release:
+    types: [published]
+
+jobs:
+  cibuildwheel:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-13 is an intel runner, macos-14 is apple silicon
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-13, macos-latest]
+    name: build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: pypa/cibuildwheel@v3.1.4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-wheels-${{ matrix.os }}-native-${{ strategy.job-index }}
+          path: ./wheelhouse/*.whl
+
+  cibuildwheel_emulated_cross:  # separate out because it's slower and not tested separately
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            arch: ARM64  # upper-case needed
+    name: build wheels on ${{ matrix.os }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: pypa/cibuildwheel@v3.1.4
+        env:
+          CIBW_ARCHS: ${{ matrix.arch }}
+          # https://cibuildwheel.pypa.io/en/stable/faq/#windows-arm64
+          CIBW_BEFORE_BUILD_WINDOWS: bash ./tools/cibw_before_build_windows_cross.sh
+          CIBW_BUILD_VERBOSITY: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-wheels-${{ matrix.os }}-${{ matrix.arch }}-${{ strategy.job-index }}
+          path: ./wheelhouse/*.whl
+
+  test:
+    needs: cibuildwheel
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-13, macos-latest]
+        python: ["3.11", "3.13"]
+    name: test wheels on ${{ matrix.os }} - py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          activate-environment: true
+          python-version: ${{ matrix.python }}
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: cibw-wheels-*
+          merge-multiple: true
+          path: dist
+      - run: ls -alt . && ls -alt dist/
+      - run: uv sync -q --locked --no-default-groups --group test --no-install-project
+      - run: uv pip install antio -q --only-binary antio --find-links dist --pre
+      - run: antio sys-info
+      - run: pytest tests/ --cov=antio --cov-report=xml
+      - uses: codecov/codecov-action@v5
+        if: ${{ github.repository == 'mscheltienne/antio' }}
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  test-mne:
+    needs: cibuildwheel
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: "3.12"
+    name: test MNE on ${{ matrix.os }} - py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          activate-environment: true
+          python-version: ${{ matrix.python }}
+
+      - uses: actions/checkout@v5
+        with:
+          repository: mne-tools/mne-python
+          path: mne-python
+      - run: uv pip install -e mne-python
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: cibw-wheels-*
+          merge-multiple: true
+          path: dist
+      - run: ls -alt . && ls -alt dist/ && ls -alt mne-python/
+      - run: uv sync -q --locked --no-default-groups --group test --no-install-project
+      - run: uv pip install antio -q --only-binary antio --find-links dist --pre
+      - run: antio sys-info
+      - uses: ./.github/actions/get-testing-dataset
+      - run: pytest mne-python/mne/io/ant/tests/ --cov=antio --cov-report=xml
+      - run: pytest tests/ --cov=antio --cov-report=xml --cov-append
+      - uses: codecov/codecov-action@v5
+        if: ${{ github.repository == 'mscheltienne/antio' }}
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  test-editable:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    timeout-minutes: 10
+    name: test editable install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          activate-environment: true
+          python-version: '3.12'
+      - run: uv sync -q --locked --no-default-groups --group test
+      - run: antio sys-info --developer
+      - run: pytest tests/ --cov=antio --cov-report=xml
+      - uses: codecov/codecov-action@v5
+        if: ${{ github.repository == 'mscheltienne/antio' }}
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  sdist:
+    timeout-minutes: 10
+    name: create sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+      - run: uv build --sdist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-wheels-sdist
+          path: ./dist/*.tar.gz
+
+  check:
+    needs: [cibuildwheel, cibuildwheel_emulated_cross, sdist]
+    timeout-minutes: 10
+    name: run twine check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: cibw-wheels-*
+          merge-multiple: true
+          path: dist
+      - run: ls -alt . && ls -alt dist/
+      - uses: astral-sh/setup-uv@v6
+        with:
+          activate-environment: true
+      - run: uv pip install twine -q --upgrade
+      - run: twine check --strict dist/*
+
+  publish:
+    if: ${{ github.repository == 'mscheltienne/antio' && github.event_name == 'release' }}
+    needs: [check, test, test-mne, test-editable]
+    name: publish PyPI
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/antio
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: cibw-wheels-*
+          merge-multiple: true
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
