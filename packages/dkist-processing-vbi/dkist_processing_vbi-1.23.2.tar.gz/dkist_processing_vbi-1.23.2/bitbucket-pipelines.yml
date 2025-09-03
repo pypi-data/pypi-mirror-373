@@ -1,0 +1,149 @@
+#Build Configuration for docker deployment to artifactory
+image: python:3.11
+
+definitions:
+  services:
+    redis:
+      image: redis
+  steps:
+    - step: &download_execute_script
+        name: Download Script Execute Script
+        script:
+          - echo "Retrieving Script Execution Script"
+          - curl -fL https://getcli.jfrog.io | sh
+          - ./jfrog rt dl --url $ARTIFACTORY_URL --user $ARTIFACTORY_USER --password $ARTIFACTORY_PASSWORD generic-packages/ci_scripts/latest/execute_script.sh
+          - cat ci_scripts/latest/execute_script.sh
+          - chmod 755 ci_scripts/latest/execute_script.sh
+        artifacts:
+          - ci_scripts/latest/execute_script.sh
+
+    - step: &lint
+        caches:
+          - pip
+        name: Lint
+        script:
+          - ./ci_scripts/latest/execute_script.sh lint_python.sh
+
+    - step: &changelog
+        caches:
+          - pip
+        name: Changelog
+        script:
+          - ./ci_scripts/latest/execute_script.sh check_changelog.sh
+
+    - step: &scan
+        caches:
+          - pip
+        name: Scan
+        script:
+          - ./ci_scripts/latest/execute_script.sh scan_python.sh
+
+    - step: &test
+        caches:
+          - pip
+        name: Test
+        script:
+          - pip install -U pip wheel build setuptools_scm setuptools
+          - pip install .[test]
+          - pytest -m "not development" -n auto -v --cov dkist_processing_vbi --cov-report xml:coverage.xml --cov-report term-missing
+          - ./ci_scripts/latest/execute_script.sh upload_coverage.sh
+        services:
+          - redis
+
+    - step: &check_freeze
+        caches:
+          - pip
+        name: Check frozen deps
+        script:
+          - pip install -U pip
+          - pip install dkist-dev-tools
+          - ddt check freeze
+
+    - step: &check_frozen_install
+        caches:
+          - pip
+        name: Check frozen install with extras
+        script:
+          - pip install -U pip
+          - pip install .[asdf,quality,inventory,frozen]
+
+    - step: &push_workflow
+        caches:
+          - pip
+        name: Push Workflow
+        script:
+          - pip install -U pip
+          - pip install .
+          - export BUILD_VERSION="${BITBUCKET_TAG:1}"
+          - export ARTIFACT_FOLDER="${BITBUCKET_REPO_SLUG}_${BUILD_VERSION}/"
+          - python -c "from dkist_processing_core.build_utils import export_dags; import dkist_processing_vbi.workflows as workflow_package; export_dags(workflow_package, '${ARTIFACT_FOLDER}')"
+          - export SOURCE_PATH="workflow_${BUILD_VERSION}.gz"
+          - tar --exclude="bitbucket-pipelines.yml" -cvzf ${SOURCE_PATH} ${ARTIFACT_FOLDER}
+          - export TARGET_PATH="generic-packages/dkist-processing-vbi/${BUILD_VERSION}/"
+          - curl -fL https://getcli.jfrog.io | sh
+          - ./jfrog rt u --url $ARTIFACTORY_URL --user $ARTIFACTORY_USER --password $ARTIFACTORY_PASSWORD ${SOURCE_PATH} ${TARGET_PATH}
+
+    - step: &push_code
+        caches:
+          - pip
+        name: Push Code
+        script:
+          - ./ci_scripts/latest/execute_script.sh push_python.sh
+
+    - step: &push_mpw
+          caches:
+            - pip
+            - docker
+          services:
+            - docker
+          name: Push Manual Processing Worker
+          script:
+            - export BUILD_VERSION="${BITBUCKET_TAG:1}"
+            - export BUILD_INSTRUMENT="vbi"
+            - export BUILD_PACKAGE="dkist_processing_${BUILD_INSTRUMENT}"
+            - export BUILD_CONTAINER_NAME="manual-processing-worker-${BUILD_INSTRUMENT}"
+            - pip install -U pip
+            - pip install .
+            - python -c "from dkist_processing_core.build_utils import export_notebook_dockerfile; import ${BUILD_PACKAGE}.workflows as workflow_package; export_notebook_dockerfile(workflow_package, 'notebooks/')"
+            - ls -af
+            - cat Dockerfile
+
+            - docker login dkistdc-docker.jfrog.io --username $DOCKER_USERNAME --password $DOCKER_PASSWORD
+            - docker build -t $DOCKER_HUB_URL/${BUILD_CONTAINER_NAME}:latest -t $DOCKER_HUB_URL/${BUILD_CONTAINER_NAME}:${BUILD_VERSION} .
+            - docker push -a $DOCKER_HUB_URL/${BUILD_CONTAINER_NAME}
+
+    - step: &docs
+        name: Test Docs
+        caches:
+          - pip
+        script:
+          - ./ci_scripts/latest/execute_script.sh test_sphinx.sh
+
+options:
+  max-time: 25
+pipelines:
+  default:
+    - step: *download_execute_script
+    - parallel:
+      - step: *lint
+      - step: *changelog
+    - parallel:
+      - step: *scan
+      - step: *test
+      - step: *docs
+  tags:
+    'v*':
+      - step: *download_execute_script
+      - parallel:
+        - step: *changelog
+        - step: *check_freeze
+        - step: *lint
+      - parallel:
+        - step: *check_frozen_install
+        - step: *scan
+        - step: *test
+        - step: *docs
+      - parallel:
+        - step: *push_workflow
+        - step: *push_mpw
+      - step: *push_code
