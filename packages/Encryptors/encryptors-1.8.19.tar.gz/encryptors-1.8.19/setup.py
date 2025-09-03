@@ -1,0 +1,62 @@
+from setuptools import setup, find_packages
+ 
+setup(
+    name="Encryptors", 
+    version="1.8.19",
+    author="OSDental LLC",
+    author_email="support@osdental.ai",
+    description="End-to-end algorithm library",
+    long_description=open("README.md").read(),
+    long_description_content_type="text/markdown",
+    package_dir={"": "src"},  
+    packages=find_packages(where="src"), 
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+    ],
+    python_requires=">=3.10", 
+    install_requires=[
+        "aiohttp==3.11.12",
+        "annotated-types==0.7.0",
+        "anyio==4.7.0",
+        "ariadne==0.26.2",
+        "azure-core==1.32.0",
+        "azure-servicebus==7.13.0",
+        "azure-storage-blob==12.24.0",
+        "certifi==2024.12.14",
+        "cffi==1.17.1",
+        "charset-normalizer==3.4.1",
+        "cryptography==44.0.0",
+        "fastapi==0.115.6",
+        "greenlet==3.1.1",
+        "h11==0.14.0",
+        "httpcore==1.0.7",
+        "httpx==0.28.1",
+        "idna==3.10",
+        "isodate==0.7.2",
+        "pycparser==2.22",
+        "pydantic==2.10.4",
+        "pydantic_core==2.27.2",
+        "PyJWT==2.10.1",
+        "aioodbc==0.5.0",
+        "python-dotenv==1.0.1",
+        "requests==2.32.3",
+        "six==1.17.0",
+        "sniffio==1.3.1",
+        "SQLAlchemy==2.0.36",
+        "starlette==0.41.3",
+        "tenacity==9.1.2",
+        "typing_extensions==4.12.2",
+        "tzlocal==5.2",
+        "urllib3==2.3.0",
+        "redis==5.2.1",
+        "colorlog==6.9.0",
+        "click==8.2.0"
+    ],
+    entry_points={
+    'console_scripts': [
+        'osdcli = Osdental.Cli:cli',  # <nombre> = <paquete>.<archivo>:<función>
+    ]
+},
+)
