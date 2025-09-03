@@ -1,0 +1,121 @@
+file_identifier "LRSD";
+
+table Property {
+    key:string (required, key);
+    value:string (required);
+}
+
+enum GeometryType : byte { Geographic = 1, Schematic = 2 }
+
+table Lrs {
+    properties:[Property];
+
+    /// In the network topology, segments are connected by nodes.
+    segments:[Segment];
+    /// In the network topology, a node is the end of a segment and usually the intersection of multiple segments.
+    nodes:[Node];
+    /// Each network has traversals, which can be thought of as roads, railway lines, tracks, paths or trips.
+    traversals:[Traversal];
+
+    anchors:[Anchor];
+    linear_referencing_methods:[LinearReferencingMethod];
+
+    /// Whether the geometry is geographic or projected.
+    /// Computation of distances and length will be influenced accordingly.
+    geometry_type:GeometryType = Geographic;
+}
+
+/// A continuous link between two network nodes. Segments can be located in space.
+/// It could be a section of roads between intersections, a piece of railway tracks without switches, a continuous piece of sewer pipe.
+/// Segments are directed: one of its ends is its begining, and the other one its end.
+table Segment {
+    id:string (required);
+    properties:[Property];
+    geometry:[Point] (required);
+    start_node_index:uint64;
+    end_node_index:uint64;
+}
+
+/// Nodes are connections between segment endpoints.
+/// A node can have a single connection (at the end of a dead end), or multiple segment connections (at an intersection).
+/// Nodes can be used to model point of interest in a network, such as road intersections, railway switches, the end of a dead ends.
+table Node {
+    id:string (required);
+    properties:[Property];
+    geometry: Point;
+}
+
+/// A traversal is a path in a network.
+/// Traversals may be used to model roads, railway tracks, railway lines or trips.
+/// Traversals are defined as a sequence of segment and direction pairs.
+enum Direction : byte { Increasing, Decreasing }
+
+struct SegmentOfTraversal {
+    segment_index:uint64;
+    direction:Direction;
+}
+
+table Traversal {
+    id:string (required);
+    properties:[Property];
+    segments:[SegmentOfTraversal] (required);
+}
+
+/// Anchors are reference locations, used for positioning within a Linear Referencing Method.
+/// There are two types of anchors:
+///   * most anchors are standalone reference locations, such as milestones or kilometer markers
+///   * some anchors are associated with a network node. The location of the anchor is deduced from the location of the node.
+table Anchor {
+    id:string (required);
+    properties:[Property];
+
+    /// Most anchors have a name, which is used to reference the location.
+    /// It can often be a kilometer or mile number, but it can also be a letter or word.
+    name:string;
+    /// Anchors can be bound to a node, or defined independently.
+    /// If the anchor is bound to a node, its location is deduced from location of the node.
+    node:uint32;
+    /// The anchor can also be defined by a geographical position.
+    geometry: Point;
+}
+
+/// The anchors can be placed outside of the curve (a visible landmark outside, bound to an other parallel track…)
+/// We can store the projected anchors to avoid the recomputation when loading the data
+table ProjectedAnchor {
+    /// The projected position on the curve
+    geometry: Point;
+    /// The distance from the start of the curve until the projected position of the anchor
+    distance_along_curve:float64;
+}
+
+enum DistanceUnit : byte { Meters, MilliMeters }
+
+/// Linear Referencing Methods (LRMs) are curves in space, along which distances can be measured.
+/// Each linear referencing method has:
+///   * a network traversal, which defines the path of the curve
+///   * a sequence of anchors, which are projected on the curve, and used as positioning reference points
+///   * distances between anchors have to be defined: even though distances can be measured on the curve,
+//      it can be imprecise enough to joepardize correct ordering of object positioned relative to different reference points.
+table LinearReferencingMethod {
+    id:string (required);
+    properties:[Property];
+
+    traversal_index:uint32;
+    anchor_indices:[uint64] (required);
+    distances:[double] (required);
+
+    /// If the anchors are projected, the all must be projected.
+    /// `projected_anchors` is either null, or has the same size as `anchor_indices`
+    projected_anchors:[ProjectedAnchor];
+    /// The unit used to measure the distance between anchors
+    distance_unit:DistanceUnit = Meters;
+    /// The unit used to express measures relative to anchors (12+230).
+    measure_unit:DistanceUnit = Meters;
+}
+
+struct Point {
+    x:float64;
+    y:float64;
+}
+
+root_type Lrs;
