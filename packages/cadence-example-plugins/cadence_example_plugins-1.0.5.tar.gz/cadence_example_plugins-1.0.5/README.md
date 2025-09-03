@@ -1,0 +1,453 @@
+# Cadence Example Plugins
+
+A collection of example AI agent plugins for the Cadence Framework.
+
+## Overview
+
+This repository contains example plugins that demonstrate how to build custom AI agents and tools for the Cadence
+multi-agent framework. These plugins showcase various capabilities and serve as templates for building your own plugins.
+
+## Available Plugins
+
+### Math Agent
+
+A specialized agent for mathematical calculations and problem-solving.
+
+**Features:**
+
+- Basic arithmetic operations
+- Complex mathematical expressions
+- Unit conversions
+- Mathematical problem solving
+
+**Usage:**
+
+```python
+from cadence_plugins.math_agent.plugin import MathPlugin
+
+plugin = MathPlugin()
+agent = plugin.create_agent()
+# The agent is used by the Cadence framework automatically
+```
+
+### Search Agent
+
+A web search agent for information retrieval and research.
+
+**Features:**
+
+- Web search capabilities
+- Information summarization
+- Source citation
+- Multi-query support
+
+**Usage:**
+
+```python
+from cadence_plugins.search_agent.plugin import SearchPlugin
+
+plugin = SearchPlugin()
+agent = plugin.create_agent()
+# The agent is used by the Cadence framework automatically
+```
+
+### Info Agent
+
+A general-purpose information and utility agent.
+
+**Features:**
+
+- General knowledge queries
+- Utility functions
+- Information organization
+- Context-aware responses
+
+**Usage:**
+
+```python
+from cadence_plugins.myinfo_agent.plugin import MyInfoPlugin
+
+plugin = MyInfoPlugin()
+agent = plugin.create_agent()
+# The agent is used by the Cadence framework automatically
+```
+
+## Plugin Structure
+
+Each plugin follows a standard structure and must be properly registered to be discovered by the Cadence framework.
+
+### Plugin Registration
+
+Every plugin must register itself in its `__init__.py` file:
+
+```python
+# plugins/src/cadence_example_plugins/my_plugin/__init__.py
+from cadence_sdk import register_plugin
+from .plugin import MyPlugin
+
+# Register on import
+register_plugin(MyPlugin)
+```
+
+### Directory Structure
+
+```
+plugin_name/
+├── __init__.py          # Plugin initialization
+├── agent.py             # Agent implementation
+├── tools.py             # Tool definitions
+└── plugin.py            # Plugin metadata and factory
+```
+
+### Example Plugin Structure
+
+```python
+# plugin.py
+from cadence_sdk.base.plugin import BasePlugin
+from cadence_sdk.base.metadata import PluginMetadata
+
+
+class ExamplePlugin(BasePlugin):
+    @staticmethod
+    def get_metadata() -> PluginMetadata:
+        return PluginMetadata(
+            name="example_plugin",
+            version="1.0.5",
+            description="An example plugin for demonstration",
+            capabilities=["example"],
+            llm_requirements={
+                "provider": "openai",
+                "model": "gpt-4",
+                "temperature": 0.1
+            },
+            agent_type="specialized",
+            dependencies=[]
+        )
+
+    @staticmethod
+    def create_agent():
+        from .agent import ExampleAgent
+        return ExampleAgent(ExamplePlugin.get_metadata())
+
+
+# agent.py
+from cadence_sdk.base.agent import BaseAgent
+from cadence_sdk.base.metadata import PluginMetadata
+
+
+class ExampleAgent(BaseAgent):
+    def __init__(self, metadata: PluginMetadata):
+        super().__init__(metadata)
+
+    def get_tools(self):
+        from .tools import ExampleTool
+        return [ExampleTool()]
+
+    def get_system_prompt(self) -> str:
+        return "You are an example agent for demonstration purposes."
+
+
+# tools.py
+from cadence_sdk.tools import Tool
+
+
+class ExampleTool(Tool):
+    name = "example_tool"
+    description = "An example tool"
+
+    def execute(self, **kwargs) -> str:
+        return "Tool executed successfully"
+```
+
+## Installation
+
+### From Source
+
+```bash
+# Clone the main repository
+git clone https://github.com/jonaskahn/cadence.git
+cd cadence
+
+# Install plugin dependencies
+cd plugins
+poetry install
+
+# Install in development mode
+poetry install --editable
+```
+
+### From PyPI
+
+```bash
+pip install cadence-plugins
+# Note: This package is part of the main Cadence repository
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Set plugin directories (single path or JSON list)
+export CADENCE_PLUGINS_DIR="./plugins/src/cadence_plugins"
+
+# Or multiple directories as JSON array
+export CADENCE_PLUGINS_DIR='["/path/to/plugins", "/another/path"]'
+
+# Plugin limits (configured in main application)
+export CADENCE_MAX_AGENT_HOPS=25
+
+export CADENCE_GRAPH_RECURSION_LIMIT=50
+```
+
+### Plugin Discovery
+
+The Cadence framework automatically discovers plugins from:
+
+- Installed packages (via pip)
+- Directory paths (configured via environment variables)
+- Custom plugin registries
+
+## Development
+
+### Creating a New Plugin
+
+1. **Create plugin directory structure**
+
+   ```bash
+   mkdir my_plugin
+   cd my_plugin
+   touch __init__.py agent.py tools.py plugin.py
+   ```
+
+2. **Implement plugin interface**
+
+   ```python
+   # plugin.py
+   from cadence_sdk.base.plugin import BasePlugin
+   from cadence_sdk.base.metadata import PluginMetadata
+   
+   class MyPlugin(BasePlugin):
+       @staticmethod
+       def get_metadata() -> PluginMetadata:
+           return PluginMetadata(
+               name="my_plugin",
+               version="1.0.5",
+               description="My custom plugin",
+               capabilities=["custom"],
+               llm_requirements={
+                   "provider": "openai",
+                   "model": "gpt-4",
+                   "temperature": 0.1
+               },
+               agent_type="specialized",
+               dependencies=[]
+           )
+       
+       @staticmethod
+       def create_agent():
+           from .agent import MyAgent
+           return MyAgent(MyPlugin.get_metadata())
+   ```
+
+3. **Implement agent**
+
+   ```python
+   # agent.py
+   from cadence_sdk.base.agent import BaseAgent
+   from cadence_sdk.base.metadata import PluginMetadata
+   
+   class MyAgent(BaseAgent):
+       def __init__(self, metadata: PluginMetadata):
+           super().__init__(metadata)
+       
+       def get_tools(self):
+           from .tools import MyTool
+           return [MyTool()]
+       
+       def get_system_prompt(self) -> str:
+           return "You are a custom agent. How can I help you?"
+   ```
+
+4. **Add tools (optional)**
+
+   ```python
+   # tools.py
+   from cadence_sdk.tools import Tool
+   
+   class MyTool(Tool):
+       name = "my_tool"
+       description = "My custom tool"
+       
+       def execute(self, **kwargs) -> str:
+           # Your tool logic here
+           return "Tool executed"
+   ```
+
+### Testing Your Plugin
+
+```bash
+# Run plugin tests
+poetry run pytest tests/
+
+# Test with Cadence framework
+export CADENCE_PLUGINS_DIR="./my_plugin"
+python -m cadence
+
+# Or test from main project directory
+cd ..  # Go back to main project
+export CADENCE_PLUGINS_DIR="./plugins/src/cadence_plugins"
+python -m cadence
+```
+
+### Plugin Validation
+
+The SDK provides validation utilities:
+
+```python
+from cadence_sdk.utils.validation import validate_plugin_structure
+
+errors = validate_plugin_structure(MyPlugin)
+if errors:
+    print("Validation errors:", errors)
+else:
+    print("Plugin is valid!")
+```
+
+## Best Practices
+
+### Plugin Design
+
+1. **Single Responsibility**: Each plugin should have a focused purpose
+2. **Clear Interfaces**: Implement required methods with clear contracts
+3. **Error Handling**: Gracefully handle errors and provide meaningful messages
+4. **Documentation**: Include comprehensive docstrings and examples
+5. **Testing**: Write tests for your plugin functionality
+
+### Performance Considerations
+
+1. **Lazy Loading**: Load resources only when needed
+2. **Caching**: Cache frequently accessed data
+3. **Async Support**: Use async/await for I/O operations
+4. **Resource Management**: Properly clean up resources
+
+### Security
+
+1. **Input Validation**: Validate all user inputs
+2. **Tool Safety**: Ensure tools are safe to execute
+3. **Access Control**: Implement appropriate access controls
+4. **Audit Logging**: Log important operations
+
+## Examples
+
+### Advanced Plugin Example
+
+```python
+from cadence_sdk.base.plugin import BasePlugin
+from cadence_sdk.base.agent import BaseAgent
+from cadence_sdk.tools import Tool
+from cadence_sdk.base.metadata import PluginMetadata
+
+
+class WeatherPlugin(BasePlugin):
+    @staticmethod
+    def get_metadata() -> PluginMetadata:
+        return PluginMetadata(
+            name="weather_plugin",
+            version="1.0.5",
+            description="Weather information and forecasting",
+            capabilities=["weather_forecast", "current_conditions"],
+            llm_requirements={
+                "provider": "openai",
+                "model": "gpt-4",
+                "temperature": 0.1
+            },
+            agent_type="specialized",
+            dependencies=["requests", "pandas"]
+        )
+
+    @staticmethod
+    def create_agent():
+        from .agent import WeatherAgent
+        return WeatherAgent(WeatherPlugin.get_metadata())
+
+
+class WeatherAgent(BaseAgent):
+    def __init__(self, metadata: PluginMetadata):
+        super().__init__(metadata)
+
+    def get_tools(self):
+        from .tools import WeatherTool
+        return [WeatherTool()]
+
+    def get_system_prompt(self) -> str:
+        return "You are a weather agent that provides weather information and forecasts."
+
+
+class WeatherTool(Tool):
+    name = "get_weather"
+    description = "Get current weather for a location"
+
+    def execute(self, location: str) -> str:
+        # Implementation would call weather API
+        return f"Weather for {location}: Sunny, 72°F"
+```
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### Development Setup
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
+
+### Code Standards
+
+- Follow PEP 8 style guidelines
+- Use type hints throughout
+- Include comprehensive docstrings
+- Write tests for new functionality
+- Update documentation as needed
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Plugin not discovered**
+    - Check plugin directory path
+    - Verify plugin structure
+    - Check environment variables
+
+2. **Import errors**
+    - Verify dependencies are installed
+    - Check import paths
+    - Ensure plugin is properly structured
+
+3. **Agent not responding**
+    - Check agent implementation
+    - Verify tool definitions
+    - Check error logs
+
+### Getting Help
+
+- Check the [documentation](https://cadence-plugins.readthedocs.io/)
+- Open an [issue](https://github.com/jonaskahn/cadence-plugins/issues)
+- Join our [discussions](https://github.com/jonaskahn/cadence-plugins/discussions)
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Support
+
+- **Documentation**: [Read the Docs](https://cadence.readthedocs.io/)
+- **Issues**: [GitHub Issues](https://github.com/jonaskahn/cadence/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/jonaskahn/cadence/discussions)
+
+---
+
+**Built with ❤️ for the Cadence AI community**
