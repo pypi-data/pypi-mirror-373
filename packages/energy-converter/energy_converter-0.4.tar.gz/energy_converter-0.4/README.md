@@ -1,0 +1,1 @@
+Converter for translating from different time intervals and different units of measure
