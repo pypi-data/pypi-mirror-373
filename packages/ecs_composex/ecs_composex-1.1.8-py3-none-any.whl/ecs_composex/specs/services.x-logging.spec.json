@@ -1,0 +1,245 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "services.x-logging.spec.json",
+  "id": "services.x-logging",
+  "type": "object",
+  "title": "services.x-logging specification",
+  "description": "The services.x-logging specification for ComposeX",
+  "additionalProperties": false,
+  "properties": {
+    "RetentionInDays": {
+      "type": "integer",
+      "description": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-logs-loggroup.html#cfn-logs-loggroup-retentionindays"
+    },
+    "FireLens": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Define options to configure FireLens and FluentBit accordingly",
+      "oneOf": [
+        {
+          "required": [
+            "Shorthands"
+          ]
+        },
+        {
+          "required": [
+            "Advanced"
+          ]
+        }
+      ],
+      "properties": {
+        "Shorthands": {
+          "$ref": "#/definitions/FireLensShorthands"
+        },
+        "Advanced": {
+          "$ref": "#/definitions/FireLensAdvancedConfig"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "FireLensShorthands": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ReplaceAwsLogs": {
+          "type": "boolean",
+          "default": false,
+          "description": "If set to true, will use FireLens with CloudWatch logs instead of awslogs driver"
+        },
+        "FirelensConfiguration": {
+          "$ref": "#/definitions/FirelensConfiguration"
+        }
+      }
+    },
+    "FirelensConfiguration": {
+      "type": "object",
+      "description": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ecs-taskdefinition-firelensconfiguration.html",
+      "additionalProperties": false,
+      "properties": {
+        "Type": {
+          "type": "string",
+          "description": "Which fluent to use. FluentD only works when using FireLensService.",
+          "default": "fluentbit",
+          "enum": [
+            "fluentbit",
+            "fluentd"
+          ]
+        },
+        "Options": {
+          "type": "object",
+          "additionalProperties": false,
+          "dependencies": {
+            "config-file-type": {
+              "required": [
+                "config-file-value"
+              ]
+            }
+          },
+          "properties": {
+            "enable-ecs-log-metadata": {
+              "type": "boolean",
+              "default": true
+            },
+            "config-file-type": {
+              "type": "string",
+              "enum": [
+                "file",
+                "s3"
+              ]
+            },
+            "config-file-value": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "FireLensAdvancedConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "DockerImageOverride": {
+          "type": "string",
+          "description": "Docker image to use instead of the AWS-fluentbit image"
+        },
+        "LogDriverBufferLimit": {
+          "type": "number",
+          "minimum": 33554432,
+          "default": 67108864,
+          "description": "Amount in bytes, of RAM to assign to the FireLens container to cater for BufferLimit."
+        },
+        "SidecarCpuReservation": {
+          "type": "number",
+          "minimum": 0.1,
+          "description": "Customizable CPU Limit for the sidecar container.",
+          "default": 0.1
+        },
+        "FirelensConfiguration": {
+          "$ref": "#/definitions/FirelensConfiguration"
+        },
+        "SourceFile": {
+          "type": "string",
+          "description": "Path to the source file that contains the configuration"
+        },
+        "ParserFiles": {
+          "type": "array",
+          "minItems": 1,
+          "description": "List of files to use to add via the config sidecar",
+          "items": {
+            "type": "string",
+            "description": "Path to the files to add as ParserFiles"
+          }
+        },
+        "EnableApiHeathCheck": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically adds API based healthcheck for fluentbit instead of nc based."
+        },
+        "GracePeriod": {
+          "type": "number",
+          "minimum": 5,
+          "maximum": 120,
+          "default": 30,
+          "description": "Time in seconds for GRACE period before the container stops after receiving SIGTERM"
+        },
+        "ComposeXManagedAwsDestinations": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Generates automatically a new OUTPUT for a Compose-X managed resource",
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/definitions/FireLensCloudWatchManagedDestination"
+              },
+              {
+                "$ref": "#/definitions/FireLensFirehoseManagedDestination"
+              },
+              {
+                "$ref": "#/definitions/FireLensKinesisManagedDestination"
+              }
+            ]
+          }
+        },
+        "EnvironmentVariables": {
+          "$ref": "#/definitions/RenderEnvVars"
+        }
+      }
+    },
+    "FireLensFirehoseManagedDestination": {
+      "type": "object",
+      "required": [
+        "delivery_stream"
+      ],
+      "description": "Allows to setup all settings for OUTPUT https://docs.fluentbit.io/manual/pipeline/outputs/firehose",
+      "additionalProperties": true,
+      "properties": {
+        "delivery_stream": {
+          "type": "string",
+          "description": "Define delivery_stream with simple name or a delivery stream defined in x-kinesis_firehose."
+        }
+      }
+    },
+    "FireLensKinesisManagedDestination": {
+      "type": "object",
+      "required": ["stream"],
+      "properties": {
+        "stream": {
+          "type": "string",
+          "description": "Define delivery_stream with simple name or a data stream defined in x-kinesis."
+        }
+      }
+    },
+    "FireLensCloudWatchManagedDestination": {
+      "type": "object",
+      "description": "Allows to define all settings for OUTPUT https://docs.fluentbit.io/manual/pipeline/outputs/cloudwatch",
+      "required": [
+        "log_group_name"
+      ],
+      "properties": {
+        "log_group_name": {
+          "type": "string",
+          "description": "Value for log_group_name from the original plugin."
+        }
+      }
+    },
+    "RenderEnvVars": {
+      "type": "object",
+      "description": "Allows to specify extra environment variables to the firelens container",
+      "patternProperties": {
+        "^[a-zA-Z\\d._-]+$": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Allows to use CFN Ref or Sub functions directly",
+              "properties": {
+                "Fn::Sub": {
+                  "type": "string"
+                },
+                "Fn::Ref": {
+                  "type": "string"
+                }
+              },
+              "oneOf": [
+                {
+                  "required": [
+                    "Fn::Ref"
+                  ]
+                },
+                {
+                  "required": [
+                    "Fn::Sub"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

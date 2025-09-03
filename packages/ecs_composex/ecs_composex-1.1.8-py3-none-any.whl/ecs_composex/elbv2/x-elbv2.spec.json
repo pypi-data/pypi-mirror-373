@@ -1,0 +1,611 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "x-elbv2.spec.json",
+  "type": "object",
+  "title": "x-elbv2",
+  "description": "The specifications of x-elbv2 in ComposeX",
+  "oneOf": [
+    {
+      "required": [
+        "Services"
+      ]
+    },
+    {
+      "required": [
+        "TargetGroups"
+      ]
+    }
+  ],
+  "properties": {
+    "Properties": {
+      "type": "object"
+    },
+    "Lookup": {
+      "type": "object",
+      "description": "Lookup existing LoadBalancer",
+      "required": [
+        "loadbalancer"
+      ],
+      "properties": {
+        "loadbalancer": {
+          "type": "object",
+          "description": "",
+          "properties": {
+            "Tags": {
+              "$ref": "#/definitions/LookupTags",
+              "description": "Tags lookup to find the elasticloadbalancing:loadbalancer"
+            }
+          }
+        },
+        "Listeners": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Find existing Listener. When ALB, adds new TGT and rules. Cannot be default rule. When NLB, this simply adds new Target Groups.",
+          "patternProperties": {
+            "^[0-9]+": {
+              "type": "object",
+              "required": [
+                "Tags",
+                "Targets"
+              ],
+              "properties": {
+                "Tags": {
+                  "$ref": "#/definitions/LookupTags",
+                  "description": "Tags to lookup elasticloadbalancing:listener"
+                },
+                "Targets": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/TargetRule"
+                  }
+                },
+                "Certificates": {
+                  "$ref": "#/definitions/ListenerCertificates"
+                }
+              }
+            }
+          }
+        },
+        "RoleArn": {
+          "type": "string",
+          "description": "RoleARN to use in AssumeRole to find the Load Balancer"
+        }
+      }
+    },
+    "MacroParameters": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "Ingress": {
+          "$ref": "ingress.spec.json"
+        }
+      }
+    },
+    "Listeners": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Listener"
+          }
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^x-": {},
+            "[0-9]{1,7}": {
+              "$ref": "#/definitions/ListenerV2"
+            }
+          }
+        }
+      ]
+    },
+    "Services": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "x-": {},
+        "^[a-zA-Z0-9\\:_\\-]+$": {
+          "$ref": "#/definitions/TargetDef"
+        }
+      }
+    },
+    "TargetGroups": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Target groups, uniquely identified",
+      "patternProperties": {
+        "^[a-zA-Z0-9\\-._]+$": {
+          "type": "object",
+          "required": [
+            "Port",
+            "Protocol",
+            "Services",
+            "HealthCheck"
+          ],
+          "description": "Defines a target group that encompasses one or several services.",
+          "properties": {
+            "Protocol": {
+              "type": "string"
+            },
+            "Port": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "Services": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "Name": {
+                    "type": "string",
+                    "description": "Family:Container definition"
+                  },
+                  "Port": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 65535
+                  }
+                }
+              }
+            },
+            "HealthCheck": {
+              "$ref": "#/definitions/TargetGroupHealthCheckDef"
+            },
+            "TargetGroupAttributes": {
+              "$ref": "#/definitions/TargetGroupAttributeDef"
+            },
+            "Tags": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Shortcut definition of key/value tags",
+                  "patternProperties": {
+                    "^[a-zA-Z0-9._]+$": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "description": "Classic CFN Key/Value object for a Tag",
+                    "additionalProperties": false,
+                    "properties": {
+                      "Key": {
+                        "type": "string"
+                      },
+                      "Value": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "Settings": {
+      "type": "object",
+      "properties": {
+        "Subnets": {
+          "type": "string",
+          "description": "Name of the Subnets as defined in x-vpc to use"
+        },
+        "NoAllocateEips": {
+          "type": "boolean",
+          "description": "Disables creating new EIPs for Network Load Balancers (NLB)"
+        },
+        "RetainEips": {
+          "type": "boolean",
+          "description": "Retains provisioned EIPs"
+        }
+      }
+    },
+    "DnsAliases": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/definitions/DnsAlias"
+      }
+    }
+  },
+  "definitions": {
+    "LookupTags": {
+      "oneOf": [
+        {
+          "type": "array",
+          "description": "Tags list[Key: Value]",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "Key": {
+                "type": "string"
+              },
+              "Value": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Key: Value tags",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[a-zA-Z0-9_:\\-\\.]+": {
+              "type": [
+                "string",
+                "number"
+              ],
+              "description": "Tag value"
+            }
+          }
+        }
+      ]
+    },
+    "DnsAlias": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "Names",
+        "Route53Zone"
+      ],
+      "properties": {
+        "Names": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "format": "idn-hostname",
+            "pattern": "\\b((?=[a-z0-9-]{1,63}\\.)(xn--)?[a-z0-9]+(-[a-z0-9]+)*\\.)+[a-z]{2,63}\\b$"
+          }
+        },
+        "Route53Zone": {
+          "type": "string",
+          "pattern": "^x-route53::[\\S]+$"
+        }
+      }
+    },
+    "TargetDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "port",
+        "healthcheck"
+      ],
+      "properties": {
+        "protocol": {
+          "$ref": "#/definitions/Protocol"
+        },
+        "port": {
+          "$ref": "#/definitions/Port"
+        },
+        "healthcheck": {
+          "$ref": "#/definitions/TargetGroupHealthCheckDef"
+        },
+        "TargetGroupAttributes": {
+          "$ref": "#/definitions/TargetGroupAttributeDef"
+        },
+        "ProtocolVersion": {
+          "type": "string",
+          "description": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-elasticloadbalancingv2-targetgroup.html#cfn-elasticloadbalancingv2-targetgroup-protocolversion",
+          "enum": [
+            "GRPC",
+            "HTTP1",
+            "HTTP2"
+          ]
+        }
+      }
+    },
+    "TargetGroupHealthCheckDef": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "description": "Allows to define HealthCheck properties as in https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-elasticloadbalancingv2-targetgroup.html",
+          "additionalProperties": false,
+          "properties": {
+            "HealthCheckEnabled": {
+              "type": [
+                "string",
+                "boolean"
+              ]
+            },
+            "HealthCheckIntervalSeconds": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "HealthCheckPath": {
+              "type": "string"
+            },
+            "HealthCheckPort": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "HealthCheckProtocol": {
+              "type": "string",
+              "enum": [
+                "HTTP",
+                "HTTPS",
+                "TCP",
+                "UDP",
+                "TLS",
+                "TCP_UDP"
+              ]
+            },
+            "HealthCheckTimeoutSeconds": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "HealthyThresholdCount": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "UnhealthyThresholdCount": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "Matcher": {
+              "type": "object",
+              "oneOf": [
+                {
+                  "required": [
+                    "HttpCode"
+                  ]
+                },
+                {
+                  "required": [
+                    "GrpcCode"
+                  ]
+                }
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "GrpcCode": {
+                  "type": "string"
+                },
+                "HttpCode": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "TargetGroupAttributeDef": {
+      "oneOf": [
+        {
+          "type": "array",
+          "description": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-elasticloadbalancingv2-targetgroup.html",
+          "items": {
+            "$ref": "#/definitions/TargetGroupAttribute"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[a-zA-Z0-9._]+$": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "TargetGroupAttribute": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-elasticloadbalancingv2-targetgroup-targetgroupattribute.html",
+      "properties": {
+        "Key": {
+          "type": "string",
+          "description": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-elasticloadbalancingv2-targetgroup-targetgroupattribute.html"
+        },
+        "Value": {
+          "type": "string"
+        }
+      }
+    },
+    "TargetRule": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "access"
+          ]
+        },
+        {
+          "type": "object",
+          "required": [
+            "Conditions"
+          ]
+        }
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "access": {
+          "type": "string",
+          "description": "Predefined condition on the hostname and path allowing to use human friendly syntax"
+        },
+        "Conditions": {
+          "type": "array",
+          "description": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-elasticloadbalancingv2-listenerrule-rulecondition.html",
+          "items": {
+            "type": "object"
+          }
+        },
+        "CreateCognitoClient": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "UserPoolId"
+          ],
+          "description": "Allows to create a new UserPool Client when using AuthenticateCognitoConfig and x-cognito_userpool",
+          "properties": {
+            "UserPoolId": {
+              "type": "string"
+            }
+          }
+        },
+        "AuthenticateCognitoConfig": {
+          "type": "object",
+          "description": "https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-elasticloadbalancingv2-listener-authenticatecognitoconfig.html"
+        },
+        "AuthenticateOidcConfig": {
+          "type": "object"
+        }
+      }
+    },
+    "Listener": {
+      "type": "object",
+      "oneOf": [
+        {
+          "required": [
+            "DefaultActions"
+          ]
+        },
+        {
+          "required": [
+            "Targets"
+          ]
+        }
+      ],
+      "properties": {
+        "Port": {
+          "$ref": "#/definitions/Port"
+        },
+        "Protocol": {
+          "$ref": "#/definitions/Protocol"
+        },
+        "SslPolicy": {
+          "type": "string"
+        },
+        "Certificates": {
+          "$ref": "#/definitions/ListenerCertificates"
+        },
+        "DefaultActions": {
+          "type": "array"
+        },
+        "Targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TargetRule"
+          }
+        }
+      }
+    },
+    "ListenerV2": {
+      "type": "object",
+      "patternProperties": {
+        "^x-": {}
+      },
+      "oneOf": [
+        {
+          "required": [
+            "DefaultActions"
+          ]
+        },
+        {
+          "required": [
+            "Targets"
+          ]
+        }
+      ],
+      "properties": {
+        "Protocol": {
+          "$ref": "#/definitions/Protocol"
+        },
+        "SslPolicy": {
+          "type": "string"
+        },
+        "Certificates": {
+          "$ref": "#/definitions/ListenerCertificates"
+        },
+        "DefaultActions": {
+          "type": "array"
+        },
+        "Targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TargetRule"
+          }
+        }
+      }
+    },
+    "Port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "Protocol": {
+      "type": "string",
+      "enum": [
+        "HTTP",
+        "HTTPS",
+        "TCP",
+        "UDP",
+        "TCP_UDP",
+        "TLS"
+      ]
+    },
+    "ListenerCertificates": {
+      "type": "array",
+      "uniqueItems": true,
+      "description": "List of pointers to an ACM Certificate.",
+      "items": {
+        "type": "object",
+        "description": "The Certificate pointer. Can use (only one) either x-acm, Arn or CertificateArn",
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "required": [
+              "x-acm"
+            ]
+          },
+          {
+            "required": [
+              "Arn"
+            ]
+          },
+          {
+            "required": [
+              "CertificateArn"
+            ]
+          }
+        ],
+        "properties": {
+          "x-acm": {
+            "type": "string"
+          },
+          "Arn": {
+            "type": "string"
+          },
+          "CertificateArn": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
