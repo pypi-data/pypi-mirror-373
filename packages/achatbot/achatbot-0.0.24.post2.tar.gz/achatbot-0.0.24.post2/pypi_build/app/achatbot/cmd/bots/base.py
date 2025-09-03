@@ -1,0 +1,812 @@
+import os
+import logging
+import asyncio
+import sys
+import uuid
+import signal
+
+from apipeline.frames import CancelFrame
+from apipeline.pipeline.task import PipelineTask
+from apipeline.pipeline.runner import PipelineRunner
+from dotenv import load_dotenv
+import nest_asyncio
+
+from achatbot.processors.omni.base import VisionVoiceProcessorBase
+from achatbot.processors.voice.base import VoiceProcessorBase
+from achatbot.processors.image.base import ImageGenProcessor
+from achatbot.processors.image import get_image_gen_processor
+from achatbot.modules.vision.ocr import VisionOCREnvInit
+from achatbot.modules.vision.detector import VisionDetectorEnvInit
+from achatbot.processors.ai_processor import AIProcessor
+from achatbot.processors.vision.vision_processor import MockVisionProcessor
+from achatbot.processors.avatar.base import AvatarProcessorBase
+from achatbot.processors.speech.asr.base import ASRProcessorBase
+from achatbot.processors.llm.base import LLMProcessor
+from achatbot.processors.speech.tts.base import TTSProcessorBase
+from achatbot.modules.speech.vad_analyzer import VADAnalyzerEnvInit
+from achatbot.modules.speech.asr import ASREnvInit
+from achatbot.core.llm import LLMEnvInit
+from achatbot.modules.speech.tts import TTSEnvInit
+from achatbot.modules.avatar import AvatarEnvInit
+from achatbot.types.ai_conf import (
+    TOGETHER_LLM_MODEL,
+    TOGETHER_LLM_URL,
+    ASRConfig,
+    LLMConfig,
+    TTSConfig,
+    AIConfig,
+)
+from achatbot.common import interface
+from achatbot.common.factory import EngineClass
+from achatbot.common.types import BotRunArgs
+from achatbot.common.interface import IBot, IVisionDetector
+from achatbot.common.session import Session
+from achatbot.common.types import SessionCtx
+from achatbot.common.logger import Logger
+
+
+nest_asyncio.apply()
+
+load_dotenv(override=True)
+
+Logger.init(os.getenv("LOG_LEVEL", "info").upper(), is_file=False, is_console=True)
+
+
+class AIBot(IBot):
+    r"""
+    use ai bot config
+    !TODONE: need config processor with bot config (redefine api params) @weedge
+    bot config: Dict[str, Dict[str,Any]]
+    e.g. {"llm":{"key":val,"tag":TAG,"args":{}}, "tts":{"key":val,"tag":TAG,"args":{}}}
+    !TIPS: RTVI config options can transfer to ai bot config
+
+    !NOTE:
+    use multiprocessing pipe to run bot with unix socket, bot __init__ to new a bot obj must be serializable (pickle); or wraper a func, don't use bot obj method.
+    """
+
+    def __init__(self, **args) -> None:
+        self.args = BotRunArgs(**args)
+        if self.args.bot_name is None or len(self.args.bot_name) == 0:
+            self.args.bot_name = self.__class__.__name__
+
+        self.task: PipelineTask | None = None
+        self.session = Session(**SessionCtx(str(uuid.uuid4())).__dict__)
+        self.runner: PipelineRunner | None = None
+        self.generator: interface.ILlmGenerator = None
+
+        self._bot_config_list = self.args.bot_config_list
+        self._bot_config = self.args.bot_config
+        self._handle_sigint = self.args.handle_sigint
+
+    def init_bot_config(self):
+        try:
+            logging.debug(f"args.bot_config: {self.args.bot_config}")
+            self._bot_config: AIConfig = AIConfig(**self.args.bot_config)
+            if len(self._bot_config_list) > 0:
+                from achatbot.types.rtvi import RTVIConfig
+
+                rtvi_config = RTVIConfig(config_list=self.args.bot_config_list)
+                self._bot_config = AIConfig(**rtvi_config._arguments_dict)
+            if self._bot_config.llm is None:
+                self._bot_config.llm = LLMConfig()
+        except Exception as e:
+            raise Exception(f"Failed to parse bot configuration: {e}")
+        logging.info(f"ai bot_config: {self._bot_config}")
+
+    def set_args(self, args):
+        merge_args = {**self.args.__dict__, **args}
+        self.args = BotRunArgs(**merge_args)
+
+    def bot_config(self):
+        return self._bot_config
+
+    def load(self):
+        """
+        NOTE:
+        - init modules here
+            # load model ckpt when bot start
+            # when deploy need load model ckpt, then run serve
+        - don't init processor; processor for each connect session
+        - load model engine here to share,
+        - if don't need share, init in processor, u can init a engine pool
+        have fun :)
+        """
+        pass
+
+    def run(self):
+        asyncio.run(self.async_run())
+
+    def __del__(self):
+        self.cancel()
+
+    def cancel(self):
+        if self.runner:
+            self.runner.cancel()
+        if self.generator:
+            self.generator.close()
+
+    async def async_run(self):
+        try:
+            await self.arun()
+        except asyncio.CancelledError:
+            logging.info("CancelledError, Exiting!")
+            if self.task is not None:
+                logging.info("Cancelling task!")
+                await self.task.queue_frame(CancelFrame())
+        except KeyboardInterrupt:
+            logging.warning("Ctrl-C detected. Exiting!")
+            if self.task is not None:
+                logging.info("Cancelling task!")
+                await self.task.queue_frame(CancelFrame())
+        except Exception as e:
+            logging.error(f"run error: {e}", exc_info=True)
+        finally:
+            if self.args.handle_sigint is True:
+                loop = asyncio.get_running_loop()
+                loop.remove_signal_handler(signal.SIGINT)
+                loop.remove_signal_handler(signal.SIGTERM)
+            self.cancel()
+            logging.info(f"{__name__} task run is Done!")
+
+    async def arun(self):
+        pass
+
+    def get_vad_analyzer(self) -> interface.IVADAnalyzer | EngineClass:
+        vad_analyzer: interface.IVADAnalyzer | EngineClass = None
+        if (
+            self._bot_config.vad
+            and self._bot_config.vad.tag
+            and len(self._bot_config.vad.tag) > 0
+            and self._bot_config.vad.args
+        ):
+            vad_analyzer = VADAnalyzerEnvInit.getEngine(
+                self._bot_config.vad.tag, **self._bot_config.vad.args
+            )
+        else:
+            vad_analyzer = VADAnalyzerEnvInit.initVADAnalyzerEngine()
+        return vad_analyzer
+
+    def get_avatar(self) -> EngineClass | None:
+        avatar: EngineClass | None = None
+        if self._bot_config.avatar and self._bot_config.avatar.tag:
+            if self._bot_config.avatar.tag == "lam_audio2expression_avatar":
+                from achatbot.modules.avatar.lam_audio2expression import LAMAudio2ExpressionAvatar
+
+                if self._bot_config.avatar.args:
+                    avatar = LAMAudio2ExpressionAvatar(**self._bot_config.avatar.args)
+                else:
+                    avatar = LAMAudio2ExpressionAvatar()
+            else:
+                # TODO: use avatar engine
+                args = self._bot_config.avatar.args or {}
+                avatar = AvatarEnvInit.getEngine(self._bot_config.avatar.tag, **args)
+                raise NotImplementedError("don't support use tag to create avatar engine")
+            avatar.load()
+            return avatar
+        else:
+            from achatbot.modules.avatar.lite_avatar import LiteAvatar
+
+            logging.info("use default lite avatar engine processor")
+            if self._bot_config.avatar and self._bot_config.avatar.args:
+                avatar = LiteAvatar(**self._bot_config.avatar.args)
+            else:
+                avatar = LiteAvatar()
+            avatar.load()
+        return avatar
+
+    def get_avatar_processor(self, avatar=None) -> AvatarProcessorBase:
+        avatar_processor: AvatarProcessorBase | None = None
+        # use avatar engine processor
+
+        if self._bot_config.avatar and self._bot_config.avatar.tag:
+            if self._bot_config.avatar.tag == "lam_audio2expression_avatar":
+                from achatbot.processors.avatar.lam_audio2expression_avatar_processor import (
+                    LAMAudio2ExpressionAvatarProcessor,
+                )
+                from achatbot.modules.avatar.lam_audio2expression import LAMAudio2ExpressionAvatar
+
+                if self._bot_config.avatar and self._bot_config.avatar.args:
+                    avatar = avatar or LAMAudio2ExpressionAvatar(**self._bot_config.avatar.args)
+                else:
+                    avatar = avatar or LAMAudio2ExpressionAvatar()
+                return LAMAudio2ExpressionAvatarProcessor(avatar, **self._bot_config.avatar.args)
+            else:
+                # TODO: use avatar engine processor
+                args = self._bot_config.avatar.args or {}
+                avatar = AvatarEnvInit.getEngine(self._bot_config.avatar.tag, **args)
+                _ = avatar
+                raise NotImplementedError("don't support use tag to create avatar engine")
+                return avatar_processor
+        else:
+            from achatbot.processors.avatar.lite_avatar_processor import LiteAvatarProcessor
+            from achatbot.modules.avatar.lite_avatar import LiteAvatar
+
+            logging.info("use default lite avatar engine processor")
+            if self._bot_config.avatar and self._bot_config.avatar.args:
+                avatar = avatar or LiteAvatar(**self._bot_config.avatar.args)
+            else:
+                avatar = avatar or LiteAvatar()
+            return LiteAvatarProcessor(avatar)
+
+    def get_asr(self) -> interface.IAsr | EngineClass | None:
+        asr: interface.IAsr | EngineClass | None = None
+        if (
+            self._bot_config.asr
+            and self._bot_config.asr.tag
+            and self._bot_config.asr.tag == "deepgram_asr_processor"
+            and self._bot_config.asr.args
+        ):
+            pass
+        else:
+            if self._bot_config.asr and self._bot_config.asr.tag and self._bot_config.asr.args:
+                asr = ASREnvInit.getEngine(self._bot_config.asr.tag, **self._bot_config.asr.args)
+            else:
+                logging.info("use default asr engine processor")
+                asr = ASREnvInit.initASREngine()
+        return asr
+
+    def get_asr_processor(
+        self, asr_engine: interface.IAsr | EngineClass | None = None
+    ) -> ASRProcessorBase:
+        asr_processor: ASRProcessorBase | None = None
+        if (
+            self._bot_config.asr
+            and self._bot_config.asr.tag
+            and self._bot_config.asr.tag == "deepgram_asr_processor"
+            and self._bot_config.asr.args
+        ):
+            from achatbot.processors.speech.asr.deepgram_asr_processor import DeepgramAsrProcessor
+
+            asr_processor = DeepgramAsrProcessor(
+                api_key=os.getenv("DEEPGRAM_API_KEY"), **self._bot_config.asr.args
+            )
+        else:
+            # use asr engine processor
+            from achatbot.processors.speech.asr.asr_processor import ASRProcessor
+
+            if self._bot_config.asr and self._bot_config.asr.tag and self._bot_config.asr.args:
+                asr = asr_engine or ASREnvInit.getEngine(
+                    self._bot_config.asr.tag, **self._bot_config.asr.args
+                )
+            else:
+                logging.info("use default asr engine processor")
+                asr = asr_engine or ASREnvInit.initASREngine()
+                self._bot_config.asr = ASRConfig(tag=asr.SELECTED_TAG, args=asr.get_args_dict())
+            asr_processor = ASRProcessor(asr=asr, session=self.session)
+        return asr_processor
+
+    def get_hf_tokenizer(self):
+        """
+        To disable this warning, you can either:
+           - Avoid using `tokenizers` before the fork if possible
+           - Explicitly set the environment variable TOKENIZERS_PARALLELISM=(true | false)
+        """
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(self._bot_config.translate_llm.model)
+        return tokenizer
+
+    def get_translate_llm_generator(self):
+        """
+        get local translate llm generator
+        """
+        assert self._bot_config.translate_llm, f"translate_llm must be provided {self._bot_config=}"
+        # load llm generator
+        tag = self._bot_config.translate_llm.tag
+        args = self._bot_config.translate_llm.args or {}
+        generator = LLMEnvInit.initLLMEngine(
+            tag=tag,
+            kwargs=args,
+        )
+        return generator
+
+    def get_vision_llm_processor(
+        self, llm_config: LLMConfig | None = None, llm_engine=None
+    ) -> LLMProcessor:
+        """
+        get local vision llm
+        """
+        from achatbot.processors.vision.vision_processor import VisionProcessor
+
+        if not llm_config:
+            llm_config = self._bot_config.vision_llm
+        if "mock" in llm_config.tag:
+            llm_processor = MockVisionProcessor()
+        else:
+            logging.info(f"init engine llm processor tag: {llm_config.tag}")
+            sleep_time_s = llm_config.args.pop("sleep_time_s", 0.15)
+            llm_engine = llm_engine or LLMEnvInit.initLLMEngine(llm_config.tag, llm_config.args)
+            llm_processor = VisionProcessor(llm_engine, self.session, sleep_time_s=sleep_time_s)
+        return llm_processor
+
+    def get_remote_llm_processor(self, llm: LLMConfig | None = None) -> LLMProcessor:
+        """
+        get remote llm
+        """
+        if not llm:
+            llm = self._bot_config.llm
+        if llm and llm.tag and "google" in llm.tag:
+            llm_processor = self.get_google_llm_processor(llm)
+        elif llm and llm.tag and "litellm" in llm.tag:
+            llm_processor = self.get_litellm_processor(llm)
+        elif llm and llm.tag and "openai" in llm.tag:
+            llm_processor = self.get_openai_llm_processor(llm)
+        else:
+            llm_processor = self.get_google_llm_processor(llm)
+        return llm_processor
+
+    def get_openai_llm_processor(self, llm: LLMConfig | None = None) -> LLMProcessor:
+        from achatbot.processors.llm.openai_llm_processor import (
+            OpenAILLMProcessor,
+            OpenAIGroqLLMProcessor,
+        )
+
+        if not llm:
+            llm = self._bot_config.llm
+        # default use openai llm processor
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if llm:
+            if "groq" in llm.base_url:
+                # https://console.groq.com/docs/models
+                api_key = os.environ.get("GROQ_API_KEY")
+                llm_processor = OpenAIGroqLLMProcessor(
+                    model=llm.model,
+                    base_url=llm.base_url,
+                    api_key=api_key,
+                )
+                return llm_processor
+            elif "together" in llm.base_url:
+                # https://docs.together.ai/docs/chat-models
+                api_key = os.environ.get("TOGETHER_API_KEY")
+            else:
+                llm.base_url = TOGETHER_LLM_URL
+                llm.model = TOGETHER_LLM_MODEL
+                api_key = os.environ.get("TOGETHER_API_KEY")
+
+        llm_processor = OpenAILLMProcessor(
+            model=llm.model,
+            base_url=llm.base_url,
+            api_key=api_key,
+        )
+        return llm_processor
+
+    def get_google_llm_processor(self, llm: LLMConfig) -> LLMProcessor:
+        from achatbot.processors.llm.google_llm_processor import GoogleAILLMProcessor
+
+        llm_config = llm
+        if llm_config and llm_config.args:
+            logging.info(f"use google llm processor args:{llm_config.args}")
+            llm_processor = GoogleAILLMProcessor(**llm_config.args)
+        else:
+            logging.info("use default google llm processor")
+            api_key = os.environ.get("GOOGLE_API_KEY")
+            model = os.environ.get("GOOGLE_LLM_MODEL", "gemini-1.5-flash-latest")
+            llm_processor = GoogleAILLMProcessor(
+                api_key=api_key,
+                model=model,
+            )
+
+        return llm_processor
+
+    def get_litellm_processor(self, llm: LLMConfig) -> LLMProcessor:
+        from achatbot.processors.llm.litellm_processor import LiteLLMProcessor
+
+        llm_processor = LiteLLMProcessor(model=llm.model, set_verbose=False)
+        return llm_processor
+
+    def get_llm_processor(self, llm: LLMConfig | None = None, llm_engine=None) -> LLMProcessor:
+        if not llm:
+            llm = self._bot_config.llm or self._bot_config.vision_llm
+        if llm and llm.tag and "vision" in llm.tag:
+            # engine llm processor(just support vision model, other TODO):
+            # (llm_llamacpp, llm_personalai_proxy, llm_transformers etc..)
+            llm_processor = self.get_vision_llm_processor(llm, llm_engine)
+        else:
+            llm_processor = self.get_remote_llm_processor(llm)
+        return llm_processor
+
+    def get_vision_annotate_processor(self) -> AIProcessor:
+        from achatbot.processors.vision.annotate_processor import AnnotateProcessor
+
+        detector: IVisionDetector | EngineClass = VisionDetectorEnvInit.initVisionDetectorEngine(
+            self._bot_config.vision_detector.tag, self._bot_config.vision_detector.args
+        )
+        processor = AnnotateProcessor(detector, self.session)
+        return processor
+
+    def get_vision_detect_processor(self) -> AIProcessor:
+        from achatbot.processors.vision.detect_processor import DetectProcessor
+
+        detector = VisionDetectorEnvInit.initVisionDetectorEngine(
+            self._bot_config.vision_detector.tag, self._bot_config.vision_detector.args
+        )
+
+        desc, out_desc = "", ""
+        if "desc" in self._bot_config.vision_detector.args:
+            desc = self._bot_config.vision_detector.args["desc"]
+        if "out_desc" in self._bot_config.vision_detector.args:
+            out_desc = self._bot_config.vision_detector.args["out_desc"]
+        if desc and out_desc:
+            processor = DetectProcessor(
+                detected_text=desc,
+                out_detected_text=out_desc,
+                detector=detector,
+                session=self.session,
+            )
+        elif desc:
+            processor = DetectProcessor(detected_text=desc, detector=detector, session=self.session)
+        elif out_desc:
+            processor = DetectProcessor(
+                out_detected_text=out_desc, detector=detector, session=self.session
+            )
+        else:
+            processor = DetectProcessor(detector=detector, session=self.session)
+
+        return processor
+
+    def get_vision_ocr_processor(self) -> AIProcessor:
+        from achatbot.processors.vision.ocr_processor import OCRProcessor
+
+        ocr = VisionOCREnvInit.initVisionOCREngine(
+            self._bot_config.vision_ocr.tag, self._bot_config.vision_ocr.args
+        )
+        processor = OCRProcessor(ocr=ocr, session=self.session)
+        return processor
+
+    def get_moshi_voice_processor(self, llm: LLMConfig | None = None) -> VoiceProcessorBase:
+        if not llm:
+            llm = self._bot_config.voice_llm
+        if llm and llm.tag and "moshi" in llm.tag:
+            from achatbot.processors.voice.moshi_voice_processor import (
+                MoshiVoiceOpusStreamProcessor,
+                MoshiVoiceProcessor,
+            )
+
+            if "moshi_opus" in llm.tag:
+                if llm.args:
+                    llm_processor = MoshiVoiceOpusStreamProcessor(**llm.args)
+                else:
+                    llm_processor = MoshiVoiceOpusStreamProcessor()
+            else:
+                if llm.args:
+                    llm_processor = MoshiVoiceProcessor(**llm.args)
+                else:
+                    llm_processor = MoshiVoiceProcessor()
+        else:
+            from achatbot.processors.voice.moshi_voice_processor import VoiceOpusStreamEchoProcessor
+
+            llm_processor = VoiceOpusStreamEchoProcessor()
+        return llm_processor
+
+    def get_text_minicpmo_voice_processor(self, llm: LLMConfig | None = None) -> VoiceProcessorBase:
+        from achatbot.processors.voice.minicpmo_voice_processor import MiniCPMoTextVoiceProcessor
+
+        if not llm:
+            llm = self._bot_config.voice_llm
+        if llm.args:
+            llm_processor = MiniCPMoTextVoiceProcessor(**llm.args)
+        else:
+            llm_processor = MiniCPMoTextVoiceProcessor()
+        return llm_processor
+
+    def get_text_qwen2_5omni_voice_processor(
+        self, llm: LLMConfig | None = None
+    ) -> VoiceProcessorBase:
+        from achatbot.processors.voice.qwen2_5omni_voice_processor import Qwen2_5OmniTextVoiceProcessor
+
+        if not llm:
+            llm = self._bot_config.voice_llm
+        if llm.args:
+            llm_processor = Qwen2_5OmniTextVoiceProcessor(**llm.args)
+        else:
+            llm_processor = Qwen2_5OmniTextVoiceProcessor()
+        return llm_processor
+
+    def get_text_kimi_voice_processor(self, llm: LLMConfig | None = None) -> VoiceProcessorBase:
+        from achatbot.processors.voice.kimi_voice_processor import KimiTextVoiceProcessor
+
+        if not llm:
+            llm = self._bot_config.voice_llm
+        if llm.args:
+            llm_processor = KimiTextVoiceProcessor(**llm.args)
+        else:
+            llm_processor = KimiTextVoiceProcessor()
+        return llm_processor
+
+    def get_text_vita_voice_processor(self, llm: LLMConfig | None = None) -> VoiceProcessorBase:
+        from achatbot.processors.voice.vita_voice_processor import VITATextVoiceProcessor
+
+        if not llm:
+            llm = self._bot_config.voice_llm
+        if llm.args:
+            llm_processor = VITATextVoiceProcessor(**llm.args)
+        else:
+            llm_processor = VITATextVoiceProcessor()
+        return llm_processor
+
+    def get_audio_minicpmo_voice_processor(
+        self, llm: LLMConfig | None = None
+    ) -> VoiceProcessorBase:
+        from achatbot.processors.voice.minicpmo_voice_processor import MiniCPMoAudioVoiceProcessor
+
+        if not llm:
+            llm = self._bot_config.voice_llm
+        if llm.args:
+            llm_processor = MiniCPMoAudioVoiceProcessor(**llm.args)
+        else:
+            llm_processor = MiniCPMoAudioVoiceProcessor()
+        return llm_processor
+
+    def get_audio_qwen2_5omni_voice_processor(
+        self, llm: LLMConfig | None = None
+    ) -> VoiceProcessorBase:
+        from achatbot.processors.voice.qwen2_5omni_voice_processor import Qwen2_5OmniAudioVoiceProcessor
+
+        if not llm:
+            llm = self._bot_config.voice_llm
+        if llm.args:
+            llm_processor = Qwen2_5OmniAudioVoiceProcessor(**llm.args)
+        else:
+            llm_processor = Qwen2_5OmniAudioVoiceProcessor()
+        return llm_processor
+
+    def get_audio_kimi_voice_processor(self, llm: LLMConfig | None = None) -> VoiceProcessorBase:
+        from achatbot.processors.voice.kimi_voice_processor import KimiAudioVoiceProcessor
+
+        if not llm:
+            llm = self._bot_config.voice_llm
+        if llm.args:
+            llm_processor = KimiAudioVoiceProcessor(**llm.args)
+        else:
+            llm_processor = KimiAudioVoiceProcessor()
+        return llm_processor
+
+    def get_audio_vita_voice_processor(self, llm: LLMConfig | None = None) -> VoiceProcessorBase:
+        from achatbot.processors.voice.vita_voice_processor import VITAAudioVoiceProcessor
+
+        if not llm:
+            llm = self._bot_config.voice_llm
+        if llm.args:
+            llm_processor = VITAAudioVoiceProcessor(**llm.args)
+        else:
+            llm_processor = VITAAudioVoiceProcessor()
+        return llm_processor
+
+    def get_audio_phi4_speech_processor(self, llm: LLMConfig | None = None) -> VoiceProcessorBase:
+        from achatbot.processors.voice.phi4_speech_processor import Phi4AudioTextProcessor
+
+        if not llm:
+            llm = self._bot_config.voice_llm
+        if llm.args:
+            llm_processor = Phi4AudioTextProcessor(**llm.args)
+        else:
+            llm_processor = Phi4AudioTextProcessor()
+        return llm_processor
+
+    def get_minicpmo_vision_voice_processor(
+        self, llm: LLMConfig | None = None
+    ) -> VisionVoiceProcessorBase:
+        from achatbot.processors.omni.minicpmo_vision_voice import MiniCPMoVisionVoiceProcessor
+        from achatbot.processors.omni.base import MockVisionVoiceProcessor
+
+        if not llm:
+            llm = self._bot_config.omni_llm
+        if "mock" in llm.tag:
+            return MockVisionVoiceProcessor()
+        if llm.args:
+            llm_processor = MiniCPMoVisionVoiceProcessor(**llm.args)
+        else:
+            llm_processor = MiniCPMoVisionVoiceProcessor()
+        return llm_processor
+
+    def get_qwen2_5omni_vision_voice_processor(
+        self, llm: LLMConfig | None = None
+    ) -> VisionVoiceProcessorBase:
+        from achatbot.processors.omni.qwen2_5omni_vision_voice import Qwen2_5OmnVisionVoiceProcessor
+        from achatbot.processors.omni.base import MockVisionVoiceProcessor
+
+        if not llm:
+            llm = self._bot_config.omni_llm
+        if "mock" in llm.tag:
+            return MockVisionVoiceProcessor()
+        if llm.args:
+            llm_processor = Qwen2_5OmnVisionVoiceProcessor(**llm.args)
+        else:
+            llm_processor = Qwen2_5OmnVisionVoiceProcessor()
+        return llm_processor
+
+    def get_phi4_vision_speech_processor(
+        self, llm: LLMConfig | None = None
+    ) -> VisionVoiceProcessorBase:
+        from achatbot.processors.omni.phi4_vision_speech import Phi4VisionSpeechProcessor
+        from achatbot.processors.omni.base import MockVisionVoiceProcessor
+
+        if not llm:
+            llm = self._bot_config.omni_llm
+        if "mock" in llm.tag:
+            return MockVisionVoiceProcessor()
+        if llm.args:
+            llm_processor = Phi4VisionSpeechProcessor(**llm.args)
+        else:
+            llm_processor = Phi4VisionSpeechProcessor()
+        return llm_processor
+
+    def get_gemma3n_vision_speech_processor(
+        self, llm: LLMConfig | None = None
+    ) -> VisionVoiceProcessorBase:
+        from achatbot.processors.omni.gemma_vision_speech import Gemma3nVisionSpeechProcessor
+        from achatbot.processors.omni.base import MockVisionVoiceProcessor
+
+        if not llm:
+            llm = self._bot_config.omni_llm
+        if "mock" in llm.tag:
+            return MockVisionVoiceProcessor()
+        if llm.args:
+            llm_processor = Gemma3nVisionSpeechProcessor(**llm.args)
+        else:
+            llm_processor = Gemma3nVisionSpeechProcessor()
+        return llm_processor
+
+    def get_text_glm_voice_processor(self, llm: LLMConfig | None = None) -> VoiceProcessorBase:
+        from achatbot.processors.voice.glm_voice_processor import GLMTextVoiceProcessor
+
+        if not llm:
+            llm = self._bot_config.voice_llm
+        if llm.args:
+            llm_processor = GLMTextVoiceProcessor(**llm.args)
+        else:
+            llm_processor = GLMTextVoiceProcessor()
+        return llm_processor
+
+    def get_audio_glm_voice_processor(self, llm: LLMConfig | None = None) -> VoiceProcessorBase:
+        from achatbot.processors.voice.glm_voice_processor import GLMAudioVoiceProcessor
+
+        if not llm:
+            llm = self._bot_config.voice_llm
+        if llm.args:
+            llm_processor = GLMAudioVoiceProcessor(**llm.args)
+        else:
+            llm_processor = GLMAudioVoiceProcessor()
+        return llm_processor
+
+    def get_text_step_voice_processor(self, llm: LLMConfig | None = None) -> VoiceProcessorBase:
+        from achatbot.processors.voice.step_voice_processor import (
+            StepTextVoiceProcessor,
+            MockStepTextVoiceProcessor,
+        )
+
+        if not llm:
+            llm = self._bot_config.voice_llm
+        if "mock" in llm.tag:
+            return MockStepTextVoiceProcessor()
+        if llm.args:
+            llm_processor = StepTextVoiceProcessor(**llm.args)
+        else:
+            llm_processor = StepTextVoiceProcessor()
+        return llm_processor
+
+    def get_audio_step_voice_processor(self, llm: LLMConfig | None = None) -> VoiceProcessorBase:
+        from achatbot.processors.voice.step_voice_processor import (
+            StepAudioVoiceProcessor,
+            MockStepAudioVoiceProcessor,
+        )
+
+        if not llm:
+            llm = self._bot_config.voice_llm
+        if "mock" in llm.tag:
+            return MockStepAudioVoiceProcessor()
+        if llm.args:
+            llm_processor = StepAudioVoiceProcessor(**llm.args)
+        else:
+            llm_processor = StepAudioVoiceProcessor()
+        return llm_processor
+
+    def get_audio_freeze_omni_voice_processor(
+        self, llm: LLMConfig | None = None
+    ) -> VoiceProcessorBase:
+        cur_dir = os.path.dirname(__file__)
+        if bool(os.getenv("ACHATBOT_PKG", "")):
+            sys.path.insert(1, os.path.join(cur_dir, "../../FreezeOmni"))
+        else:
+            sys.path.insert(1, os.path.join(cur_dir, "../../../deps/FreezeOmni"))
+
+        from achatbot.processors.voice.freeze_omni_voice_processor import FreezeOmniVoiceProcessor
+
+        if not llm:
+            llm = self._bot_config.voice_llm
+        # TODO: need create inference_pipeline_pool and tts pool
+        if llm.args:
+            llm_processor = FreezeOmniVoiceProcessor(**llm.args)
+        else:
+            llm_processor = FreezeOmniVoiceProcessor()
+        return llm_processor
+
+    def get_openai_voice_processor(self, llm: LLMConfig | None = None) -> VoiceProcessorBase:
+        # TODO: use openai reatime voice api
+        pass
+
+    def get_tts(self) -> interface.ITts | EngineClass:
+        tts: interface.ITts | EngineClass | None = None
+        if (
+            self._bot_config.tts
+            and self._bot_config.tts.tag
+            and self._bot_config.tts.tag in ["elevenlabs_tts_processor", "cartesia_tts_processor"]
+        ):
+            pass
+        else:
+            if self._bot_config.tts and self._bot_config.tts.tag and self._bot_config.tts.args:
+                tts = TTSEnvInit.getEngine(self._bot_config.tts.tag, **self._bot_config.tts.args)
+            else:
+                logging.info("use default tts engine processor")
+                tts = TTSEnvInit.initttsEngine()
+        return tts
+
+    def get_tts_processor(
+        self, tts_engine: interface.ITts | EngineClass = None
+    ) -> TTSProcessorBase:
+        tts_processor: TTSProcessorBase | None = None
+        if self._bot_config.tts and self._bot_config.tts.tag and self._bot_config.tts.args:
+            if self._bot_config.tts.tag == "elevenlabs_tts_processor":
+                from achatbot.processors.speech.tts.elevenlabs_tts_processor import (
+                    ElevenLabsTTSProcessor,
+                )
+
+                tts_processor = ElevenLabsTTSProcessor(**self._bot_config.tts.args)
+            elif self._bot_config.tts.tag == "cartesia_tts_processor":
+                from achatbot.processors.speech.tts.cartesia_tts_processor import CartesiaTTSProcessor
+
+                tts_processor = CartesiaTTSProcessor(**self._bot_config.tts.args)
+            else:
+                # use tts engine processor
+                from achatbot.processors.speech.tts.tts_processor import TTSProcessor
+
+                tts_engine = tts_engine or TTSEnvInit.getEngine(
+                    self._bot_config.tts.tag, **self._bot_config.tts.args
+                )
+                self._bot_config.tts.tag = tts_engine.SELECTED_TAG
+                self._bot_config.tts.args = tts_engine.get_args_dict()
+                tts_processor = TTSProcessor(
+                    tts=tts_engine,
+                    session=self.session,
+                    aggregate_sentences=self._bot_config.tts.aggregate_sentences,
+                    push_text_frames=self._bot_config.tts.push_text_frames,
+                    remove_punctuation=self._bot_config.tts.remove_punctuation,
+                )
+        else:
+            # default tts engine processor
+            from achatbot.processors.speech.tts.tts_processor import TTSProcessor
+
+            logging.info("use default tts engine processor")
+            tag = None
+            if self._bot_config.tts and self._bot_config.tts.tag:
+                tag = self._bot_config.tts.tag
+            tts_engine = tts_engine or TTSEnvInit.initTTSEngine(tag)
+            self._bot_config.tts = TTSConfig(
+                tag=tts_engine.SELECTED_TAG, args=tts_engine.get_args_dict()
+            )
+            tts_processor = TTSProcessor(
+                tts=tts_engine,
+                session=self.session,
+                aggregate_sentences=self._bot_config.tts.aggregate_sentences,
+                push_text_frames=self._bot_config.tts.push_text_frames,
+                remove_punctuation=self._bot_config.tts.remove_punctuation,
+            )
+
+        return tts_processor
+
+    def get_image_gen_processor(self) -> ImageGenProcessor:
+        if not self._bot_config.img_gen or not self._bot_config.img_gen.args:
+            raise Exception("need img_gen args params")
+        return get_image_gen_processor(
+            self._bot_config.img_gen.tag, **self._bot_config.img_gen.args
+        )
+
+
+class AIRoomBot(AIBot):
+    def __init__(self, **args) -> None:
+        super().__init__(**args)
+
+
+class AIChannelBot(AIBot):
+    def __init__(self, **args) -> None:
+        super().__init__(**args)
