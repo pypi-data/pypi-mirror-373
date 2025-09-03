@@ -1,0 +1,119 @@
+version: 2.1
+
+deploy_filter: &deploy_filter
+  # YAML reference for tag based filtering on deployments
+  filters:
+    tags:
+      only: /^v.*/
+    branches:
+      ignore: /.*/
+
+test_steps: &test_steps
+  steps:
+    - checkout
+    - run:
+        name: Update pip
+        command: pip install --upgrade pip
+    - run:
+        name: Install dependencies
+        command: pip install virtualenv==20.26.1
+    - run:
+        name: Run unit tests
+        command: make install-with-tests
+
+sanity_check: &sanity_check_steps
+  steps:
+    - checkout
+    - run:
+        name: Install dependencies
+        command: pip install virtualenv==20.26.1
+    - run:
+        name: Make Sanity Check
+        command: |
+          make install
+          echo "MCD_API_ENDPOINT=https://api.getmontecarlo.com/graphql" > utils/.env
+          echo "MCD_DEFAULT_API_ID=${MCD_DEFAULT_API_ID}" >> utils/.env
+          echo "MCD_DEFAULT_API_TOKEN=${MCD_DEFAULT_API_TOKEN}" >> utils/.env
+          make sanity-check
+
+jobs:
+  run-test-3-8:
+    docker:
+      - image: python:3.8
+    <<: *test_steps
+
+  run-test-3-9:
+    docker:
+      - image: python:3.9
+    <<: *test_steps
+
+  run-test-3-10:
+    docker:
+      - image: python:3.10
+    <<: *test_steps
+
+  run-test-3-11:
+    docker:
+      - image: python:3.11
+    <<: *test_steps
+
+  run-test-3-12:
+    docker:
+      - image: python:3.12
+    <<: *test_steps
+
+  run-sanity-check:
+    docker:
+      - image: python:3.9
+    <<: *sanity_check_steps
+
+  deploy:
+    docker:
+      - image: python:3.8.6
+
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: pip install virtualenv==20.26.1
+      - run:
+          name: Deploy to PyPI
+          command: make distribute
+
+workflows:
+  version: 2
+
+  build:
+    jobs:
+      - run-test-3-8
+      - run-test-3-9
+      - run-test-3-10
+      - run-test-3-11
+      - run-test-3-12
+      - run-sanity-check:
+          context: mc-prod
+
+  deploy:
+    jobs:
+      - run-test-3-8:
+          <<: *deploy_filter
+      - run-test-3-9:
+          <<: *deploy_filter
+      - run-test-3-10:
+          <<: *deploy_filter
+      - run-test-3-11:
+          <<: *deploy_filter
+      - run-test-3-12:
+          <<: *deploy_filter
+      - run-sanity-check:
+          context: mc-prod
+          <<: *deploy_filter
+      - deploy:
+          requires:
+            - run-test-3-8
+            - run-test-3-9
+            - run-test-3-10
+            - run-test-3-11
+            - run-test-3-12
+            - run-sanity-check
+          <<: *deploy_filter
