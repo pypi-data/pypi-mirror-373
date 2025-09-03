@@ -1,0 +1,63 @@
+#!/bin/bash
+set -euo pipefail
+
+# Flow Workload Resume Script
+# This script runs on every boot to resume workloads after preemption/relocation
+
+LOG_FILE="/var/log/flow/workload-resume.log"
+STATE_FILE="/var/lib/flow/task-state"
+BOOT_MARKER="/var/lib/flow/first-boot-completed"
+
+# Ensure log directory exists
+mkdir -p /var/log/flow
+
+# Logging function
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+log "Starting workload resume check"
+
+# Check if this is the first boot
+if [ ! -f "$BOOT_MARKER" ]; then
+    # First boot - mark it and exit (startup script handles everything)
+    log "First boot detected, marking as completed"
+    touch "$BOOT_MARKER"
+    exit 0
+fi
+
+# Check if we have a previous task state
+if [ ! -f "$STATE_FILE" ]; then
+    log "No previous task state found, this appears to be a fresh instance"
+    exit 0
+fi
+
+log "Previous task state detected, checking workload status"
+
+# Source the task state
+source "$STATE_FILE"
+
+# Detect if this is a GPU instance
+GPU_INSTANCE=""
+if command -v nvidia-smi >/dev/null 2>&1; then
+    GPU_INSTANCE="yes"
+    log "GPU instance detected"
+fi
+
+# Restore volume mounts (block and NVMe devices)
+VOLUME_MOUNTS=""
+for mount in $(mount | grep -E "^/dev/(vd|xvd|nvme)" | awk '{print $3}'); do
+    case "$mount" in
+        /var/lib/docker|/var/run/docker.sock|/etc/docker)
+            continue ;;
+    esac
+    if [ -d "$mount" ]; then
+        VOLUME_MOUNTS="$VOLUME_MOUNTS -v \"$mount\":\"$mount\""
+    fi
+done
+log "Volume mounts: $VOLUME_MOUNTS"
+
+[[ workload_check ]]
+
+log "Workload resume check completed"
+

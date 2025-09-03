@@ -1,0 +1,313 @@
+# GPUd Health Monitoring Setup
+log "Setting up GPUd health monitoring for GPU instance"
+
+# Mark that GPUd setup was attempted (for Flow health checks)
+echo "attempted" | sudo tee /var/run/flow-gpud-status > /dev/null
+
+# Install GPUd
+log "Installing GPUd [[ gpud_version ]]..."
+[[ ensure_curl ]]
+if ! curl -fsSL https://pkg.gpud.dev/install.sh | bash -s -- [[ gpud_version ]]; then
+    log "WARNING: Failed to install GPUd, health monitoring will be limited"
+    echo "install_failed" | sudo tee /var/run/flow-gpud-status > /dev/null
+    exit 0
+fi
+
+# Configure and start GPUd
+export GPUD_PORT="[[ gpud_port ]]"
+export GPUD_BIND="[[ gpud_bind ]]"
+
+log "Starting GPUd on ${GPUD_BIND}:${GPUD_PORT}..."
+if ! sudo gpud up --private --web-address="${GPUD_BIND}:${GPUD_PORT}"; then
+    log "WARNING: Failed to start GPUd, health monitoring will be limited"
+    echo "start_failed" | sudo tee /var/run/flow-gpud-status > /dev/null
+    exit 0
+fi
+
+# Wait for GPUd to be ready
+GPUD_URL="http://${GPUD_BIND}:${GPUD_PORT}"
+GPUD_READY=false
+for i in {1..30}; do
+    if curl -s -o /dev/null -w "%{http_code}" "${GPUD_URL}/healthz" 2>/dev/null | grep -q "200"; then
+        log "GPUd is ready at ${GPUD_URL}"
+        GPUD_READY=true
+        break
+    fi
+    sleep 2
+done
+
+if [ "$GPUD_READY" = "false" ]; then
+    log "WARNING: GPUd did not become ready in time"
+    echo "not_ready" | sudo tee /var/run/flow-gpud-status > /dev/null
+    exit 0
+fi
+
+# Mark successful setup
+echo "running" | sudo tee /var/run/flow-gpud-status > /dev/null
+
+# Create metrics streaming script
+log "Setting up metrics streaming..."
+[[ ensure_python3 ]]
+# Ensure requests module for Python is available
+if ! python3 -c 'import requests' >/dev/null 2>&1; then
+    if command -v pip3 >/dev/null 2>&1; then
+        pip3 install --no-cache-dir requests || true
+    else
+        # Try distro package for requests if pip3 is unavailable
+        if command -v apt-get >/dev/null 2>&1; then
+            apt-get update -qq || true
+            apt-get install -y -qq python3-requests || true
+        elif command -v dnf >/dev/null 2>&1; then
+            dnf -y install python3-requests || true
+        elif command -v yum >/dev/null 2>&1; then
+            yum -y install python3-requests || true
+        else
+            echo "[gpud] WARNING: cannot ensure Python 'requests' package (no pip3 and unknown package manager)" | tee -a "$COMBINED_LOG"
+        fi
+    fi
+fi
+cat > /usr/local/bin/flow-metrics-streamer.py << 'METRICS_SCRIPT_EOF'
+#!/usr/bin/env python3
+import json
+import time
+import requests
+import socket
+import os
+import signal
+import sys
+from datetime import datetime
+from typing import Dict, List, Any
+
+# Configuration
+GPUD_BASE_URL = "http://[[ gpud_bind ]]:[[ gpud_port ]]"
+METRICS_ENDPOINT = "[[ metrics_endpoint ]]" if "[[ metrics_endpoint ]]" else None
+METRICS_INTERVAL = [[ metrics_interval ]]
+METRICS_AUTH_TOKEN = "[[ metrics_auth_token ]]" if "[[ metrics_auth_token ]]" else None
+METRICS_BATCH_SIZE = [[ metrics_batch_size ]]
+TASK_ID = "[[ task_id ]]"
+TASK_NAME = "[[ task_name ]]"
+INSTANCE_ID = socket.gethostname()
+INSTANCE_TYPE = "[[ instance_type ]]"
+
+# Metrics buffer for batching
+metrics_buffer = []
+
+def signal_handler(signum, frame):
+    '''Handle shutdown gracefully.'''
+    print(f"Received signal {signum}, flushing metrics and exiting...")
+    if metrics_buffer:
+        send_metrics_batch(metrics_buffer)
+    sys.exit(0)
+
+def collect_metrics() -> Dict[str, Any]:
+    '''Collect all metrics from GPUd.'''
+    metrics = {
+        "task_id": TASK_ID,
+        "task_name": TASK_NAME,
+        "instance_id": INSTANCE_ID,
+        "instance_type": INSTANCE_TYPE,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+    
+    # GPUd health check
+    try:
+        resp = requests.get(f"{GPUD_BASE_URL}/healthz", timeout=5)
+        metrics["gpud_healthy"] = resp.status_code == 200
+    except Exception as e:
+        metrics["gpud_healthy"] = False
+        print(f"Failed to check GPUd health: {e}")
+    
+    # Machine info
+    try:
+        resp = requests.get(f"{GPUD_BASE_URL}/machine-info", timeout=5)
+        if resp.status_code == 200:
+            metrics["machine_info"] = resp.json()
+    except Exception as e:
+        metrics["machine_info"] = None
+        print(f"Failed to get machine info: {e}")
+    
+    # Health states and system metrics (/v1/states)
+    try:
+        resp = requests.get(f"{GPUD_BASE_URL}/v1/states", timeout=5)
+        if resp.status_code == 200:
+            states = resp.json()
+            # health_states may be a list or embedded under a key
+            metrics["health_states"] = states if isinstance(states, list) else states.get("health_states", [])
+            # Normalize SystemMetrics shape
+            cpu = states.get("cpu", {}) if isinstance(states, dict) else {}
+            mem = states.get("memory", {}) if isinstance(states, dict) else {}
+            try:
+                metrics["system_metrics"] = {
+                    "cpu_usage_pct": float(cpu.get("usage_percent", 0)),
+                    "memory_used_gb": float(mem.get("used_gb", 0)),
+                    "memory_total_gb": float(mem.get("total_gb", 0)),
+                    "disk_usage_pct": float(states.get("disk", {}).get("usage_percent", 0)) if isinstance(states, dict) else 0.0,
+                    "network_rx_mbps": float(states.get("network", {}).get("rx_mbps", 0)) if isinstance(states, dict) else 0.0,
+                    "network_tx_mbps": float(states.get("network", {}).get("tx_mbps", 0)) if isinstance(states, dict) else 0.0,
+                    "open_file_descriptors": int(states.get("system", {}).get("open_fds", 0)) if isinstance(states, dict) else 0,
+                    "load_average": cpu.get("load_average", []) if isinstance(cpu, dict) else [],
+                }
+            except Exception:
+                metrics["system_metrics"] = {}
+    except Exception as e:
+        metrics["health_states"] = []
+        metrics["system_metrics"] = {}
+        print(f"Failed to get states/system metrics: {e}")
+
+    # GPU metrics (/v1/metrics)
+    try:
+        resp = requests.get(f"{GPUD_BASE_URL}/v1/metrics", timeout=5)
+        if resp.status_code == 200:
+            mjson = resp.json()
+            gpu_metrics = []
+            for g in (mjson.get("gpu_metrics", []) if isinstance(mjson, dict) else []):
+                try:
+                    processes = []
+                    for p in g.get("processes", []) or []:
+                        processes.append({
+                            "pid": int(p.get("pid", 0)),
+                            "name": str(p.get("name", "")),
+                            "memory_mb": int(p.get("memory_mb", 0)),
+                            "gpu_index": int(p.get("gpu_index", g.get("index", 0))),
+                        })
+                    gpu_metrics.append({
+                        "gpu_index": int(g.get("index", g.get("gpu_index", 0))),
+                        "uuid": str(g.get("uuid", "")),
+                        "name": str(g.get("name", "Unknown")),
+                        "temperature_c": float(g.get("temperature", g.get("temperature_c", 0))),
+                        "power_draw_w": float(g.get("power_draw", g.get("power_draw_w", 0))),
+                        "power_limit_w": float(g.get("power_limit", g.get("power_limit_w", 0))),
+                        "memory_used_mb": int(g.get("memory_used_mb", 0)),
+                        "memory_total_mb": int(g.get("memory_total_mb", 0)),
+                        "gpu_utilization_pct": float(g.get("gpu_utilization", g.get("gpu_utilization_pct", 0))),
+                        "sm_occupancy_pct": float(g.get("sm_occupancy", g.get("sm_occupancy_pct", 0))),
+                        "clock_mhz": int(g.get("clock_mhz", 0)),
+                        "max_clock_mhz": int(g.get("max_clock_mhz", 0)),
+                        "ecc_errors": int(g.get("ecc_errors", 0)),
+                        "xid_events": list(g.get("xid_events", []) or []),
+                        "nvlink_status": str(g.get("nvlink_status", "healthy")),
+                        "processes": processes,
+                    })
+                except Exception:
+                    continue
+            metrics["gpu_metrics"] = gpu_metrics
+    except Exception as e:
+        print(f"Failed to get GPU metrics: {e}")
+    
+    # Events
+    try:
+        resp = requests.get(f"{GPUD_BASE_URL}/v1/events", timeout=5)
+        if resp.status_code == 200:
+            metrics["events"] = resp.json()
+    except Exception as e:
+        metrics["events"] = []
+        print(f"Failed to get events: {e}")
+    # Stamp payload origin
+    metrics["version"] = "1.0"
+    metrics["source"] = "flow-metrics-streamer"
+    
+    return metrics
+
+def send_metrics_batch(batch: List[Dict[str, Any]]) -> None:
+    '''Send a batch of metrics to the endpoint.'''
+    if not batch:
+        return
+    
+    headers = {"Content-Type": "application/json"}
+    if METRICS_AUTH_TOKEN:
+        headers["Authorization"] = f"Bearer {METRICS_AUTH_TOKEN}"
+    
+    try:
+        if METRICS_ENDPOINT:
+            # Send to remote endpoint
+            response = requests.post(
+                METRICS_ENDPOINT,
+                json={"metrics": batch, "batch_size": len(batch)},
+                headers=headers,
+                timeout=30
+            )
+            if response.status_code >= 400:
+                print(f"Failed to send metrics: {response.status_code} - {response.text}")
+        else:
+            # Log locally with daily rotation
+            log_file = f"/var/log/flow/health-metrics-{datetime.utcnow().strftime('%Y%m%d')}.jsonl"
+            os.makedirs(os.path.dirname(log_file), exist_ok=True)
+            with open(log_file, "a") as f:
+                for metric in batch:
+                    f.write(json.dumps(metric) + "\n")
+    except Exception as e:
+        print(f"Error sending metrics batch: {e}")
+        # Fall back to error log
+        try:
+            os.makedirs("/var/log/flow", exist_ok=True)
+            with open("/var/log/flow/health-metrics-error.jsonl", "a") as f:
+                for metric in batch:
+                    f.write(json.dumps(metric) + "\n")
+        except:
+            pass
+
+def stream_metrics() -> None:
+    '''Main loop to stream metrics.'''
+    global metrics_buffer
+    
+    # Set up signal handlers
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    print(f"Starting Flow metrics streamer...")
+    print(f"GPUd URL: {GPUD_BASE_URL}")
+    print(f"Metrics endpoint: {METRICS_ENDPOINT or 'local storage'}")
+    print(f"Collection interval: {METRICS_INTERVAL}s")
+    
+    while True:
+        try:
+            metrics = collect_metrics()
+            metrics_buffer.append(metrics)
+            
+            # Send batch if buffer is full
+            if len(metrics_buffer) >= METRICS_BATCH_SIZE:
+                send_metrics_batch(metrics_buffer)
+                metrics_buffer = []
+            
+        except Exception as e:
+            print(f"Error collecting metrics: {e}")
+        
+        time.sleep(METRICS_INTERVAL)
+
+if __name__ == "__main__":
+    stream_metrics()
+METRICS_SCRIPT_EOF
+
+chmod +x /usr/local/bin/flow-metrics-streamer.py
+
+# Create systemd service for metrics streaming
+cat > /etc/systemd/system/flow-metrics-streamer.service << 'SERVICE_EOF'
+[Unit]
+Description=Flow Health Metrics Streamer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/flow-metrics-streamer.py
+Restart=on-failure
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=flow-metrics
+
+[Install]
+WantedBy=multi-user.target
+SERVICE_EOF
+
+# Enable and start the service
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl daemon-reload
+  systemctl enable flow-metrics-streamer.service
+  systemctl start flow-metrics-streamer.service
+else
+  # Fallback: run in background if systemd is not available
+  nohup /usr/local/bin/flow-metrics-streamer.py >/var/log/flow/metrics-streamer.log 2>&1 &
+fi
+
+log "GPUd health monitoring setup complete"
