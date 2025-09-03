@@ -1,0 +1,242 @@
+# Pero MCP Server
+
+一个基于模型上下文协议（MCP）的多功能服务器集合，支持App Store Connect和SSH管理功能。
+
+## 功能特性
+
+### App Store Connect服务器
+- 团队成员管理（邀请、移除、列表查看）
+- 应用信息管理
+- TestFlight测试组管理
+- Beta测试者管理
+- 支持完整的App Store Connect API操作
+
+### SSH服务器
+- 远程命令执行
+- 文件上传下载
+- 目录管理
+- 系统信息获取
+- 进程管理
+- 文件搜索和内容查看
+
+## 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+## 配置方式
+
+所有配置均通过环境变量设置，确保安全性和便于部署。
+
+### App Store Connect 配置
+
+设置以下环境变量：
+
+```bash
+# 必需的环境变量
+export APPSTORE_KEY_ID="your_api_key_id"
+export APPSTORE_ISSUER_ID="your_issuer_id"
+export APPSTORE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----
+your_private_key_content_here
+-----END PRIVATE KEY-----"
+
+# 可选的环境变量
+export APPSTORE_APP_ID="your_app_id"
+```
+
+### SSH 配置
+
+设置以下环境变量：
+
+```bash
+# 必需的环境变量
+export SSH_HOSTNAME="your_server_ip_or_hostname"
+export SSH_USERNAME="your_username"
+
+# 认证方式（选择其一）
+# 方式1：使用密码
+export SSH_PASSWORD="your_password"
+
+# 方式2：使用私钥文件
+export SSH_PRIVATE_KEY_PATH="/path/to/your/private/key"
+
+# 方式3：使用私钥内容
+export SSH_PRIVATE_KEY_CONTENT="-----BEGIN RSA PRIVATE KEY-----
+your_private_key_content_here
+-----END RSA PRIVATE KEY-----"
+
+# 可选的环境变量
+export SSH_PORT="22"          # 默认22
+export SSH_TIMEOUT="30"       # 默认30秒
+```
+
+## 使用方法
+
+### 启动服务器
+
+```python
+from servers.appstoreconnect.appstore_connect_mcp_server import AppStoreConnectMCPServer
+from servers.ssh.ssh_mcp_server import SSHMCPServer
+
+# 启动App Store Connect服务器
+appstore_server = AppStoreConnectMCPServer()
+appstore_server.run()
+
+# 启动SSH服务器
+ssh_server = SSHMCPServer()
+ssh_server.run()
+```
+
+### 主程序示例
+
+```python
+# main.py
+import os
+from servers.appstoreconnect.appstore_connect_mcp_server import AppStoreConnectMCPServer
+from servers.ssh.ssh_mcp_server import SSHMCPServer
+
+def main():
+    # 检查App Store Connect配置
+    if all([
+        os.getenv('APPSTORE_KEY_ID'),
+        os.getenv('APPSTORE_ISSUER_ID'),
+        os.getenv('APPSTORE_PRIVATE_KEY')
+    ]):
+        print("启动App Store Connect服务器...")
+        appstore_server = AppStoreConnectMCPServer()
+        # appstore_server.run()
+    
+    # 检查SSH配置
+    if all([
+        os.getenv('SSH_HOSTNAME'),
+        os.getenv('SSH_USERNAME'),
+        any([
+            os.getenv('SSH_PASSWORD'),
+            os.getenv('SSH_PRIVATE_KEY_PATH'),
+            os.getenv('SSH_PRIVATE_KEY_CONTENT')
+        ])
+    ]):
+        print("启动SSH服务器...")
+        ssh_server = SSHMCPServer()
+        # ssh_server.run()
+
+if __name__ == "__main__":
+    main()
+```
+
+## 可用工具
+
+### App Store Connect工具
+
+- `list_team_members()` - 获取团队成员列表
+- `invite_team_member(email, first_name, last_name, roles, provisioning_allowed)` - 邀请团队成员
+- `remove_team_member(user_id)` - 移除团队成员
+- `list_apps()` - 获取应用列表
+- `create_testflight_group(app_id, group_name, is_internal, public_link_enabled)` - 创建TestFlight测试组
+- `list_testflight_groups(app_id)` - 获取TestFlight测试组列表
+- `add_tester_to_group(group_id, tester_email, first_name, last_name)` - 添加测试者到组
+- `remove_tester_from_group(group_id, tester_id)` - 从组中移除测试者
+
+### SSH工具
+
+- `connect_ssh()` - 建立SSH连接
+- `disconnect_ssh()` - 断开SSH连接
+- `execute_command(command)` - 执行远程命令
+- `list_directory(path)` - 列出目录内容
+- `upload_file(local_path, remote_path)` - 上传文件
+- `download_file(remote_path, local_path)` - 下载文件
+- `get_system_info()` - 获取系统信息
+- `create_directory(path)` - 创建目录
+- `remove_file_or_directory(path, recursive)` - 删除文件或目录
+- `get_file_content(path, lines)` - 获取文件内容
+- `search_files(pattern, path, case_sensitive)` - 搜索文件
+- `get_process_list()` - 获取进程列表
+- `kill_process(pid, force)` - 终止进程
+
+## 可用资源
+
+### App Store Connect资源
+
+- `appstore://apps` - 应用列表资源
+- `appstore://members` - 团队成员资源
+
+### SSH资源
+
+- `ssh://system-info` - 系统信息资源
+- `ssh://directory` - 当前目录内容资源
+- `ssh://connection-status` - 连接状态资源
+
+## 项目结构
+
+```
+pero-mcp-server/
+├── main.py                          # 主程序入口
+├── README.md                        # 项目说明文档
+├── requirements.txt                 # Python依赖包
+└── servers/                         # 服务器模块
+    ├── __init__.py
+    ├── base_mcp_server.py          # 基础MCP服务器类
+    ├── appstoreconnect/            # App Store Connect服务器
+    │   ├── __init__.py
+    │   ├── models.py               # 数据模型
+    │   ├── appstore_client.py      # API客户端
+    │   └── appstore_connect_mcp_server.py # MCP服务器实现
+    └── ssh/                        # SSH服务器
+        ├── __init__.py
+        ├── models.py               # 数据模型
+        ├── ssh_client.py           # SSH客户端
+        └── ssh_mcp_server.py       # MCP服务器实现
+```
+
+## 环境变量配置文件示例
+
+创建 `.env` 文件来管理环境变量：
+
+```bash
+# App Store Connect 配置
+APPSTORE_KEY_ID=your_key_id
+APPSTORE_ISSUER_ID=your_issuer_id
+APPSTORE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----
+your_private_key_content
+-----END PRIVATE KEY-----"
+APPSTORE_APP_ID=your_app_id
+
+# SSH 配置
+SSH_HOSTNAME=192.168.1.100
+SSH_USERNAME=ubuntu
+SSH_PASSWORD=your_password
+SSH_PORT=22
+SSH_TIMEOUT=30
+```
+
+然后使用 `python-dotenv` 加载：
+
+```python
+from dotenv import load_dotenv
+load_dotenv()
+```
+
+## 注意事项
+
+1. **安全性**：
+   - 私钥和密码等敏感信息务必通过环境变量设置
+   - 不要在代码中硬编码任何凭据
+   - 在生产环境中使用密钥管理服务
+
+2. **App Store Connect API**：
+   - 需要先在App Store Connect中创建API密钥
+   - 确保API密钥有足够的权限执行所需操作
+
+3. **SSH连接**：
+   - 支持密码和私钥两种认证方式
+   - 建议在生产环境中使用私钥认证
+   - 确保目标服务器的SSH服务正常运行
+
+## 许可证
+
+- MIT
+
+## 贡献
+
+欢迎提交Issue和Pull Request来改进项目。
