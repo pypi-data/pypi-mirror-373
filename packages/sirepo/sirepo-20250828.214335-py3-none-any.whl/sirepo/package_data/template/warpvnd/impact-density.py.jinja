@@ -1,0 +1,193 @@
+
+# To reduce the data, line (plane) coordinates are parametrized.  We respond with
+# the initial values in each coord array and a "slope" in each array dimension
+# rather than every coordinate in the array
+
+# use the function arr[0][0] + k * sk + l * sl (loop over k then l) to
+# get the original array value
+def _linear_fit_2d(arr):
+    sk = (arr[len(arr) - 1][0] - arr[0][0]) / (len(arr) - 1) if len(arr) > 1 else 0
+    sl = (arr[0][len(arr[0]) - 1] - arr[0][0]) / (len(arr[0]) - 1) if len(arr[0]) > 1 else 0
+    return sk, sl
+
+# use the function arr[0] + k * sk (loop over k) to
+# get the original array value
+def _linear_fit_1d(arr):
+    sk = (arr[len(arr) - 1] - arr[0]) / (len(arr) - 1) if len(arr) > 1 else 0
+    return sk
+
+def _polys_for_stl(cond):
+    with h5py.File('{{ polyFile }}', 'r') as hf:
+        p = cond['s'] * np.array(hf['polys'])
+    p_t = p.T
+    bounds = np.array([
+        np.min(p_t[0]),
+        np.max(p_t[0]),
+        np.min(p_t[1]),
+        np.max(p_t[1]),
+        np.min(p_t[2]),
+        np.max(p_t[2])
+    ])
+    b_ctr = np.array([
+        bounds[0] + (bounds[1] - bounds[0]) / 2.,
+        bounds[2] + (bounds[3] - bounds[2]) / 2.,
+        bounds[4] + (bounds[5] - bounds[4]) / 2.,
+    ])
+    offsets = np.array([cond['cx'], cond['cy'], cond['cz']]) - b_ctr
+    return p + offsets
+
+def _vertices_from_stl(cond):
+    verts = [line.rstrip('\r\n')[len('vertex '):].split(' ') for line in open(cond['f']) if line.startswith('vertex')]
+    ctr = np.array([cond['cx'], cond['cy'], cond['cz']])
+
+    np_verts = cond['s'] * np.array(verts).astype(np.double)
+    np_verts_t = np_verts.T
+    bounds = np.array([
+        np.min(np_verts_t[0]),
+        np.max(np_verts_t[0]),
+        np.min(np_verts_t[1]),
+        np.max(np_verts_t[1]),
+        np.min(np_verts_t[2]),
+        np.max(np_verts_t[2])
+    ])
+    b_ctr = np.array([
+        bounds[0] + (bounds[1] - bounds[0]) / 2.,
+        bounds[2] + (bounds[3] - bounds[2]) / 2.,
+        bounds[4] + (bounds[5] - bounds[4]) / 2.,
+    ])
+    offsets = ctr - b_ctr
+    return np_verts + offsets
+
+density_results = None
+try:
+    i_data = []
+    plot_density = ImpactDensity.PlotDensity(None, None, scraper, wp.top, wp.w3d, use_aura=True)
+except AssertionError as e:
+    density_results = {
+        'error': str(e),
+    }
+
+if can_write_files and not density_results:
+    i_data = []
+    global_max = 0.
+    for i in plot_density.conductors:
+        c_data = {}
+        c = plot_density.conductors[i]
+        c_data['id'] = c.conductor.condid
+        c_data['faces'] = []
+        {% if is3D %}
+        coord_keys = ['x', 'y', 'z']
+        try:
+            min_s, max_s, d = plot_density.generate_plot_data_for_faces_3d(c)
+        except Exception:
+            err = 'Cannot generate impact density for conductor {}'.format(c.conductor.condid)
+            print(err)
+            f_data = {
+                'err': err
+            }
+            c_data['faces'].append(f_data)
+            i_data.append(c_data)
+            continue
+        verts = np.array([])
+        if isinstance(c, ConductorTemplates.conductor_type_3d['Unstructured']):
+            c_data['type'] = 'unstructured'
+            verts = _vertices_from_stl(stl_conductors[c.conductor.condid])
+
+        global_max = max(global_max, max_s)
+        neighborhood = np.array([abs(dx / 2.), abs(dy / 2.), abs(dz / 2.)])
+        for (x, y, z, s) in d:
+            h = np.histogram(s, bins=20)[0]
+            e = np.histogram(s, bins=20)[1]
+            s_aves = []
+            pts = 1e-09 * np.array([x, y, z]).T
+            f_data = {
+                'dArr': s.tolist(),
+                'n': len(x)
+            }
+
+            if isinstance(c, ConductorTemplates.conductor_type_3d['Unstructured']):
+                ps = np.array([])
+                for poly in _polys_for_stl(stl_conductors[c.conductor.condid]):
+                    inds = np.array([])
+                    ctr = np.mean(poly, axis=0)
+                    for vert in poly:
+                        v_inds = np.where(np.all(np.abs(pts - vert) < neighborhood, axis=1))
+                        inds = np.append(inds, v_inds).astype(int)
+                    dc = np.linalg.norm(ctr - pts[inds], axis=1)
+                    if len(inds) > 0:
+                        # weight points by dist to centroid?
+                        ps = np.append(ps, np.mean(s[inds]))
+                    else:
+                        ps = np.append(ps, -1.)
+
+                f_data['dArr'] = ps.tolist()
+                f_data['n'] = len(ps)
+
+            else:
+                f_data['type'] = 'plane'
+                f_data['m'] = len(x[0])
+                for cx, coord in enumerate((x, y, z)):
+                    sk, sl = _linear_fit_2d(coord)
+                    f_data[coord_keys[cx]] = {
+                        'startVal': coord[0][0],
+                        'slopek': sk,
+                        'slopel': sl
+                    }
+            c_data['faces'].append(f_data)
+        {% else %}
+        coord_keys = ['x', 'z']
+        min_s, max_s, d = plot_density.generate_plot_data_for_faces_2d(c)
+        count = c.pids.size
+        min_s *= count
+        max_s *= count
+        global_max = max(global_max, max_s)
+        n_bins = 20
+        for (x, z, s) in d:
+            s *= count
+            h = np.histogram(s, bins=n_bins)[0]
+            e = np.histogram(s, bins=n_bins)[1]
+            s_aves = []
+            bin_size = int(math.floor(len(x) / n_bins))
+            for b in range(n_bins):
+                k1 = b * bin_size
+                k2 = (b + 1) * bin_size
+                s_aves.append(np.mean(s[k1:k2]))
+            f_data = {
+                'dArr': s_aves,
+                'hist': h.tolist(),
+                'n': len(x)
+            }
+            for cx, coord in enumerate((x, z)):
+                sk = _linear_fit_1d(coord)
+                f_data[coord_keys[cx]] = {
+                    'startVal': coord[0],
+                    'slopek': sk
+                }
+            c_data['faces'].append(f_data)
+        {% endif %}
+        i_data.append(c_data)
+
+    {% if not is3D %}
+    all_particles = [[], []]
+    for i in plot_density.conductors:
+        c = plot_density.conductors[i]
+        v = c.scraped_particles[:, c.pids]
+        all_particles[0] += v[0].tolist()
+        all_particles[1] += v[1].tolist()
+    np.save('{{ allParticlesFile }}', all_particles)
+    {% endif %}
+
+    density_results = {
+        'dx': plot_density.dx,
+        {% if is3D %}
+        'dy': plot_density.dy,
+        {% endif %}
+        'dz': plot_density.dz,
+        'density': i_data,
+        'min': 0,
+        'max': global_max,
+    }
+
+if can_write_files:
+    with h5py.File('{{ densityFile }}', 'w') as hf:
+        dict_to_h5(density_results, hf, path='density')
