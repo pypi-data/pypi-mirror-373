@@ -1,0 +1,70 @@
+[
+  {
+    "name": "engineer_response_formatter",
+    "content": "**Code Explanation:**\n\nThis script runs the complete Bayesian parameter estimation workflow for our cosmic reionization model. It:\n1. Extracts observational data from the reference paper\n2. Runs MCMC sampling to explore the parameter space\n3. Checks convergence using diagnostics\n4. Generates diagnostic plots and summary statistics\n5. Plots the best-fit model with credible intervals against observational data\n\n**Modifications:**\n\nChanged progress from True to False in the run_mcmc call to silence progress bars during model training.\n\n**Python Code:**\n\n```python\n# filename: run_mcmc_analysis.py\nimport numpy as np\nimport matplotlib.pyplot as plt\nimport os\nimport time\nfrom codebase.mcmc_sampling import (\n    run_mcmc, check_convergence, plot_chains, plot_corner, \n    compute_summary_statistics, plot_best_fit_model\n)\nfrom codebase.bayesian_framework import extract_observational_data\n\n# Create data directory if it doesn't exist\ndatabase_path = \"data/\"\nif not os.path.exists(database_path):\n    os.makedirs(database_path)\n\n# Set matplotlib parameters to avoid LaTeX rendering\nplt.rcParams['text.usetex'] = False\n\n# Extract observational data\nprint(\"Extracting observational constraints...\")\nobs_data = extract_observational_data()\n\n# Print summary of observational data\nprint(\"Observational data summary:\")\nprint(\"Number of data points:\" + str(len(obs_data['z'])))\nprint(\"Redshift range:\" + str(min(obs_data['z'])) + \" to \" + str(max(obs_data['z'])))\nprint(\"Measurement methods:\" + str(np.unique(obs_data['method'])))\n\nif 'tau_e' in obs_data:\n    print(\"CMB optical depth constraint:\" + str(obs_data['tau_e']) + \" \u00b1 \" + str(obs_data['tau_e_error']))\n\n# Set MCMC parameters\nnwalkers = 32\nnsteps = 500  # Reduced for demonstration, use 5000+ for production\ndiscard = 100\nz_range = (20.0, 5.0)\nQHII_init = 1e-4\ninclude_tau_e = True\n\n# Run MCMC sampling\nprint(\"\\nRunning MCMC sampling...\")\nstart_time = time.time()\nsampler, samples, flat_samples, param_names = run_mcmc(\n    obs_data, nwalkers=nwalkers, nsteps=nsteps, z_range=z_range, \n    QHII_init=QHII_init, include_tau_e=include_tau_e, progress=False, discard=discard\n)\n\n# Check convergence\nprint(\"\\nChecking convergence...\")\nconvergence_results = check_convergence(sampler, discard=discard)\n\nif 'converged' in convergence_results and convergence_results['converged']:\n    print(\"MCMC chains have converged!\")\nelse:\n    print(\"Warning: MCMC chains may not have fully converged. Consider running for more steps.\")\n\n# Plot chains\nprint(\"\\nGenerating diagnostic plots...\")\nchains_file = plot_chains(samples, param_names, discard=discard)\n\n# Plot corner plot\ncorner_file = plot_corner(flat_samples, param_names)\n\n# Compute summary statistics\nprint(\"\\nComputing summary statistics...\")\nsummary_stats = compute_summary_statistics(flat_samples, param_names)\n\n# Plot best-fit model\nprint(\"\\nGenerating best-fit model plot...\")\nmodel_file = plot_best_fit_model(flat_samples, obs_data, param_names, z_range=z_range, QHII_init=QHII_init)\n\n# Calculate total runtime\nend_time = time.time()\nruntime = end_time - start_time\nprint(\"\\nBayesian analysis completed in \" + str(round(runtime, 2)) + \" seconds\")\n\n# Save flat samples to file\nsamples_file = os.path.join(database_path, \"mcmc_samples.npz\")\nnp.savez(samples_file, flat_samples=flat_samples, param_names=param_names)\nprint(\"Saved MCMC samples to:\" + samples_file)\n\n# Print best-fit parameters\nmedian_params = np.median(flat_samples, axis=0)\nprint(\"\\nBest-fit parameters:\")\nfor i, param in enumerate(param_names):\n    print(param + \":\" + str(median_params[i]))\n\n# Calculate tau_e for best-fit model\nfrom codebase.bayesian_framework import calculate_tau_e\nfrom codebase.cosmic_reionization_model import solve_QHII\n\n# Fixed parameters\nxi0 = 2.5e25\nM_h = 1.0e10\n\n# Calculate best-fit model\nfull_params = tuple(median_params) + (xi0, M_h)\nz_model, Q_HII_model = solve_QHII(z_range, full_params, QHII_init)\n\n# Calculate tau_e\ntau_e = calculate_tau_e(z_model, Q_HII_model)\nprint(\"\\nCMB optical depth for best-fit model:\" + str(tau_e))\nif 'tau_e' in obs_data:\n    print(\"Observed CMB optical depth:\" + str(obs_data['tau_e']) + \" \u00b1 \" + str(obs_data['tau_e_error']))\n\n```",
+    "timestamp": "2025-07-28 19:03:42",
+    "cost": {
+      "Agent": [
+        "engineer_response_formatter",
+        "engineer_response_formatter",
+        "engineer_response_formatter",
+        "engineer_response_formatter",
+        "engineer_response_formatter",
+        "engineer_response_formatter"
+      ],
+      "Model": [
+        "o3-mini-2025-01-31",
+        "o3-mini-2025-01-31",
+        "o3-mini-2025-01-31",
+        "o3-mini-2025-01-31",
+        "o3-mini-2025-01-31",
+        "o3-mini-2025-01-31"
+      ],
+      "Cost": [
+        0.023485,
+        0.0253209,
+        0.025164700000000005,
+        0.0097284,
+        0.0261767,
+        0.010772300000000002
+      ],
+      "Prompt Tokens": [
+        4054,
+        4055,
+        4053,
+        1852,
+        4041,
+        1769
+      ],
+      "Completion Tokens": [
+        4324,
+        4741,
+        4706,
+        1748,
+        4939,
+        2006
+      ],
+      "Total Tokens": [
+        8378,
+        8796,
+        8759,
+        3600,
+        8980,
+        3775
+      ]
+    }
+  },
+  {
+    "name": "executor",
+    "content": "execution results:\nExecution output: \nTraceback (most recent call last):\n  File \u001b[35m\"/home/tda/PABLO/AstroPilot/examples/reionization_project/experiment_generation_output/control/run_mcmc_analysis.py\"\u001b[0m, line \u001b[35m6\u001b[0m, in \u001b[35m<module>\u001b[0m\n    from codebase.mcmc_sampling import (\n    ...<2 lines>...\n    )\n  File \u001b[35m\"/home/tda/PABLO/AstroPilot/examples/reionization_project/experiment_generation_output/control/codebase/mcmc_sampling.py\"\u001b[0m, line \u001b[35m5\u001b[0m, in \u001b[35m<module>\u001b[0m\n    import corner\n\u001b[1;35mModuleNotFoundError\u001b[0m: \u001b[35mNo module named 'corner'\u001b[0m\n",
+    "timestamp": "2025-07-28 19:03:43",
+    "cost": {
+      "Agent": [],
+      "Model": [],
+      "Cost": [],
+      "Prompt Tokens": [],
+      "Completion Tokens": [],
+      "Total Tokens": []
+    }
+  }
+]
