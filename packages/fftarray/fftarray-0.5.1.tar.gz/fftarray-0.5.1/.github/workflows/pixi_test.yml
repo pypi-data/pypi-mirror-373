@@ -1,0 +1,34 @@
+name: Run full matrix pytest via pixi
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+  workflow_dispatch: {} # Allows launching this action manually in the GitHub interface
+
+permissions:
+  contents: read
+
+jobs:
+  test-full:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [check311, check312, check313]
+        command: [ruff_all, mypy_all, test_all]
+        # An option to run with multiple CI runners, currently saves 20s,
+        # not worth the increased CI minutes usage.
+        # command: [mypy, test_all_group 1, test_all_group 2]
+    # env:
+    #   N_GROUPS: 2
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        lfs: true
+    - uses: prefix-dev/setup-pixi@v0.8.1
+      with:
+        pixi-version: v0.53.0
+        environments: ${{ matrix.environment }}
+        cache: true
+    - run: pixi run -e ${{ matrix.environment }} ${{ matrix.command }}
