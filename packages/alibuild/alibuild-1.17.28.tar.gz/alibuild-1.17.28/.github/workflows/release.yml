@@ -1,0 +1,76 @@
+---
+name: Release
+
+"on":
+  release:
+    types: [published]
+
+permissions:
+  contents: read # required for github.ref to be set
+
+jobs:
+  pypi-publish:
+    name: Upload release to PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: release
+      url: https://pypi.org/p/alibuild
+    permissions:
+      id-token: write # IMPORTANT: this permission is mandatory for trusted publishing
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install build dependencies
+        run: python -m pip install --upgrade setuptools build pip
+      - name: Build the Python distribution
+        run: python -m build
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  brew:
+    name: Update Homebrew formula
+    needs: pypi-publish
+    runs-on: macos-latest
+    if: startsWith(github.ref, 'refs/tags/') && !github.event.release.prerelease
+    steps:
+      - name: Install prerequisites
+        run: brew install pipgrip
+      - name: Checkout Homebrew repo
+        run: brew tap alisw/system-deps
+      - name: Update alibuild formula with new version
+        run: |
+          set -x
+          json=$(curl -fSsL "https://pypi.org/pypi/alibuild/${GITHUB_REF#refs/tags/}/json")
+          sha=$(echo "$json" | jq -r '.urls.[] | select(.filename | endswith(".tar.gz")) | .digests.sha256')
+          url=$(echo "$json" | jq -r '.urls.[] | select(.filename | endswith(".tar.gz")) | .url')
+          # Replace keys with two leading spaces only, so we get the toplevel
+          # ones applying to alibuild, not those for dependencies.
+          sed -i.bak "
+          s|^  url .*|  url \"$url\"|;
+          s|^  sha256 .*|  sha256 \"$sha\"|;
+          " "$(brew formula alibuild)"
+          rm -f "$(brew formula alibuild).bak"
+      - name: Regenerate alibuild formula
+        run: |
+          set -x
+          # Sometimes, brew update-python-resources apparently randomly fails,
+          # blaming pipgrip. Retries should hopefully solve this.
+          attempt=0
+          while [ $((attempt++)) -lt 5 ]; do
+            echo "Attempt $attempt/5..." >&2
+            brew update-python-resources alibuild && break
+            sleep 300
+          done
+      - name: Push updated formula
+        run: |
+          set -x
+          cd "$(dirname "$(brew formula alibuild)")"
+          git config user.name alibuild
+          git config user.email 'alibuild@cern.ch'
+          git add alibuild.rb
+          git commit -m "Update alibuild to ${GITHUB_REF#refs/tags/}"
+          git show
+          git push "https://alibuild:$GITHUB_TOKEN@github.com/alisw/homebrew-system-deps" master
+        env:
+          GITHUB_TOKEN: ${{ secrets.homebrew_repo_token }}
