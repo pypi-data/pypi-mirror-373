@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% if title %}
+  <title>{{ title }}</title>
+  {% else %}
+  <title>Annif</title>
+  {% endif %}
+  <!-- Latest compiled and minified CSS -->
+  <link rel="stylesheet" href="/static/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/static/css/fonts.css">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="shortcut icon" href="/static/favicon.ico">
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+<header class="mb-4 mt-0">
+  <div class="container">
+    <div class="row justify-content-between">
+      <div class="col-2">
+        <img src="static/img/annif-RGB.svg" class="img-fluid" alt="Annif">
+      </div>
+      <div class="col-10 my-auto px-0">
+        <h1 class="text-end my-0">Web UI</h1>
+      </div>
+    </div>
+  </div></header>
+
+<div class="container">
+
+  <p>Welcome!</p>
+
+  <p>See the <a href="v1/ui/">OpenAPI documentation</a> for an interactive REST API specification.</p>
+</div>
+
+<div id="form">
+
+  <div class="container">
+    <div id="app">
+      <template v-if="problems.length">
+        <strong>Please correct the following error(s):</strong>
+        <div :class="['alert', (problem.isError ? 'alert-danger' : 'alert-warning')]"  role="alert" v-for="problem in problems">
+          <h2 v-if="problem.hasTitle()"><% problem.title %></h2>
+          <span v-if="problem.hasDetail()"><% problem.detail %></span>
+        </div>
+      </template>
+      <div class="row mb-5">
+        <div class="col-md-8">
+          <annif-textarea @text-changed="onTextChanged" @text-cleared="onTextCleared"></annif-textarea>
+          <span id="annif-version">Annif v<% annif_version %></span>
+        </div>
+        <div class="col-md-4">
+          <div id="project-selection-wrapper">
+            <annif-projects :projects="projects" @project-selected="onProjectSelected"></annif-projects>
+            <annif-project-info :projects="projects" :project="project"></annif-project-info>
+          </div>
+          <annif-limit :limit="limit" @limit-selected="onLimitSelected"></annif-limit>
+          <button id="get-suggestions" type="button" class="btn btn-primary" @click="suggest" :disabled="loading">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" v-if="loading"></span>
+            <span v-if="!loading">Get suggestions</span>
+            <span v-else>Loading...</span>
+          </button>
+          <annif-results :results="results"></annif-results>
+        </div>
+      </div>
+    </div>
+  </div> <!-- container -->
+
+</div>
+
+<script src="/static/js/vue.min.js"></script>
+<!-- axios version 1.1.2 -->
+<script src="/static/js/axios.min.js"></script>
+<!-- bootstrap dependencies -->
+<script src="/static/js/bootstrap.min.js"></script>
+<script type="text/javascript">
+// NB: using delimiters <% %> due to Jinja's syntax taking precedence
+
+class Problem {
+  constructor(title, detail, isError) {
+    if (title !== undefined) {
+      this.title = title;
+    }
+    if (detail !== undefined) {
+      this.detail = detail;
+    }
+
+    this.isError = !!isError;
+  }
+
+  hasTitle() {
+    return this.title.trim() !== '';
+  }
+
+  hasDetail() {
+    return this.detail.trim() !== '';
+  }
+}
+
+Vue.config.devtools = true;
+
+// Component with text area for input
+Vue.component('annif-textarea', {
+  delimiters: ["<%","%>"],
+  data: function() {
+    return {
+      text: '',
+    }
+  },
+  methods: {
+    handleTextInput: function(event) {
+      this.$emit('text-changed', event.target.value);
+      this.text = event.target.value;
+    },
+    clearTextInput: function(event) {
+      this.$emit('text-cleared');
+      this.text = '';
+    }
+  },
+  template: '<div id="text-box" class="form-group">\
+  <div id="text-box-wrapper">\
+  <button type="button" class="btn btn-danger" @click="clearTextInput" style="float: right;">&#x2715;</button>\
+  <textarea class="form-control" rows="20" name="text" id="text" @input="handleTextInput" :value="text"\
+  placeholder="Copy text here and press the button &quot;Get suggestions&quot;"></textarea>\
+  </div>\
+  </div>'
+});
+
+// Component with list of projects
+Vue.component('annif-projects', {
+  delimiters: ["<%","%>"],
+  props: ['projects'],
+  methods: {
+    handleProjectSelected: function(event) {
+      // User selected a project, so we use the bus to emit the value. This will be picked up by the parent component
+      this.$emit('project-selected', event.target.value);
+    }
+  },
+  template: '<div>\
+  <div class="form-group">\
+    <label for="project">Project (vocabulary and language)</label>\
+    <div class="select-wrapper">\
+    <select class="form-control" id="project" @input="handleProjectSelected">\
+      <option v-for="project in projects" v-bind:value="project.project_id"><% project.name %></option>\
+    </select>\
+    </div>\
+  </div>\
+</div>'
+});
+
+// Component with project information
+Vue.component('annif-project-info', {
+  delimiters: ['<%','%>'],
+  props: ['projects', 'project'],
+  methods: {
+    getSelectedProject: function() {
+      // Returns the selected project as an object
+      return this.projects.find(p => {return p.project_id===this.project})
+    },
+    getDateString: function(d) {
+      // Returns modification time in the format 'yyyy-mm-dd hh:mm:ss UTC' or '-' in
+      // case of null modification time
+      if (d === null)
+        return '-';
+      date = new Date(d);
+      return (
+        [ date.getUTCFullYear(), ('0' + (date.getUTCMonth() + 1)).slice(-2), ('0' + date.getUTCDate()).slice(-2) ].join('-') + ' ' +
+        [ ('0' + date.getUTCHours()).slice(-2), ('0' + date.getUTCMinutes()).slice(-2), ('0' + date.getUTCSeconds()).slice(-2) ].join(':') + ' UTC'
+      );
+    }
+  },
+  template: '<div v-if="projects.length > 0">\
+  <button id="show-project-info" class="btn btn-primary collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-info" aria-expanded="false" aria-controls="collapse-info">\
+    <span class="if-collapsed"><span>▸</span>Project information</span>\
+    <span class="if-not-collapsed"><span>▾</span>Project information</span>\
+  </button>\
+  <div id="collapse-info" class="collapse">\
+    <div id="project-info">\
+      <span>Project ID: <% getSelectedProject().project_id %></span><br>\
+      <span>Language: <% getSelectedProject().language %></span><br>\
+      <span>Backend type: <% getSelectedProject().backend.backend_id %></span><br>\
+      <span>Trained: <% getSelectedProject().is_trained ? "Yes" : "No" %></span><br>\
+      <span>Last modified: <% getDateString(getSelectedProject().modification_time) %></span>\
+    </div>\
+  </div>\
+</div>'
+});
+
+// Component with limit buttons
+Vue.component('annif-limit', {
+  delimiters: ["<%","%>"],
+  props: ['limit'],
+  methods: {
+    handleLimitSelected: function(event) {
+      // User selected a limit for suggestions, so we use the bus to emit the value. This will be picked up by the parent component
+      this.$emit('limit-selected', event.target.value);
+    }
+  },
+  template: '<div class="form-group">\
+    <label>Max # of suggestions</label>\
+  <div id="limit-buttons" @click="handleLimitSelected">\
+    <input type="radio" class="btn-check" v-bind="limit" name="limit" value="10" id="l1" checked>\
+    <label class="btn btn-secondary" for="l1">10</label>\
+    <input type="radio" class="btn-check" v-bind="limit" name="limit" value="15" id="l2">\
+    <label class="btn btn-secondary" for="l2">15</label>\
+    <input type="radio" class="btn-check" v-bind="limit" name="limit" value="20" id="l3">\
+    <label class="btn btn-secondary" for="l3">20</label>\
+  </div>\
+</div>'
+});
+
+// Component with the list of results
+Vue.component('annif-results', {
+  delimiters: ["<%","%>"],
+  props: ['results'],
+  template: '<div v-if="results.length">\
+  <h2 class="mt-4" id="suggestions">Suggested subjects</h2>\
+  <ul class="list-group list-group-flush" id="results">\
+    <li class="list-group-item p-0" v-for="result in results">\
+      <meter class="mr-2" v-bind:value="result.score"></meter>\
+      <a v-bind:href="result.uri"><% result.notation %> <% result.label %></a>\
+    </li>\
+  </ul>\
+</div>'
+});
+
+// Application, which uses the components above
+new Vue({
+  delimiters: ["<%","%>"],
+  el: '#app',
+  data: {
+    text: '',
+    annif_version: '',
+    project: '',
+    limit: 10,
+    projects: [],
+    results: [],
+    problems: [],
+    loading: false
+  },
+  mounted: function() {
+    // TBD: we can add a button to reload the list of projects later
+    this.loadProjects();
+    this.loadVersion();
+  },
+  methods: {
+    clearResults: function() {
+      while (this.results.length > 0) {
+        this.results.pop();
+      }
+    },
+    onProjectSelected(project) {
+      this.project = project;
+    },
+    onTextChanged(text) {
+      this.text = text;
+    },
+    onTextCleared() {
+      this.text = '';
+      this.clearResults();
+    },
+    onLimitSelected(limit) {
+      this.limit = limit;
+    },
+    loadProjects: function() {
+      var this_ = this;
+      axios.get('/v1/projects')
+        .then(res => {
+          this_.projects = res.data.projects;
+          if(res.data.projects && res.data.projects.length > 0){
+            this_.project = res.data.projects[0].project_id;
+          }
+        })
+        .catch(error => {
+          if (!error.response) {
+            this_.problems.push(new Problem('No response from server', '', true));
+          } else {
+            var title = error.response.data.title || '';
+            var detail = error.response.data.detail || '';
+            this_.problems.push(new Problem(title, detail, true));
+          }
+        });
+    },
+    loadVersion: function() {
+      var this_ = this;
+      axios.get('/v1/')
+        .then(res => {
+          this_.annif_version = res.data.version;
+        })
+    },
+    suggest: function(event) {
+      this.problems = [];
+      if (this.text.trim() === '') {
+        this.problems.push(new Problem('', 'You need to enter the text to get suggestions for', false));
+      }
+      if (this.project.trim() === '') {
+        this.problems.push(new Problem('', 'You need to select one project', false));
+      }
+      this.clearResults();
+      if (this.problems.length) {
+        event.preventDefault();
+        return;
+      }
+      var this_ = this;
+      var formData = new URLSearchParams();
+      formData.append('text', this_.text);
+      formData.append('limit', this_.limit);
+      this_.loading = true;
+      axios.post('/v1/projects/'+ this_.project + '/suggest', formData)
+        .then(function(res) {
+          if (res.data.results.length === 0) {
+            this_.problems.push(new Problem('No results returned', '', false));
+          } else {
+            for (var i = 0; i < res.data.results.length; i++) {
+              var result = res.data.results[i];
+              this_.results.push(result);
+            }
+          }
+        })
+        .catch(function(error) {
+          if (!error.response) {
+            this_.problems.push(new Problem('No response from server', '', true));
+          } else {
+            var title = error.response.data.title || '';
+            var detail = error.response.data.detail || '';
+            this_.problems.push(new Problem(title, detail, true));
+          }
+        })
+        .then(function() {
+          this_.loading = false;
+        });
+    }
+  }
+});
+</script>
+</body>
+</html>
