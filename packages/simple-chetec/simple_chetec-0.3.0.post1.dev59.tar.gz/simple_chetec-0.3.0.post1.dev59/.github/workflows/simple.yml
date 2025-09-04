@@ -1,0 +1,314 @@
+name: All the different actions for SIMPLE
+
+on:
+  push:
+    branches:
+      - '**'
+
+  # If you change this then it will impact several of the actions.
+  pull_request:
+    branches:
+      - staging
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  get-version:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    outputs:
+      version: ${{ steps.set-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history
+          fetch-tags: true
+
+      - id: set-version
+        run: |
+          VERSION=$(cat VERSION.txt)
+          VERSION="v$VERSION"
+          
+          # On staging, mark version as pre-release for display purposes
+          if [[ "${GITHUB_REF}" == "refs/heads/staging" ]]; then
+            VERSION="${VERSION}.dev"
+          fi
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+  check-version:
+    name: Make sure version for master in unique
+    if: github.actor != 'github-actions[bot]' && github.event_name == 'pull_request' && github.ref == 'master'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed to switch branches
+
+      - run: |
+          VERSION=$(cat VERSION.txt)
+          TAG="v$VERSION"
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "❌ Version $VERSION already exists. Please update VERSION.txt."
+            exit 1
+          fi
+
+  run-tests-quick:
+    name: Run test with coverage using python 3.9 and latest dependencies versions
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      #- run: pip install setuptools_scm[toml]
+      - run: pip install ".[test]"
+
+      # Determine the installed path of the package
+      - name: Get package path
+        id: package-path
+        run: |
+          PKG_PATH=$(python -c "import simple, os; print(os.path.dirname(simple.__file__))")
+          echo "PKG_PATH=$PKG_PATH" >> "$GITHUB_ENV"
+
+      # Run coverage against installed package path
+      # running pytest --cov will not work as the tests runs the installed version
+      # and coverage checks against the "local" version, which is different.
+      - name: Run tests with coverage
+        run: |
+          coverage run --source=$PKG_PATH -m pytest
+          coverage xml
+
+      - name: Upload results to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  run-test-matrix:
+    name: Run nox tests for different python versions and the minimum version of the dependencies for 3.9.
+    if: >
+      github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install nox
+        run: pip install nox
+
+      - name: Run tests via nox
+        env:
+          COVERAGE_FILE: coverage.${{ matrix.python-version }}
+        run: nox --python ${{ matrix.python-version }} -- -q --cov=simple --cov-report=
+
+      - run: find . -name "coverage*"
+
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v4
+        with:
+          name: cov-${{ matrix.os }}-${{ matrix.python-version }}
+          path: ./coverage.${{ matrix.python-version }}
+          if-no-files-found: error
+
+  test-matrix-coverage:
+    needs: run-test-matrix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cov-*
+          merge-multiple: true     # drops all .coverage.* into CWD
+          path: .
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install coverage[toml]
+      - name: Combine & report
+        run: |
+          files=(coverage.*)
+          echo "Combining: ${files[*]}"
+          coverage combine "${files[@]}"
+          coverage report -m
+          coverage xml -o coverage.xml
+
+      - name: Upload results to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          flags: combined
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  docs:
+    name: Generate docs
+    if: >
+      github.actor != 'github-actions[bot]' && 
+      github.event_name == 'push' && (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')
+    needs: get-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Copy files
+      - run: cp ./notebooks/*.ipynb ./docs/examples/
+      - run: cp CHANGELOG.md ./docs/changelog.md
+
+      # Replace placeholders
+      - name: Update docs with version and data
+        run: |
+          VERSION="${{ needs.get-version.outputs.version }}"
+          DATE="$(date +%Y-%m-%d)"
+          
+          sed -i "s|## \[Latest\]|## [$VERSION] - $DATE|" ./docs/changelog.md
+          sed -i "s|__VERSION__|$VERSION|" ./docs/index.md
+          sed -i "s|__DATE__|$DATE|" ./docs/index.md
+          sed -i "s|__VERSION__|$VERSION|" mkdocs.yml
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.9
+
+      - run: pip install ".[docs]"
+
+      # For the master branch.
+      - run: mkdocs gh-deploy --force --clean --verbose
+        if: github.ref == 'refs/heads/master'
+
+      # For the staging branch.
+      - run: mkdocs build --site-dir site-pre
+        if: github.ref == 'refs/heads/staging'
+      - uses: peaceiris/actions-gh-pages@v4
+        if: github.ref == 'refs/heads/staging'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site-pre
+          destination_dir: pre-release
+  update-changelog:
+    name: Update the root changelog file
+    if: github.actor != 'github-actions[bot]' && github.event_name == 'push' && github.ref == 'refs/heads/master'
+
+    needs: [ docs, get-version ]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update docs with version and data
+        id: update
+        run: |
+          VERSION='${{ needs.get-version.outputs.version }}'
+          DATE="$(date +%Y-%m-%d)"
+          
+          if ! grep -qE '^## \[Latest\]\s*$' CHANGELOG.md; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          
+          sed -i "s|^## \[Latest\]$|## \[Latest\]\n\n## [$VERSION] - $DATE|" CHANGELOG.md
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Commit changes on master
+        if: steps.update.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "chore(changelog): replace [Latest] with version and data"
+          git push
+
+      - name: Sync CHANGELOG.md to staging
+        if: steps.update.outputs.changed == 'true'
+        run: |
+          git fetch origin staging
+          # Save the just-updated file from the current working tree
+          cp CHANGELOG.md /tmp/CHANGELOG.md
+          
+          # Switch to staging, update file, commit if changed
+          git checkout -B staging origin/staging
+          cp /tmp/CHANGELOG.md CHANGELOG.md
+          
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "No CHANGELOG differences on staging; skipping commit."
+            exit 0
+          fi
+          
+          git config user.name  "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "chore(changelog): replace [Latest] with version and data"
+          git push origin staging
+
+  release:
+    name: Publish to PyPi
+    if: >
+      github.actor != 'github-actions[bot]' &&
+      github.event_name == 'push' && (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')
+    needs: get-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create version Tag
+        if: github.ref == 'refs/heads/master'
+        run: |
+          VERSION="${{ needs.get-version.outputs.version }}"
+          
+          if ! git rev-parse "$VERSION" >/dev/null 2>&1; then
+            git config user.name "github-actions"
+            git config user.email "github-actions@github.com"
+            git tag "$VERSION"
+            git push origin "$VERSION"
+            echo "Created Tag: $VERSION"
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.9
+
+      - run: pip install -U build wheel setuptools twine
+      - run: rm -rf build dist *.egg-info
+      - run: python -m build
+      - run: twine upload dist/*
+        if: github.ref == 'refs/heads/staging' # Remove once testing is complete
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "${{ needs.get-version.outputs.version }}"
+          name: "${{ needs.get-version.outputs.version }}"
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
