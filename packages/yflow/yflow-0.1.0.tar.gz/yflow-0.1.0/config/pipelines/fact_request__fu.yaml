@@ -1,0 +1,118 @@
+destination:
+  database: golden
+  table_name: fact_request__fu
+  metadata:
+    owner: hungdv336
+    description: Bảng Fact chứa thông tin request
+  engine: ReplacingMergeTree(request_id)
+  order_by: request_id
+  rebuild: True
+sources:
+  workorder:
+    select_columns: [workorderid, requesterid, createdbyid, createdtime, fr_duetime, respondedtime, duebytime, completedtime, resolvedtime, closedbydenial
+                    , isparent, closeauthkey, timespentonreq, slaid, autoclosetime, serviceid, is_catalog_template, hasresolutionattachment]
+    where_condition: 1 = 1
+    transformations:
+      - function: convert_timestamp_to_datetime
+        input_cols: [createdtime, respondedtime, duebytime, completedtime, resolvedtime, autoclosetime, fr_duetime]
+        is_strip_suffix: True
+        replace_values: 
+          '-1': null
+      - function: convert_str_bool_columns
+        input_cols: [closedbydenial, is_catalog_template, isparent, hasresolutionattachment]
+      - function: cast_str_columns
+        input_cols: [slaid, serviceid]
+        new_dtype: pl.Categorical
+      - function: cast_str_columns
+        input_cols: closeauthkey
+        new_dtype: pl.UInt64
+      - function: custom_transformation
+        input_expr: (pl.col('timespentonreq').cast(pl.Float32) / (1000*60*60)).round(2)  # Chuyển đổi từ milliseconds sang hours
+      
+
+  workorderstates:
+    select_columns: [workorderid, categoryid, subcategoryid, ownerid, assignedtime, statusid, priorityid
+                    , isoverdue, isescalated, urgencyid, requesttypeid, reopened] 
+    where_condition: reqapproval <> ''    
+    transformations:
+      - function: convert_timestamp_to_datetime
+        input_cols: [assignedtime]
+      - function: convert_str_bool_columns
+        input_cols: [isoverdue, isescalated, reopened]
+      - function: cast_and_rename_str_columns
+        input_cols:
+          categoryid:
+            new_dtype: pl.Categorical
+          subcategoryid:
+            new_dtype: pl.Categorical
+          ownerid:
+            new_dtype: pl.Categorical
+          statusid:
+            new_dtype: pl.Enum(['1', '2', '3', '4', '5', '6', '303', '301', '302', '601'])
+          priorityid:
+            new_dtype: pl.Categorical
+          urgencyid:
+            new_dtype: pl.Categorical
+          requesttypeid:
+            new_dtype: pl.Categorical
+
+  statusdefinition:
+    select_columns: [statusid, statusname, ispending, statusstopclock, statusdescription]
+    transformations:
+      - function: convert_str_bool_columns
+        input_cols: [ispending, statusstopclock]
+
+join_configs:
+  final:
+    main: workorder 
+    name: final_result
+    other: 
+      - table_name: workorderstates 
+        on_condition: workorderid
+        how: left
+      - table_name: statusdefinition
+        on_condition: statusid
+        how: left
+
+    select_columns: [request_id, requester_id, created_by_id, technician_id, service_id, category_id, subcategory_id,
+                    created_time, status_id, status_name, status_description, assigned_time, fr_due_time,
+                    responded_time, due_by_time, completed_time, resolved_time, closed_by_denial,
+                    auto_close_time, is_catalog_template, has_resolution_attachment, # time_spent_on_req_hour
+                    is_overdue, is_escalated, sla_id, is_parent, priority_id, urgency_id, request_type_id, is_reopened]    
+
+    transformations:
+      - function: rename_columns
+        input_cols: 
+          workorderid: request_id
+          requesterid: requester_id
+          createdbyid: created_by_id
+          ownerid: technician_id
+          serviceid: service_id
+          categoryid: category_id
+          subcategoryid: subcategory_id
+          createdtime: created_time
+          statusid: status_id
+          statusname: status_name
+          statusdescription: status_description
+          assignedtime: assigned_time
+          fr_duetime: fr_due_time
+          respondedtime: responded_time
+          duebytime: due_by_time
+          completedtime: completed_time
+          resolvedtime: resolved_time
+          closedbydenial: closed_by_denial
+          autoclosetime: auto_close_time
+          timespentonreq: time_spent_on_req_hour
+          is_catalog_template: is_catalog_template
+          hasresolutionattachment: has_resolution_attachment
+          isoverdue: is_overdue
+          isescalated: is_escalated
+          slaid: sla_id
+          isparent: is_parent
+          priorityid: priority_id
+          urgencyid: urgency_id
+          requesttypeid: request_type_id
+          reopened: is_reopened
+      - function: fill_null
+        input_cols: [technician_id, service_id, category_id, subcategory_id, sla_id, priority_id, urgency_id, request_type_id, is_reopened]
+        value: N/A

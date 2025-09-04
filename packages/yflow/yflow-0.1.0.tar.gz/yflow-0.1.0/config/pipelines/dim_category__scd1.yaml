@@ -1,0 +1,60 @@
+destination:
+  database: golden
+  table_name: dim_category__scd1
+  connection_name: ClickHouse_Local
+  metadata:
+    owner: hungdv336
+    description: Bảng Fact chứa thông tin danh mục SLA HelpDesk
+  engine: ReplacingMergeTree(subcategory_id)
+  order_by: subcategory_id
+  # rebuild: True
+sources:
+  categorydefinition:
+    connection_name: MinIO_Local
+    select_columns: [categoryid, categoryname, categorydescription]
+    transformations:
+      - function: split_column
+        input_cols: categoryname
+        output_col1: category_code
+        output_col2: category_name
+        separator: '.'
+      - function: rename_columns
+        input_cols:
+          categoryid: category_id
+      
+
+  subcategorydefinition:
+    connection_name: MinIO_Local
+    transformations:
+      - function: replace_values_in_column
+        input_cols: name
+        replace_values:
+          Other Requests: '01.Other Requests'
+      - function: split_column
+        input_cols: name
+        output_col1: subcategory_code
+        output_col2: subcategory_name
+        separator: '.'
+      - function: convert_str_to_bool_enum
+        input_cols: isdeleted
+        true_value: 'true'
+        false_value: 'false'
+      - function: rename_columns
+        input_cols:
+          description: subcategory_description
+          subcategoryid: subcategory_id
+          categoryid: category_id
+
+join_configs:
+  final:
+    main: subcategorydefinition
+    name: final_result
+    other: 
+      - table_name: categorydefinition
+        on_condition: category_id
+        how: left
+    select_columns: [subcategory_id, category_id, subcategory_code, subcategory_name, category_code, category_name, subcategory_description, isdeleted]
+    transformations:
+      - function: replace_null_or_empty
+        input_cols: subcategory_description
+        fallback_col: categorydescription
