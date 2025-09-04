@@ -1,0 +1,145 @@
+import json
+
+from enum import Enum
+from pydantic import (
+    BaseModel,
+    StrictBool,
+    StrictInt,
+    StrictFloat,
+    StrictStr,
+    Field,
+)
+from ..common import ClientRunJobArgs, log_error_or_result, listen_events
+from .nornir_picle_shell_common import (
+    NorniHostsFilters,
+    TabulateTableModel,
+    NornirCommonArgs,
+    print_nornir_results,
+)
+from typing import Union, Optional, List, Any, Dict, Callable, Tuple
+from nornir_salt.plugins.functions import TabulateFormatter
+from picle.models import PipeFunctionsModel, Outputters
+
+
+class EnumTableTypes(str, Enum):
+    table_brief = "brief"
+    table_terse = "terse"
+    table_extend = "extend"
+
+
+class NornirTestShell(
+    NorniHostsFilters, TabulateTableModel, NornirCommonArgs, ClientRunJobArgs
+):
+    suite: StrictStr = Field(
+        ..., description="Nornir suite nf://path/to/file.py", required=True
+    )
+    dry_run: Optional[StrictBool] = Field(
+        None,
+        description="Return produced per-host tests suite content without running tests",
+        json_schema_extra={"presence": True},
+        alias="dry-run",
+    )
+    subset: Optional[StrictStr] = Field(
+        None,
+        description="Filter tests by name",
+    )
+    failed_only: Optional[StrictBool] = Field(
+        None,
+        description="Return test results for failed tests only",
+        json_schema_extra={"presence": True},
+        alias="failed-only",
+    )
+    remove_tasks: Optional[StrictBool] = Field(
+        None,
+        description="Include/Exclude tested task results",
+        json_schema_extra={"presence": True},
+        alias="remove-tasks",
+    )
+    job_data: Optional[StrictStr] = Field(
+        None, description="Path to YAML file with job data", alias="job-data"
+    )
+    table: Union[EnumTableTypes, Dict, StrictBool] = Field(
+        "brief",
+        description="Table format (brief, terse, extend) or parameters or True",
+        presence="brief",
+    )
+
+    @staticmethod
+    def source_suite():
+        broker_files = NFCLIENT.get(
+            "fss.service.broker", "walk", kwargs={"url": "nf://"}
+        )
+        return broker_files["results"]
+
+    @staticmethod
+    def source_job_data():
+        broker_files = NFCLIENT.get(
+            "fss.service.broker", "walk", kwargs={"url": "nf://"}
+        )
+        return broker_files["results"]
+
+    @staticmethod
+    @listen_events
+    def run(uuid, *args, **kwargs):
+        workers = kwargs.pop("workers", "all")
+        timeout = kwargs.pop("timeout", 600)
+        verbose_result = kwargs.pop("verbose_result", False)
+        dry_run = kwargs.get("dry_run", False)
+
+        # extract job_data
+        if kwargs.get("job_data") and not kwargs["job_data"].startswith("nf://"):
+            kwargs["job_data"] = json.loads(kwargs["job_data"])
+
+        # extract Tabulate arguments
+        table = kwargs.pop("table", {})  # tabulate
+        headers = kwargs.pop("headers", "keys")  # tabulate
+        headers_exclude = kwargs.pop("headers_exclude", [])  # tabulate
+        sortby = kwargs.pop("sortby", "host")  # tabulate
+        reverse = kwargs.pop("reverse", False)  # tabulate
+
+        if table and not (verbose_result or dry_run):
+            kwargs["add_details"] = True
+            kwargs["to_dict"] = False
+
+        result = NFCLIENT.run_job(
+            "nornir",
+            "test",
+            workers=workers,
+            args=args,
+            kwargs=kwargs,
+            uuid=uuid,
+            timeout=timeout,
+        )
+
+        result = log_error_or_result(result, verbose_result=verbose_result)
+
+        # form table results
+        if verbose_result or dry_run:
+            ret = (
+                result,
+                Outputters.outputter_nested,
+            )
+        elif table:
+            table_data = []
+            for w_name, w_res in result.items():
+                for item in w_res:
+                    item["worker"] = w_name
+                    table_data.append(item)
+            ret = TabulateFormatter(
+                table_data,
+                tabulate=table,
+                headers=headers,
+                headers_exclude=headers_exclude,
+                sortby=sortby,
+                reverse=reverse,
+            )
+        else:
+            ret = result
+
+        return ret
+
+    class PicleConfig:
+        subshell = True
+        prompt = "nf[nornir-test]#"
+        outputter = print_nornir_results
+        pipe = PipeFunctionsModel
