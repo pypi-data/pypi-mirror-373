@@ -1,0 +1,2 @@
+export const __webpack_ids__=["40498"];export const __webpack_modules__={4274:function(e,t,r){r.r(t),r.d(t,{IframeViewStrategy:()=>c});var a=r(73742),_=r(59048),s=r(26292);class c extends _.fl{static async generate(e){return{type:"panel",title:e.title,cards:[{type:"iframe",url:e.url}]}}}c=(0,a.__decorate)([(0,s.Mo)("iframe-view-strategy")],c)}};
+//# sourceMappingURL=40498.077f1f885705dad6.js.map
