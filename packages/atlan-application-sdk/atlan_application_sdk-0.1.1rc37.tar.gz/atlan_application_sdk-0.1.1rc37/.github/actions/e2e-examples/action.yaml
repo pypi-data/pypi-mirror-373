@@ -1,0 +1,150 @@
+name: End to End Tests for application-sdk examples
+
+description: |
+  Runs End-to-End (E2E) tests for application-sdk examples.
+
+  This action executes a comprehensive suite of end-to-end tests for the application-sdk examples.
+  It validates the functionality of example applications by:
+  - Setting up required infrastructure (Dapr, Temporal)
+  - Installing all necessary dependencies
+  - Running the examples in an environment that mirrors production
+  - Verifying the examples work as expected from start to finish
+
+  The tests ensure that the examples provided in the SDK are working correctly
+  and can serve as reliable reference implementations for SDK users.
+
+inputs:
+  operating-system:
+    required: true
+    description: The operating system to use for the action.
+  github-token:
+    required: true
+    description: The GitHub token to use for the action.
+  postgres-host:
+    required: true
+    description: The host of the Postgres database.
+  postgres-password:
+    required: true
+    description: The password of the Postgres database.
+  snowflake-account-id:
+    required: true
+    description: The account ID of the Snowflake database.
+  snowflake-user:
+    required: true
+    description: The user of the Snowflake database.
+  snowflake-password:
+    required: true
+    description: The password of the Snowflake database.
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Dapr CLI (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash -s 1.14.1
+        dapr init --runtime-version 1.13.6 --slim
+
+    - name: Install Dapr CLI (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $script=iwr -useb https://raw.githubusercontent.com/dapr/cli/master/install/install.ps1; $block=[ScriptBlock]::Create($script); invoke-command -ScriptBlock $block -ArgumentList 1.14.1, "$env:USERPROFILE\.dapr\bin\"
+        $env:Path += ";$env:USERPROFILE\.dapr\bin\"
+        dapr init --runtime-version 1.13.6 --slim
+
+    - name: Install Temporal CLI and Start Server
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        curl -sSf https://temporal.download/cli.sh | sh
+        export PATH="$HOME/.temporalio/bin:$PATH"
+
+    - name: Install Temporal CLI and Start Server (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        # Create a directory for Temporal CLI
+        New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.temporalio\bin"
+
+        # Download Temporal CLI
+        Invoke-WebRequest -Uri "https://temporal.download/cli/archive/latest?platform=windows&arch=amd64" -OutFile "$env:USERPROFILE\.temporalio\temporal.zip"
+
+        # Extract and install
+        Expand-Archive -Path "$env:USERPROFILE\.temporalio\temporal.zip" -DestinationPath "$env:USERPROFILE\.temporalio\bin" -Force
+
+        # Add to PATH
+        $env:Path += ";$env:USERPROFILE\.temporalio\bin"
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        version: "0.7.3"
+
+    - name: Install dependencies
+      shell: bash
+      run: uv sync --all-extras --all-groups
+
+    # Set up PATH for DAPR and Temporal globally
+    - name: Setup PATH for DAPR and Temporal (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        echo "$HOME/.dapr/bin" >> $GITHUB_PATH
+        echo "$HOME/.temporalio/bin" >> $GITHUB_PATH
+
+    - name: Setup PATH for DAPR and Temporal (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        echo "$env:USERPROFILE\.dapr\bin" >> $env:GITHUB_PATH
+        echo "$env:USERPROFILE\.temporalio\bin" >> $env:GITHUB_PATH
+
+    # Start all services
+    - name: Start Platform Services
+      shell: bash
+      run: |
+        uv run poe start-deps
+        sleep 10  # Give services time to start up
+
+    # Make API call and capture workflow/run IDs for each example
+    - name: Start the workflows
+      shell: bash
+      id: workflow_info
+      env:
+        POSTGRES_HOST: ${{ inputs.postgres-host }}
+        POSTGRES_PASSWORD: ${{ inputs.postgres-password }}
+        SNOWFLAKE_ACCOUNT_ID: ${{ inputs.snowflake-account-id }}
+        SNOWFLAKE_USER: ${{ inputs.snowflake-user }}
+        SNOWFLAKE_PASSWORD: ${{ inputs.snowflake-password }}
+      run: |
+        cd examples
+        uv run run_examples.py
+
+        echo "Workflow status:"
+        cat workflow_status.md
+
+        echo "Operating system: **${{ inputs.operating-system }}**" >> workflow_status.md
+
+    - name: Comment test results on Pull Request
+      if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+      uses: mshick/add-pr-comment@v2
+      with:
+        message-id: "workflow_status_${{ inputs.operating-system }}"
+        message-path: "examples/workflow_status.md"
+
+    # Stop all services
+    - name: Stop all services
+      shell: bash
+      continue-on-error: true
+      run: |
+        uv run poe stop-deps
+        sleep 10  # Give services time to stop
